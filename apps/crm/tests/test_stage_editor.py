@@ -8,7 +8,7 @@ from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
 from apps.crm.models import Lead, Stage, AttributeDefinition
 from apps.organizations.models import Organization
-from services.crm.stage_requirements import has_value, clean_entry_values
+from apps.crm.services.stage_requirements import has_value, clean_entry_values
 from services.crm.lead_transition import move_lead_to_stage
 
 
@@ -24,7 +24,7 @@ class EntryValueTests(SimpleTestCase):
             key="budget", name="Budget", field_type="numeric"
         )
         with patch(
-            "services.crm.stage_requirements.required_attributes",
+            "apps.crm.services.stage_requirements.required_attributes",
             return_value=[attribute],
         ):
             values, errors = clean_entry_values(None, {}, {"attr_budget": "NaN"})

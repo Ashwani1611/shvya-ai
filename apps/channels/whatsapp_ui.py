@@ -126,7 +126,7 @@ def whatsapp_lead_quick_update_view(request, lead_id):
             return JsonResponse({"error": "Invalid stage."}, status=400)
 
     if target_stage is not None and target_stage.id != lead.stage_id:
-        from services.crm.stage_requirements import missing_attributes
+        from apps.crm.services.stage_requirements import missing_attributes
         if missing_attributes(target_stage, lead.attributes):
             return JsonResponse({"error": "Complete the target stage's required attributes in Additional information before moving this lead."}, status=400)
 

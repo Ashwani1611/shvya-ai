@@ -115,7 +115,7 @@ from services.crm.attribute_service import (
     update_attribute_definition,
     update_lead_attribute_values,
 )
-from services.crm.stage_requirements import missing_attributes
+from apps.crm.services.stage_requirements import missing_attributes
 from services.crm.lead_transition import (
     LeadTransitionError,
     move_lead_to_pipeline_stage,

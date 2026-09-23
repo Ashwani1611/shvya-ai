@@ -1308,7 +1308,7 @@ def lead_card_partial(
 
 
 def _stage_entry_prompt(request, lead, stage, errors=None):
-    from services.crm.stage_requirements import required_attributes
+    from apps.crm.services.stage_requirements import required_attributes
     fields = list(required_attributes(stage))
     for field in fields:
         field.entry_value = request.POST.get(f"attr_{field.key}", (lead.attributes or {}).get(field.key, ""))
@@ -1434,7 +1434,7 @@ def lead_stage_move(
 
         return response
 
-    from services.crm.stage_requirements import clean_entry_values, missing_attributes
+    from apps.crm.services.stage_requirements import clean_entry_values, missing_attributes
     values, errors = clean_entry_values(stage, lead.attributes, request.POST)
     if errors or missing_attributes(stage, values):
         return _stage_entry_prompt(request, lead, stage, errors)
@@ -2291,7 +2291,7 @@ def lead_edit_save(
             attributes[attr_key] = value
 
     if stage_changed:
-        from services.crm.stage_requirements import clean_entry_values, missing_attributes
+        from apps.crm.services.stage_requirements import clean_entry_values, missing_attributes
         attributes, errors = clean_entry_values(lead.stage, attributes, request.POST)
         if errors or missing_attributes(lead.stage, attributes):
             return _stage_entry_prompt(request, lead, lead.stage, errors)
