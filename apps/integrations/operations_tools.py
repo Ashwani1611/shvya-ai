@@ -761,11 +761,9 @@ def clear_organization_context(*, identity, arguments):
 # delegated call we mirror those overrides into the focused implementation
 # modules so the historical patch/injection contract remains intact.
 from apps.integrations import operations_tool_read as _operations_read
-from apps.integrations import operations_tool_actions as _operations_actions
-from apps.integrations import operations_tool_config as _operations_config
 
-# Internal helper exports retained for extended tools, configuration management,
-# tests, and any existing importers of the historical monolithic module.
+# Read-layer helpers must be published before importing the action/config layers:
+# those modules intentionally import these names from this stable facade.
 _reject_secret_like_content = _operations_read._reject_secret_like_content
 _attribute_value_compatible = _operations_read._attribute_value_compatible
 _normalized_lead_attribute_values = _operations_read._normalized_lead_attribute_values
@@ -790,7 +788,13 @@ _qualification_contract_snapshot = _operations_read._qualification_contract_snap
 _messaging_account = _operations_read._messaging_account
 _public_messaging_settings = _operations_read._public_messaging_settings
 _safe_messaging_settings_row = _operations_read._safe_messaging_settings_row
+
+from apps.integrations import operations_tool_actions as _operations_actions
+
 _validate_operations_stage_move = _operations_actions._validate_operations_stage_move
+
+from apps.integrations import operations_tool_config as _operations_config
+
 _cadence_schedule = _operations_config._cadence_schedule
 
 _OPERATIONS_DELEGATED_ENTRYPOINTS = frozenset(
