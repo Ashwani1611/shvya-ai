@@ -4,6 +4,8 @@ import uuid
 
 from celery import shared_task
 from django.conf import settings
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 import redis
 
@@ -39,6 +41,25 @@ def dispatch_smart_triggers():
             logger.exception("Smart Trigger dispatch lease release failed")
 
 
+def _fair_queryset(
+    queryset,
+    *,
+    partition_by,
+    order_by,
+    per_organization,
+    limit,
+):
+    """Bound one dispatch pass while reserving capacity for each tenant."""
+    ranked = queryset.annotate(
+        _tenant_rank=Window(
+            expression=RowNumber(),
+            partition_by=[F(partition_by)],
+            order_by=[F(order_by).asc(), F("id").asc()],
+        )
+    ).filter(_tenant_rank__lte=max(1, int(per_organization)))
+    return ranked.order_by(order_by, "id")[: max(1, int(limit))]
+
+
 def _dispatch():
     from apps.triggers.models import TriggerEvent, TriggerRun
     from services.triggers.actions import deliver_email, execute
@@ -49,29 +70,41 @@ def _dispatch():
         scan_timers()
     except Exception:
         logger.exception("Smart Trigger timer scan failed")
-    for event_id in (
-        TriggerEvent.objects.filter(processed_at__isnull=True)
-        .order_by("created_at")
-        .values_list("id", flat=True)[:500]
-    ):
+    pending_events = TriggerEvent.objects.filter(processed_at__isnull=True)
+    for event_id in _fair_queryset(
+        pending_events,
+        partition_by="organization_id",
+        order_by="created_at",
+        per_organization=10,
+        limit=500,
+    ).values_list("id", flat=True):
         try:
             evaluate(event_id)
         except Exception:
             logger.exception("Smart Trigger event failed: %s", event_id)
-    for run_id in (
-        TriggerRun.objects.filter(
-            status__in=["pending", "scheduled"], due_at__lte=timezone.now()
-        )
-        .order_by("event__created_at", "rule__position", "rule__created_at")
-        .values_list("id", flat=True)[:500]
-    ):
+    due_runs = TriggerRun.objects.filter(
+        status__in=["pending", "scheduled"],
+        due_at__lte=timezone.now(),
+    )
+    for run_id in _fair_queryset(
+        due_runs,
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=10,
+        limit=500,
+    ).values_list("id", flat=True):
         try:
             execute(run_id)
         except Exception:
             logger.exception("Smart Trigger run failed: %s", run_id)
-    for run_id in TriggerRun.objects.filter(status="email_ready").values_list(
-        "id", flat=True
-    )[:100]:
+    email_runs = TriggerRun.objects.filter(status="email_ready")
+    for run_id in _fair_queryset(
+        email_runs,
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=5,
+        limit=100,
+    ).values_list("id", flat=True):
         try:
             deliver_email(run_id)
         except Exception:
@@ -96,9 +129,15 @@ def _dispatch_messages():
 
     now = timezone.now()
     lease = timedelta(minutes=10)
-    runs = TriggerRun.objects.filter(
-        status__in=["queued", "dispatching"]
-    ).select_related("message").order_by("due_at", "created_at")[:500]
+    runs = _fair_queryset(
+        TriggerRun.objects.filter(
+            status__in=["queued", "dispatching"]
+        ).select_related("message"),
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=10,
+        limit=500,
+    )
     for run in runs:
         try:
             message = run.message
