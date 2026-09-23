@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 def reconcile_hosted_sessions():
     """Self-heal Hosted accounts whose persisted DB status drifted from the gateway."""
     from apps.channels.hosted_tasks import initialize_hosted_session_task
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.models import WhatsAppAccount
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
     from services.channels.hosted_whatsapp_service import handle_gateway_event
@@ -35,9 +35,15 @@ def reconcile_hosted_sessions():
             connection_type=WhatsAppAccount.ConnectionType.coexisted,
             is_active=True,
             status=WhatsAppAccount.Status.CONNECTED,
-        ).only("id", "organization_id", "display_phone_number", "phone_number_id", "status")[:200]
+        ).only(
+            "id",
+            "organization_id",
+            "display_phone_number",
+            "phone_number_id",
+            "status",
+            "hosted_gateway_shard",
+        )[:200]
     )
-    client = WhatsAppWebClient()
     result = {
         "inspected": len(accounts),
         "running": 0,
@@ -49,6 +55,7 @@ def reconcile_hosted_sessions():
     }
 
     for account in accounts:
+        client = gateway_client_for_account(account)
         try:
             session = client.get_session(session_id=account.id)
         except WhatsAppWebGatewayError as exc:

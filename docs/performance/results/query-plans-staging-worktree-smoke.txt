@@ -1,0 +1,37 @@
+Fixture: isolated PostgreSQL 17, 2 organizations / 200 total leads, target organization 100 leads.
+Captured: 2026-09-23
+
+dashboard_stage_counts
+HashAggregate (actual time=0.231..0.232 ms, rows=1)
+  -> Seq Scan on crm_lead (actual time=0.137..0.209 ms, rows=100)
+     Filter: organization_id + pipeline_id
+     Rows removed: 100; shared buffers hit: 6
+Planning time: 1.144 ms; execution time: 0.265 ms
+
+Interpretation: PostgreSQL correctly preferred a six-buffer sequential scan for
+this tiny 200-row fixture. The existing (organization, pipeline, stage) index is
+available for production-shaped cardinality; this plan is not evidence of a
+large-table scan bottleneck.
+
+lead_search
+Limit (actual time=0.037..0.087 ms, rows=50)
+  -> Backward index scan using crm_lead_created_d9bbc3_idx
+     Filter: organization_id + name ILIKE
+     Shared buffers hit: 3
+Planning time: 1.318 ms; execution time: 0.102 ms
+
+Interpretation: the ordered 50-row query used the created-at index on this small
+fixture. Existing name trigram and tenant/pipeline indexes remain available;
+recheck with millions of production-shaped rows before changing indexes.
+
+hosted_shard_control
+Index scan using channels_whatsappaccount_hosted_gateway_shard_60be0eb5_like
+  Filter: connection_type=hosted + status=connected
+Planning time: 0.511 ms; execution time: 0.010 ms
+
+Interpretation: the empty Hosted fixture used the shard field index. Migration
+0016 also adds (connection_type, hosted_gateway_shard, status); PostgreSQL may
+select it once realistic shard/account cardinality and statistics exist.
+
+These plans are evidence only for the declared smoke fixture. They do not
+justify production cardinality or partitioning claims.

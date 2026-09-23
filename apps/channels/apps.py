@@ -16,6 +16,7 @@ class ChannelsConfig(AppConfig):
         from . import instagram_models  # noqa: F401
         from . import template_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
+        from . import operational_signals  # noqa: F401
         from . import campaign_models  # noqa: F401
 
         # Register channel background tasks in both web and worker startup.

@@ -1,25 +1,42 @@
 import logging
 from datetime import timedelta
+import uuid
 
 from celery import shared_task
-from django.db import connection
+from django.conf import settings
 from django.utils import timezone
+import redis
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
 def dispatch_smart_triggers():
-    # PostgreSQL session lock serializes rule order across Beat deliveries.
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_try_advisory_lock(%s)", [831947201])
-        if not cursor.fetchone()[0]:
+    # A PostgreSQL session advisory lock is unsafe behind transaction-pooled
+    # PgBouncer because lock/unlock can use different server connections.
+    # Redis provides a short, token-fenced dispatcher lease across workers.
+    client = redis.Redis.from_url(settings.CACHE_REDIS_URL)
+    key = "shvya:automation:trigger-dispatch"
+    owner = str(uuid.uuid4())
+    try:
+        if not client.set(key, owner, nx=True, ex=600):
             return
+    except Exception:
+        logger.exception("Smart Trigger dispatch lease is unavailable")
+        return
     try:
         _dispatch()
     finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_unlock(%s)", [831947201])
+        try:
+            client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                key,
+                owner,
+            )
+        except Exception:
+            logger.exception("Smart Trigger dispatch lease release failed")
 
 
 def _dispatch():

@@ -81,7 +81,9 @@ def send_hosted_whatsapp_message_task(self, message_id):
             }
         reservation_acquired = bool(gate.get("reserved"))
 
-    client = WhatsAppWebClient()
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
+
+    client = gateway_client_for_account(account, client_class=WhatsAppWebClient)
     provider_confirmed = False
     try:
         try:

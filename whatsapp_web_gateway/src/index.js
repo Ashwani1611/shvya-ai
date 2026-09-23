@@ -17,7 +17,10 @@ const API_TOKEN = process.env.WHATSAPP_WEB_GATEWAY_TOKEN || '';
 const CALLBACK_TOKEN = process.env.WHATSAPP_WEB_CALLBACK_TOKEN || '';
 const CALLBACK_URL = process.env.SHVYA_HOSTED_CALLBACK_URL || '';
 const REDIS_URL = process.env.REDIS_URL || '';
-const INSTANCE_ID = crypto.randomUUID();
+const GATEWAY_SHARD = String(process.env.WHATSAPP_WEB_GATEWAY_SHARD || 'primary').trim();
+const INSTANCE_ID = String(process.env.WHATSAPP_WEB_GATEWAY_INSTANCE_ID || crypto.randomUUID()).trim();
+const MAX_HOSTED_SESSIONS = Math.max(1, Number(process.env.WHATSAPP_WEB_MAX_SESSIONS || 50));
+const LEASE_SECONDS = 90;
 const QR_EXPIRES_SECONDS = 60;
 const HISTORY_CHAT_LIMIT = 100;
 const HISTORY_MESSAGE_LIMIT = 30;
@@ -34,6 +37,13 @@ fs.mkdirSync(AUTH_PATH, { recursive: true });
 
 const sessions = new Map();
 let redis = null;
+const gatewayMetrics = {
+  callbacksFailed: 0,
+  historySyncFailures: 0,
+  leaseConflicts: 0,
+  reconnects: 0,
+  sessionsCreated: 0,
+};
 
 function digits(value) {
   return String(value || '').replace(/\D/g, '');
@@ -85,6 +95,9 @@ function publicSession(sessionId, state) {
     historySynced: Boolean(state.historySynced),
     historyError: state.historyError || '',
     historyResult: state.historyResult || null,
+    gatewayShard: GATEWAY_SHARD,
+    gatewayOwner: INSTANCE_ID,
+    leaseExpiresAt: new Date(Date.now() + LEASE_SECONDS * 1000).toISOString(),
   };
 }
 
@@ -97,16 +110,25 @@ async function callback(sessionId, event, payload = {}) {
         'Content-Type': 'application/json',
         'X-SHVYA-Hosted-Token': CALLBACK_TOKEN,
       },
-      body: JSON.stringify({ sessionId, event, ...payload }),
+      body: JSON.stringify({
+        sessionId,
+        event,
+        gatewayShard: GATEWAY_SHARD,
+        gatewayOwner: INSTANCE_ID,
+        leaseExpiresAt: new Date(Date.now() + LEASE_SECONDS * 1000).toISOString(),
+        ...payload,
+      }),
       signal: AbortSignal.timeout(10000),
     });
     if (!response.ok) {
       console.warn(`Hosted callback ${event} for ${sessionId} returned ${response.status}`);
+      gatewayMetrics.callbacksFailed += 1;
       return false;
     }
     return true;
   } catch (error) {
     console.warn(`Hosted callback ${event} for ${sessionId} failed:`, error.message);
+    gatewayMetrics.callbacksFailed += 1;
     return false;
   }
 }
@@ -118,29 +140,63 @@ function lockKey(sessionId) {
 async function acquireLock(sessionId) {
   if (!redis) return true;
   const key = lockKey(sessionId);
-  const current = await redis.get(key);
-  if (current === INSTANCE_ID) {
-    await redis.expire(key, 90);
-    return true;
-  }
-  const result = await redis.set(key, INSTANCE_ID, { NX: true, EX: 90 });
-  return result === 'OK';
+  const renewed = await redis.eval(
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+      + "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+    { keys: [key], arguments: [INSTANCE_ID, String(LEASE_SECONDS)] },
+  );
+  if (Number(renewed) === 1) return true;
+  return (await redis.set(key, INSTANCE_ID, { NX: true, EX: LEASE_SECONDS })) === 'OK';
 }
 
 async function renewLocks() {
   if (!redis) return;
-  for (const sessionId of sessions.keys()) {
+  const heartbeatCallbacks = [];
+  for (const [sessionId, state] of sessions.entries()) {
     const key = lockKey(sessionId);
-    const current = await redis.get(key);
-    if (current === INSTANCE_ID) await redis.expire(key, 90);
+    try {
+      const renewed = await redis.eval(
+        "if redis.call('get', KEYS[1]) == ARGV[1] then "
+          + "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end",
+        { keys: [key], arguments: [INSTANCE_ID, String(LEASE_SECONDS)] },
+      );
+      if (Number(renewed) !== 1) {
+        gatewayMetrics.leaseConflicts += 1;
+        await fenceSession(sessionId, state, 'lease_lost');
+        continue;
+      }
+      state.leaseRenewFailures = 0;
+      heartbeatCallbacks.push(callback(sessionId, 'gateway_heartbeat'));
+    } catch (error) {
+      state.leaseRenewFailures = Number(state.leaseRenewFailures || 0) + 1;
+      console.warn(`Lease renewal failed for ${sessionId}:`, error.message);
+      // Two missed 30-second renewals leave a full interval before the
+      // 90-second lease can expire and be claimed elsewhere.
+      if (state.leaseRenewFailures >= 2) {
+        await fenceSession(sessionId, state, 'lease_renewal_failed');
+      }
+    }
   }
+  await Promise.allSettled(heartbeatCallbacks);
 }
 
 async function releaseLock(sessionId) {
   if (!redis) return;
   const key = lockKey(sessionId);
-  const current = await redis.get(key);
-  if (current === INSTANCE_ID) await redis.del(key);
+  await redis.eval(
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+      + "return redis.call('del', KEYS[1]) else return 0 end",
+    { keys: [key], arguments: [INSTANCE_ID] },
+  );
+}
+
+async function fenceSession(sessionId, state, reason) {
+  if (!sessions.has(sessionId)) return;
+  sessions.delete(sessionId);
+  state.status = 'disconnected';
+  state.lastError = reason;
+  try { await state.client.destroy(); } catch (_) {}
+  await callback(sessionId, 'lease_lost', { error: reason });
 }
 
 function mapMessageType(type) {
@@ -571,6 +627,7 @@ function startHistorySync(sessionId, state, { force = false } = {}) {
     .catch(async (error) => {
       state.historySynced = false;
       state.historyError = error.message || String(error);
+      gatewayMetrics.historySyncFailures += 1;
       await callback(sessionId, 'history_failed', { error: state.historyError });
       const attempt = state.historyRetryCount || 0;
       if (attempt < 3 && !state.historyRetryTimer && state.status === 'running') {
@@ -764,6 +821,7 @@ function wireClientEvents(sessionId, state) {
   });
 
   client.on('disconnected', async (reason) => {
+    gatewayMetrics.reconnects += 1;
     state.status = 'disconnected';
     state.qr = null;
     state.qrGeneratedAt = 0;
@@ -782,7 +840,14 @@ async function createSession(sessionId, requestedPhone = '') {
     return existing;
   }
 
+  if (sessions.size >= MAX_HOSTED_SESSIONS) {
+    const error = new Error('Gateway session capacity reached; assign this account to another shard.');
+    error.statusCode = 503;
+    throw error;
+  }
+
   if (!(await acquireLock(sessionId))) {
+    gatewayMetrics.leaseConflicts += 1;
     const error = new Error('Session is active on another gateway instance.');
     error.statusCode = 409;
     throw error;
@@ -824,6 +889,7 @@ async function createSession(sessionId, requestedPhone = '') {
 
   state.client = client;
   sessions.set(sessionId, state);
+  gatewayMetrics.sessionsCreated += 1;
   wireClientEvents(sessionId, state);
 
   client.initialize().catch(async (error) => {
@@ -889,7 +955,29 @@ const app = express();
 app.disable('x-powered-by');
 app.use(express.json({ limit: '6mb' }));
 
-app.get('/health', (_req, res) => res.json({ ok: true, sessions: sessions.size }));
+app.get('/health', (_req, res) => {
+  const memory = process.memoryUsage();
+  const cpu = process.cpuUsage();
+  res.json({
+    ok: true,
+    shard: GATEWAY_SHARD,
+    owner: INSTANCE_ID,
+    sessions: sessions.size,
+    maxSessions: MAX_HOSTED_SESSIONS,
+    capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - sessions.size),
+    memoryBytes: {
+      rss: memory.rss,
+      heapUsed: memory.heapUsed,
+      external: memory.external,
+    },
+    cpuMicros: {
+      user: cpu.user,
+      system: cpu.system,
+    },
+    metrics: gatewayMetrics,
+    uptimeSeconds: Math.floor(process.uptime()),
+  });
+});
 
 app.use('/sessions', (req, res, next) => {
   if (!API_TOKEN) return res.status(503).json({ error: 'Gateway token is not configured.' });

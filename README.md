@@ -613,6 +613,9 @@ Useful project documentation includes:
 - [`docs/shvya-calendar-workspace.md`](./docs/shvya-calendar-workspace.md) - Calendar workspace and booking operations
 - [`docs/shvya-sales.md`](./docs/shvya-sales.md) - Sales documents, delivery, tracking and payment lifecycle
 - [`docs/call-intelligence.md`](./docs/call-intelligence.md) - Android SIM + CRM Call Intelligence architecture
+- [`docs/scalability/production-scaling.md`](./docs/scalability/production-scaling.md) - horizontal scale, pooling, fairness, retention and disaster recovery runbook
+- [`docs/scalability/hosted-whatsapp-sharding.md`](./docs/scalability/hosted-whatsapp-sharding.md) - Hosted gateway ownership, sharding and recovery
+- [`docs/performance/README.md`](./docs/performance/README.md) - reproducible capacity profiles and performance evidence
 
 ---
 

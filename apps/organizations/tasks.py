@@ -23,7 +23,15 @@ def cleanup_deleted_organizations():
             if job is None:
                 continue
             files_remaining, sessions_remaining = [], []
-            for session_id in job.hosted_session_ids:
+            for session in job.hosted_session_ids:
+                # Rows created before gateway sharding stored a bare ID and
+                # remain cleanup-compatible with the legacy primary shard.
+                if isinstance(session, dict):
+                    session_id = str(session.get("id") or "")
+                    shard = str(session.get("shard") or "primary")
+                else:
+                    session_id = str(session)
+                    shard = "primary"
                 try:
                     from apps.channels.providers.whatsapp_web import (
                         WhatsAppWebClient,
@@ -31,12 +39,12 @@ def cleanup_deleted_organizations():
                     )
 
                     try:
-                        WhatsAppWebClient().logout(session_id=session_id)
+                        WhatsAppWebClient(shard=shard).logout(session_id=session_id)
                     except WhatsAppWebGatewayError as exc:
                         if exc.status_code != 404:
                             raise
                 except Exception:
-                    sessions_remaining.append(session_id)
+                    sessions_remaining.append(session)
             for entry in job.files:
                 try:
                     field = apps.get_model(entry["model"])._meta.get_field(

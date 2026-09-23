@@ -146,10 +146,15 @@ REDIS_URL = config(
     default="redis://localhost:6379/0",
 )
 
+CACHE_REDIS_URL = config(
+    "CACHE_REDIS_URL",
+    default=REDIS_URL,
+)
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",
-        "LOCATION": REDIS_URL,
+        "LOCATION": CACHE_REDIS_URL,
     },
 }
 
@@ -171,6 +176,83 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 
 CELERY_TIMEZONE = "Asia/Kolkata"
+
+# Long-running/bursty work is isolated from customer-facing realtime AI. These
+# queue names are also used by the protected runtime metrics endpoint.
+SHVYA_CELERY_QUEUES = (
+    "celery",
+    "ai_realtime",
+    "hosted_ai",
+    "campaigns",
+    "ingestion",
+    "automation",
+)
+CELERY_TASK_ROUTES = {
+    "ai.recover_api_engagement": {"queue": "ai_realtime"},
+    "ai.generate_ai_engagement_response": {"queue": "ai_realtime"},
+    "apps.channels.tasks.send_whatsapp_message_task": {"queue": "ai_realtime"},
+    "hosted.dispatch_due_ai": {"queue": "hosted_ai"},
+    "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
+        "queue": "hosted_ai"
+    },
+    "campaigns.prepare": {"queue": "campaigns"},
+    "campaigns.send_recipient": {"queue": "campaigns"},
+    "campaigns.dispatch": {"queue": "campaigns"},
+    "campaigns.maintain": {"queue": "campaigns"},
+    "apps.channels.tasks.send_bulk_recipient_task": {"queue": "campaigns"},
+    "apps.channels.tasks.finalize_bulk_campaign_task": {"queue": "campaigns"},
+    "apps.channels.tasks.send_bulk_campaign_task": {"queue": "campaigns"},
+    "ai.ingest_and_index_document": {"queue": "ingestion"},
+    "ai.ingest_and_index_url_source": {"queue": "ingestion"},
+    "ai.reindex_document_embeddings": {"queue": "ingestion"},
+    "apps.triggers.tasks.dispatch_smart_triggers": {"queue": "automation"},
+    "apps.followups.tasks.dispatch_auto_followups_task": {"queue": "automation"},
+}
+CELERY_WORKER_PREFETCH_MULTIPLIER = config(
+    "CELERY_WORKER_PREFETCH_MULTIPLIER",
+    default=1,
+    cast=int,
+)
+CELERY_WORKER_MAX_TASKS_PER_CHILD = config(
+    "CELERY_WORKER_MAX_TASKS_PER_CHILD",
+    default=500,
+    cast=int,
+)
+CELERY_WORKER_MAX_MEMORY_PER_CHILD = config(
+    "CELERY_WORKER_MAX_MEMORY_PER_CHILD_KB",
+    default=768000,
+    cast=int,
+)
+
+# Shared observability is intentionally token-protected and disabled until an
+# operator supplies a token. Request metrics remain bounded and contain no
+# request bodies, credentials, message text, or provider payloads.
+OBSERVABILITY_TOKEN = config("OBSERVABILITY_TOKEN", default="")
+OBSERVABILITY_SLOW_REQUEST_MS = config(
+    "OBSERVABILITY_SLOW_REQUEST_MS",
+    default=1000,
+    cast=int,
+)
+WEBSOCKET_METRIC_STALE_SECONDS = config(
+    "WEBSOCKET_METRIC_STALE_SECONDS",
+    default=90,
+    cast=int,
+)
+TENANT_HTTP_CONCURRENCY_LIMIT = config(
+    "TENANT_HTTP_CONCURRENCY_LIMIT",
+    default=0,
+    cast=int,
+)
+AI_ORGANIZATION_STARTS_PER_MINUTE = config(
+    "AI_ORGANIZATION_STARTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+AI_GLOBAL_STARTS_PER_MINUTE = config(
+    "AI_GLOBAL_STARTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -266,11 +348,13 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "apps.core.observability.RequestObservabilityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.accounts.middleware.SHVYAAreaAuthenticationMiddleware",
+    "apps.core.scale_middleware.TenantConcurrencyMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "apps.organizations.middleware.PackageAccessMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",

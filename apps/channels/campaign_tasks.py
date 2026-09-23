@@ -1,4 +1,4 @@
-"""Campaign work stays on the existing general Celery worker, not AI realtime."""
+"""Durable campaign work runs in its own lane, never in realtime AI."""
 import logging
 from datetime import datetime, timedelta
 
@@ -54,10 +54,31 @@ def dispatch_campaigns_task():
         campaign__campaign_plan__prepared_at__isnull=False, campaign__campaign_plan__cancelled_at__isnull=True,
         campaign__campaign_plan__prepare_error="",
     )
-    accounts = list(due.values("campaign__account_id").annotate(first_due=Min("due_at")).order_by("first_due")[:20])
+    # Select one sender account per organization per pass. A tenant with many
+    # accounts or a very large campaign therefore cannot occupy every dispatch
+    # slot; subsequent 10-second passes continue draining durable rows.
+    organizations = list(
+        due.values("campaign__organization_id")
+        .annotate(first_due=Min("due_at"))
+        .order_by("first_due")[:20]
+    )
     published = 0
-    for account in accounts:
-        for offset, delivery_id in enumerate(due.filter(campaign__account_id=account["campaign__account_id"]).order_by("due_at", "pk").values_list("pk", flat=True)[:5]):
+    for organization in organizations:
+        org_due = due.filter(
+            campaign__organization_id=organization["campaign__organization_id"]
+        )
+        account_id = (
+            org_due.values("campaign__account_id")
+            .annotate(first_due=Min("due_at"))
+            .order_by("first_due")
+            .values_list("campaign__account_id", flat=True)
+            .first()
+        )
+        for offset, delivery_id in enumerate(
+            org_due.filter(campaign__account_id=account_id)
+            .order_by("due_at", "pk")
+            .values_list("pk", flat=True)[:5]
+        ):
             if not CampaignDelivery.objects.filter(available, pk=delivery_id, state="pending", due_at__lte=now).update(published_at=now):
                 continue
             try:

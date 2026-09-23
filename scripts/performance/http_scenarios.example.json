@@ -1,0 +1,29 @@
+{
+  "variables": {
+    "ACCOUNT_ID": "replace-me",
+    "DOCUMENT_ID": "replace-me",
+    "LEAD_ID": "replace-me",
+    "PIPELINE_ID": "replace-me",
+    "STAGE_ID": "replace-me"
+  },
+  "scenarios": [
+    {"name": "crm_dashboard", "method": "GET", "path": "/dashboard/", "enabled": true},
+    {"name": "crm_lead_search", "method": "GET", "path": "/dashboard/leads/table/?q=capacity", "enabled": true},
+    {"name": "pipeline_switching", "method": "GET", "path": "/dashboard/leads/table/?pipeline=${PIPELINE_ID}", "enabled": false},
+    {"name": "lead_detail", "method": "GET", "path": "/dashboard/leads/${LEAD_ID}/", "enabled": false},
+    {"name": "save_notes_attributes", "method": "POST", "path": "/dashboard/leads/${LEAD_ID}/edit/save/", "json": {}, "enabled": false},
+    {"name": "stage_movement", "method": "POST", "path": "/dashboard/leads/${LEAD_ID}/stage/", "json": {"stage_id": "${STAGE_ID}"}, "enabled": false},
+    {"name": "whatsapp_inbox", "method": "GET", "path": "/dashboard/whatsapp/chats/", "enabled": true},
+    {"name": "inbound_webhook_processing", "method": "POST", "path": "/webhooks/whatsapp/", "json": {}, "enabled": false},
+    {"name": "outbound_whatsapp_send", "method": "POST", "path": "/dashboard/whatsapp/send/${LEAD_ID}/", "json": {}, "enabled": false},
+    {"name": "ai_engagement_enqueue", "method": "POST", "path": "/api/ai/engagement/", "json": {}, "enabled": false},
+    {"name": "ai_engagement_completion", "method": "GET", "path": "/dashboard/leads/${LEAD_ID}/", "enabled": false},
+    {"name": "hosted_ai", "method": "GET", "path": "/dashboard/whatsapp/connect/hosted/${ACCOUNT_ID}/chats/", "enabled": false},
+    {"name": "workflows", "method": "GET", "path": "/dashboard/workflows/", "enabled": true},
+    {"name": "cadence_dispatch", "method": "GET", "path": "/dashboard/cadence/sequences/", "enabled": true},
+    {"name": "calendar_booking", "method": "GET", "path": "/dashboard/shvya-calendar/calendar/", "enabled": true},
+    {"name": "sales_document_operations", "method": "GET", "path": "/dashboard/sales/documents/${DOCUMENT_ID}/", "enabled": false},
+    {"name": "support_portal", "method": "GET", "path": "/dashboard/support-portal/", "enabled": true},
+    {"name": "operations_mcp_reads_writes", "method": "POST", "path": "/operations/mcp/", "json": {}, "enabled": false}
+  ]
+}

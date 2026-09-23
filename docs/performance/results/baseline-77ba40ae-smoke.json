@@ -1,0 +1,69 @@
+{
+  "captured_at": "2026-09-23T14:07:31.426792+00:00",
+  "database_query_counts": {
+    "crm_dashboard": 11,
+    "crm_lead_detail": 1,
+    "crm_lead_search": 1
+  },
+  "environment": {
+    "platform": "macOS-27.2-arm64-arm-64bit-Mach-O",
+    "python": "3.13.11"
+  },
+  "fixture": {
+    "lead_count": 100,
+    "organization_id": "577d6c9a-f778-4943-89a9-6bfe56eb982d"
+  },
+  "git_sha": "77ba40aed5f382217eb22ba03408c00fabe20d75",
+  "profile": "smoke",
+  "profile_config": {
+    "concurrency": 4,
+    "iterations": 40,
+    "leads_per_organization": 100,
+    "organizations": 1,
+    "users_per_organization": 2
+  },
+  "redis_set_latency_ms": {
+    "p50": 0.395,
+    "p95": 0.471,
+    "p99": 1.275
+  },
+  "scenarios": {
+    "crm_dashboard": {
+      "error_rate": 0.0,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 107.895,
+        "p50": 84.722,
+        "p95": 205.103,
+        "p99": 214.534
+      },
+      "requests": 40,
+      "rps": 36.217
+    },
+    "crm_lead_detail": {
+      "error_rate": 0.0,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 16.211,
+        "p50": 15.502,
+        "p95": 20.031,
+        "p99": 21.383
+      },
+      "requests": 40,
+      "rps": 242.638
+    },
+    "crm_lead_search": {
+      "error_rate": 0.0,
+      "errors": 0,
+      "latency_ms": {
+        "mean": 20.25,
+        "p50": 19.61,
+        "p95": 25.352,
+        "p99": 29.459
+      },
+      "requests": 40,
+      "rps": 193.768
+    }
+  },
+  "schema_version": 1
+}

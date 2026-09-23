@@ -696,6 +696,14 @@ def handle_gateway_event(*, payload):
     if not account:
         return None
 
+    from apps.channels.hosted_gateway_routing import record_gateway_presence
+
+    if not record_gateway_presence(account=account, payload=payload, event=event):
+        # A callback from a different shard is fenced out even when it carries
+        # a valid shared callback token. Message idempotency remains a second
+        # line of defence, not the ownership mechanism.
+        return None
+
     if event in {"qr", "connecting", "authenticated", "syncing"}:
         if account.status != WhatsAppAccount.Status.PENDING:
             account.status = WhatsAppAccount.Status.PENDING

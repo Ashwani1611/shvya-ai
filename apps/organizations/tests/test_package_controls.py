@@ -231,7 +231,10 @@ class SuperadminPackageControlsTests(TestCase):
         self.assertIsNone(diagnostic.organization_id)
         self.assertEqual(diagnostic.organization_reference, self.org.pk)
         cleanup = OrganizationDeletionCleanup.objects.get(organization_id=self.org.pk)
-        self.assertEqual(cleanup.hosted_session_ids, [str(account.pk)])
+        self.assertEqual(
+            cleanup.hosted_session_ids,
+            [{"id": str(account.pk), "shard": "primary"}],
+        )
         self.assertIn(
             "calendar/logos/deleted-logo.png",
             [entry["name"] for entry in cleanup.files],

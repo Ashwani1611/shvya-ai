@@ -3,8 +3,13 @@
 import asyncio
 from contextlib import suppress
 
+from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+from apps.core.observability import increment
+from apps.core.websocket_metrics import remove as remove_websocket_metric
+from apps.core.websocket_metrics import touch as touch_websocket_metric
 
 
 HEARTBEAT_INTERVAL_SECONDS = 25
@@ -26,9 +31,16 @@ class HostedWhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
             return
 
         self.account_id = account_id
+        self.organization_id = str(user.organization_id)
         self.group_name = f"hosted_whatsapp_{account_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        await sync_to_async(touch_websocket_metric, thread_sensitive=False)(
+            "hosted_whatsapp", self.channel_name, self.organization_id
+        )
+        await sync_to_async(increment, thread_sensitive=False)(
+            "websocket.connections", labels={"kind": "hosted_whatsapp"}
+        )
         self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def disconnect(self, close_code):
@@ -42,6 +54,10 @@ class HostedWhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
             await self.channel_layer.group_discard(
                 self.group_name,
                 self.channel_name,
+            )
+        if hasattr(self, "organization_id"):
+            await sync_to_async(remove_websocket_metric, thread_sensitive=False)(
+                "hosted_whatsapp", self.channel_name, self.organization_id
             )
 
     async def receive_json(self, content, **kwargs):
@@ -57,6 +73,10 @@ class HostedWhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
         try:
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                if hasattr(self, "channel_name") and hasattr(self, "organization_id"):
+                    await sync_to_async(
+                        touch_websocket_metric, thread_sensitive=False
+                    )("hosted_whatsapp", self.channel_name, self.organization_id)
                 await self.send_json({"kind": "heartbeat"})
         except asyncio.CancelledError:
             raise
