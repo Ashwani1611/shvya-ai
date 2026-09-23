@@ -70,13 +70,21 @@ def claim_execution(message_id, *, stale_after_seconds=180):
         return True
 
 
-def queue_api_engagement(*, lead_id):
+def queue_api_engagement(*, lead_id, source_message_id=None):
     from apps.channels.models import WhatsAppMessage
     from apps.ai_engagement.tasks import generate_ai_engagement_response
-    message = WhatsAppMessage.objects.filter(lead_id=lead_id, direction='inbound',
-        account__connection_type='api').order_by('-created_at', '-id').first()
+
+    messages = WhatsAppMessage.objects.filter(
+        lead_id=lead_id,
+        direction='inbound',
+        account__connection_type='api',
+    )
+    if source_message_id is not None:
+        messages = messages.filter(pk=source_message_id)
+    message = messages.order_by('-created_at', '-id').first()
     if message is None:
         return None
+
     record_execution(message.pk, status='queued')
     # If publication fails, the durable queued marker survives for Beat recovery.
     try:
