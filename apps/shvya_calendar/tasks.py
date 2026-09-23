@@ -9,6 +9,21 @@ from .models import CalendarBooking, CalendarReminderDelivery
 logger = logging.getLogger(__name__)
 
 
+def _google_retry_delay(*, booking_id, retries, retry_after=None):
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(retry_after), 900))
+        except (TypeError, ValueError):
+            base = 5
+    else:
+        base = min(180, 5 * (2 ** max(0, int(retries or 0))))
+    jitter = (
+        sum(ord(character) for character in str(booking_id))
+        + (int(retries or 0) * 7)
+    ) % 7
+    return min(907, base + jitter)
+
+
 def _strict_whatsapp_account(booking):
     """Resolve only the WhatsApp connection owned by the lead's pipeline.
 
@@ -202,15 +217,39 @@ def refresh_booking_conference(self, booking_id):
         booking = refresh_booking_event_details(booking)
         if not booking.meeting_link:
             raise GoogleCalendarError(
-                "Google Meet conference is still being prepared."
+                "Google Meet conference is still being prepared.",
+                transient=True,
             )
         return {"status": "synced", "meeting_link": booking.meeting_link}
     except GoogleCalendarError as exc:
+        retryable = bool(getattr(exc, "transient", False))
+        exhausted = self.request.retries >= self.max_retries
         CalendarBooking.objects.filter(pk=booking.pk).update(
-            calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
+            calendar_sync_status=(
+                CalendarBooking.SyncStatus.PENDING
+                if retryable and not exhausted
+                else CalendarBooking.SyncStatus.FAILED
+            ),
             calendar_sync_error=str(exc)[:1000],
         )
-        raise self.retry(exc=exc)
+        if retryable and not exhausted:
+            countdown = _google_retry_delay(
+                booking_id=booking.pk,
+                retries=self.request.retries,
+                retry_after=getattr(exc, "retry_after", None),
+            )
+            if getattr(exc, "status_code", None) == 429:
+                from apps.core.observability import increment
+
+                increment(
+                    "provider.throttled",
+                    labels={"provider": "google_calendar"},
+                )
+            raise self.retry(exc=exc, countdown=countdown)
+        return {
+            "status": "failed",
+            "error": str(exc),
+        }
 
 
 @shared_task(name="shvya_calendar.recover_pending_google_meet")
