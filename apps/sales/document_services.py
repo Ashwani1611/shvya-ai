@@ -2,22 +2,16 @@ from __future__ import annotations
 
 import html
 import re
-import uuid
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from bs4 import BeautifulSoup
 from django.core.exceptions import ValidationError
-from django.core.validators import validate_email
 from django.db import transaction
-from django.urls import reverse
-from django.utils import timezone
 from django.utils.text import get_valid_filename
 
 from apps.sales.models import (
     DocumentType,
-    SalesDocument,
-    SalesDocumentDelivery,
     SalesDocumentNumberSequence,
     SalesTemplate,
 )
