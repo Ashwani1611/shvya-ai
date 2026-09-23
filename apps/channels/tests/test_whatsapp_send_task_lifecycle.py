@@ -2,8 +2,9 @@ import json
 from unittest.mock import patch
 
 from celery.exceptions import Retry
+from django.core.cache import cache
 from django.db import transaction
-from django.test import TransactionTestCase
+from django.test import TransactionTestCase, override_settings
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers.whatsapp import WhatsAppAPIError
@@ -154,6 +155,30 @@ class WhatsAppSendTaskLifecycleTests(TransactionTestCase):
         self.assertEqual(result["reason"], "provider_outcome_uncertain")
         self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
         retry.assert_not_called()
+
+    @override_settings(
+        WHATSAPP_ACCOUNT_SENDS_PER_MINUTE=1,
+        WHATSAPP_GLOBAL_SENDS_PER_MINUTE=10,
+    )
+    @patch("services.channels.whatsapp_service.WhatsAppClient.send_text_message")
+    def test_account_admission_defers_second_message_before_provider_call(self, send_text):
+        cache.clear()
+        send_text.return_value = {
+            "messages": [{"id": "wamid.admission.first"}],
+        }
+        first = self._message()
+        second = self._message()
+
+        first_result = send_whatsapp_message_task.run(str(first.pk))
+        with patch.object(send_whatsapp_message_task, "apply_async") as republish:
+            second_result = send_whatsapp_message_task.run(str(second.pk))
+
+        second.refresh_from_db()
+        self.assertEqual(first_result["status"], "sent")
+        self.assertEqual(second_result["status"], "deferred")
+        self.assertEqual(second.status, WhatsAppMessage.Status.QUEUED)
+        self.assertEqual(send_text.call_count, 1)
+        republish.assert_called_once()
 
     @patch("services.channels.whatsapp_service.WhatsAppClient.send_text_message")
     def test_in_flight_message_is_not_sent_by_second_worker(self, send_text):
