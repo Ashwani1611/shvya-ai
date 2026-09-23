@@ -172,6 +172,20 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn('"apps.hosted_automation"', source)
 
+    def test_operations_mcp_transport_is_separate_from_tool_catalog(self):
+        transport = ROOT / "apps" / "integrations" / "views" / "operations_mcp.py"
+        catalog = ROOT / "apps" / "integrations" / "operations" / "tool_catalog.py"
+        self.assertTrue(catalog.exists())
+        self.assertLess(
+            len(transport.read_text(encoding="utf-8").splitlines()),
+            1500,
+            "Keep OAuth/JSON-RPC transport separate from the tool catalog.",
+        )
+        self.assertLess(
+            len(catalog.read_text(encoding="utf-8").splitlines()),
+            1500,
+        )
+
     def test_operations_action_tools_are_split_by_responsibility(self):
         facade = ROOT / "apps" / "integrations" / "operations_tool_actions.py"
         base = ROOT / "apps" / "integrations" / "operations" / "tools"
