@@ -201,6 +201,14 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         canonical = ROOT / "apps" / "teams" / "services" / "team_service.py"
         compatibility = ROOT / "services" / "teams" / "team_service.py"
         self.assertTrue(canonical.exists())
+        whatsapp_canonical = ROOT / "apps" / "teams" / "services" / "whatsapp_connections.py"
+        whatsapp_compatibility = ROOT / "services" / "teams" / "whatsapp_connections.py"
+        self.assertTrue(whatsapp_canonical.exists())
+        self.assertLess(
+            len(whatsapp_compatibility.read_text(encoding="utf-8").splitlines()),
+            30,
+            "services.teams.whatsapp_connections must remain a compatibility facade.",
+        )
         self.assertLess(
             len(compatibility.read_text(encoding="utf-8").splitlines()),
             40,
@@ -213,6 +221,7 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         ):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn("from services.teams.team_service import", source)
+            self.assertNotIn("from services.teams.whatsapp_connections import", source)
 
     def test_empty_parallel_root_service_trees_stay_removed(self):
         for relative in (
