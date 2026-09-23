@@ -367,3 +367,72 @@ class OperationsApprovalUse(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValidationError("Operations approval uses are immutable.")
+
+
+class OperationsConfigurationPlan(models.Model):
+    """Durable actor/tenant-bound multi-object Operations configuration plan."""
+
+    class Status(models.TextChoices):
+        READY = "ready", "Ready"
+        APPLIED = "applied", "Applied"
+        ROLLED_BACK = "rolled_back", "Rolled back"
+        FAILED = "failed", "Failed"
+        EXPIRED = "expired", "Expired"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.PROTECT,
+        related_name="operations_configuration_plans",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.PROTECT,
+        related_name="operations_configuration_plans",
+    )
+    token = models.ForeignKey(
+        OperationsOAuthToken,
+        on_delete=models.PROTECT,
+        related_name="configuration_plans",
+    )
+    role = models.CharField(max_length=32)
+    idempotency_key = models.CharField(max_length=128, blank=True)
+    reason = models.CharField(max_length=500)
+    operations = models.JSONField(default=list)
+    base_etag = models.CharField(max_length=64, db_index=True)
+    plan_hash = models.CharField(max_length=64, db_index=True)
+    status = models.CharField(
+        max_length=16,
+        choices=Status.choices,
+        default=Status.READY,
+        db_index=True,
+    )
+    reversible = models.BooleanField(default=False)
+    risk_summary = models.JSONField(default=dict, blank=True)
+    apply_result = models.JSONField(default=dict, blank=True)
+    inverse_operations = models.JSONField(default=list, blank=True)
+    applied_etag = models.CharField(max_length=64, blank=True)
+    expires_at = models.DateTimeField(db_index=True)
+    applied_at = models.DateTimeField(null=True, blank=True)
+    rolled_back_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "actor", "idempotency_key"],
+                condition=~models.Q(idempotency_key=""),
+                name="ops_plan_org_actor_idempotency_uniq",
+            )
+        ]
+        indexes = [
+            models.Index(
+                fields=["organization", "status", "-created_at"],
+                name="ops_plan_org_status_idx",
+            )
+        ]
+
+    def __str__(self):
+        return f"Operations plan {self.id} — {self.organization_id} — {self.status}"

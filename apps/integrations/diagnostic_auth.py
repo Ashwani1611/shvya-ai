@@ -59,6 +59,7 @@ _SAFE_SECRET_METADATA_KEYS = {
     "token_refreshed_at",
     "has_credential",
     "has_last_error",
+    "secret_material_included",
 }
 
 _PRIVATE_KEY_PATTERN = re.compile(
@@ -125,6 +126,14 @@ def sanitize_data(
                 "pipeline_id",
                 "stage_id",
                 "event_id",
+                "configuration_etag",
+                "base_configuration_etag",
+                "applied_configuration_etag",
+                "target_configuration_etag",
+                "current_configuration_etag",
+                "base_etag",
+                "applied_etag",
+                "plan_digest",
             } and isinstance(item, str):
                 cleaned[key_text] = sanitize_text(
                     item,

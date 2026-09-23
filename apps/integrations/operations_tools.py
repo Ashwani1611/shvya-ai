@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import re
 import uuid
+from contextlib import contextmanager
+from contextvars import ContextVar
 from urllib.parse import urlparse
 from copy import deepcopy
 from dataclasses import dataclass
@@ -144,6 +146,26 @@ MESSAGING_AUTOMATION_SETTING_KEYS = frozenset(
 ATTRIBUTE_COMPATIBILITY_SCAN_LIMIT = 5000
 CONVERSION_BREAKDOWN_LIMIT = 100
 LOST_REASON_BREAKDOWN_LIMIT = 20
+
+_CONFIGURATION_PLAN_EXECUTION = ContextVar(
+    "shvya_operations_configuration_plan_execution",
+    default=False,
+)
+
+
+@contextmanager
+def configuration_plan_execution():
+    """Authorize nested member writes only inside one approved plan apply/rollback.
+
+    This context is not user-controlled. Public MCP calls still pass through the
+    ordinary write gate and one-use approval receipt checks.
+    """
+
+    token = _CONFIGURATION_PLAN_EXECUTION.set(True)
+    try:
+        yield
+    finally:
+        _CONFIGURATION_PLAN_EXECUTION.reset(token)
 
 
 GENERIC_ACTION_REASONS = {
@@ -366,6 +388,15 @@ def _write_gate(
             "This OAuth token does not include operations.write."
         )
 
+    reason = _reason(arguments, required=True)
+
+    if _CONFIGURATION_PLAN_EXECUTION.get():
+        # apply_configuration_plan / rollback_configuration_plan owns the
+        # outer approval, drift check, transaction, and audit event. Nested
+        # member tools retain tenant/capability validation but do not require
+        # independent approval receipts.
+        return False, reason
+
     raw_dry_run = (arguments or {}).get("dry_run", True)
     raw_approved = (arguments or {}).get("approved", False)
     if not isinstance(raw_dry_run, bool):
@@ -374,7 +405,6 @@ def _write_gate(
         raise OperationsToolError("approved must be a JSON boolean.")
     dry_run = raw_dry_run
     approved = raw_approved
-    reason = _reason(arguments, required=True)
     needs_approval = approval_required(
         role=identity.role,
         organization=organization,
@@ -6255,20 +6285,29 @@ def upsert_cadence_configuration(*, identity, arguments):
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
             raise OperationsToolError("The selected account is not a WhatsApp API account.")
         if provider == "hosted":
-            account = (
-                WhatsAppAccount.objects.filter(
-                    organization=organization,
-                    connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                    status=WhatsAppAccount.Status.CONNECTED,
-                    is_active=True,
+            if (
+                account is not None
+                and account.connection_type
+                != WhatsAppAccount.ConnectionType.coexisted
+            ):
+                raise OperationsToolError(
+                    "The selected account is not a Hosted/Coexistence WhatsApp account."
                 )
-                .defer("access_token")
-                .order_by(
-                    "business_name",
-                    "display_phone_number",
+            if account is None:
+                account = (
+                    WhatsAppAccount.objects.filter(
+                        organization=organization,
+                        connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                        status=WhatsAppAccount.Status.CONNECTED,
+                        is_active=True,
+                    )
+                    .defer("access_token")
+                    .order_by(
+                        "business_name",
+                        "display_phone_number",
+                    )
+                    .first()
                 )
-                .first()
-            )
             if account is None:
                 raise OperationsToolError(
                     "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
@@ -6391,20 +6430,38 @@ def upsert_cadence_configuration(*, identity, arguments):
                             "active/connected. Run a fresh dry-run."
                         )
                 else:
+                    account_id = data.get("whatsapp_account_id")
                     account = (
                         WhatsAppAccount.objects.filter(
+                            pk=_uuid(
+                                account_id,
+                                field="whatsapp_account_id",
+                            ),
                             organization=organization,
                             connection_type=WhatsAppAccount.ConnectionType.coexisted,
                             status=WhatsAppAccount.Status.CONNECTED,
                             is_active=True,
                         )
                         .defer("access_token")
-                        .order_by(
-                            "business_name",
-                            "display_phone_number",
-                        )
                         .first()
+                        if account_id
+                        else None
                     )
+                    if account is None:
+                        account = (
+                            WhatsAppAccount.objects.filter(
+                                organization=organization,
+                                connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                                status=WhatsAppAccount.Status.CONNECTED,
+                                is_active=True,
+                            )
+                            .defer("access_token")
+                            .order_by(
+                                "business_name",
+                                "display_phone_number",
+                            )
+                            .first()
+                        )
                     if account is None:
                         raise OperationsApprovalRequired(
                             "No active Hosted/Coexistence sender is available. "
@@ -6855,12 +6912,18 @@ def execute_operations_tool(*, name, identity, arguments):
     }
     handler = handlers.get(str(name or ""))
     if handler is None:
-        # Extended configuration tools are kept in a lazily imported module so
+        # Extended configuration tools are kept in lazily imported modules so
         # this core Operations boundary remains the single source of approval,
-        # tenant, audit, and error semantics without creating an import cycle.
+        # tenant, audit, and error semantics without creating import cycles.
         from apps.integrations.operations_extended_tools import EXTENDED_HANDLERS
 
         handler = EXTENDED_HANDLERS.get(str(name or ""))
+    if handler is None:
+        from apps.integrations.operations_configuration_management import (
+            CONFIGURATION_MANAGEMENT_HANDLERS,
+        )
+
+        handler = CONFIGURATION_MANAGEMENT_HANDLERS.get(str(name or ""))
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})
