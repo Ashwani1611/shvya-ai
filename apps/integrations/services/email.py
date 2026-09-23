@@ -8,6 +8,7 @@ import ssl
 from dataclasses import dataclass
 from email.utils import formataddr
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
@@ -285,6 +286,20 @@ def send_organization_email(
     if not recipients:
         raise EmailConfigurationError(
             "At least one recipient email address is required."
+        )
+
+    from apps.core.fairness import admit_provider_start
+
+    allowed, retry_after, _scope = admit_provider_start(
+        provider="smtp",
+        account_id=organization.pk,
+        account_limit=settings.EMAIL_ORGANIZATION_SENDS_PER_MINUTE,
+        global_limit=settings.EMAIL_GLOBAL_SENDS_PER_MINUTE,
+    )
+    if not allowed:
+        raise EmailConfigurationError(
+            "The connected email provider is temporarily busy. "
+            f"Retry in about {retry_after} seconds."
         )
 
     target = assert_public_smtp_target(
