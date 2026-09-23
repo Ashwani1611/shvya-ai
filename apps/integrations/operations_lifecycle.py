@@ -8,16 +8,12 @@ whether execution can proceed.
 
 from __future__ import annotations
 
-from copy import deepcopy
-
 from django.db import transaction
 from django.utils import timezone
 
-from apps.ai_engagement.models import FAQ
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.followups.models import FollowupSequence, LeadSequenceState
-from apps.followups.touchpoint_models import TouchpointReply
 from apps.integrations.models import GoogleSheetIntegration, MetaLeadForm
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import (
@@ -33,7 +29,6 @@ from services.channels.hosted_whatsapp_service import get_pipeline_for_account
 from services.crm.attribute_service import delete_attribute_definition
 
 from apps.integrations.operations_tools import (
-    OperationsApprovalRequired,
     OperationsManualFixRequired,
     OperationsPermissionError,
     OperationsToolError,
