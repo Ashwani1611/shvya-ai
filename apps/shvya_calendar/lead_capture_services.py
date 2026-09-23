@@ -445,7 +445,6 @@ def notify_submission(submission_id):
     recipients = set()
     if page.notify_host_on_submission and page.host and page.host.email:
         recipients.add(page.host.email)
-    from apps.accounts.models import User
     if page.notify_user_ids:
         recipients.update(
             User.objects.filter(
