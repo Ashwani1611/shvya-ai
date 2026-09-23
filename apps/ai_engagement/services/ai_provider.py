@@ -84,6 +84,13 @@ def provider_retry_countdown(
     maximum=300,
 ):
     """Bound exponential provider retry timing and spread fleet retries."""
+    try:
+        retry_count = max(0, int(retries or 0))
+    except (TypeError, ValueError):
+        # Celery normally supplies an int. Tests and defensive wrappers can
+        # expose mock/non-numeric request objects; treat them as the first retry.
+        retry_count = 0
+
     retry_after = getattr(error, "retry_after", None)
     if retry_after is not None:
         try:
@@ -93,11 +100,11 @@ def provider_retry_countdown(
     else:
         base = min(
             max(1, int(maximum)),
-            max(1, int(default)) * (2 ** max(0, int(retries or 0))),
+            max(1, int(default)) * (2 ** retry_count),
         )
     jitter = (
         sum(ord(character) for character in str(identifier))
-        + (int(retries or 0) * 19)
+        + (retry_count * 19)
     ) % 7
     return min(907, base + jitter)
 
