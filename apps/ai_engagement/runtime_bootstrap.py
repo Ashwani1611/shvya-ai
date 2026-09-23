@@ -195,7 +195,7 @@ def install_ai_runtime() -> None:
     # and validated qualification facts outrank memory inference; and the
     # second grounding model call is skipped only for provably low-risk or
     # extractively evidence-matched replies.
-    from apps.ai_engagement.services.phase5_6_safety_fixes import (
+    from apps.ai_engagement.services.phase5_6_runtime import (
         install_phase5_6_safety_fixes,
     )
     install_phase5_6_safety_fixes()
