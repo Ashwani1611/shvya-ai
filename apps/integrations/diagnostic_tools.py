@@ -1524,6 +1524,13 @@ def get_workflow_trace(*, organization, arguments):
     runs = list(
         run_qs.order_by("-created_at")[:limit]
     )
+    failure_statuses = ["failed", "error", "blocked", "needs_review"]
+    first_failure = (
+        run_qs.filter(status__in=failure_statuses)
+        .order_by("created_at", "id")
+        .first()
+    )
+    failure_count = run_qs.filter(status__in=failure_statuses).count()
 
     return {
         "lead": _safe_lead(lead),
@@ -1574,6 +1581,22 @@ def get_workflow_trace(*, organization, arguments):
         "run_count": run_count,
         "runs_returned": len(runs),
         "runs_truncated": run_count > len(runs),
+        "failure_count": failure_count,
+        "first_failure": (
+            {
+                "run_id": str(first_failure.id),
+                "event_id": str(first_failure.event_id),
+                "rule_id": str(first_failure.rule_id),
+                "rule_name": first_failure.rule.name,
+                "action_type": first_failure.action_type,
+                "status": first_failure.status,
+                "detail": sanitize_text(first_failure.detail, limit=700),
+                "created_at": _iso(first_failure.created_at),
+                "finished_at": _iso(first_failure.finished_at),
+            }
+            if first_failure
+            else None
+        ),
     }
 
 
