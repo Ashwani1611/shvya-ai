@@ -3,7 +3,7 @@ import json
 import logging
 import re
 import secrets
-from datetime import UTC, datetime, time, timedelta
+from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
@@ -25,12 +25,12 @@ from apps.integrations.services.email import (
 from services.crm.lead_service import create_lead
 
 from .availability import (
-    WEEKDAY_KEYS,
-    _overlaps,
+    WEEKDAY_KEYS as WEEKDAY_KEYS,
+    _overlaps as _overlaps,
     _page_zone,
-    _parse_clock,
+    _parse_clock as _parse_clock,
     available_slots,
-    upcoming_slot_days,
+    upcoming_slot_days as upcoming_slot_days,
 )
 from .google import (
     GoogleCalendarError,
