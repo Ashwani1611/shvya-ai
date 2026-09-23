@@ -9,6 +9,7 @@ from apps.hosted_automation.models import HostedAutomationJob
 from services.channels.hosted_automation_service import (
     HostedAutomationPaused,
     hosted_ai_block_reason,
+    hosted_job_allows_history,
 )
 from services.channels.hosted_health_guard import hosted_health_pause_until
 
@@ -104,7 +105,7 @@ def process_hosted_ai_engagement_job_task(self, job_id):
         if isinstance(job.source_message.raw_payload, dict)
         else {}
     )
-    if source_payload.get("isHistory") is True:
+    if source_payload.get("isHistory") is True and not hosted_job_allows_history(job):
         _cancel_generated_message(job)
         job.status = HostedAutomationJob.Status.SKIPPED
         job.completed_at = timezone.now()
