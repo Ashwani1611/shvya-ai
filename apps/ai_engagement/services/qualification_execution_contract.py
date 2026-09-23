@@ -73,6 +73,52 @@ from apps.ai_engagement.services.qualification_execution.reconciliation import (
 )
 
 
+__all__ = [
+    "_ACK_HEADING_ONLY",
+    "_ACK_LABEL",
+    "_COMPLETION_RULE",
+    "_CONTRACT_KEY",
+    "_GENERIC_ACKS",
+    "_GREETING_RE",
+    "_LABEL_ONLY",
+    "_MAPPING_ERROR_CODES",
+    "_PLAN_INSTRUCTIONS",
+    "_PLAN_KEY",
+    "_QUESTION_FRAGMENT_RE",
+    "_ack_from_message",
+    "_additional_explicit_updates",
+    "_asked_requirement",
+    "_attribute_ref",
+    "_attribute_refs",
+    "_clean",
+    "_completion_target",
+    "_config",
+    "_configured_completion_reminders",
+    "_fallback_acknowledgement",
+    "_finalize",
+    "_leading_greeting",
+    "_mapped_value",
+    "_mapping_keys",
+    "_norm",
+    "_persist_plan_only",
+    "_plan",
+    "_plan_from_reconciled",
+    "_processing",
+    "_reference",
+    "_render_requirement",
+    "_requirement_payload",
+    "_requirement_ref",
+    "_save_processing",
+    "_split_mapping",
+    "_stage_success",
+    "_start_plan",
+    "_strip_quotes",
+    "_verify_attribute",
+    "_verify_stage",
+    "install_qualification_execution_contract",
+    "resolve_before_generation",
+]
+
 logger = logging.getLogger(__name__)
 _INSTALLED = False
 
