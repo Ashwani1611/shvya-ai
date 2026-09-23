@@ -341,30 +341,31 @@ class MainActivity : AppCompatActivity() {
     private fun showReminders(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR FOLLOW-UPS"))
         root.addView(title("Reminders").apply { textSize = 36f })
-        root.addView(body("The right conversation at the right time."))
+        root.addView(body("Every follow-up in your CRM pipelines, in one place."))
         root.addView(space(26))
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
         loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "reminders/?page=$pageNumber") }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
-            summary.addView(sectionTitle("Your day at a glance"))
-            summary.addView(body("Synced with your SHVYA CRM."))
+            summary.addView(sectionTitle("Call reminders"))
+            summary.addView(body("Synced from your SHVYA CRM pipelines."))
             summary.addView(space(20))
             summary.addView(metricRow(listOf(
-                "Total" to stats.optInt("total"), "Today" to stats.optInt("today"),
-                "Upcoming" to stats.optInt("upcoming"), "Overdue" to stats.optInt("overdue"),
+                "Total" to stats.optInt("total"), "Upcoming" to stats.optInt("upcoming"),
+                "Overdue" to stats.optInt("overdue"), "Today" to stats.optInt("today"),
             )))
             content.addView(summary)
             content.addView(space(32))
-            content.addView(sectionHeader("Follow-ups", "Refresh").apply { setOnClickListener { render() } })
+            content.addView(sectionHeader("Reminder list", "Refresh").apply { setOnClickListener { render() } })
             content.addView(space(14))
             val rows = data.getJSONArray("reminders")
-            if (rows.length() == 0) content.addView(emptyCard("All caught up", "Your assigned CRM reminders will appear here."))
+            if (rows.length() == 0) content.addView(emptyCard("All caught up", "Reminders for leads in your CRM pipelines will appear here."))
             for (i in 0 until rows.length()) {
                 val item = rows.getJSONObject(i)
                 val overdue = item.optBoolean("overdue")
                 val row = card()
+                if (overdue) row.background = rounded(Color.rgb(255, 248, 247), 23f)
                 val heading = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
                 heading.addView(iconBadge(R.drawable.ic_bell_outline,
                     if (overdue) Color.rgb(204, 79, 65) else blue,
@@ -374,12 +375,16 @@ class MainActivity : AppCompatActivity() {
                     addView(sectionTitle(item.optString("lead_name")).apply {
                         setPadding(0, 0, 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END
                     })
-                    addView(body(if (overdue) "Overdue" else "Scheduled").apply {
+                    addView(body(if (overdue) "Overdue · ${formatDate(item.optString("due_at"))}" else formatDate(item.optString("due_at"))).apply {
                         setTextColor(if (overdue) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
                         setPadding(0, dp(4), 0, 0)
                     })
                 }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(14) })
-                val deleteControl = iconAction(R.drawable.ic_more_outline, "Delete reminder")
+                val deleteControl = iconAction(R.drawable.ic_trash_outline, "Delete reminder").apply {
+                    imageTintList = ColorStateList.valueOf(Color.rgb(204, 79, 65))
+                    background = RippleDrawable(ColorStateList.valueOf(Color.rgb(255, 220, 216)),
+                        rounded(Color.rgb(255, 238, 235), 17f), null)
+                }
                 deleteControl.setOnClickListener {
                     AlertDialog.Builder(this@MainActivity).setTitle("Delete reminder?")
                         .setMessage(item.optString("lead_name")).setNegativeButton("Cancel", null)
@@ -387,22 +392,24 @@ class MainActivity : AppCompatActivity() {
                 }
                 heading.addView(deleteControl)
                 row.addView(heading)
-                row.addView(space(18))
+                row.addView(space(20))
                 row.addView(sectionTitle(item.optString("title")).apply { setPadding(0, 0, 0, 0) })
-                if (item.optString("description").isNotBlank()) row.addView(body(item.optString("description")))
-                row.addView(space(12))
-                row.addView(body(formatDate(item.optString("due_at"))).apply { setPadding(0, 0, 0, 0) })
-                row.addView(space(18))
+                if (item.optString("description").isNotBlank()) row.addView(body(item.optString("description")).apply {
+                    setPadding(0, dp(8), 0, 0)
+                })
+                row.addView(space(22))
                 row.addView(divider())
-                row.addView(space(16))
+                row.addView(space(18))
                 val actions = LinearLayout(this@MainActivity)
-                actions.addView(secondaryButton("Snooze 30m").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
-                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(10) })
+                actions.addView(secondaryButton("Snooze 30 min").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
+                    LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
                 actions.addView(primaryButton("Mark done").apply { setOnClickListener { reminderAction(item, "complete", this) } },
-                    LinearLayout.LayoutParams(0, dp(48), 1f))
+                    LinearLayout.LayoutParams(0, dp(50), 1f))
                 row.addView(actions)
-                row.addView(space(8))
-                row.addView(quietButton("Call lead").apply { setOnClickListener { dial(item.optString("phone")) } })
+                if (item.optString("phone").isNotBlank()) {
+                    row.addView(space(8))
+                    row.addView(quietButton("Call lead").apply { setOnClickListener { dial(item.optString("phone")) } })
+                }
                 content.addView(row)
                 content.addView(space(14))
             }

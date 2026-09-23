@@ -13,7 +13,7 @@ android {
         minSdk = 23
         targetSdk = 35
         // Keep the code increasing so existing installations can update in place.
-        versionCode = 3
+        versionCode = 4
         versionName = "1.0"
 
         buildConfigField(
