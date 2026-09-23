@@ -1,0 +1,31 @@
+<section class="sc-tab-panel" data-tab-panel="reminders">
+    <form method="post" action="{% url 'shvya_calendar:save' page_id=page.id %}" class="sc-sequence-form">
+      {% csrf_token %}<input type="hidden" name="section" value="reminders">
+      <div class="sc-grid-2"><label class="sc-field sc-field-wide"><span>Sequence Name *</span><input name="sequence_name" maxlength="255" value="{{ sequence.name }}" required></label><label class="sc-field sc-field-wide"><span>Description</span><textarea name="sequence_description" maxlength="300">{{ sequence.description }}</textarea></label></div>
+      <button class="sc-button" type="submit">Save sequence</button>
+    </form>
+
+    <div class="sc-delivery-note"><i class="ti ti-info-circle"></i><span>Messages run relative to each confirmed booking. WhatsApp always uses the connection linked to the lead's current pipeline; it never falls back to another pipeline.</span></div>
+
+    <div class="sc-reminder-stack">
+      {% for step in reminder_steps %}
+        <article class="sc-reminder-card">
+          <header><span class="sc-drag"><i class="ti ti-grip-vertical"></i></span><span class="sc-channel-icon"><i class="ti {% if step.channel == 'whatsapp' %}ti-brand-whatsapp{% elif step.channel == 'email' %}ti-mail{% else %}ti-phone{% endif %}"></i></span><div><strong>{{ step.name }}</strong><small>{{ step.get_channel_display }} · {% if step.timing_mode == 'immediate' %}immediately after booking{% elif step.timing_mode == 'specific_time' %}at {{ step.specific_time|time:"g:i A" }} on booking date{% else %}{{ step.offset_minutes|stringformat:"+d"|slice:"1:" }} minutes before booked slot{% endif %}</small></div><form method="post" action="{% url 'shvya_calendar:reminder_delete' page_id=page.id step_id=step.id %}">{% csrf_token %}<button type="submit" class="sc-text-danger"><i class="ti ti-trash"></i> Delete</button></form></header>
+          {% if step.subject %}<div class="sc-reminder-subject"><span>Subject</span>{{ step.subject }}</div>{% endif %}
+          <div class="sc-reminder-body">{{ step.body|linebreaksbr|default:"No message content." }}</div>
+        </article>
+      {% empty %}
+        <div class="sc-empty-card sc-empty-compact"><div class="sc-empty-icon"><i class="ti ti-bell-plus"></i></div><h3>Build your booking reminder sequence.</h3><p>Add WhatsApp, email or a human call reminder. There is no automated AI call action in SHVYA Calendar.</p></div>
+      {% endfor %}
+    </div>
+
+    {% if pending_call_reminders %}
+      <article class="sc-panel sc-call-panel"><header><div><span class="sc-kicker">NEEDS ATTENTION</span><h2>Call reminders</h2></div></header>{% for delivery in pending_call_reminders %}<div class="sc-list-row"><div class="sc-avatar"><i class="ti ti-phone"></i></div><div class="sc-list-copy"><strong>{{ delivery.booking.lead.name }}</strong><span>{{ delivery.step.name }} · {{ delivery.due_at|date:"d M, g:i A" }}</span></div><form method="post" action="{% url 'shvya_calendar:call_reminder_complete' delivery_id=delivery.id %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.path }}?tab=reminders"><button class="sc-button sc-button-small" type="submit">Complete</button></form></div>{% endfor %}</article>
+    {% endif %}
+
+    <div class="sc-reminder-toolbar">
+      <button type="button" class="sc-button sc-reminder-add" data-reminder-channel="whatsapp"><i class="ti ti-brand-whatsapp"></i> Add WhatsApp</button>
+      <button type="button" class="sc-button sc-reminder-add" data-reminder-channel="email"><i class="ti ti-mail"></i> Add Email</button>
+      <button type="button" class="sc-button sc-reminder-add" data-reminder-channel="call_reminder"><i class="ti ti-phone"></i> Add Call Reminder</button>
+    </div>
+  </section>
