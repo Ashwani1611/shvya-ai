@@ -39,7 +39,7 @@ def _script(filename):
 @pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
 def test_application_drain_precedes_schema_change(filename, compose, branch):
     script = _script(filename)
-    readiness = script.index(f"{compose} up -d --wait db redis")
+    readiness = script.index(f"{compose} up -d --wait db redis pgbouncer")
     producers = script.index(f"{compose} stop --timeout 60 beat web ws")
     workers = script.index(f"{compose} stop --timeout 300 {WORKER_SERVICES}")
     stopped_guard = script.index(f"{compose} ps --status running -q {RUNNING_SERVICES}")
