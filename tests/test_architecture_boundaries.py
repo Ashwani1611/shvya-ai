@@ -27,6 +27,25 @@ def _application_python_files(root):
 
 
 class ArchitectureBoundaryTests(SimpleTestCase):
+    def test_operations_mcp_tests_are_split_by_domain(self):
+        legacy = ROOT / "apps" / "integrations" / "tests" / "test_operations_mcp.py"
+        base = ROOT / "apps" / "integrations" / "tests"
+        expected = {
+            "test_operations_mcp_protocol.py",
+            "test_operations_mcp_configuration.py",
+            "test_operations_mcp_diagnostics.py",
+            "test_operations_mcp_ai_crm.py",
+            "test_operations_mcp_oauth.py",
+            "test_operations_mcp_superadmin.py",
+            "test_operations_mcp_qualification_audit.py",
+        }
+        self.assertLess(
+            len(legacy.read_text(encoding="utf-8").splitlines()),
+            30,
+            "Keep the historical Operations MCP test module as a marker only.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in base.glob("test_operations_mcp_*.py")}))
+
     def test_operations_tool_facade_stays_focused(self):
         path = ROOT / "apps" / "integrations" / "operations_tools.py"
         self.assertLess(
