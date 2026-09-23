@@ -12,7 +12,7 @@ from django.http import Http404
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
-from apps.core.fairness import admit, admit_ai_start
+from apps.core.fairness import admit, admit_ai_start, admit_provider_start
 from apps.core import observability
 from apps.core.observability import RequestObservabilityMiddleware, metrics_snapshot
 from apps.core.runtime_status import runtime_metrics
@@ -135,6 +135,33 @@ class ScalabilityControlTests(SimpleTestCase):
         allowed, _, scope = admit_ai_start(
             organization_id="org-2",
             organization_limit=1,
+            global_limit=2,
+        )
+        self.assertTrue(allowed)
+        self.assertEqual(scope, "")
+
+    def test_provider_account_limit_does_not_consume_global_capacity(self):
+        self.assertTrue(
+            admit_provider_start(
+                provider="whatsapp",
+                account_id="account-1",
+                account_limit=1,
+                global_limit=2,
+            )[0]
+        )
+        allowed, _, scope = admit_provider_start(
+            provider="whatsapp",
+            account_id="account-1",
+            account_limit=1,
+            global_limit=2,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(scope, "account")
+
+        allowed, _, scope = admit_provider_start(
+            provider="whatsapp",
+            account_id="account-2",
+            account_limit=1,
             global_limit=2,
         )
         self.assertTrue(allowed)
