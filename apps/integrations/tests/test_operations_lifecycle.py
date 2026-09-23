@@ -413,6 +413,22 @@ class OperationsLifecycleToolsTests(TestCase):
             status="pending",
             due_at=timezone.now(),
         )
+        in_flight_event = TriggerEvent.objects.create(
+            organization=self.organization,
+            lead=self.lead,
+            kind="lead_created",
+            key="lifecycle-workflow-in-flight-event",
+            payload={},
+        )
+        in_flight = TriggerRun.objects.create(
+            rule=workflow,
+            event=in_flight_event,
+            lead=self.lead,
+            action_type="message",
+            action={"body": "Potentially in-flight"},
+            status="dispatching",
+            due_at=timezone.now(),
+        )
 
         preview = self._ok(
             "archive_workflow",
@@ -424,6 +440,7 @@ class OperationsLifecycleToolsTests(TestCase):
         self.assertTrue(preview["can_apply"])
         self.assertFalse(preview["reversible"])
         self.assertEqual(preview["affected_records"]["pending_or_queued_runs"], 1)
+        self.assertEqual(preview["affected_records"]["in_flight_runs"], 1)
 
         archived = self._ok(
             "archive_workflow",
@@ -437,9 +454,11 @@ class OperationsLifecycleToolsTests(TestCase):
         self.assertEqual(archived["status"], "ARCHIVED")
         workflow.refresh_from_db()
         run.refresh_from_db()
+        in_flight.refresh_from_db()
         self.assertFalse(workflow.is_active)
         self.assertFalse(workflow.enabled)
         self.assertEqual(run.status, "skipped")
+        self.assertEqual(in_flight.status, "needs_review")
 
         restored = self._ok(
             "upsert_workflow_configuration",
@@ -461,9 +480,11 @@ class OperationsLifecycleToolsTests(TestCase):
         self.assertEqual(restored["status"], "FIXED")
         workflow.refresh_from_db()
         run.refresh_from_db()
+        in_flight.refresh_from_db()
         self.assertTrue(workflow.is_active)
         self.assertTrue(workflow.enabled)
         self.assertEqual(run.status, "skipped")
+        self.assertEqual(in_flight.status, "needs_review")
 
     def test_cadence_archive_blocks_active_leads_then_restores(self):
         account = WhatsAppAccount.objects.create(
