@@ -8,6 +8,7 @@ from django.test import TestCase, override_settings
 from django.urls import resolve, reverse
 from django.utils import timezone
 
+from apps.accounts.channels_middleware import CRM_SESSION_COOKIE_NAME
 from apps.accounts.models import OneTimeLoginToken, User
 from apps.accounts.session_utils import get_session_cookie_name
 from apps.accounts.views import ThrottledTokenObtainPairView
@@ -206,3 +207,10 @@ class AuthenticationSecurityTests(TestCase):
 
         token.refresh_from_db()
         self.assertIsNotNone(token.used_at)
+
+
+    def test_websocket_cookie_name_uses_shared_session_configuration(self):
+        self.assertEqual(
+            CRM_SESSION_COOKIE_NAME,
+            get_session_cookie_name("dashboard"),
+        )
