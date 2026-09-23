@@ -177,6 +177,7 @@ def create_attribute_definition(
             AttributeDefinition.objects
             .filter(
                 organization=organization,
+                is_active=True,
             )
             .count()
         )
@@ -196,30 +197,32 @@ def create_attribute_definition(
             name
         )
 
-        if AttributeDefinition.objects.filter(
+        existing_name = AttributeDefinition.objects.filter(
             organization=organization,
             name=name,
-        ).exists():
+        ).first()
+        if existing_name is not None:
 
             raise ValidationError(
                 {
                     "name": (
-                        "An attribute with this name "
-                        "already exists."
+                        "An attribute with this name already exists"
+                        + (" but is archived. Restore it instead." if not existing_name.is_active else ".")
                     )
                 }
             )
 
-        if AttributeDefinition.objects.filter(
+        existing_key = AttributeDefinition.objects.filter(
             organization=organization,
             key=key,
-        ).exists():
+        ).first()
+        if existing_key is not None:
 
             raise ValidationError(
                 {
                     "name": (
-                        "An attribute with a similar name "
-                        "already exists."
+                        "An attribute with a similar name already exists"
+                        + (" but is archived. Restore it instead." if not existing_key.is_active else ".")
                     )
                 }
             )
@@ -352,6 +355,7 @@ def update_attribute_definition(
         attribute.description = description
 
         attribute.options = options
+        attribute.is_active = True
 
         attribute.full_clean()
 
@@ -393,6 +397,7 @@ def delete_attribute_definition(
             .select_for_update()
             .filter(
                 organization=organization,
+                **{"attributes__has_key": attribute_key},
             )
         )
 
@@ -452,6 +457,7 @@ def update_lead_attribute_values(
         AttributeDefinition.objects
         .filter(
             organization=organization,
+            is_active=True,
         )
         .order_by(
             "display_order",
