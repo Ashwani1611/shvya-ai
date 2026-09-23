@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from apps.ai_engagement.services import conversation_priority_runtime, qualification_state
-from apps.ai_engagement.services.customer_chat_regressions import (
+from apps.ai_engagement.services.natural_conversation_runtime import (
     sanitize_customer_message,
 )
 from apps.ai_engagement.services.engagement import EngagementService
