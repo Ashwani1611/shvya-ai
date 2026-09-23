@@ -224,6 +224,18 @@ def send_hosted_whatsapp_message_task(self, message_id):
             # WhatsApp send, so replay is safe. A network timeout or gateway
             # 5xx/502 around sendMessage() is uncertain and must not be replayed.
             if exc.status_code in {404, 409, 425, 429, 503}:
+                if self.request.retries >= self.max_retries:
+                    _set_message_state(
+                        message.id,
+                        status=WhatsAppMessage.Status.FAILED,
+                        error=exc,
+                    )
+                    _cleanup_upload(message)
+                    return {
+                        "status": "failed",
+                        "reason": "provider_retry_limit_reached",
+                        "error": str(exc),
+                    }
                 _set_message_state(
                     message.id,
                     status=WhatsAppMessage.Status.QUEUED,
