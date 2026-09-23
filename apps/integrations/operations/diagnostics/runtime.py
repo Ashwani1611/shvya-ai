@@ -36,7 +36,6 @@ from apps.integrations.models import WebhookDelivery
 from apps.triggers.models import TriggerEvent, TriggerRun
 from services.channels.instagram_content import display_attachments
 
-_SAFE_DIAGNOSTIC_CODE = re.compile(r"^[a-z0-9_:-]{1,80}$", re.IGNORECASE)
 from apps.integrations.operations.diagnostics.common import (
     _safe_hosted_job,
     _iso,
@@ -51,6 +50,8 @@ from apps.integrations.operations.diagnostics.common import (
     _lead_for_org,
     _safe_lead,
 )
+
+_SAFE_DIAGNOSTIC_CODE = re.compile(r"^[a-z0-9_:-]{1,80}$", re.IGNORECASE)
 
 def get_workflow_trace(*, organization, arguments):
     lead = _lead_for_org(
