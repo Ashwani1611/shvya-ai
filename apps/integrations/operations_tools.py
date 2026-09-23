@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -832,7 +833,18 @@ def _sync_facade_overrides():
     """
 
     facade = globals()
-    for module in (_operations_read, _operations_actions, _operations_config):
+    focused_modules = tuple(
+        module
+        for module_name, module in tuple(sys.modules.items())
+        if module_name.startswith("apps.integrations.operations.tools.")
+        and module is not None
+    )
+    for module in (
+        _operations_read,
+        _operations_actions,
+        _operations_config,
+        *focused_modules,
+    ):
         for name in tuple(module.__dict__):
             if name in _OPERATIONS_DELEGATED_ENTRYPOINTS:
                 continue
@@ -1078,4 +1090,3 @@ def execute_operations_tool(*, name, identity, arguments):
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})
-
