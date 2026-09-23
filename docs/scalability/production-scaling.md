@@ -48,7 +48,7 @@ Set a long random `OBSERVABILITY_TOKEN`. A monitor can request `GET /health/runt
 - WhatsApp/Instagram inbound and outbound message creation rate;
 - gateway `/health` shard, owner, sessions/max sessions, memory, CPU, reconnects, lease conflicts, callback/history failures.
 
-Structured operational events carry correlation/task IDs and bounded organization, user, lead, account, and provider identifiers where available. They never include message bodies, prompts, access tokens, credentials, or raw provider payloads. Metric series are capped at 500 and expire after eight days so accidental label growth is bounded.
+Structured operational events carry correlation/task IDs and bounded organization, user, lead, account, and provider identifiers where available. They never include message bodies, prompts, access tokens, credentials, or raw provider payloads. Customer organization/user IDs are intentionally excluded from metric labels so tenant growth cannot create one Redis time-series key per customer. Metric registration is capped at 500 shared series at write time and expires after eight days. Hosted gateway health is queried as a bounded allowlisted snapshot; unrecognized gateway fields are not relayed.
 
 Suggested initial alerts are operational starting points, not capacity claims:
 
@@ -87,7 +87,7 @@ Deployment validation:
 
 ## Web, ASGI, and Celery scale-out
 
-Production no longer publishes the web container's port to the host; Nginx is the ingress. Scale web/ASGI replicas behind a load balancer that supports WebSocket upgrade and a drain period. Restart/reload Nginx after changing Compose replica membership unless the external load balancer provides dynamic discovery. Sticky sessions are not required.
+Production no longer publishes the web container's port to the host; Nginx is the ingress. Web, ASGI, and each Celery lane expose declarative replica controls (`WEB_REPLICAS`, `ASGI_REPLICAS`, and lane-specific `CELERY_*_REPLICAS`) so routine Compose deploys preserve the intended fleet shape. Docker DNS is resolved dynamically by Nginx for web/ASGI membership; an external load balancer may replace this when the fleet spans hosts. Use WebSocket upgrade support and connection draining. Sticky sessions are not required.
 
 WebSocket authentication binds users to their organization before joining tenant-specific groups. Shared Channels Redis carries broadcasts across ASGI replicas. Heartbeats refresh shared presence; stale entries expire. Clients must reconnect and refetch current durable chat state after disconnect. Delivery is at-least-once at the broadcast layer, so browser rendering must continue to key messages by durable message/provider ID rather than arrival count.
 
@@ -100,12 +100,20 @@ Scale a queue only when its oldest age or depth grows while workers are saturate
 - HTTP bursts have a shared, per-organization active-request admission limit. It returns 429 with a short retry hint and fails open during a Redis incident.
 - AI starts have shared global and per-organization minute buckets. Deferred tasks republish with jitter without claiming execution or consuming their retry budget.
 - Realtime AI has a separate queue from campaigns, ingestion, automation, and Hosted AI.
-- Campaign dispatch takes bounded batches per sender account and recipient tasks keep durable idempotency state. Account-level sending policy and Celery rate limits remain in force.
-- Existing provider adapters own timeouts and bounded retry decisions; tasks use delayed retries/backoff rather than tight loops. Unknown-outcome sends are not blindly duplicated.
+- Campaign dispatch takes bounded batches per sender account and recipient tasks keep durable idempotency state. Workflow/event dispatch also caps work per organization and rotates the active organization subset across passes so a permanent backlog in older tenants cannot starve later tenants.
+- Provider admission is available for WhatsApp API, Hosted WhatsApp, Instagram, Google Calendar, organization SMTP, and Stripe/Razorpay gateway traffic. Each control is shared through Redis and is disabled until a measured non-zero limit is configured.
+- Provider adapters own bounded timeouts and retry classification. OpenAI, WhatsApp/Hosted, Instagram, and Google Calendar preserve provider `Retry-After` where available and apply bounded deterministic jitter so a fleet does not synchronize on one reset second. Unknown-outcome customer-message sends are not blindly duplicated; only explicitly safe/rejected outcomes are replayed.
+- Payment and email paths surface local admission pressure before external I/O; payment 429s are recorded separately from application failures.
 
-The three shared admission limits default to zero (disabled) because this change has no production/provider saturation evidence from which to derive a safe number. Enable and tune global, organization, account, and provider limits in staging from observed saturation, 429/Retry-After data, SLOs, and contracted quotas. Add jitter whenever a provider supplies a common reset time.
+All shared admission limits default to zero (disabled) because this change has no production/provider saturation evidence from which to derive a safe number. Enable and tune global, organization, account, and provider limits in staging from observed saturation, 429/Retry-After data, SLOs, and contracted quotas. Do not convert the committed zero/default values into capacity claims.
 
 High-value cache candidates are immutable or explicitly invalidated organization feature configuration, pipeline/stage metadata, and read-only dashboard metadata. Mutable lead/message state remains authoritative in PostgreSQL. Every cache key must include an organization or globally immutable namespace; never cache an unscoped CRM queryset.
+
+## Validation and capacity claims
+
+The committed smoke results are regression evidence only. They use a small isolated fixture and do not establish a production organization/user/message capacity. The repository also contains explicit A-D production-shaped profiles and an 18-flow HTTP scenario matrix; execute those on isolated staging with provider stubs/test quotas and retain infrastructure dashboards before publishing a capacity envelope.
+
+Promotion requires the exact candidate SHA to pass CI/security and then a real staging deployment/readiness check. A previously green ancestor is not sufficient after queue, retry, provider, topology, or observability changes.
 
 ## Database review
 
