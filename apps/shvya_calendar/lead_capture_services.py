@@ -517,4 +517,3 @@ def notify_submission(submission_id):
             )
 
 
-@transaction.atomic
