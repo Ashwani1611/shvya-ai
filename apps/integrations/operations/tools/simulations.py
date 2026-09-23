@@ -7,7 +7,6 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from django.core.exceptions import ValidationError
-from django.db.models import Q
 from django.utils import timezone
 
 from apps.ai_engagement.services.playbook import evaluate_playbook_criteria
