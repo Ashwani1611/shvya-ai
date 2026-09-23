@@ -253,6 +253,26 @@ AI_GLOBAL_STARTS_PER_MINUTE = config(
     default=0,
     cast=int,
 )
+WHATSAPP_ACCOUNT_SENDS_PER_MINUTE = config(
+    "WHATSAPP_ACCOUNT_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+WHATSAPP_GLOBAL_SENDS_PER_MINUTE = config(
+    "WHATSAPP_GLOBAL_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE = config(
+    "HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE = config(
+    "HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
 
 # Smart Trigger timer scanning is incremental and cursor-based so a large
 # organization cannot turn one Beat invocation into an unbounded full-table
