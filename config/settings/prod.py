@@ -8,6 +8,72 @@ from .base import *  # noqa
 
 APP_ENV = "production"
 
+# ---------------------------------------------------------------------------
+# Private AWS S3 media storage
+#
+# Normal Django FileField uploads use S3 when enabled. Credentials are not
+# stored in Django settings: boto3 uses the standard AWS credential provider
+# chain, so production can use an EC2 instance role and staging can use its own
+# isolated role/credentials. Static files continue to be served by Nginx.
+#
+# Encrypted Help & Support attachments intentionally keep using their dedicated
+# FileSystemStorage in apps/support/storage.py and the persistent MEDIA_ROOT
+# mount; changing DEFAULT storage does not alter that encrypted store.
+# ---------------------------------------------------------------------------
+AWS_STORAGE_BUCKET_NAME = str(
+    config("AWS_STORAGE_BUCKET_NAME", default="") or ""
+).strip()
+AWS_S3_REGION_NAME = str(
+    config("AWS_S3_REGION_NAME", default="ap-south-1") or "ap-south-1"
+).strip()
+AWS_S3_MEDIA_PREFIX = str(
+    config("AWS_S3_MEDIA_PREFIX", default="media") or "media"
+).strip().strip("/")
+AWS_QUERYSTRING_EXPIRE = config(
+    "AWS_QUERYSTRING_EXPIRE",
+    default=900,
+    cast=int,
+)
+USE_S3_STORAGE = config(
+    "USE_S3_STORAGE",
+    default=bool(AWS_STORAGE_BUCKET_NAME),
+    cast=bool,
+)
+
+if USE_S3_STORAGE:
+    if not AWS_STORAGE_BUCKET_NAME:
+        raise ImproperlyConfigured(
+            "AWS_STORAGE_BUCKET_NAME is required when USE_S3_STORAGE=True."
+        )
+    if AWS_QUERYSTRING_EXPIRE < 60:
+        raise ImproperlyConfigured(
+            "AWS_QUERYSTRING_EXPIRE must be at least 60 seconds."
+        )
+
+    STORAGES = {
+        "default": {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "region_name": AWS_S3_REGION_NAME,
+                "location": AWS_S3_MEDIA_PREFIX,
+                "default_acl": None,
+                "file_overwrite": False,
+                "querystring_auth": True,
+                "querystring_expire": AWS_QUERYSTRING_EXPIRE,
+                "signature_version": "s3v4",
+                "addressing_style": "virtual",
+                "object_parameters": {
+                    "ServerSideEncryption": "AES256",
+                },
+            },
+        },
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
+        },
+    }
+
+
 # Production security is explicit and must not inherit DEBUG-dependent values
 # calculated in base.py. Even if the deployment environment accidentally sets
 # DEBUG=True, production remains fail-closed instead of disabling HTTPS,
