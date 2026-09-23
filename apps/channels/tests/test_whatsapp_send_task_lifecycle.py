@@ -115,6 +115,47 @@ class WhatsAppSendTaskLifecycleTests(TransactionTestCase):
         retry.assert_called_once()
 
     @patch("services.channels.whatsapp_service.WhatsAppClient.send_text_message")
+    def test_rate_limit_requeues_using_provider_retry_after_with_jitter(self, send_text):
+        send_text.side_effect = WhatsAppAPIError(
+            "WhatsApp API returned 429",
+            status_code=429,
+            response_body='{"error":{"code":130429}}',
+            retry_after=40,
+        )
+        message = self._message()
+
+        with patch.object(
+            send_whatsapp_message_task,
+            "retry",
+            side_effect=Retry(),
+        ) as retry:
+            with self.assertRaises(Retry):
+                send_whatsapp_message_task.run(str(message.pk))
+
+        message.refresh_from_db()
+        self.assertEqual(message.status, WhatsAppMessage.Status.QUEUED)
+        countdown = retry.call_args.kwargs["countdown"]
+        self.assertGreaterEqual(countdown, 40)
+        self.assertLessEqual(countdown, 46)
+
+    @patch("services.channels.whatsapp_service.WhatsAppClient.send_text_message")
+    def test_unknown_network_outcome_is_not_replayed_automatically(self, send_text):
+        send_text.side_effect = WhatsAppAPIError(
+            "Network error calling WhatsApp API",
+            status_code=None,
+        )
+        message = self._message()
+
+        with patch.object(send_whatsapp_message_task, "retry") as retry:
+            result = send_whatsapp_message_task.run(str(message.pk))
+
+        message.refresh_from_db()
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["reason"], "provider_outcome_uncertain")
+        self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
+        retry.assert_not_called()
+
+    @patch("services.channels.whatsapp_service.WhatsAppClient.send_text_message")
     def test_in_flight_message_is_not_sent_by_second_worker(self, send_text):
         message = self._message(status="sending")
 
