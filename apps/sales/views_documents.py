@@ -886,4 +886,3 @@ def sales_document_send_view(request, document_id):
     return redirect("shvya-sales-document-detail", document_id=document.id)
 
 
-@crm_login_required
