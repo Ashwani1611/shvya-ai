@@ -12,7 +12,7 @@ from django.http import Http404
 from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
-from apps.core.fairness import admit
+from apps.core.fairness import admit, admit_ai_start
 from apps.core.observability import RequestObservabilityMiddleware, metrics_snapshot
 from apps.core.runtime_status import runtime_metrics
 from apps.core.scale_middleware import TenantConcurrencyMiddleware
@@ -77,6 +77,33 @@ class ScalabilityControlTests(SimpleTestCase):
         self.assertTrue(
             admit(scope="test", subject="org-2", limit=2, window_seconds=60)[0]
         )
+
+    def test_ai_tenant_limit_does_not_consume_other_tenants_global_capacity(self):
+        self.assertEqual(
+            admit_ai_start(
+                organization_id="org-1",
+                organization_limit=1,
+                global_limit=2,
+            )[:1],
+            (True,),
+        )
+        allowed, _, scope = admit_ai_start(
+            organization_id="org-1",
+            organization_limit=1,
+            global_limit=2,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(scope, "organization")
+
+        # The rejected second start from org-1 must not have consumed the
+        # second global slot, so a different tenant can still start.
+        allowed, _, scope = admit_ai_start(
+            organization_id="org-2",
+            organization_limit=1,
+            global_limit=2,
+        )
+        self.assertTrue(allowed)
+        self.assertEqual(scope, "")
 
     @override_settings(TENANT_HTTP_CONCURRENCY_LIMIT=1)
     def test_tenant_concurrency_rejects_a_busy_tenant_and_preserves_others(self):
