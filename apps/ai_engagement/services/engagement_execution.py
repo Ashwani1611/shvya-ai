@@ -8,7 +8,10 @@ from datetime import timedelta
 from django.db import transaction
 from django.utils import timezone
 
-from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+from apps.ai_engagement.services.ai_provider import (
+    AIProviderTransientError,
+    provider_retry_countdown,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -460,7 +463,12 @@ def _execute_ai_engagement_response_impl(
 
             raise task.retry(
                 exc=provider_error,
-                countdown=60,
+                countdown=provider_retry_countdown(
+                    provider_error,
+                    identifier=lead_id,
+                    retries=task.request.retries,
+                    default=30,
+                ),
             )
 
         logger.error(
@@ -487,7 +495,12 @@ def _execute_ai_engagement_response_impl(
 
         raise task.retry(
             exc=exc,
-            countdown=60,
+            countdown=provider_retry_countdown(
+                exc,
+                identifier=lead_id,
+                retries=task.request.retries,
+                default=30,
+            ),
         )
 
     except Exception as exc:
