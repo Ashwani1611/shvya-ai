@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 
-from .models import User
+from .models import SignupVerificationDelivery, User
 
 # ============================================================
 # USER CREATION FORM
@@ -242,3 +242,21 @@ class UserAdmin(
             },
         ),
     )
+
+
+
+@admin.register(SignupVerificationDelivery)
+class SignupVerificationDeliveryAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "attempts", "next_attempt_at", "delivered_at", "error_type")
+    list_filter = ("error_type",)
+    readonly_fields = ("user", "email", "verification_endpoint", "attempts", "next_attempt_at", "delivered_at", "error_type")
+    actions = None
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -9,22 +9,6 @@ import pytest
 
 
 ROOT = Path(__file__).resolve().parents[1]
-APPLICATION_SERVICES = {
-    "web",
-    "ws",
-    "worker",
-    "ai_realtime_worker",
-    "hosted_ai_worker",
-    "campaign_worker",
-    "ingestion_worker",
-    "automation_worker",
-    "beat",
-}
-WORKER_SERVICES = (
-    "worker ai_realtime_worker hosted_ai_worker campaign_worker "
-    "ingestion_worker automation_worker"
-)
-RUNNING_SERVICES = f"web ws {WORKER_SERVICES} beat"
 WORKFLOWS = [
     ("deploy.yml", "docker compose", "main"),
     ("deploy-staging.yml", "$COMPOSE", "staging"),
@@ -36,16 +20,39 @@ def _script(filename):
     return dedent(workflow.split("          script: |\n", 1)[1])
 
 
+def _worker_services(script, compose):
+    prefix = f"{compose} stop --timeout 300 "
+    for line in script.splitlines():
+        stripped = line.lstrip()
+        if stripped.startswith(prefix):
+            services = stripped[len(prefix):].strip()
+            if services:
+                return services
+    raise AssertionError(f"{compose} worker drain command is missing")
+
+
+def _running_services(script, compose):
+    return f"web ws {_worker_services(script, compose)} beat"
+
+
+def _application_services(script, compose):
+    return {"web", "ws", "beat", *_worker_services(script, compose).split()}
+
+
 @pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
 def test_application_drain_precedes_schema_change(filename, compose, branch):
     script = _script(filename)
-    readiness = script.index(f"{compose} up -d --wait db redis pgbouncer")
+    readiness = script.index(f"{compose} up -d --wait db redis")
+    if filename == "deploy-staging.yml":
+        assert f"{compose} up -d --wait db redis pgbouncer" in script
+    worker_services = _worker_services(script, compose)
+    running_services = _running_services(script, compose)
     producers = script.index(f"{compose} stop --timeout 60 beat web ws")
-    workers = script.index(f"{compose} stop --timeout 300 {WORKER_SERVICES}")
-    stopped_guard = script.index(f"{compose} ps --status running -q {RUNNING_SERVICES}")
+    workers = script.index(f"{compose} stop --timeout 300 {worker_services}")
+    stopped_guard = script.index(f"{compose} ps --status running -q {running_services}")
     migrate = script.index(f"{compose} run --rm --no-deps web python manage.py migrate --noinput")
     collectstatic = script.index(f"{compose} run --rm --no-deps web python manage.py collectstatic --noinput")
-    restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
+    restart = script.index(f"{compose} up -d --no-deps {running_services}")
 
     if filename == "deploy.yml":
         conditional = script.index('if [ "$MIGRATION_FILES_CHANGED" -eq 1 ]; then')
@@ -73,7 +80,7 @@ def test_drain_stops_only_application_services_with_bounded_timeouts(filename, c
         assert arguments[:2] == ["stop", "--timeout"]
         assert 0 < int(arguments[2]) <= 300
         stopped.update(arguments[3:])
-    assert stopped == APPLICATION_SERVICES
+    assert stopped == _application_services(script, compose)
     assert not stopped.intersection({"db", "redis", "whatsapp-web-gateway", "nginx", "certbot"})
     assert not re.search(r"(?m)^(?:docker compose|\$COMPOSE)\s+(?:down|kill|rm)\b", script)
 
@@ -92,14 +99,14 @@ def test_failed_schema_rollout_reports_maintenance_without_restarting_old_images
     if filename == "deploy.yml":
         assert "${BACKUP_FILE}.gz" not in failure_hook
         maintenance = script.index("APPLICATION_MAINTENANCE=1")
-        restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
+        restart = script.index(f"{compose} up -d --no-deps {_running_services(script, compose)}")
         ready = script.index("Waiting for Django/Gunicorn dependency readiness...")
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
         assert hook_end < maintenance < restart < ready < clear
     else:
         assert "${BACKUP_FILE}.gz" in failure_hook
         maintenance = script.index("APPLICATION_MAINTENANCE=1")
-        restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
+        restart = script.index(f"{compose} up -d --no-deps {_running_services(script, compose)}")
         ready = script.index(f"{compose} up -d --wait --no-deps web")
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
         assert hook_end < maintenance < restart < ready < clear
