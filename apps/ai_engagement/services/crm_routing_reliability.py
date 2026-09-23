@@ -165,11 +165,11 @@ def _ensure_datetime_reminder(controlled, latest_text):
     """Create deterministic normal-conversation reminders without qualification logic."""
     if any(item.get("type") == "create_reminder" for item in controlled):
         return
-    from apps.ai_engagement.services.qualification_crm_action_runtime import (
-        _parse_grounded_due_at,
+    from apps.ai_engagement.services.reminder_time_runtime import (
+        parse_grounded_due_at,
     )
 
-    due_at = _parse_grounded_due_at(latest_text)
+    due_at = parse_grounded_due_at(latest_text)
     if due_at:
         description = "Lead provided a specific date/time for follow-up."
     elif _CALL_REQUEST_RE.search(str(latest_text or "")):

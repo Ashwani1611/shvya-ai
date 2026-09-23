@@ -66,3 +66,22 @@ The web workspace includes call list/detail actions, settings/dispositions and t
 - Lead and CRM-call relationships remain organization scoped.
 - Recordings/transcripts can contain sensitive customer data and must not be exposed through unrelated diagnostics or external-AI tools.
 - AI-derived call analysis is not authority to bypass CRM qualification, stage requirements or consent/policy controls.
+
+## Android CRM lead form
+
+The current Android Call Intelligence app can load organization-scoped CRM
+lead-creation configuration instead of hard-coding pipeline or custom-field
+choices.
+
+Additional mobile API behavior:
+
+- `GET /api/v1/call-intelligence/leads/` returns organization-scoped pipelines,
+  active stages and custom-attribute metadata (name, type and options; internal
+  descriptions are not exposed).
+- `POST /api/v1/call-intelligence/leads/` accepts name, phone, email, notes,
+  the selected pipeline/stage and validated custom attributes. Existing leads
+  are not overwritten by this creation path.
+- The Android app displays version 1.0 with version code 3 so installed internal
+  builds can upgrade from earlier lower version codes.
+
+Pipeline, stage and attribute validation remain backend-owned and tenant scoped.

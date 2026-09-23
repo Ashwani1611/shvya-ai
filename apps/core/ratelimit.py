@@ -65,6 +65,12 @@ def _client_ip(request):
     return remote_addr
 
 
+def _privacy_digest(*parts):
+    """Hash sensitive rate-limit key material before storing it in Redis."""
+    normalized = "|".join(str(part or "").strip().casefold() for part in parts)
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
 def _failure_cache_key(scope, request, *, identifier="", include_ip=True):
     """Build a privacy-preserving cache key for authentication failures."""
     parts = [str(scope or "auth").strip().casefold() or "auth"]
@@ -79,8 +85,8 @@ def _failure_cache_key(scope, request, *, identifier="", include_ip=True):
     if len(parts) == 1:
         raise ValueError("A failure-rate-limit bucket needs an IP or identifier.")
 
-    digest = hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
-    return f"authfail:{parts[0]}:{digest}"
+    scope_name = parts.pop(0)
+    return f"authfail:{scope_name}:{_privacy_digest(*parts)}"
 
 
 def authentication_failure_is_limited(
@@ -143,6 +149,13 @@ def clear_authentication_failures(
 
 
 
+def _request_rate_limit_key(view_func, request, extra=""):
+    """Build a generic rate-limit key without raw IP/identifier material."""
+    label = f"{view_func.__module__}.{view_func.__name__}"
+    digest = _privacy_digest(_client_ip(request), extra)
+    return f"ratelimit:{label}:{digest}"
+
+
 def ratelimit(key_func=None, limit=5, window=300, methods=None):
     """
     Rate limit a view to `limit` requests per `window` seconds,
@@ -176,9 +189,8 @@ def ratelimit(key_func=None, limit=5, window=300, methods=None):
             if limited_methods and request.method.upper() not in limited_methods:
                 return view_func(request, *args, **kwargs)
 
-            ip = _client_ip(request)
             extra = key_func(request) if key_func else ""
-            cache_key = f"ratelimit:{view_func.__name__}:{ip}:{extra}"
+            cache_key = _request_rate_limit_key(view_func, request, extra)
 
             try:
                 count = cache.incr(cache_key)

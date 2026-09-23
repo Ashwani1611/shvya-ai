@@ -194,14 +194,3 @@ def parse_grounded_due_at(text: str) -> str | None:
     if aware <= now and target_date == now.date():
         return None
     return aware.isoformat()
-
-
-def install_reminder_time_runtime() -> None:
-    global _INSTALLED
-    if _INSTALLED:
-        return
-
-    from apps.ai_engagement.services import qualification_crm_action_runtime as module
-
-    module._parse_grounded_due_at = parse_grounded_due_at
-    _INSTALLED = True

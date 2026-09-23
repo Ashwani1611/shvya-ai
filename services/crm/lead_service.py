@@ -8,6 +8,7 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 
 from apps.crm.models import Lead
+from apps.crm.models.lead import normalize_phone
 from services.crm_activity_service import record_lead_created
 from services.crm.lead_transition import (
     LeadTransitionError,
@@ -90,8 +91,8 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
 
     Returns (lead, created: bool).
 
-    Phone normalization and duplicate detection are handled entirely by
-    Lead.clean() — this function does not duplicate that logic.
+    Phone normalization happens before lookup so equivalent formatted phone
+    values resolve to the same canonical organization/phone identity.
 
     WhatsApp inbound messages are intentionally conservative: an incoming
     message must never replace a human-managed CRM name, pipeline, or stage.
@@ -106,12 +107,13 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
     """
     attributes = attributes or {}
     is_whatsapp_inbound = lead_source == "whatsapp_api"
+    normalized_phone = normalize_phone(phone)
 
     try:
         with transaction.atomic():
             existing = (
                 Lead.objects.select_for_update()
-                .filter(organization=organization, phone=phone)
+                .filter(organization=organization, phone=normalized_phone)
                 .select_related("pipeline", "stage")
                 .first()
             )
@@ -177,7 +179,7 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
             lead_name = name
             if is_whatsapp_inbound and (
                 not str(name or "").strip()
-                or _looks_like_phone_name(name, phone)
+                or _looks_like_phone_name(name, normalized_phone)
             ):
                 lead_name = "WhatsApp Lead"
 
@@ -186,7 +188,7 @@ def upsert_lead(*, organization, pipeline=None, stage=None, name, phone,
                 pipeline=pipeline,
                 stage=stage,
                 name=lead_name,
-                phone=phone,
+                phone=normalized_phone,
                 email=email,
                 notes=notes,
                 attributes=attributes,

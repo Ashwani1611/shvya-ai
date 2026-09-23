@@ -35,7 +35,7 @@ def install_ai_runtime() -> None:
     )
     install_fixed_prompt_overrides()
 
-    from apps.ai_engagement.services.ai_setup_runtime_fixes import (
+    from apps.ai_engagement.services.ai_brain_setup import (
         install_ai_setup_runtime_fixes,
     )
     install_ai_setup_runtime_fixes()
@@ -44,12 +44,6 @@ def install_ai_runtime() -> None:
         install_conversation_priority_runtime,
     )
     install_conversation_priority_runtime()
-
-    # Reminder extraction is independent of qualification mapping authority.
-    from apps.ai_engagement.services.reminder_time_runtime import (
-        install_reminder_time_runtime,
-    )
-    install_reminder_time_runtime()
 
     # Preserve normal-conversation reminders and evidence-bound stage routing
     # without restoring fuzzy qualification mapping or automatic completion
@@ -142,7 +136,7 @@ def install_ai_runtime() -> None:
 
     # Last-mile customer-chat cleanup remains language-only and may not own
     # qualification state, mappings, or stage transitions.
-    from apps.ai_engagement.services.customer_chat_regressions import (
+    from apps.ai_engagement.services.natural_conversation_runtime import (
         install_customer_chat_regressions,
     )
     install_customer_chat_regressions()
@@ -201,7 +195,7 @@ def install_ai_runtime() -> None:
     # and validated qualification facts outrank memory inference; and the
     # second grounding model call is skipped only for provably low-risk or
     # extractively evidence-matched replies.
-    from apps.ai_engagement.services.phase5_6_safety_fixes import (
+    from apps.ai_engagement.services.phase5_6_runtime import (
         install_phase5_6_safety_fixes,
     )
     install_phase5_6_safety_fixes()
