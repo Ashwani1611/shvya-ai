@@ -549,7 +549,7 @@ def lead_create_modal(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .order_by(
@@ -683,7 +683,7 @@ def lead_create_save(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=organization,
         )
     )
@@ -1095,7 +1095,7 @@ def lead_import_mapping_modal(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .order_by(
@@ -1457,7 +1457,7 @@ def lead_import_destination_modal(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .order_by(
@@ -2216,7 +2216,7 @@ def lead_import_execute(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
     )
@@ -3689,7 +3689,7 @@ def _lead_card_context(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=lead.organization,
         )
         .order_by(
@@ -4918,7 +4918,7 @@ def attribute_create_modal(
 
     attributes_count = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .count()
@@ -5073,7 +5073,7 @@ def attribute_manage_modal(
 
     attributes = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .order_by(
@@ -5309,7 +5309,7 @@ def lead_attribute_values_modal(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
         .order_by(
@@ -5344,7 +5344,7 @@ def lead_attribute_values_save(
 
     attribute_definitions = (
         AttributeDefinition.objects
-        .filter(
+        .filter(is_active=True, 
             organization=user.organization,
         )
     )
