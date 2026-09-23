@@ -1,12 +1,29 @@
-from django.urls import path, include
+"""Canonical composition point for SHVYA's versioned HTTP API.
 
-# NOTE: not wired into ROOT_URLCONF (see config/urls.py, which
-# includes each app's urls.api_v1 directly). Kept for reference /
-# future consolidation only.
+Externally visible paths are intentionally kept identical to the historical
+ROOT_URLCONF registrations in config.urls.
+"""
+
+from django.urls import include, path
+from rest_framework_simplejwt.views import TokenRefreshView
+
+from apps.accounts.views import ThrottledTokenObtainPairView
+
 
 urlpatterns = [
-    path("crm/",        include("apps.crm.urls.api_v1")),
-    path("triggers/",   include("apps.triggers.urls.api_v1")),
-    path("telephony/",  include("apps.telephony.urls.api_v1")),
-    path("knowledge/",  include("apps.ai_engagement.urls.api_v1")),
+    path(
+        "auth/token/",
+        ThrottledTokenObtainPairView.as_view(),
+        name="token_obtain_pair",
+    ),
+    path(
+        "auth/token/refresh/",
+        TokenRefreshView.as_view(),
+        name="token_refresh",
+    ),
+    path("leads/", include("apps.crm.urls.api_v1")),
+    path("copilot/", include("apps.copilot.urls.api_v1")),
+    path("teams/", include("apps.teams.urls.api_v1")),
+    path("call-intelligence/", include("apps.telephony.urls.api_v1")),
+    path("ai-engagement/", include("apps.ai_engagement.urls.api_v1")),
 ]

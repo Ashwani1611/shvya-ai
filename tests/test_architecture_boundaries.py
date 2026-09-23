@@ -1,3 +1,4 @@
+import ast
 from pathlib import Path
 
 from django.conf import settings
@@ -5,6 +6,24 @@ from django.test import SimpleTestCase
 
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+
+def _imported_modules(path):
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                yield alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module:
+            yield node.module
+
+
+def _application_python_files(root):
+    for path in root.rglob("*.py"):
+        if "migrations" in path.parts or "tests" in path.parts:
+            continue
+        yield path
 
 
 class ArchitectureBoundaryTests(SimpleTestCase):
@@ -51,3 +70,56 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         ):
             with self.subTest(path=relative):
                 self.assertFalse((ROOT / relative).exists())
+
+    def test_domain_models_do_not_import_http_views(self):
+        offenders = []
+        for path in _application_python_files(ROOT / "apps"):
+            if path.name != "models.py" and "models" not in path.parts:
+                continue
+            for module in _imported_modules(path):
+                if ".views" in module or module.endswith(".views"):
+                    offenders.append(f"{path.relative_to(ROOT)} -> {module}")
+        self.assertEqual([], offenders, "Models must not depend on HTTP views.")
+
+    def test_crm_does_not_depend_on_superadmin_or_operations_mcp(self):
+        forbidden = ("apps.superadmin", "apps.integrations.operations")
+        offenders = []
+        for path in _application_python_files(ROOT / "apps" / "crm"):
+            for module in _imported_modules(path):
+                if any(module == prefix or module.startswith(prefix + ".") for prefix in forbidden):
+                    offenders.append(f"{path.relative_to(ROOT)} -> {module}")
+        self.assertEqual(
+            [],
+            offenders,
+            "CRM must remain independent from Superadmin and Operations MCP implementation.",
+        )
+
+    def test_channels_do_not_import_crm_views(self):
+        offenders = []
+        for path in _application_python_files(ROOT / "apps" / "channels"):
+            for module in _imported_modules(path):
+                if module == "apps.crm.views" or module.startswith("apps.crm.views."):
+                    offenders.append(f"{path.relative_to(ROOT)} -> {module}")
+        self.assertEqual([], offenders, "Channels must use CRM contracts/services, not CRM views.")
+
+    def test_api_v1_has_one_canonical_composition_point(self):
+        root_urls = (ROOT / "config" / "urls.py").read_text(encoding="utf-8")
+        self.assertEqual(1, root_urls.count('include("api.v1.urls")'))
+        self.assertFalse((ROOT / "api" / "v1" / "router.py").exists())
+
+    def test_hosted_automation_registration_is_common(self):
+        installed = [
+            item
+            for item in settings.INSTALLED_APPS
+            if item.startswith("apps.hosted_automation")
+        ]
+        self.assertEqual(1, len(installed))
+        for relative in (
+            "config/settings/dev.py",
+            "config/settings/testing.py",
+            "config/settings/prod.py",
+            "config/settings/staging.py",
+        ):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn('"apps.hosted_automation"', source)
+
