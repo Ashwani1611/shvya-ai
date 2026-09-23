@@ -18,7 +18,7 @@ from apps.teams.services.team_service import (
     set_member_role,
     update_team,
 )
-from services.teams.whatsapp_connections import member_whatsapp_connections
+from apps.teams.services.whatsapp_connections import member_whatsapp_connections
 
 
 def _can_manage(user):
