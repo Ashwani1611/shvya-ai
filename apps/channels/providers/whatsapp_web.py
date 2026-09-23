@@ -11,7 +11,7 @@ from urllib.parse import quote
 import requests
 from decouple import config
 
-from apps.channels.providers.whatsapp import WhatsAppAPIError
+from apps.channels.providers.whatsapp import WhatsAppAPIError, _retry_after_seconds
 
 
 REQUEST_TIMEOUT_SECONDS = 20
@@ -66,6 +66,7 @@ class WhatsAppWebClient:
                 f"WhatsApp Web gateway returned {response.status_code}: {detail}",
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
 
         try:
