@@ -172,6 +172,23 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn('"apps.hosted_automation"', source)
 
+    def test_operations_action_tools_are_split_by_responsibility(self):
+        facade = ROOT / "apps" / "integrations" / "operations_tool_actions.py"
+        base = ROOT / "apps" / "integrations" / "operations" / "tools"
+        expected = {
+            "messaging_actions.py",
+            "lead_actions.py",
+            "ai_actions.py",
+            "conversion_actions.py",
+            "audit_actions.py",
+        }
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            100,
+            "operations_tool_actions.py must remain a compatibility facade.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in base.glob("*.py")}))
+
     def test_operations_configuration_tools_are_split_by_domain(self):
         facade = ROOT / "apps" / "integrations" / "operations_tool_config.py"
         base = ROOT / "apps" / "integrations" / "operations" / "tools"
