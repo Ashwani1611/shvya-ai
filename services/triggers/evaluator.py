@@ -4,7 +4,10 @@ import logging
 from contextvars import ContextVar
 from datetime import timedelta
 
+from django.conf import settings
 from django.db import transaction
+from django.db.models import F, Q, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
 
 from apps.crm.models import Lead
@@ -187,16 +190,76 @@ def evaluate(event_id):
     event.save(update_fields=["processed_at"])
 
 
+def _timer_rule_batch():
+    """Return a bounded, tenant-fair set of timer rules for one Beat pass."""
+    per_organization = max(
+        1,
+        int(getattr(settings, "WORKFLOW_TIMER_RULES_PER_ORGANIZATION", 2)),
+    )
+    limit = max(
+        1,
+        int(getattr(settings, "WORKFLOW_TIMER_RULES_PER_PASS", 40)),
+    )
+    rules = (
+        SmartTrigger.objects.filter(
+            enabled=True,
+            is_active=True,
+            organization__is_active=True,
+            trigger_type__in=["stage_idle", "no_response"],
+        )
+        .annotate(
+            _tenant_rank=Window(
+                expression=RowNumber(),
+                partition_by=[F("organization_id")],
+                order_by=[
+                    F("timer_scan_at").asc(nulls_first=True),
+                    F("id").asc(),
+                ],
+            )
+        )
+        .filter(_tenant_rank__lte=per_organization)
+        .order_by(F("timer_scan_at").asc(nulls_first=True), "id")
+    )
+    return list(rules[:limit])
+
+
+def _timer_lead_batch(rule, leads):
+    """Advance a durable per-rule lead cursor without an unbounded scan."""
+    limit = max(
+        1,
+        int(getattr(settings, "WORKFLOW_TIMER_LEADS_PER_RULE", 100)),
+    )
+    queryset = leads.order_by("id")
+    if rule.timer_lead_cursor:
+        queryset = queryset.filter(id__gt=rule.timer_lead_cursor)
+
+    batch = list(queryset[:limit])
+    if batch:
+        cursor = batch[-1].id
+        SmartTrigger.objects.filter(pk=rule.pk).update(timer_lead_cursor=cursor)
+        rule.timer_lead_cursor = cursor
+        return batch
+
+    # Reaching the end consumes one empty pass and resets the cursor. The next
+    # pass starts from the beginning, so new/changed leads are eventually
+    # revisited while each invocation remains strictly bounded.
+    if rule.timer_lead_cursor:
+        SmartTrigger.objects.filter(pk=rule.pk).update(timer_lead_cursor=None)
+        rule.timer_lead_cursor = None
+    return []
+
+
 def scan_timers():
-    """One invalid saved timer must not starve other organizations' workflows."""
-    for rule in SmartTrigger.objects.filter(
-        enabled=True, is_active=True, organization__is_active=True,
-        trigger_type__in=["stage_idle", "no_response"]
-    ).iterator():
+    """Scan timers incrementally so one tenant cannot monopolize automation."""
+    for rule in _timer_rule_batch():
         try:
             _scan_timer(rule)
         except Exception:
             logger.exception("Workflow timer scan failed: %s", rule.id)
+        finally:
+            scanned_at = timezone.now()
+            SmartTrigger.objects.filter(pk=rule.pk).update(timer_scan_at=scanned_at)
+            rule.timer_scan_at = scanned_at
 
 
 def _scan_timer(rule):
@@ -205,9 +268,26 @@ def _scan_timer(rule):
 
     cutoff = timezone.now() - delta(rule.conditions)
     leads = Lead.objects.filter(organization_id=rule.organization_id)
+
+    # Pipeline/stage scope is cheap to apply in PostgreSQL and drastically
+    # reduces cursor-cycle time for organizations with large CRM datasets.
+    scopes = list(rule.conditions.get("scopes") or [])
+    if scopes:
+        scope_query = Q(pk__in=[])
+        for scope in scopes:
+            pipeline_id = scope.get("pipeline")
+            stage_ids = list(scope.get("stages") or [])
+            if pipeline_id and stage_ids:
+                scope_query |= Q(
+                    pipeline_id=pipeline_id,
+                    stage_id__in=stage_ids,
+                )
+        leads = leads.filter(scope_query)
+
     if rule.trigger_type == "stage_idle":
         leads = leads.filter(stage_entered_at__lte=cutoff)
-    for lead in leads.iterator():
+
+    for lead in _timer_lead_batch(rule, leads):
         if not matches(rule, lead, {}):
             continue
         if rule.trigger_type == "stage_idle":
