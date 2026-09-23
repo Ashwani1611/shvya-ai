@@ -3,7 +3,6 @@ import logging
 from datetime import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
-from django.db.models import Max
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
@@ -11,7 +10,6 @@ from django.views.decorators.http import require_GET, require_POST
 from django.db import transaction
 
 from services.crm_activity_service import (
-    record_stage_changed,
     record_pipeline_changed,
     record_reminder_created,
     record_note_added,
@@ -34,9 +32,6 @@ from services.crm.lead_service import (
     create_lead,
 )
 
-from services.crm.dashboard_query_service import (
-    build_lead_table_context as _build_lead_table_context,
-)
 from .api import get_user_pipelines
 from . import filtering as _filtering_views
 from . import lead_import as _lead_import_views
