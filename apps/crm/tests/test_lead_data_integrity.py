@@ -302,3 +302,29 @@ class LeadDataIntegrityTests(TestCase):
                 new_stage=destination_stage,
             ).exists()
         )
+
+
+    def test_upsert_normalizes_phone_before_lookup(self):
+        updated, created = upsert_lead(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Formatting Variant",
+            phone="+91-99999-99991",
+            email="normalized@example.com",
+            lead_source="external_api",
+            send_welcome=False,
+        )
+
+        self.assertFalse(created)
+        self.assertEqual(updated.pk, self.lead.pk)
+        updated.refresh_from_db()
+        self.assertEqual(updated.phone, "+919999999991")
+        self.assertEqual(updated.email, "normalized@example.com")
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.organization,
+                phone="+919999999991",
+            ).count(),
+            1,
+        )
