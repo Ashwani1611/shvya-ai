@@ -4,7 +4,7 @@ import logging
 
 from celery import shared_task
 
-from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+from apps.ai_engagement.services.ai_provider import AIProviderTransientError, provider_retry_countdown
 from apps.ai_engagement.services.internal_summary import (
     InternalSummaryError,
     InternalSummaryService,
@@ -223,7 +223,12 @@ def generate_internal_conversation_summary(
 
             raise self.retry(
                 exc=exc,
-                countdown=60,
+                countdown=provider_retry_countdown(
+                    exc,
+                    identifier=lead_id,
+                    retries=self.request.retries,
+                    default=30,
+                ),
             )
 
         except InternalSummaryError as exc:
