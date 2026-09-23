@@ -174,7 +174,7 @@ def _editor_context(request, page, active_tab=None):
         organization=user.organization,
         is_active=True,
     ).order_by("name", "email")
-    attributes = AttributeDefinition.objects.filter(
+    attributes = AttributeDefinition.objects.filter(is_active=True, 
         organization=user.organization
     ).order_by("display_order", "name")
     connection = None
