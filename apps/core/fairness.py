@@ -64,3 +64,29 @@ def admit_ai_start(*, organization_id, organization_limit, global_limit):
         window_seconds=60,
     )
     return allowed, delay, "global" if not allowed else ""
+
+
+def admit_provider_start(
+    *,
+    provider,
+    account_id,
+    account_limit,
+    global_limit,
+):
+    """Apply account-first then provider-global admission for outbound I/O."""
+    provider = str(provider or "provider").strip().lower()[:40]
+    allowed, delay = admit(
+        scope=f"{provider}_account",
+        subject=account_id,
+        limit=account_limit,
+        window_seconds=60,
+    )
+    if not allowed:
+        return False, delay, "account"
+    allowed, delay = admit(
+        scope=f"{provider}_global",
+        subject="platform",
+        limit=global_limit,
+        window_seconds=60,
+    )
+    return allowed, delay, "global" if not allowed else ""
