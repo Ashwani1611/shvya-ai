@@ -1525,8 +1525,58 @@ def get_workflow_trace(*, organization, arguments):
         run_qs.order_by("-created_at")[:limit]
     )
 
+    first_problem = (
+        run_qs.filter(
+            status__in=["failed", "error", "blocked", "needs_review"],
+        )
+        .order_by("created_at", "id")
+        .first()
+    )
+    if first_problem is not None:
+        if (
+            first_problem.action_type in {"message", "email"}
+            and first_problem.status == "blocked"
+        ):
+            component = "delivery_policy"
+        elif (
+            first_problem.action_type in {"message", "email"}
+            and first_problem.status == "needs_review"
+        ):
+            component = "delivery_outcome"
+        else:
+            component = "action_execution"
+        first_failure = {
+            "component": component,
+            "run_id": str(first_problem.id),
+            "rule_id": str(first_problem.rule_id),
+            "rule_name": first_problem.rule.name,
+            "action_type": first_problem.action_type,
+            "status": first_problem.status,
+            "reason": sanitize_text(
+                first_problem.detail,
+                limit=700,
+            ),
+            "created_at": _iso(first_problem.created_at),
+        }
+    elif event_count == 0:
+        first_failure = {
+            "component": "trigger_event",
+            "reason": "No Workflow trigger event was recorded for this lead.",
+        }
+    elif run_count == 0:
+        first_failure = {
+            "component": "rule_match",
+            "reason": (
+                "Workflow events exist, but no Workflow run was created. "
+                "Review trigger scope/conditions and eligibility."
+            ),
+        }
+    else:
+        first_failure = None
+
     return {
         "lead": _safe_lead(lead),
+        "first_failure": first_failure,
         "events": [
             {
                 "id": str(event.id),
