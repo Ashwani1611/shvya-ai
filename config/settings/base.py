@@ -273,6 +273,46 @@ HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE = config(
     default=0,
     cast=int,
 )
+INSTAGRAM_ACCOUNT_REQUESTS_PER_MINUTE = config(
+    "INSTAGRAM_ACCOUNT_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+INSTAGRAM_GLOBAL_REQUESTS_PER_MINUTE = config(
+    "INSTAGRAM_GLOBAL_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+GOOGLE_CALENDAR_ORGANIZATION_REQUESTS_PER_MINUTE = config(
+    "GOOGLE_CALENDAR_ORGANIZATION_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+GOOGLE_CALENDAR_GLOBAL_REQUESTS_PER_MINUTE = config(
+    "GOOGLE_CALENDAR_GLOBAL_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+EMAIL_ORGANIZATION_SENDS_PER_MINUTE = config(
+    "EMAIL_ORGANIZATION_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+EMAIL_GLOBAL_SENDS_PER_MINUTE = config(
+    "EMAIL_GLOBAL_SENDS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+PAYMENT_GATEWAY_REQUESTS_PER_MINUTE = config(
+    "PAYMENT_GATEWAY_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
+PAYMENT_PROVIDER_REQUESTS_PER_MINUTE = config(
+    "PAYMENT_PROVIDER_REQUESTS_PER_MINUTE",
+    default=0,
+    cast=int,
+)
 
 # Smart Trigger timer scanning is incremental and cursor-based so a large
 # organization cannot turn one Beat invocation into an unbounded full-table
