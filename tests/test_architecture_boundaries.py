@@ -46,6 +46,18 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             (ROOT / "apps" / "crm" / "views" / "dashboard_attributes.py").exists()
         )
 
+
+
+    def test_calendar_availability_is_owned_by_focused_service(self):
+        service_path = ROOT / "apps" / "shvya_calendar" / "services.py"
+        self.assertLess(
+            len(service_path.read_text(encoding="utf-8").splitlines()),
+            1350,
+        )
+        self.assertTrue(
+            (ROOT / "apps" / "shvya_calendar" / "availability.py").exists()
+        )
+
     def test_legacy_calls_app_is_not_installed(self):
         self.assertNotIn("apps.calls", settings.INSTALLED_APPS)
         self.assertFalse((ROOT / "apps" / "calls").exists())
