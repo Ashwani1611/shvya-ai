@@ -11,6 +11,8 @@ click-plugins==1.1.1.2
 click-repl==0.3.0
 colorama==0.4.6
 Django==6.1
+django-storages[s3]==1.14.6
+boto3==1.43.100
 django-cors-headers==4.9.0
 djangorestframework==3.18.0
 djangorestframework_simplejwt==5.5.1
