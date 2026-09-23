@@ -159,13 +159,6 @@ from apps.integrations.operations_tools import (
     LOST_REASON_BREAKDOWN_LIMIT,
 )
 
-def _operations_facade():
-    """Resolve patchable compatibility seams through operations_tools."""
-    from apps.integrations import operations_tools
-
-    return operations_tools
-
-
 def update_messaging_automation_settings(*, identity, arguments):
     organization = _organization_for(identity)
     dry_run, reason = _write_gate(
@@ -424,7 +417,7 @@ def diagnose_lead_qualification(*, identity, arguments):
         contract_config,
         criteria,
         completion_target,
-    ) = _operations_facade()._qualification_contract_snapshot(lead)
+    ) = _qualification_contract_snapshot(lead)
 
     current_is_qualified = normalize_stage_name(lead.stage.name) == QUALIFIED_STAGE
     qualification_status = str(
@@ -581,7 +574,7 @@ def _validate_operations_stage_move(*, lead, stage):
             _,
             qualification_criteria,
             completion_target,
-        ) = _operations_facade()._qualification_contract_snapshot(lead)
+        ) = _qualification_contract_snapshot(lead)
         if (
             str(
                 qualification_state.get(
@@ -850,7 +843,7 @@ def repair_qualification_stage(*, identity, arguments):
         _,
         criteria,
         completion_target,
-    ) = _operations_facade()._qualification_contract_snapshot(lead)
+    ) = _qualification_contract_snapshot(lead)
     if str(state.get("qualification_status") or "").casefold() != "completed":
         raise OperationsToolError(
             "Qualification is not completed; SHVYA will not force a "
@@ -1139,7 +1132,7 @@ def update_ai_configuration(*, identity, arguments):
                 )
             if key == "ai_playbook":
                 try:
-                    text = _operations_facade().validate_playbook(text)
+                    text = validate_playbook(text)
                 except ValueError as exc:
                     raise OperationsToolError(
                         str(exc)

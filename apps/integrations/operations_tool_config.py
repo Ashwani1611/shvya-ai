@@ -146,13 +146,6 @@ from apps.integrations.operations_tools import (
     ToolExecution,
 )
 
-def _operations_facade():
-    """Resolve patchable compatibility seams through operations_tools."""
-    from apps.integrations import operations_tools
-
-    return operations_tools
-
-
 def upsert_pipeline_configuration(*, identity, arguments):
     organization = _organization_for(identity)
     dry_run, reason = _write_gate(
@@ -1910,7 +1903,7 @@ def add_cadence_step(*, identity, arguments):
                     **schedule,
                 )
             else:
-                step = _operations_facade().add_reminder_step(
+                step = add_reminder_step(
                     sequence=sequence,
                     text=str(data.get("text") or ""),
                     **schedule,
