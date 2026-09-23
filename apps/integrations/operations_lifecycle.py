@@ -157,7 +157,7 @@ def _workflow_refs(*, organization, pipeline_id=None, stage_id=None, cadence_id=
 
 
 def _qualification_refs(*, organization, stage_id=None, attribute_key=None):
-    from apps.integrations.operations_extended_tools import _qualification_public_snapshot
+    from apps.integrations.operations.tools.qualification import _qualification_public_snapshot
 
     snapshot = _qualification_public_snapshot(organization)
     refs = []

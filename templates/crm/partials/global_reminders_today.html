@@ -1,0 +1,615 @@
+<!-- ==================================================
+                 TODAY
+                 ================================================== -->
+
+            {% if today_reminders %}
+
+            <section
+                class="
+                    mb-6
+                    global-reminder-filter-section
+                "
+                data-reminder-section="today"
+            >
+
+                <div
+                    class="
+                        global-reminder-group-title
+                        mb-3
+                        text-[#3B82F6]
+                    "
+                >
+
+                    <span
+                        class="
+                            h-2
+                            w-2
+                            rounded-full
+                            bg-[#3B82F6]
+                        "
+                    ></span>
+
+                    Today
+
+                    <span
+                        class="
+                            rounded-full
+                            bg-blue-50
+                            px-2
+                            py-0.5
+                            text-[10px]
+                            font-semibold
+                            text-[#3B82F6]
+                        "
+                    >
+                        {{ today_count }}
+                    </span>
+
+                </div>
+
+
+                <div
+                    class="
+                        space-y-2
+                    "
+                >
+
+                    {% for reminder in today_reminders %}
+
+                    <div
+                        class="
+                            global-reminder-card
+                            global-reminder-card-today
+                        "
+                    >
+
+                        <div
+                            class="
+                                flex
+                                flex-col
+                                gap-4
+                                lg:flex-row
+                                lg:items-center
+                                lg:justify-between
+                            "
+                        >
+
+                            <div
+                                class="
+                                    min-w-0
+                                    flex-1
+                                "
+                            >
+
+                                <div
+                                    class="
+                                        flex
+                                        items-start
+                                        gap-3
+                                    "
+                                >
+
+                                    <div
+                                        class="
+                                            global-reminder-main-icon
+                                            global-reminder-main-icon-today
+                                        "
+                                    >
+
+                                        <i
+                                            class="
+                                                ti
+                                                ti-bell
+                                                text-lg
+                                            "
+                                        ></i>
+
+                                    </div>
+
+
+                                    <div
+                                        class="
+                                            min-w-0
+                                            flex-1
+                                        "
+                                    >
+
+                                        <div
+                                            class="
+                                                flex
+                                                flex-wrap
+                                                items-center
+                                                gap-2
+                                            "
+                                        >
+
+                                            <h3
+                                                class="
+                                                    truncate
+                                                    text-sm
+                                                    font-semibold
+                                                    text-gray-800
+                                                "
+                                            >
+                                                {{ reminder.lead.name }}
+                                            </h3>
+
+
+                                            <span
+                                                class="
+                                                    rounded-full
+                                                    border
+                                                    border-gray-200
+                                                    bg-gray-100
+                                                    px-2
+                                                    py-0.5
+                                                    text-[10px]
+                                                    font-medium
+                                                    text-gray-500
+                                                "
+                                            >
+                                                {{ reminder.lead.pipeline.name }}
+                                            </span>
+
+
+                                            <span
+                                                class="
+                                                    rounded-full
+                                                    bg-blue-50
+                                                    px-2
+                                                    py-0.5
+                                                    text-[10px]
+                                                    font-medium
+                                                    text-[#3B82F6]
+                                                "
+                                            >
+                                                {{ reminder.lead.stage.name }}
+                                            </span>
+
+                                        </div>
+
+
+                                        <p
+                                            class="
+                                                mt-1
+                                                text-sm
+                                                font-semibold
+                                                text-gray-700
+                                            "
+                                        >
+                                            {{ reminder.title }}
+                                        </p>
+
+
+                                        {% if reminder.description %}
+
+                                        <p
+                                            class="
+                                                mt-1
+                                                text-xs
+                                                leading-5
+                                                text-gray-400
+                                            "
+                                        >
+                                            {{ reminder.description }}
+                                        </p>
+
+                                        {% endif %}
+
+
+                                        <div
+                                            class="
+                                                mt-2
+                                                flex
+                                                flex-wrap
+                                                items-center
+                                                gap-2
+                                            "
+                                        >
+
+                                            <span
+                                                class="
+                                                    global-reminder-meta
+                                                "
+                                            >
+
+                                                <i
+                                                    class="
+                                                        ti
+                                                        ti-calendar
+                                                        text-sm
+                                                    "
+                                                ></i>
+
+                                                Today
+
+                                            </span>
+
+
+                                            <span
+                                                class="
+                                                    global-reminder-meta
+                                                "
+                                            >
+
+                                                <i
+                                                    class="
+                                                        ti
+                                                        ti-clock
+                                                        text-sm
+                                                    "
+                                                ></i>
+
+                                                {{ reminder.due_at|time:"g:i A" }}
+
+                                            </span>
+
+                                        </div>
+
+                                    </div>
+
+                                </div>
+
+                            </div>
+
+
+                            <!-- ACTIONS -->
+
+                            <div
+                                class="
+                                    flex
+                                    items-center
+                                    justify-end
+                                    gap-2
+                                "
+                            >
+
+                                <!-- MARK DONE -->
+
+                                <form
+                                    method="post"
+
+                                    hx-post="{% url 'crm-global-reminder-complete' reminder.id %}"
+
+                                    hx-swap="none"
+
+                                    hx-on::after-request="
+                                        if (event.detail.successful) {
+                                            htmx.ajax(
+                                                'GET',
+                                                '{% url "crm-global-reminders-modal" %}',
+                                                {
+                                                    target: '#modal-root',
+                                                    swap: 'innerHTML'
+                                                }
+                                            );
+                                        }
+                                    "
+                                >
+
+                                    {% csrf_token %}
+
+                                    <button
+                                        type="submit"
+
+                                        data-tooltip="Mark Done"
+
+                                        class="
+                                            global-reminder-action
+                                        "
+
+                                        aria-label="Mark reminder done"
+                                    >
+
+                                        <i
+                                            class="
+                                                ti
+                                                ti-check
+                                            "
+                                        ></i>
+
+                                    </button>
+
+                                </form>
+
+
+                                <!-- EDIT -->
+
+                                <button
+                                    type="button"
+
+                                    data-edit-reminder="{{ reminder.id }}"
+
+                                    data-tooltip="Edit Time"
+
+                                    class="
+                                        global-reminder-action
+                                    "
+
+                                    aria-label="Edit reminder time"
+                                >
+
+                                    <i
+                                        class="
+                                            ti
+                                            ti-clock-edit
+                                        "
+                                    ></i>
+
+                                </button>
+
+
+                                <!-- SNOOZE -->
+
+                                <form
+                                    method="post"
+
+                                    hx-post="{% url 'crm-global-reminder-snooze' reminder.id %}"
+
+                                    hx-swap="none"
+
+                                    hx-on::after-request="
+                                        if (event.detail.successful) {
+                                            htmx.ajax(
+                                                'GET',
+                                                '{% url "crm-global-reminders-modal" %}',
+                                                {
+                                                    target: '#modal-root',
+                                                    swap: 'innerHTML'
+                                                }
+                                            );
+                                        }
+                                    "
+                                >
+
+                                    {% csrf_token %}
+
+                                    <button
+                                        type="submit"
+
+                                        data-tooltip="Snooze 30 minutes"
+
+                                        class="
+                                            global-reminder-action
+                                        "
+
+                                        aria-label="Snooze 30 minutes"
+                                    >
+
+                                        <i
+                                            class="
+                                                ti
+                                                ti-history
+                                            "
+                                        ></i>
+
+                                    </button>
+
+                                </form>
+
+
+                                <!-- DELETE -->
+
+                                <form
+                                    method="post"
+
+                                    hx-post="{% url 'crm-global-reminder-delete' reminder.id %}"
+
+                                    hx-swap="none"
+
+                                    hx-on::after-request="
+                                        if (event.detail.successful) {
+                                            htmx.ajax(
+                                                'GET',
+                                                '{% url "crm-global-reminders-modal" %}',
+                                                {
+                                                    target: '#modal-root',
+                                                    swap: 'innerHTML'
+                                                }
+                                            );
+                                        }
+                                    "
+                                >
+
+                                    {% csrf_token %}
+
+                                    <button
+                                        type="submit"
+
+                                        data-tooltip="Delete Reminder"
+
+                                        class="
+                                            global-reminder-action
+                                            global-reminder-delete
+                                        "
+
+                                        aria-label="Delete reminder"
+                                    >
+
+                                        <i
+                                            class="
+                                                ti
+                                                ti-trash
+                                            "
+                                        ></i>
+
+                                    </button>
+
+                                </form>
+
+                            </div>
+
+                        </div>
+
+
+                        <!-- INLINE EDIT -->
+
+                        <div
+                            id="global-reminder-edit-{{ reminder.id }}"
+                            class="
+                                global-reminder-edit-panel
+                                hidden
+                            "
+                        >
+
+                            <form
+                                method="post"
+
+                                hx-post="{% url 'crm-global-reminder-edit-save' reminder.id %}"
+
+                                hx-swap="none"
+
+                                hx-on::after-request="
+                                    if (event.detail.successful) {
+                                        htmx.ajax(
+                                            'GET',
+                                            '{% url "crm-global-reminders-modal" %}',
+                                            {
+                                                target: '#modal-root',
+                                                swap: 'innerHTML'
+                                            }
+                                        );
+                                    }
+                                "
+                            >
+
+                                {% csrf_token %}
+
+                                <div
+                                    class="
+                                        flex
+                                        flex-col
+                                        gap-3
+                                        md:flex-row
+                                        md:items-end
+                                    "
+                                >
+
+                                    <div
+                                        class="flex-1"
+                                    >
+
+                                        <label
+                                            for="global-reminder-time-{{ reminder.id }}"
+                                            class="
+                                                block
+                                                text-[11px]
+                                                font-semibold
+                                                text-gray-600
+                                            "
+                                        >
+                                            Edit Reminder Time
+                                        </label>
+
+
+                                        <input
+                                            id="global-reminder-time-{{ reminder.id }}"
+
+                                            type="datetime-local"
+
+                                            name="due_at"
+
+                                            value="{{ reminder.due_at|date:'Y-m-d\\TH:i' }}"
+
+                                            required
+
+                                            class="
+                                                global-reminder-edit-input
+                                                mt-1.5
+                                                w-full
+                                                rounded-xl
+                                                border
+                                                border-gray-300
+                                                bg-white
+                                                px-3
+                                                py-2.5
+                                                text-sm
+                                                text-gray-700
+                                            "
+                                        >
+
+                                    </div>
+
+
+                                    <div
+                                        class="
+                                            flex
+                                            items-center
+                                            gap-2
+                                        "
+                                    >
+
+                                        <button
+                                            type="submit"
+
+                                            class="
+                                                global-reminder-inline-button
+                                                inline-flex
+                                                items-center
+                                                gap-1.5
+                                                rounded-xl
+                                                border
+                                                border-blue-200
+                                                bg-white
+                                                px-4
+                                                py-2.5
+                                                text-xs
+                                                font-semibold
+                                                text-[#3B82F6]
+                                            "
+                                        >
+
+                                            <i
+                                                class="
+                                                    ti
+                                                    ti-check
+                                                "
+                                            ></i>
+
+                                            Save Time
+
+                                        </button>
+
+
+                                        <button
+                                            type="button"
+
+                                            data-cancel-reminder="{{ reminder.id }}"
+
+                                            class="
+                                                global-reminder-inline-button
+                                                inline-flex
+                                                items-center
+                                                rounded-xl
+                                                border
+                                                border-gray-300
+                                                bg-white
+                                                px-4
+                                                py-2.5
+                                                text-xs
+                                                font-medium
+                                                text-gray-600
+                                            "
+                                        >
+
+                                            Cancel
+
+                                        </button>
+
+                                    </div>
+
+                                </div>
+
+                            </form>
+
+                        </div>
+
+                    </div>
+
+                    {% endfor %}
+
+                </div>
+
+            </section>
+
+            {% endif %}

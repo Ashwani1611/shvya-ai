@@ -9,9 +9,6 @@ from apps.core.health import live as health_live, ready as health_ready
 from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
 
-from rest_framework_simplejwt.views import TokenRefreshView
-
-from apps.accounts.views import ThrottledTokenObtainPairView
 from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeView, PricingView
 
 
@@ -63,42 +60,12 @@ urlpatterns = [
     ),
 
     # =========================================================
-    # JWT Authentication
+    # Versioned API
+    #
+    # Keep one canonical composition point under api/v1/urls.py while
+    # preserving every externally visible route.
     # =========================================================
-    path(
-        "api/v1/auth/token/",
-        ThrottledTokenObtainPairView.as_view(),
-        name="token_obtain_pair",
-    ),
-    path(
-        "api/v1/auth/token/refresh/",
-        TokenRefreshView.as_view(),
-        name="token_refresh",
-    ),
-
-    # =========================================================
-    # CRM API
-    # =========================================================
-    path(
-        "api/v1/leads/",
-        include("apps.crm.urls.api_v1"),
-    ),
-
-    # =========================================================
-    # Co-Pilot API
-    # =========================================================
-    path(
-        "api/v1/copilot/",
-        include("apps.copilot.urls.api_v1"),
-    ),
-
-    # =========================================================
-    # Teams API
-    # =========================================================
-    path(
-        "api/v1/teams/",
-        include("apps.teams.urls.api_v1"),
-    ),
+    path("api/v1/", include("api.v1.urls")),
 
     # =========================================================
     # Accounts
@@ -172,7 +139,6 @@ urlpatterns = [
     # =========================================================
     # Call Intelligence — Android SIM calling
     # =========================================================
-    path("api/v1/call-intelligence/", include("apps.telephony.urls.api_v1")),
     path("dashboard/call-intelligence/", include("apps.telephony.urls.web")),
 
     # =========================================================
@@ -289,11 +255,4 @@ urlpatterns = [
         name="refund_policy",
     ),
 
-    # =========================================================
-    # AI ENGAGEMENT API
-    # =========================================================
-    path(
-        "api/v1/ai-engagement/",
-        include("apps.ai_engagement.urls.api_v1"),
-    ),
 ]

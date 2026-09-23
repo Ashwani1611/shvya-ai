@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import re
+import sys
 import uuid
 from contextlib import contextmanager
 from contextvars import ContextVar
@@ -113,7 +114,7 @@ from services.crm.attribute_service import (
     update_attribute_definition,
     update_lead_attribute_values,
 )
-from services.crm.stage_requirements import missing_attributes
+from apps.crm.services.stage_requirements import missing_attributes
 from services.crm.lead_transition import (
     LeadTransitionError,
     move_lead_to_pipeline_stage,
@@ -832,7 +833,18 @@ def _sync_facade_overrides():
     """
 
     facade = globals()
-    for module in (_operations_read, _operations_actions, _operations_config):
+    focused_modules = tuple(
+        module
+        for module_name, module in tuple(sys.modules.items())
+        if module_name.startswith("apps.integrations.operations.tools.")
+        and module is not None
+    )
+    for module in (
+        _operations_read,
+        _operations_actions,
+        _operations_config,
+        *focused_modules,
+    ):
         for name in tuple(module.__dict__):
             if name in _OPERATIONS_DELEGATED_ENTRYPOINTS:
                 continue
@@ -1056,7 +1068,7 @@ def execute_operations_tool(*, name, identity, arguments):
         # Extended configuration tools are kept in lazily imported modules so
         # this core Operations boundary remains the single source of approval,
         # tenant, audit, and error semantics without creating import cycles.
-        from apps.integrations.operations_extended_tools import EXTENDED_HANDLERS
+        from apps.integrations.operations.registry import EXTENDED_HANDLERS
 
         handler = EXTENDED_HANDLERS.get(str(name or ""))
     if handler is None:
@@ -1078,4 +1090,3 @@ def execute_operations_tool(*, name, identity, arguments):
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})
-

@@ -255,6 +255,7 @@ INSTALLED_APPS = [
     "apps.telephony.apps.TelephonyConfig",
     "apps.shvya_calendar.apps.ShvyaCalendarConfig",
     "apps.support.apps.SupportConfig",
+    "apps.hosted_automation.apps.HostedAutomationConfig",
 ]
 
 

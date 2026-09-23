@@ -14,7 +14,7 @@ from apps.teams.serializers import (
     TeamCreateSerializer, TeamMemberAddSerializer, TeamMemberRoleUpdateSerializer,
     TeamMemberSerializer, TeamSerializer, TeamUpdateSerializer,
 )
-from services.teams.team_service import (
+from apps.teams.services.team_service import (
     CrossOrganizationMembershipError, DuplicateMembershipError, DuplicateTeamError,
     add_member, create_team, remove_member, set_member_role, update_team,
 )

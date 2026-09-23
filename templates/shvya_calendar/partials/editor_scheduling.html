@@ -1,0 +1,84 @@
+<section class="sc-tab-panel" data-tab-panel="scheduling">
+    <form method="post" action="{% url 'shvya_calendar:save' page_id=page.id %}">
+      {% csrf_token %}<input type="hidden" name="section" value="scheduling">
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-layout"></i></span><span><strong>Booking Page Content</strong><small>The heading and information leads see before they book.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Session title</span><input name="session_title" maxlength="80" value="{{ page.session_title }}"></label>
+            <label class="sc-field"><span>Session description</span><input name="session_description" maxlength="250" value="{{ page.session_description }}" placeholder="Briefly describe what this session is about."></label>
+            <label class="sc-field sc-field-wide"><span>Discussion points</span><textarea name="discussion_points" rows="4" placeholder="Roadmap review&#10;Key challenges&#10;Next steps">{% for point in page.discussion_points %}{{ point }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}</textarea><small>One point per line.</small></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-calendar-time"></i></span><span><strong>Availability Window</strong><small>When leads can book, and how far ahead.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-field sc-field-compact"><span>Timezone</span><input name="timezone" value="{{ page.timezone }}" placeholder="Asia/Kolkata"></label>
+          <div class="sc-week-grid">
+            <div class="sc-week-row"><label><input type="checkbox" name="mon_enabled" {% if page.availability.mon.enabled %}checked{% endif %}><strong>Mon</strong></label><input type="time" name="mon_start" value="{{ page.availability.mon.start }}"><span>–</span><input type="time" name="mon_end" value="{{ page.availability.mon.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="tue_enabled" {% if page.availability.tue.enabled %}checked{% endif %}><strong>Tue</strong></label><input type="time" name="tue_start" value="{{ page.availability.tue.start }}"><span>–</span><input type="time" name="tue_end" value="{{ page.availability.tue.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="wed_enabled" {% if page.availability.wed.enabled %}checked{% endif %}><strong>Wed</strong></label><input type="time" name="wed_start" value="{{ page.availability.wed.start }}"><span>–</span><input type="time" name="wed_end" value="{{ page.availability.wed.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="thu_enabled" {% if page.availability.thu.enabled %}checked{% endif %}><strong>Thu</strong></label><input type="time" name="thu_start" value="{{ page.availability.thu.start }}"><span>–</span><input type="time" name="thu_end" value="{{ page.availability.thu.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="fri_enabled" {% if page.availability.fri.enabled %}checked{% endif %}><strong>Fri</strong></label><input type="time" name="fri_start" value="{{ page.availability.fri.start }}"><span>–</span><input type="time" name="fri_end" value="{{ page.availability.fri.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="sat_enabled" {% if page.availability.sat.enabled %}checked{% endif %}><strong>Sat</strong></label><input type="time" name="sat_start" value="{{ page.availability.sat.start }}"><span>–</span><input type="time" name="sat_end" value="{{ page.availability.sat.end }}"></div>
+            <div class="sc-week-row"><label><input type="checkbox" name="sun_enabled" {% if page.availability.sun.enabled %}checked{% endif %}><strong>Sun</strong></label><input type="time" name="sun_start" value="{{ page.availability.sun.start }}"><span>–</span><input type="time" name="sun_end" value="{{ page.availability.sun.end }}"></div>
+          </div>
+          <div class="sc-grid-2 sc-grid-tight">
+            <label class="sc-field"><span>Bookable up to</span><div class="sc-input-suffix"><input type="number" min="1" max="365" name="bookable_days" value="{{ page.bookable_days }}"><b>days</b></div></label>
+            <label class="sc-field"><span>Minimum notice</span><div class="sc-input-suffix"><input type="number" min="0" name="minimum_notice_minutes" value="{{ page.minimum_notice_minutes }}"><b>minutes</b></div></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-clock"></i></span><span><strong>Slot Logic</strong><small>How time slots are generated within your hours.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-grid-3">
+            <label class="sc-field"><span>Slot duration</span><select name="slot_duration_minutes"><option value="15" {% if page.slot_duration_minutes == 15 %}selected{% endif %}>15 minutes</option><option value="20" {% if page.slot_duration_minutes == 20 %}selected{% endif %}>20 minutes</option><option value="30" {% if page.slot_duration_minutes == 30 %}selected{% endif %}>30 minutes</option><option value="45" {% if page.slot_duration_minutes == 45 %}selected{% endif %}>45 minutes</option><option value="60" {% if page.slot_duration_minutes == 60 %}selected{% endif %}>60 minutes</option><option value="90" {% if page.slot_duration_minutes == 90 %}selected{% endif %}>90 minutes</option><option value="120" {% if page.slot_duration_minutes == 120 %}selected{% endif %}>120 minutes</option></select></label>
+            <label class="sc-field"><span>Max slots per day</span><input type="number" min="1" max="200" name="max_slots_per_day" value="{{ page.max_slots_per_day }}"></label>
+            <label class="sc-field"><span>Bookings allowed per slot</span><input type="number" min="1" max="100" name="bookings_per_slot" value="{{ page.bookings_per_slot }}"></label>
+            <label class="sc-field"><span>Buffer before</span><div class="sc-input-suffix"><input type="number" min="0" name="buffer_before_minutes" value="{{ page.buffer_before_minutes }}"><b>min</b></div></label>
+            <label class="sc-field"><span>Buffer after</span><div class="sc-input-suffix"><input type="number" min="0" name="buffer_after_minutes" value="{{ page.buffer_after_minutes }}"><b>min</b></div></label>
+          </div>
+          <div class="sc-info-strip sc-info-blue"><i class="ti ti-sparkles"></i><span><strong>Live slot contract:</strong> SHVYA availability − blocked time − active bookings − Google busy time − buffers.</span></div>
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-calendar-x"></i></span><span><strong>Blocking</strong><small>Temporarily block days or ranges from booking.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-block-list">{% for block in page.blocks.all %}<div class="sc-block-row"><div><strong>{{ block.starts_at|date:"d M Y, g:i A" }} → {{ block.ends_at|date:"d M Y, g:i A" }}</strong><span>{{ block.reason|default:"Blocked" }}</span></div><button class="sc-icon-button sc-danger" type="submit" formaction="{% url 'shvya_calendar:block_delete' page_id=page.id block_id=block.id %}" formmethod="post" formnovalidate aria-label="Delete blocked range"><i class="ti ti-trash"></i></button></div>{% empty %}<p class="sc-muted">No blocked ranges.</p>{% endfor %}</div>
+        </div>
+      </details>
+
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-brand-google"></i></span><span><strong>Calendar & Meeting</strong><small>Read Google busy time, create the event and generate a unique Meet link.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          {% if google_connection %}
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div>{% if page.host_id == request.crm_user.id %}<button class="sc-button sc-button-small" type="submit" formaction="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}" formmethod="post" formnovalidate>Disconnect</button>{% else %}<span class="sc-status sc-status-published">Connected by host</span>{% endif %}</div>
+          {% elif page.host_id == request.crm_user.id and google_configured %}
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>Required for conflict checking and automatic Google Meet creation.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
+          {% elif not google_configured %}
+            <div class="sc-alert">Google Calendar OAuth is not configured on this SHVYA server yet. Add GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET to enable connection.</div>
+          {% else %}
+            <div class="sc-alert">The selected host must sign in to SHVYA and connect their own Google Calendar.</div>
+          {% endif %}
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Meeting location</span><select name="meeting_location"><option value="google_meet" {% if page.meeting_location == 'google_meet' %}selected{% endif %}>Google Meet · automatic unique link</option><option value="phone" {% if page.meeting_location == 'phone' %}selected{% endif %}>Phone call</option><option value="in_person" {% if page.meeting_location == 'in_person' %}selected{% endif %}>In person</option><option value="custom" {% if page.meeting_location == 'custom' %}selected{% endif %}>Custom meeting link</option><option value="none" {% if page.meeting_location == 'none' %}selected{% endif %}>No meeting location</option></select></label>
+            <label class="sc-field"><span>Custom meeting link</span><input type="url" name="custom_meeting_link" value="{{ page.custom_meeting_link }}" placeholder="https://…"></label>
+          </div>
+          <label class="sc-toggle-row"><span><strong>Invite lead to Google event</strong><small>If the lead form collects email, Google sends the calendar invite and updates.</small></span><input type="checkbox" name="invite_lead_to_event" {% if page.invite_lead_to_event %}checked{% endif %}></label>
+        </div>
+      </details>
+
+      <div class="sc-sticky-save"><span>Availability is always rechecked on the server before booking.</span><button class="sc-button sc-button-primary" type="submit">Save Scheduling</button></div>
+    </form>
+
+    <form method="post" action="{% url 'shvya_calendar:block_add' page_id=page.id %}" class="sc-inline-panel">
+      {% csrf_token %}
+      <div><strong>Add blocked range</strong><span>Use the server's configured timezone for this temporary block.</span></div>
+      <input type="datetime-local" name="starts_at" required><span>to</span><input type="datetime-local" name="ends_at" required><input name="reason" maxlength="160" placeholder="Reason"><button class="sc-button" type="submit">Block</button>
+    </form>
+  </section>

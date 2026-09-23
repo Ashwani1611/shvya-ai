@@ -8,7 +8,7 @@ from apps.accounts.models import User
 from apps.channels.models import WhatsAppAccount
 from apps.crm.authentication import crm_login_required
 from apps.teams.models import Team, TeamMembership
-from services.teams.team_service import (
+from apps.teams.services.team_service import (
     CrossOrganizationMembershipError,
     DuplicateMembershipError,
     DuplicateTeamError,
@@ -18,7 +18,7 @@ from services.teams.team_service import (
     set_member_role,
     update_team,
 )
-from services.teams.whatsapp_connections import member_whatsapp_connections
+from apps.teams.services.whatsapp_connections import member_whatsapp_connections
 
 
 def _can_manage(user):

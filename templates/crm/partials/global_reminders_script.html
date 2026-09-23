@@ -1,0 +1,272 @@
+<!-- ============================================================
+     INLINE EDIT SCRIPT
+     ============================================================ -->
+
+<script>
+
+(function () {
+
+    /* ========================================================
+       REMINDER FILTERS
+       ======================================================== */
+
+    function updateReminderFilterUi(filter) {
+
+        const sections =
+            document.querySelectorAll(
+                '[data-reminder-section]'
+            );
+
+        const tiles =
+            document.querySelectorAll(
+                '[data-reminder-filter]'
+            );
+
+        const clearButton =
+            document.querySelector(
+                '[data-reminder-filter-clear]'
+            );
+
+
+        sections.forEach(
+            function (section) {
+
+                const sectionFilter =
+                    section.dataset.reminderSection;
+
+                const shouldShow =
+                    !filter ||
+                    filter === 'all' ||
+                    sectionFilter === filter;
+
+                section.classList.toggle(
+                    'hidden',
+                    !shouldShow
+                );
+
+            }
+        );
+
+
+        tiles.forEach(
+            function (tile) {
+
+                const isActive =
+                    tile.dataset.reminderFilter === filter;
+
+                tile.classList.toggle(
+                    'active',
+                    isActive
+                );
+
+                tile.setAttribute(
+                    'aria-pressed',
+                    isActive ? 'true' : 'false'
+                );
+
+            }
+        );
+
+
+        if (clearButton) {
+
+            clearButton.classList.toggle(
+                'hidden',
+                !filter || filter === 'all'
+            );
+
+        }
+
+    }
+
+
+    function toggleReminderFilter(filter) {
+
+        const activeTile =
+            document.querySelector(
+                '[data-reminder-filter="' +
+                filter +
+                '"].active'
+            );
+
+        if (activeTile) {
+
+            updateReminderFilterUi(
+                'all'
+            );
+
+        } else {
+
+            updateReminderFilterUi(
+                filter
+            );
+
+        }
+
+    }
+
+
+    document.addEventListener(
+        'click',
+        function (event) {
+
+            const tile =
+                event.target.closest(
+                    '[data-reminder-filter]'
+                );
+
+            if (tile) {
+
+                toggleReminderFilter(
+                    tile.dataset.reminderFilter
+                );
+
+                return;
+
+            }
+
+
+            const clearButton =
+                event.target.closest(
+                    '[data-reminder-filter-clear]'
+                );
+
+            if (clearButton) {
+
+                updateReminderFilterUi(
+                    'all'
+                );
+
+            }
+
+        }
+    );
+
+
+    document.addEventListener(
+        'keydown',
+        function (event) {
+
+            if (
+                event.key !== 'Enter' &&
+                event.key !== ' '
+            ) {
+                return;
+            }
+
+            const tile =
+                event.target.closest(
+                    '[data-reminder-filter]'
+                );
+
+            if (!tile) {
+                return;
+            }
+
+            event.preventDefault();
+
+            toggleReminderFilter(
+                tile.dataset.reminderFilter
+            );
+
+        }
+    );
+
+
+    /* ========================================================
+       INLINE EDIT
+       ======================================================== */
+
+    function openEditor(
+        reminderId
+    ) {
+
+        const panel =
+            document.getElementById(
+                'global-reminder-edit-' +
+                reminderId
+            );
+
+        if (!panel) {
+            return;
+        }
+
+        panel.classList.remove(
+            'hidden'
+        );
+
+        const input =
+            document.getElementById(
+                'global-reminder-time-' +
+                reminderId
+            );
+
+        if (input) {
+
+            input.focus();
+
+        }
+
+    }
+
+
+    function closeEditor(
+        reminderId
+    ) {
+
+        const panel =
+            document.getElementById(
+                'global-reminder-edit-' +
+                reminderId
+            );
+
+        if (!panel) {
+            return;
+        }
+
+        panel.classList.add(
+            'hidden'
+        );
+
+    }
+
+
+    document.addEventListener(
+        'click',
+        function (event) {
+
+            const editButton =
+                event.target.closest(
+                    '[data-edit-reminder]'
+                );
+
+            if (editButton) {
+
+                openEditor(
+                    editButton.dataset.editReminder
+                );
+
+                return;
+
+            }
+
+
+            const cancelButton =
+                event.target.closest(
+                    '[data-cancel-reminder]'
+                );
+
+            if (cancelButton) {
+
+                closeEditor(
+                    cancelButton.dataset.cancelReminder
+                );
+
+            }
+
+        }
+    );
+
+})();
+
+</script>

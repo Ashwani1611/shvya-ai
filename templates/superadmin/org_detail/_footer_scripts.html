@@ -1,0 +1,286 @@
+<!-- =========================================================
+     NEXT STEPS NOTICE
+========================================================= -->
+
+<div class="mt-6 p-4 border border-indigo-100 bg-indigo-50 rounded-lg">
+
+    <div class="text-sm font-medium text-indigo-800">
+        Superadmin Control Center
+    </div>
+
+    <div class="text-xs text-indigo-700 mt-1">
+        Organization-level controls will be added incrementally:
+        editing, payments, users, pipelines, login links,
+        password reset, account enable/disable, and analytics.
+    </div>
+
+</div>
+
+<script>
+
+function openResetPasswordModal() {
+
+    const modal = document.getElementById(
+        "resetPasswordModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.remove("hidden");
+
+    document.body.classList.add(
+        "overflow-hidden"
+    );
+}
+
+
+function closeResetPasswordModal() {
+
+    const modal = document.getElementById(
+        "resetPasswordModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add("hidden");
+
+    document.body.classList.remove(
+        "overflow-hidden"
+    );
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Escape") {
+
+            closeResetPasswordModal();
+
+        }
+
+    }
+);
+
+</script>
+
+<script>
+
+function getCookie(name) {
+
+    const cookies = document.cookie ? document.cookie.split(";") : [];
+
+    for (const cookie of cookies) {
+        const trimmed = cookie.trim();
+
+        if (trimmed.startsWith(name + "=")) {
+            return decodeURIComponent(
+                trimmed.substring(name.length + 1)
+            );
+        }
+    }
+
+    return "";
+}
+
+
+function openGenerateLoginLinkModal() {
+
+    const modal = document.getElementById(
+        "generateLoginLinkModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.remove("hidden");
+
+    document.body.classList.add("overflow-hidden");
+}
+
+
+function closeGenerateLoginLinkModal() {
+
+    const modal = document.getElementById(
+        "generateLoginLinkModal"
+    );
+
+    if (!modal) {
+        return;
+    }
+
+    modal.classList.add("hidden");
+
+    document.body.classList.remove("overflow-hidden");
+}
+
+
+async function generateLoginLink() {
+
+    const organizationId = "{{ organization.id }}";
+
+    const button = document.getElementById(
+        "generateLoginLinkButton"
+    );
+
+    if (!organizationId) {
+        alert("Organization ID is missing.");
+        return;
+    }
+
+    const url =
+        "{% url 'superadmin-organization-generate-login-link' organization_id=organization.id %}";
+
+    if (button) {
+        button.disabled = true;
+        button.classList.add("opacity-60", "cursor-wait");
+        button.textContent = "Generating...";
+    }
+
+    try {
+
+        const response = await fetch(
+            url,
+            {
+                method: "POST",
+                headers: {
+                    "X-CSRFToken": getCookie("csrftoken"),
+                    "X-Requested-With": "XMLHttpRequest",
+                    "Accept": "application/json",
+                },
+                credentials: "same-origin",
+            }
+        );
+
+        const contentType =
+            response.headers.get("content-type") || "";
+
+        const data = contentType.includes("application/json")
+            ? await response.json()
+            : {
+                success: false,
+                error: await response.text(),
+            };
+
+        if (!response.ok || !data.success) {
+
+            alert(
+                data.error ||
+                "Unable to generate login link."
+            );
+
+            return;
+        }
+
+        const linkField = document.getElementById(
+            "generatedLoginLink"
+        );
+
+        const userField = document.getElementById(
+            "generateLoginLinkUser"
+        );
+
+        if (linkField) {
+            linkField.value = data.login_url || "";
+        }
+
+        if (userField) {
+            userField.textContent =
+                "User: " +
+                (data.user_name || data.user_email || "—") +
+                " • Valid for 5 minutes";
+        }
+
+        openGenerateLoginLinkModal();
+
+    } catch (error) {
+
+        console.error(
+            "Generate Login Link error:",
+            error
+        );
+
+        alert(
+            "An unexpected error occurred while generating the login link."
+        );
+
+    } finally {
+
+        if (button) {
+            button.disabled = false;
+            button.classList.remove("opacity-60", "cursor-wait");
+            button.textContent = "Generate Login Link";
+        }
+    }
+}
+
+
+async function copyGeneratedLoginLink() {
+
+    const linkField = document.getElementById(
+        "generatedLoginLink"
+    );
+
+    if (!linkField || !linkField.value) {
+        alert("No login link is available to copy.");
+        return;
+    }
+
+    try {
+
+        await navigator.clipboard.writeText(
+            linkField.value
+        );
+
+        alert("Login link copied to clipboard.");
+
+    } catch (error) {
+
+        linkField.focus();
+        linkField.select();
+
+        alert(
+            "Clipboard access was blocked. The link has been selected; press Ctrl+C to copy it."
+        );
+    }
+}
+
+
+function openGeneratedLoginLink() {
+
+    const linkField = document.getElementById(
+        "generatedLoginLink"
+    );
+
+    const loginUrl = linkField ? linkField.value.trim() : "";
+
+    if (!loginUrl) {
+        alert("No login link is available.");
+        return;
+    }
+
+    window.open(
+        loginUrl,
+        "_blank",
+        "noopener,noreferrer"
+    );
+}
+
+
+document.addEventListener(
+    "keydown",
+    function(event) {
+
+        if (event.key === "Escape") {
+            closeGenerateLoginLinkModal();
+        }
+    }
+);
+
+</script>

@@ -140,7 +140,6 @@ SIMPLE_JWT = {
 INSTALLED_APPS = [
     *INSTALLED_APPS,
     "django.contrib.postgres",
-    "apps.hosted_automation",
 ]
 
 

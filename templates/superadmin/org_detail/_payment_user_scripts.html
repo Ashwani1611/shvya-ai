@@ -1,0 +1,512 @@
+<!-- =========================================================
+     STEP 3G PAYMENT JAVASCRIPT
+========================================================= -->
+
+<script>
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    /*
+     * ---------------------------------------------------------
+     * CREATE USER MODAL — STEP 4D.3
+     * ---------------------------------------------------------
+     */
+
+    const createUserModal = document.getElementById("createUserModal");
+    const openCreateUserButton = document.getElementById("openCreateUserModal");
+    const closeCreateUserButton = document.getElementById("closeCreateUserModal");
+    const cancelCreateUserButton = document.getElementById("cancelCreateUserModal");
+
+    function openCreateUserModal() {
+        if (!createUserModal) return;
+        createUserModal.classList.remove("hidden");
+        document.body.classList.add("overflow-hidden");
+    }
+
+    function closeCreateUserModal() {
+        if (!createUserModal) return;
+        createUserModal.classList.add("hidden");
+        document.body.classList.remove("overflow-hidden");
+    }
+
+    if (openCreateUserButton) openCreateUserButton.addEventListener("click", openCreateUserModal);
+    if (closeCreateUserButton) closeCreateUserButton.addEventListener("click", closeCreateUserModal);
+    if (cancelCreateUserButton) cancelCreateUserButton.addEventListener("click", closeCreateUserModal);
+
+    const createUserBackdrop = document.querySelector("[data-close-create-user]");
+    if (createUserBackdrop) createUserBackdrop.addEventListener("click", closeCreateUserModal);
+
+
+    /*
+     * ---------------------------------------------------------
+     * BALANCE CALCULATION
+     * ---------------------------------------------------------
+     */
+
+    const balanceContainer = document.querySelector(
+        "[data-total-sale]"
+    );
+
+    const balanceElement = document.getElementById(
+        "paymentBalance"
+    );
+
+    if (balanceContainer && balanceElement) {
+
+        const totalSale = parseFloat(
+            balanceContainer.dataset.totalSale || "0"
+        );
+
+        const totalPaid = parseFloat(
+            balanceContainer.dataset.totalPaid || "0"
+        );
+
+        const balance = Math.max(
+            totalSale - totalPaid,
+            0
+        );
+
+        balanceElement.textContent =
+            "₹" + balance.toFixed(2);
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * ADD PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const addModal = document.getElementById(
+        "addPaymentModal"
+    );
+
+    const openAddButton = document.getElementById(
+        "openAddPaymentModal"
+    );
+
+    const closeAddButton = document.getElementById(
+        "closeAddPaymentModal"
+    );
+
+    const cancelAddButton = document.getElementById(
+        "cancelAddPaymentModal"
+    );
+
+
+    function openAddPaymentModal() {
+
+        if (!addModal) {
+            return;
+        }
+
+        addModal.classList.remove("hidden");
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeAddPaymentModal() {
+
+        if (!addModal) {
+            return;
+        }
+
+        addModal.classList.add("hidden");
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    if (openAddButton) {
+
+        openAddButton.addEventListener(
+            "click",
+            openAddPaymentModal
+        );
+
+    }
+
+
+    if (closeAddButton) {
+
+        closeAddButton.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    if (cancelAddButton) {
+
+        cancelAddButton.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    const addBackdrop = document.querySelector(
+        "[data-close-add-payment]"
+    );
+
+    if (addBackdrop) {
+
+        addBackdrop.addEventListener(
+            "click",
+            closeAddPaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * EDIT PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const editModal = document.getElementById(
+        "editPaymentModal"
+    );
+
+    const editForm = document.getElementById(
+        "editPaymentForm"
+    );
+
+    const editAmount = document.getElementById(
+        "edit_payment_amount"
+    );
+
+    const editDate = document.getElementById(
+        "edit_payment_date"
+    );
+
+    const editMethod = document.getElementById(
+        "edit_payment_method"
+    );
+
+    const editReference = document.getElementById(
+        "edit_payment_reference"
+    );
+
+    const editNotes = document.getElementById(
+        "edit_payment_notes"
+    );
+
+
+    function openEditPaymentModal(
+        paymentId
+    ) {
+
+        const row = document.querySelector(
+            '[data-payment-row="' +
+            paymentId +
+            '"]'
+        );
+
+        if (!row || !editModal || !editForm) {
+            return;
+        }
+
+
+        const amount =
+            row.dataset.paymentAmount || "";
+
+        const date =
+            row.dataset.paymentDate || "";
+
+        const method =
+            row.dataset.paymentMethod || "other";
+
+        const reference =
+            row.dataset.paymentReference || "";
+
+        const notes =
+            row.dataset.paymentNotes || "";
+
+
+        editAmount.value = amount;
+
+        editDate.value = date;
+
+        editMethod.value = method;
+
+        editReference.value = reference;
+
+        editNotes.value = notes;
+
+
+        editForm.action =
+            "{% url 'superadmin-organization-payment-edit' organization_id=organization.id payment_id=0 %}"
+            .replace(
+                "/0/edit/",
+                "/" + paymentId + "/edit/"
+            );
+
+
+        editModal.classList.remove(
+            "hidden"
+        );
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeEditPaymentModal() {
+
+        if (!editModal) {
+            return;
+        }
+
+        editModal.classList.add(
+            "hidden"
+        );
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    document.querySelectorAll(
+        ".editPaymentButton"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                openEditPaymentModal(
+                    button.dataset.paymentId
+                );
+
+            }
+        );
+
+    });
+
+
+    const closeEditButton = document.getElementById(
+        "closeEditPaymentModal"
+    );
+
+    const cancelEditButton = document.getElementById(
+        "cancelEditPaymentModal"
+    );
+
+
+    if (closeEditButton) {
+
+        closeEditButton.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    if (cancelEditButton) {
+
+        cancelEditButton.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    const editBackdrop = document.querySelector(
+        "[data-close-edit-payment]"
+    );
+
+    if (editBackdrop) {
+
+        editBackdrop.addEventListener(
+            "click",
+            closeEditPaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * DELETE PAYMENT MODAL
+     * ---------------------------------------------------------
+     */
+
+    const deleteModal = document.getElementById(
+        "deletePaymentModal"
+    );
+
+    const deleteForm = document.getElementById(
+        "deletePaymentForm"
+    );
+
+    const deleteAmount = document.getElementById(
+        "deletePaymentAmount"
+    );
+
+    const deleteDate = document.getElementById(
+        "deletePaymentDate"
+    );
+
+
+    function openDeletePaymentModal(
+        paymentId,
+        amount,
+        date
+    ) {
+
+        if (!deleteModal || !deleteForm) {
+            return;
+        }
+
+
+        deleteAmount.textContent =
+            "₹" + amount;
+
+        deleteDate.textContent =
+            date;
+
+
+        deleteForm.action =
+            "{% url 'superadmin-organization-payment-delete' organization_id=organization.id payment_id=0 %}"
+            .replace(
+                "/0/delete/",
+                "/" + paymentId + "/delete/"
+            );
+
+
+        deleteModal.classList.remove(
+            "hidden"
+        );
+
+        document.body.classList.add(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    function closeDeletePaymentModal() {
+
+        if (!deleteModal) {
+            return;
+        }
+
+        deleteModal.classList.add(
+            "hidden"
+        );
+
+        document.body.classList.remove(
+            "overflow-hidden"
+        );
+
+    }
+
+
+    document.querySelectorAll(
+        ".deletePaymentButton"
+    ).forEach(function (button) {
+
+        button.addEventListener(
+            "click",
+            function () {
+
+                openDeletePaymentModal(
+                    button.dataset.paymentId,
+                    button.dataset.paymentAmount,
+                    button.dataset.paymentDate
+                );
+
+            }
+        );
+
+    });
+
+
+    const closeDeleteButton = document.getElementById(
+        "closeDeletePaymentModal"
+    );
+
+    const cancelDeleteButton = document.getElementById(
+        "cancelDeletePaymentModal"
+    );
+
+
+    if (closeDeleteButton) {
+
+        closeDeleteButton.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    if (cancelDeleteButton) {
+
+        cancelDeleteButton.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    const deleteBackdrop = document.querySelector(
+        "[data-close-delete-payment]"
+    );
+
+    if (deleteBackdrop) {
+
+        deleteBackdrop.addEventListener(
+            "click",
+            closeDeletePaymentModal
+        );
+
+    }
+
+
+    /*
+     * ---------------------------------------------------------
+     * ESCAPE KEY
+     * ---------------------------------------------------------
+     */
+
+    document.addEventListener(
+        "keydown",
+        function (event) {
+
+            if (event.key !== "Escape") {
+                return;
+            }
+
+
+            closeAddPaymentModal();
+
+            closeEditPaymentModal();
+
+            closeDeletePaymentModal();
+
+        }
+    );
+
+});
+
+</script>

@@ -739,10 +739,10 @@ def test_ai_response_policy(*, identity, arguments):
     raw = str(getattr(info, "ai_playbook", "") or "")
     policy = compile_engagement_instruction_policy(raw)
 
-    from apps.integrations.operations_extended_tools import (
+    from apps.integrations.operations.tools.qualification import (
         _qualification_public_snapshot,
-        simulate_ai_conversation,
     )
+    from apps.integrations.operations.tools.simulations import simulate_ai_conversation
 
     qualification = _qualification_public_snapshot(organization)
     issues = []

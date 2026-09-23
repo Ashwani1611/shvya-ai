@@ -1,0 +1,111 @@
+<section class="sc-tab-panel" data-tab-panel="lead">
+    <form method="post" enctype="multipart/form-data" action="{% url 'shvya_calendar:save' page_id=page.id %}" id="sc-lead-form">
+      {% csrf_token %}<input type="hidden" name="section" value="lead">
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-layout-sidebar-left-collapse"></i></span><span><strong>Page Introduction</strong><small>The heading, identity and highlights shown beside the form.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Page name</span><input name="name" maxlength="120" value="{{ page.name }}" required></label>
+            <label class="sc-field"><span>Public slug</span><div class="sc-input-prefix"><b>/calendar/…/</b><input name="slug" maxlength="120" value="{{ page.slug }}" required></div></label>
+            <label class="sc-field"><span>Page type</span><select name="page_type"><option value="lead" {% if page.page_type == 'lead' %}selected{% endif %}>Lead capture only</option><option value="booking" {% if page.page_type == 'booking' %}selected{% endif %}>Booking</option><option value="lead_booking" {% if page.page_type == 'lead_booking' %}selected{% endif %}>Lead capture + booking</option></select></label>
+            <label class="sc-field"><span>Accent color</span><div class="sc-color-input"><input type="color" value="{{ page.accent_color }}" data-color-picker><input name="accent_color" value="{{ page.accent_color }}" data-color-text></div></label>
+            <label class="sc-field"><span>Page language</span><select name="language"><option value="en" {% if page.language == 'en' %}selected{% endif %}>English</option><option value="hi" {% if page.language == 'hi' %}selected{% endif %}>Hindi</option></select></label>
+            <div class="sc-field sc-field-wide">
+              <span>Brand logo</span>
+              <label class="sc-logo-upload" for="sc-logo-file">
+                <input id="sc-logo-file" type="file" name="logo_file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                <span class="sc-logo-preview" data-logo-preview>
+                  {% if page.logo_display_url %}
+                    <img src="{{ page.logo_display_url }}" alt="{{ page.organization.name }} logo">
+                  {% else %}
+                    <i class="ti ti-cloud-upload"></i>
+                  {% endif %}
+                </span>
+                <span class="sc-logo-copy">
+                  <strong>{% if page.logo_display_url %}Replace logo{% else %}Upload logo{% endif %}</strong>
+                  <small data-logo-filename>Recommended 400 × 120 px · PNG, JPG/JPEG or WebP · up to 2 MB</small>
+                </span>
+                <span class="sc-button sc-button-small">Choose file</span>
+              </label>
+              {% if page.logo_display_url %}
+                <label class="sc-logo-remove"><input type="checkbox" name="remove_logo"> Remove current logo</label>
+              {% endif %}
+              <label class="sc-field sc-logo-url-fallback"><span>Or use an external logo URL</span><input type="url" name="logo_url" value="{{ page.logo_url }}" placeholder="https://example.com/logo.png"><small>Uploaded logo is preferred. For the sharpest result use about 400 × 120 px (roughly 10:3). External URL remains available as a fallback.</small></label>
+            </div>
+            <label class="sc-field"><span>Heading</span><input name="intro_title" maxlength="120" value="{{ page.intro_title }}" placeholder="Book a product demo"></label>
+            <label class="sc-field"><span>Description</span><textarea name="intro_description" rows="3" placeholder="A short reason to book.">{{ page.intro_description }}</textarea></label>
+            <label class="sc-field sc-field-wide"><span>Highlights</span><textarea name="intro_highlights" rows="4" placeholder="AI-powered follow-up&#10;30-minute product walkthrough&#10;Questions answered live">{% for item in page.intro_highlights %}{{ item }}{% if not forloop.last %}&#10;{% endif %}{% endfor %}</textarea><small>One public-page highlight per line.</small></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-list-check"></i></span><span><strong>Lead Form Fields</strong><small>Branding and CRM-safe information collected from leads.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-core-label">Core fields <span>· always collected</span></div>
+          <div class="sc-core-fields">
+            <div class="sc-locked-field"><i class="ti ti-user"></i><strong>Name</strong><span>REQUIRED</span><i class="ti ti-lock"></i></div>
+            <div class="sc-locked-field"><i class="ti ti-phone"></i><strong>Mobile</strong><span>REQUIRED</span><i class="ti ti-lock"></i></div>
+          </div>
+          <div class="sc-subhead-row"><div><strong>Additional fields</strong><span>Each field is allowlisted by the published page version.</span></div><button class="sc-button" type="button" data-open-field-drawer><i class="ti ti-plus"></i> Add field</button></div>
+          <div id="sc-field-list" class="sc-builder-list"></div>
+          <input type="hidden" name="form_schema" id="sc-form-schema" value="[]">
+          {{ page.form_schema|json_script:"sc-initial-schema" }}
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-route"></i></span><span><strong>CRM & Lead Creation</strong><small>Where new leads enter your organization's CRM.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Pipeline *</span><select name="pipeline" id="sc-pipeline" required><option value="">Choose pipeline</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if page.pipeline_id == pipeline.id %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select></label>
+            <label class="sc-field"><span>Initial stage *</span><select name="stage" id="sc-stage" required><option value="">Choose stage</option>{% for stage in stages %}<option value="{{ stage.id }}" data-pipeline="{{ stage.pipeline_id }}" {% if page.stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>{% endfor %}</select></label>
+            <label class="sc-field"><span>Booking host</span><select name="host"><option value="">Choose host</option>{% for member in organization_users %}<option value="{{ member.id }}" {% if page.host_id == member.id %}selected{% endif %}>{{ member.name|default:member.email }} · {{ member.email }}</option>{% endfor %}</select></label>
+            <label class="sc-field"><span>Lead source</span><input value="SHVYA Calendar" disabled><small>New calendar leads are permanently attributed to SHVYA Calendar.</small></label>
+            <label class="sc-field"><span>Lead name prefix</span><input name="lead_name_prefix" maxlength="60" value="{{ page.lead_name_prefix }}" placeholder="e.g. Demo - "><small>Applied only when a new lead is created. Existing lead names stay untouched.</small></label>
+          </div>
+          <div class="sc-info-strip"><i class="ti ti-shield-check"></i><span>Existing leads keep their current pipeline, stage and phone. New leads use the routing above.</span></div>
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-copy-check"></i></span><span><strong>Duplicate Handling</strong><small>Protect your CRM from duplicate lead records.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>When mobile already exists</span><select name="duplicate_behavior"><option value="use_existing" {% if page.duplicate_behavior == 'use_existing' %}selected{% endif %}>Use existing lead</option><option value="block" {% if page.duplicate_behavior == 'block' %}selected{% endif %}>Block duplicate submission</option></select></label>
+            <label class="sc-field"><span>CRM update policy</span><select name="attribute_update_policy"><option value="fill_blank" {% if page.attribute_update_policy == 'fill_blank' %}selected{% endif %}>Fill blank CRM values only</option><option value="overwrite" {% if page.attribute_update_policy == 'overwrite' %}selected{% endif %}>Replace mapped CRM values</option><option value="submission_only" {% if page.attribute_update_policy == 'submission_only' %}selected{% endif %}>Store form response only</option></select></label>
+          </div>
+          <label class="sc-toggle-row"><span><strong>Also match by email</strong><small>Used only when no mobile match exists. Ambiguous email matches are never merged automatically.</small></span><input type="checkbox" name="duplicate_match_email" {% if page.duplicate_match_email %}checked{% endif %}></label>
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-bell"></i></span><span><strong>Internal Notifications</strong><small>Tell the right people when a lead submits this page.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-toggle-row"><span><strong>Notify booking host</strong><small>Email the selected host when a lead is captured.</small></span><input type="checkbox" name="notify_host_on_submission" {% if page.notify_host_on_submission %}checked{% endif %}></label>
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Notify by role</span><select name="notify_roles" multiple size="3"><option value="admin" {% if 'admin' in page.notify_roles %}selected{% endif %}>Organization Admins</option><option value="agent" {% if 'agent' in page.notify_roles %}selected{% endif %}>Agents</option></select><small>Role recipients are always resolved inside this organization.</small></label>
+            <label class="sc-field"><span>Additional organization users</span><select name="notify_user_ids" multiple size="5">{% for member in organization_users %}<option value="{{ member.id }}" {% if member.id|stringformat:"s" in page.notify_user_ids %}selected{% endif %}>{{ member.name|default:member.email }} · {{ member.email }}</option>{% endfor %}</select><small>Only active users from this organization can be selected.</small></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-adjustments-horizontal"></i></span><span><strong>Form Settings & Security</strong><small>Submission behaviour, consent and abuse protection.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-field sc-field-wide"><span>Submit button text</span><input name="submit_button_text" maxlength="80" value="{{ page.submit_button_text }}" placeholder="Continue to scheduling"></label>
+          <label class="sc-toggle-row"><span><strong>Show consent checkbox</strong><small>Consent text is snapshotted with the published page and submission.</small></span><input type="checkbox" name="consent_enabled" {% if page.consent_enabled %}checked{% endif %}></label>
+          <label class="sc-field sc-field-wide"><span>Consent text</span><textarea name="consent_text" maxlength="300">{{ page.consent_text }}</textarea></label>
+          <label class="sc-toggle-row"><span><strong>Send lead acknowledgement email</strong><small>Uses the email field mapped in this form. Useful for lead-only pages and enquiries.</small></span><input type="checkbox" name="acknowledgement_enabled" {% if page.acknowledgement_enabled %}checked{% endif %}></label>
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Acknowledgement subject</span><input name="acknowledgement_subject" maxlength="180" value="{{ page.acknowledgement_subject }}"></label>
+            <label class="sc-field"><span>Variables</span><input value="&#123;&#123;lead.name&#125;&#125; · &#123;&#123;organization.name&#125;&#125; · &#123;&#123;page.name&#125;&#125;" disabled></label>
+            <label class="sc-field sc-field-wide"><span>Acknowledgement email</span><textarea name="acknowledgement_body" rows="5">{{ page.acknowledgement_body }}</textarea></label>
+          </div>
+          <div class="sc-security-grid"><div><i class="ti ti-shield-lock"></i><strong>Server allowlist</strong><span>Unknown form fields are rejected.</span></div><div><i class="ti ti-clock-shield"></i><strong>Rate limiting</strong><span>Public submissions are throttled per page and IP fingerprint.</span></div><div><i class="ti ti-user-check"></i><strong>Tenant isolation</strong><span>CRM mapping stays inside this organization.</span></div></div>
+        </div>
+      </details>
+
+      <div class="sc-sticky-save"><span>{% if page.status == 'published' %}Saving publishes a new immutable version.{% else %}Save your setup, then publish when ready.{% endif %}</span><button class="sc-button sc-button-primary" type="submit">Save Lead Form</button></div>
+    </form>
+  </section>

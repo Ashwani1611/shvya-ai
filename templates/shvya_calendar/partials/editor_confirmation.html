@@ -1,0 +1,29 @@
+<section class="sc-tab-panel" data-tab-panel="confirmation">
+    <form method="post" action="{% url 'shvya_calendar:save' page_id=page.id %}">
+      {% csrf_token %}<input type="hidden" name="section" value="confirmation">
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-circle-check"></i></span><span><strong>Success Message</strong><small>Shown once a booking is confirmed.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-field sc-field-wide"><span>Confirmation heading</span><input name="confirmation_heading" maxlength="80" value="{{ page.confirmation_heading }}"></label>
+          <label class="sc-field sc-field-wide"><span>Confirmation message</span><textarea name="confirmation_message" maxlength="250">{{ page.confirmation_message }}</textarea></label>
+          <div class="sc-token-row"><button type="button">&#123;&#123;lead.name&#125;&#125;</button><button type="button">&#123;&#123;lead.first_name&#125;&#125;</button><button type="button">&#123;&#123;lead.email&#125;&#125;</button><button type="button">&#123;&#123;booking.date&#125;&#125;</button><button type="button">&#123;&#123;booking.start_time&#125;&#125;</button><button type="button">&#123;&#123;booking.timezone&#125;&#125;</button><button type="button">&#123;&#123;booking.meeting_link&#125;&#125;</button><button type="button">&#123;&#123;organization.name&#125;&#125;</button></div>
+        </div>
+      </details>
+      <details class="sc-accordion" open>
+        <summary><span class="sc-summary-icon"><i class="ti ti-calendar-check"></i></span><span><strong>Booking Details</strong><small>The meeting summary shown on the confirmation screen.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-toggle-row"><span><strong>Show booking details</strong><small>Date, time, duration and timezone.</small></span><input type="checkbox" name="show_booking_details" {% if page.show_booking_details %}checked{% endif %}></label>
+          <div class="sc-booking-preview"><span class="sc-kicker">PREVIEW — WHAT THE LEAD SEES</span><div><div><span>Date</span><strong>22 Sep 2026</strong></div><div><span>Time</span><strong>12:00 PM</strong></div><div><span>Duration</span><strong>{{ page.slot_duration_minutes }} minutes</strong></div><div><span>Timezone</span><strong>{{ page.timezone }}</strong></div></div><aside><i class="ti ti-video"></i><span><strong>Google Meet</strong><small>Unique link generated after booking</small></span></aside></div>
+          <label class="sc-toggle-row"><span><strong>Show “Add to Calendar” button</strong><small>Shows the Google event link after successful sync.</small></span><input type="checkbox" name="show_add_calendar" {% if page.show_add_calendar %}checked{% endif %}></label>
+        </div>
+      </details>
+      <details class="sc-accordion">
+        <summary><span class="sc-summary-icon"><i class="ti ti-external-link"></i></span><span><strong>After Booking</strong><small>Optionally send leads to your own page after confirmation.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <div class="sc-accordion-body">
+          <label class="sc-toggle-row"><span><strong>Redirect button</strong><small>Show a button after the booking is safely confirmed.</small></span><input type="checkbox" name="redirect_enabled" {% if page.redirect_enabled %}checked{% endif %}></label>
+          <div class="sc-grid-2"><label class="sc-field"><span>Button text</span><input name="redirect_button_text" value="{{ page.redirect_button_text }}" placeholder="Go back to home"></label><label class="sc-field"><span>Redirect URL</span><input type="url" name="redirect_url" value="{{ page.redirect_url }}" placeholder="https://example.com"></label></div>
+        </div>
+      </details>
+      <div class="sc-sticky-save"><span>Redirects never run before the booking is confirmed.</span><button class="sc-button sc-button-primary" type="submit">Save Confirmation</button></div>
+    </form>
+  </section>

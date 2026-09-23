@@ -1,0 +1,72 @@
+<aside class="sc-drawer" id="sc-share-drawer" aria-hidden="true">
+    <div class="sc-drawer-backdrop" data-close-share></div>
+    <section class="sc-drawer-panel">
+      <header><div><span class="sc-kicker">PUBLISH & SHARE</span><h2>Share this calendar</h2></div><button class="sc-icon-button" type="button" data-close-share><i class="ti ti-x"></i></button></header>
+      <div class="sc-drawer-content">
+        <div class="sc-share-card">
+          {% if page.status == 'published' %}
+            <span class="sc-kicker">PUBLIC LINK · LIVE</span>
+            <strong>Lead capture + booking in one link</strong>
+            <div class="sc-copy-row"><input readonly value="{{ public_link }}" data-copy-source="public"><button class="sc-button" type="button" data-copy-target="public"><i class="ti ti-copy"></i> Copy</button></div>
+            <small>This link is live and can be shared with leads.</small>
+          {% else %}
+            <span class="sc-kicker">PREVIEW LINK · NOT PUBLIC</span>
+            <strong>Review the page before publishing</strong>
+            <div class="sc-copy-row"><input readonly value="{{ preview_link }}" data-copy-source="preview"><button class="sc-button" type="button" data-copy-target="preview"><i class="ti ti-copy"></i> Copy preview</button></div>
+            <small>The public URL will become live when Booking Page Status is published.</small>
+          {% endif %}
+        </div>
+        <div class="sc-share-card">
+          <span class="sc-kicker">WEBSITE EMBED</span>
+          <strong>Place the complete flow inside your website</strong>
+          <textarea readonly rows="6" data-copy-source="embed">{{ embed_code }}</textarea>
+          <button class="sc-button" type="button" data-copy-target="embed"><i class="ti ti-code"></i> Copy embed</button>
+          {% if page.status == 'published' %}
+            <small>Live now. The public flow is signed and does not depend on third-party CSRF cookies.</small>
+          {% else %}
+            <small>You can add this embed now. It will automatically become live when Booking Page Status is published.</small>
+          {% endif %}
+        </div>
+        <div class="sc-info-strip sc-info-blue"><i class="ti ti-shield-check"></i><span>Every submission still goes through the published field allowlist, tenant-scoped CRM mapping, duplicate handling and rate limits.</span></div>
+      </div>
+    </section>
+  </aside>
+
+  <aside class="sc-drawer" id="sc-field-drawer" aria-hidden="true">
+    <div class="sc-drawer-backdrop" data-close-drawer></div>
+    <section class="sc-drawer-panel">
+      <header><div><span class="sc-kicker">LEAD FORM</span><h2>Add field</h2></div><button class="sc-icon-button" type="button" data-close-drawer><i class="ti ti-x"></i></button></header>
+      <div class="sc-drawer-content">
+        <label class="sc-field"><span>Field label *</span><input id="sc-new-field-label" maxlength="80" placeholder="e.g. Budget"></label>
+        <label class="sc-field"><span>Map to CRM attribute *</span><select id="sc-new-field-map"><option value="submission" data-type="text">Submission only</option><option value="email" data-type="email">Email</option>{% for attribute in attributes %}<option value="attr:{{ attribute.key }}" data-type="{{ attribute.field_type }}">{{ attribute.name }}</option>{% endfor %}</select><small>Only this published mapping can write to CRM.</small></label>
+        <label class="sc-field"><span>Field type</span><select id="sc-new-field-type"><option value="text">Text</option><option value="textarea">Long text</option><option value="email">Email</option><option value="numeric">Number</option><option value="url">URL</option><option value="date">Date</option><option value="datetime">Date & time</option><option value="option">Option picker</option><option value="file">File upload</option></select></label>
+        <label class="sc-field"><span>Placeholder</span><input id="sc-new-field-placeholder" maxlength="100" placeholder="e.g. Enter your budget"></label>
+        <label class="sc-field sc-field-options" hidden><span>Options</span><textarea id="sc-new-field-options" rows="5" placeholder="Starter&#10;Growth&#10;Enterprise"></textarea><small>One option per line. Used for submission-only option fields; CRM option attributes use their existing CRM choices.</small></label>
+        <label class="sc-toggle-row"><span><strong>Required field</strong><small>Leads must fill this before continuing.</small></span><input type="checkbox" id="sc-new-field-required"></label>
+      </div>
+      <footer><button class="sc-button" type="button" data-close-drawer>Cancel</button><button class="sc-button sc-button-primary" type="button" id="sc-add-field-confirm"><i class="ti ti-check"></i> Add field</button></footer>
+    </section>
+  </aside>
+
+  <aside class="sc-drawer" id="sc-reminder-drawer" aria-hidden="true">
+    <div class="sc-drawer-backdrop" data-close-reminder></div>
+    <section class="sc-drawer-panel sc-drawer-wide">
+      <header><div><span class="sc-kicker">REMINDER SEQUENCE</span><h2 id="sc-reminder-title">Add reminder</h2></div><button class="sc-icon-button" type="button" data-close-reminder><i class="ti ti-x"></i></button></header>
+      <form method="post" action="{% url 'shvya_calendar:reminder_add' page_id=page.id %}">
+        {% csrf_token %}<input type="hidden" name="channel" id="sc-reminder-channel">
+        <div class="sc-drawer-content">
+          <label class="sc-field"><span>Message name *</span><input name="name" maxlength="255" required placeholder="e.g. 2 hour reminder"></label>
+          <div class="sc-grid-2">
+            <label class="sc-field"><span>Schedule</span><select name="timing" id="sc-reminder-timing"><option value="immediate">Immediately after booking</option><option value="specific_time">Specific time on booking date</option><option value="before">X minutes / hours / days before booked slot</option></select></label>
+            <div class="sc-timing-before" hidden><label class="sc-field"><span>How long before?</span><div class="sc-timing-input"><input type="number" name="timing_amount" min="1" value="2"><select name="timing_unit"><option value="minutes">minutes</option><option value="hours" selected>hours</option><option value="days">days</option></select></div></label></div>
+            <div class="sc-timing-specific" hidden><label class="sc-field"><span>Specific time</span><input type="time" name="specific_time" value="09:00"><small>Uses the booking page timezone on the booked date.</small></label></div>
+          </div>
+          <label class="sc-field sc-email-subject" hidden><span>Email subject</span><input name="subject" maxlength="180" placeholder="Your booking reminder"></label>
+          <label class="sc-field sc-field-wide"><span id="sc-reminder-body-label">Content</span><textarea name="body" rows="8" placeholder="Type your reminder message here"></textarea></label>
+          <div class="sc-token-row"><button type="button">&#123;&#123;lead.name&#125;&#125;</button><button type="button">&#123;&#123;lead.first_name&#125;&#125;</button><button type="button">&#123;&#123;lead.email&#125;&#125;</button><button type="button">&#123;&#123;booking.date&#125;&#125;</button><button type="button">&#123;&#123;booking.start_time&#125;&#125;</button><button type="button">&#123;&#123;booking.meeting_link&#125;&#125;</button><button type="button">&#123;&#123;organization.name&#125;&#125;</button></div>
+          <div class="sc-info-strip"><i class="ti ti-info-circle"></i><span>Call Reminder creates a human attention item inside SHVYA Calendar. It never starts an automated or AI phone call.</span></div>
+        </div>
+        <footer><button class="sc-button" type="button" data-close-reminder>Cancel</button><button class="sc-button sc-button-primary" type="submit">Add reminder</button></footer>
+      </form>
+    </section>
+  </aside>
