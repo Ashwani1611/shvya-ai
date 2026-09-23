@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from django.core.exceptions import ValidationError
-from django.utils import timezone
 
 from apps.integrations.operations_policy import CAP_ORGANIZATION_READ
 from services.triggers.rules import (
