@@ -15,6 +15,7 @@ from django.db import connection
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_GET
 import redis
+import requests
 
 from apps.core.observability import metrics_snapshot
 
@@ -126,6 +127,68 @@ def _websocket_snapshot():
     return result
 
 
+def _hosted_gateway_snapshot():
+    """Collect bounded health from every configured Hosted gateway shard."""
+    result = {"available": False, "gateways": {}}
+    try:
+        from apps.channels.hosted_gateway_routing import configured_gateways
+
+        gateways = configured_gateways()
+    except Exception as exc:
+        result["error"] = type(exc).__name__
+        return result
+
+    any_available = False
+    for shard, base_url in gateways.items():
+        item = {"available": False}
+        try:
+            response = requests.get(
+                f"{str(base_url).rstrip('/')}/health",
+                timeout=3,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            if not isinstance(payload, dict):
+                raise ValueError("Gateway health payload must be an object.")
+            memory = payload.get("memoryBytes") or {}
+            cpu = payload.get("cpuMicros") or {}
+            metrics = payload.get("metrics") or {}
+            item.update(
+                {
+                    "available": True,
+                    "shard": str(payload.get("shard") or shard)[:64],
+                    "owner": str(payload.get("owner") or "")[:128],
+                    "sessions": int(payload.get("sessions") or 0),
+                    "max_sessions": int(payload.get("maxSessions") or 0),
+                    "capacity_remaining": int(payload.get("capacityRemaining") or 0),
+                    "memory_bytes": {
+                        "rss": int(memory.get("rss") or 0),
+                        "heap_used": int(memory.get("heapUsed") or 0),
+                        "external": int(memory.get("external") or 0),
+                    },
+                    "cpu_micros": {
+                        "user": int(cpu.get("user") or 0),
+                        "system": int(cpu.get("system") or 0),
+                    },
+                    "reconnects": int(metrics.get("reconnects") or 0),
+                    "lease_conflicts": int(metrics.get("leaseConflicts") or 0),
+                    "callbacks_failed": int(metrics.get("callbacksFailed") or 0),
+                    "history_sync_failures": int(
+                        metrics.get("historySyncFailures") or 0
+                    ),
+                    "sessions_created": int(metrics.get("sessionsCreated") or 0),
+                    "uptime_seconds": int(payload.get("uptimeSeconds") or 0),
+                }
+            )
+            any_available = True
+        except Exception as exc:
+            item["error"] = type(exc).__name__
+        result["gateways"][str(shard)[:64]] = item
+
+    result["available"] = any_available
+    return result
+
+
 def _process_snapshot():
     usage = resource.getrusage(resource.RUSAGE_SELF)
     max_rss = int(usage.ru_maxrss)
@@ -155,5 +218,6 @@ def runtime_metrics(request):
         "redis": _redis_snapshot(),
         "celery": _celery_snapshot(),
         "websockets": _websocket_snapshot(),
+        "hosted_gateways": _hosted_gateway_snapshot(),
     }
     return JsonResponse(json.loads(json.dumps(payload, default=str)))
