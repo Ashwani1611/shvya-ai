@@ -79,18 +79,21 @@ whatsapp_web_gateway/    Internal Hosted WhatsApp Node.js gateway
 - **Views** handle HTTP concerns and delegate meaningful business work.
 - **Serializers/forms** validate and transform request data. They are not the primary business layer.
 - **Services** own substantial domain logic, provider calls, orchestration, and reusable workflows.
+- **New domain-owned services** belong under the owning Django app (normally `apps/<domain>/services/` or that app's established service module). The root `services/` tree is reserved for genuinely cross-domain contracts and grandfathered canonical services; do not create a parallel root service merely because an app already has one.
 - **Celery tasks** should be thin execution boundaries around service-layer work where possible.
 - **Templates/JavaScript** handle presentation and client interaction, not authoritative CRM or provider business rules.
 - **`config/`** owns environment/runtime wiring, not feature business logic.
 
 Do not duplicate an existing service in a new location simply because it is easier to patch locally.
 
+The historical Django app module `apps.channels` intentionally retains the app label `channels`. It collides by name with the third-party Django Channels package, so the third-party package is imported as a library rather than registered as a Django app. Do not rename this live app casually: any module rename must follow the migration plan in `docs/architecture-boundaries.md` and preserve the existing Django app label/database migration identity.
+
 ### Current staging domain ownership
 
 - `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
 - `apps/telephony/` owns Call Intelligence call/device state and CRM-linked call analysis; `android/call-intelligence/` is the Android SIM companion client.
-- `apps/integrations/operations_*.py` owns the actor-bound Operations MCP, configuration management, lifecycle safeguards and Superadmin diagnostics.
+- `apps/integrations/operations_tools.py` is the stable Operations MCP tool facade; focused implementation lives in `operations_tool_read.py`, `operations_tool_actions.py`, `operations_tool_config.py`, configuration management, lifecycle, policy and diagnostic modules.
 
 ---
 
