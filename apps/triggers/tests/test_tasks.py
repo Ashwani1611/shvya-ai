@@ -14,7 +14,7 @@ class WorkflowDispatchFairnessTests(TestCase):
         organization = Organization.objects.create(name=name)
         pipeline = Pipeline.objects.create(
             organization=organization,
-            name="Leads",
+            name=f"{name} Timer Pipeline",
         )
         stage = Stage.objects.create(
             pipeline=pipeline,
@@ -70,7 +70,7 @@ class WorkflowTimerBatchingTests(TestCase):
         organization = Organization.objects.create(name=name)
         pipeline = Pipeline.objects.create(
             organization=organization,
-            name="Leads",
+            name=f"{name} Timer Pipeline",
         )
         stage = Stage.objects.create(
             pipeline=pipeline,
