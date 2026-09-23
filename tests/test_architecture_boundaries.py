@@ -72,6 +72,24 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             (ROOT / "apps" / "shvya_calendar" / "availability.py").exists()
         )
 
+    def test_calendar_services_are_split_by_domain(self):
+        facade = ROOT / "apps" / "shvya_calendar" / "services.py"
+        base = ROOT / "apps" / "shvya_calendar"
+        expected = {
+            "page_services.py",
+            "lead_capture_services.py",
+            "booking_services.py",
+            "reminder_services.py",
+            "attachment_services.py",
+            "configuration_services.py",
+        }
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            220,
+            "Calendar services.py must remain a compatibility facade.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in base.glob("*_services.py")}))
+
     def test_calendar_public_booking_views_are_focused(self):
         legacy_path = ROOT / "apps" / "shvya_calendar" / "views.py"
         public_path = ROOT / "apps" / "shvya_calendar" / "public_views.py"
