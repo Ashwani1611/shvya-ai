@@ -56,6 +56,24 @@ def _google_error(response, message):
     )
 
 
+def _admit_google_request(connection):
+    from apps.core.fairness import admit_provider_start
+
+    allowed, retry_after, _scope = admit_provider_start(
+        provider="google_calendar",
+        account_id=connection.organization_id,
+        account_limit=settings.GOOGLE_CALENDAR_ORGANIZATION_REQUESTS_PER_MINUTE,
+        global_limit=settings.GOOGLE_CALENDAR_GLOBAL_REQUESTS_PER_MINUTE,
+    )
+    if not allowed:
+        raise GoogleCalendarError(
+            "Google Calendar is temporarily busy.",
+            status_code=429,
+            transient=True,
+            retry_after=retry_after,
+        )
+
+
 def _google_request(method, url, *, failure_message, **kwargs):
     try:
         return requests.request(method, url, **kwargs)
@@ -178,6 +196,7 @@ def _refresh_access_token(connection):
     if not refresh_token:
         raise GoogleCalendarError("Reconnect Google Calendar to renew access.")
 
+    _admit_google_request(connection)
     response = _google_request(
         "POST",
         GOOGLE_TOKEN_URL,
@@ -246,6 +265,7 @@ def free_busy(*, page, time_min, time_max):
     if connection is None:
         return []
 
+    _admit_google_request(connection)
     response = _google_request(
         "POST",
         f"{GOOGLE_CALENDAR_API}/freeBusy",
@@ -343,6 +363,7 @@ def create_booking_event(booking):
         params["conferenceDataVersion"] = "1"
 
     calendar_id = connection.calendar_id or "primary"
+    _admit_google_request(connection)
     response = _google_request(
         "POST",
         f"{GOOGLE_CALENDAR_API}/calendars/{quote(calendar_id, safe='')}/events",
@@ -425,6 +446,7 @@ def refresh_booking_event_details(booking):
         raise GoogleCalendarError("Reconnect Google Calendar to finish meeting sync.")
 
     calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
+    _admit_google_request(connection)
     response = _google_request(
         "GET",
         (
@@ -514,6 +536,7 @@ def update_booking_event(booking):
             {"email": booking.lead.email, "displayName": booking.lead.name}
         ]
 
+    _admit_google_request(connection)
     response = _google_request(
         "PATCH",
         (
@@ -572,6 +595,7 @@ def cancel_booking_event(booking):
     if connection is None:
         return
     calendar_id = booking.google_calendar_id or connection.calendar_id or "primary"
+    _admit_google_request(connection)
     response = _google_request(
         "DELETE",
         (
