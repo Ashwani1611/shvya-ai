@@ -52,6 +52,7 @@ class InstagramAPIError(RuntimeError):
         subcode: int | str | None = None,
         transient: bool = False,
         fbtrace_id: str = "",
+        retry_after: int | None = None,
     ):
         super().__init__(message)
         self.status_code = status_code
@@ -59,6 +60,7 @@ class InstagramAPIError(RuntimeError):
         self.subcode = subcode
         self.transient = transient
         self.fbtrace_id = fbtrace_id
+        self.retry_after = retry_after
 
     @property
     def token_invalid(self) -> bool:
@@ -117,6 +119,17 @@ def build_authorize_url(*, app_id: str, redirect_uri: str, state: str) -> str:
     return f"{OAUTH_AUTHORIZE_URL}?{query}"
 
 
+def _retry_after_seconds(response: requests.Response) -> int | None:
+    raw = str(response.headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(value, 900))
+
+
 def _response_payload(response: requests.Response) -> dict:
     try:
         payload = response.json()
@@ -150,8 +163,13 @@ def _raise_for_meta(response: requests.Response, label: str) -> dict:
         status_code=response.status_code,
         code=code,
         subcode=subcode,
-        transient=transient or response.status_code >= 500,
+        transient=(
+            transient
+            or response.status_code in {408, 425, 429}
+            or response.status_code >= 500
+        ),
         fbtrace_id=fbtrace_id,
+        retry_after=_retry_after_seconds(response),
     )
 
 
