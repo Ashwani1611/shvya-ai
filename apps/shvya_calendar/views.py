@@ -1092,21 +1092,54 @@ def google_disconnect(request, page_id):
         f"{reverse('shvya_calendar:editor', kwargs={'page_id': page.id})}?tab=scheduling"
     )
 
-# Public booking endpoints live in a focused module. Explicit same-name aliases
-# preserve historical imports and URL contracts from apps.shvya_calendar.views.
-from .public_views import (  # noqa: E402
-    PUBLIC_FLOW_TOKEN_SALT as PUBLIC_FLOW_TOKEN_SALT,
-    PUBLIC_FORM_TOKEN_SALT as PUBLIC_FORM_TOKEN_SALT,
-    _booking_flow_token as _booking_flow_token,
-    _public_form_token as _public_form_token,
-    _public_page as _public_page,
-    _rate_limit_public as _rate_limit_public,
-    _verify_booking_flow_token as _verify_booking_flow_token,
-    _verify_public_form_token as _verify_public_form_token,
-    public_cancel as public_cancel,
-    public_confirmation as public_confirmation,
-    public_page as public_page,
-    public_reschedule as public_reschedule,
-    public_schedule as public_schedule,
-    public_submit as public_submit,
+# Public booking endpoints live in a focused module. Compatibility wrappers
+# preserve historical imports, decorator attributes, URL contracts, and test
+# patch points from apps.shvya_calendar.views.
+from functools import wraps as _compat_wraps  # noqa: E402
+from . import public_views as _public_views  # noqa: E402
+
+PUBLIC_FLOW_TOKEN_SALT = _public_views.PUBLIC_FLOW_TOKEN_SALT
+PUBLIC_FORM_TOKEN_SALT = _public_views.PUBLIC_FORM_TOKEN_SALT
+_booking_flow_token = _public_views._booking_flow_token
+_public_form_token = _public_views._public_form_token
+_public_page = _public_views._public_page
+_rate_limit_public = _public_views._rate_limit_public
+_verify_booking_flow_token = _public_views._verify_booking_flow_token
+_verify_public_form_token = _public_views._verify_public_form_token
+
+_PUBLIC_VIEW_ENTRYPOINTS = frozenset(
+    {
+        "public_page",
+        "public_submit",
+        "public_schedule",
+        "public_confirmation",
+        "public_reschedule",
+        "public_cancel",
+    }
 )
+
+
+def _sync_public_view_overrides():
+    facade = globals()
+    for name in tuple(_public_views.__dict__):
+        if name in _PUBLIC_VIEW_ENTRYPOINTS:
+            continue
+        if name in facade:
+            setattr(_public_views, name, facade[name])
+
+
+def _public_compatibility_wrapper(function):
+    @_compat_wraps(function)
+    def wrapped(*args, **kwargs):
+        _sync_public_view_overrides()
+        return function(*args, **kwargs)
+
+    return wrapped
+
+
+public_page = _public_compatibility_wrapper(_public_views.public_page)
+public_submit = _public_compatibility_wrapper(_public_views.public_submit)
+public_schedule = _public_compatibility_wrapper(_public_views.public_schedule)
+public_confirmation = _public_compatibility_wrapper(_public_views.public_confirmation)
+public_reschedule = _public_compatibility_wrapper(_public_views.public_reschedule)
+public_cancel = _public_compatibility_wrapper(_public_views.public_cancel)

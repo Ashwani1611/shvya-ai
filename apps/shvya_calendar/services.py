@@ -80,6 +80,11 @@ def _sync_facade_overrides():
     for module in _IMPLEMENTATIONS:
         for name in tuple(module.__dict__):
             if name in _ENTRYPOINTS:
+                # schedule_booking_reminders is owned by _reminders but is
+                # imported into booking_services as a dependency. Preserve the
+                # historical services.py patch point for booking tests/callers.
+                if name == "schedule_booking_reminders" and module is _booking:
+                    setattr(module, name, facade[name])
                 continue
             if name in facade:
                 setattr(module, name, facade[name])
