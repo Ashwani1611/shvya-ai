@@ -6,6 +6,7 @@ import hashlib
 import json
 from collections import Counter
 
+from django.core.exceptions import ValidationError
 from django.db.models import Count
 from django.utils import timezone
 
@@ -168,7 +169,7 @@ def test_integration_connection(*, identity, arguments):
                 "first_failure": _first_failure(checks),
                 "side_effects": False,
                 "messages_sent": 0,
-                "credential_exposed": False,
+                "sensitive_values_returned": False,
             },
             capability=CAP_DIAGNOSTICS_READ,
             target_type="integration",
@@ -217,7 +218,7 @@ def test_integration_connection(*, identity, arguments):
                 "live_test": "readiness_only",
                 "side_effects": False,
                 "messages_sent": 0,
-                "credential_exposed": False,
+                "sensitive_values_returned": False,
             },
             capability=CAP_DIAGNOSTICS_READ,
             target_type="whatsapp_account",
@@ -287,7 +288,7 @@ def test_integration_connection(*, identity, arguments):
                 "first_failure": _first_failure(checks),
                 "side_effects": False,
                 "messages_sent": 0,
-                "credential_exposed": False,
+                "sensitive_values_returned": False,
             },
             capability=CAP_DIAGNOSTICS_READ,
             target_type="instagram_account",
@@ -349,7 +350,7 @@ def test_integration_connection(*, identity, arguments):
                 "live_test": "readiness_only",
                 "side_effects": False,
                 "messages_sent": 0,
-                "credential_exposed": False,
+                "sensitive_values_returned": False,
             },
             capability=CAP_DIAGNOSTICS_READ,
             target_type="google_sheet_integration",
@@ -420,7 +421,7 @@ def test_integration_connection(*, identity, arguments):
                 "live_test": "target_validation_only",
                 "side_effects": False,
                 "webhook_requests_sent": 0,
-                "credential_exposed": False,
+                "sensitive_values_returned": False,
             },
             capability=CAP_DIAGNOSTICS_READ,
             target_type="webhook_configuration",
@@ -534,7 +535,7 @@ def compare_organization_configuration(*, identity, arguments):
             "sections": rows,
             "raw_configuration_exposed": False,
             "customer_records_compared": 0,
-            "credential_material_compared": False,
+            "sensitive_material_compared": False,
         },
         capability=CAP_DIAGNOSTICS_READ,
         target_type="organization_comparison",
@@ -660,7 +661,7 @@ def get_configuration_integrity_diagnostics(*, identity, arguments):
         }
         try:
             validate_workflow_rule(organization, payload)
-        except Exception:
+        except ValidationError:
             orphans.append(
                 {
                     "type": "workflow_with_invalid_or_missing_reference",
