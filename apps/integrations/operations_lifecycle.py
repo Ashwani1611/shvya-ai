@@ -8,10 +8,13 @@ whether execution can proceed.
 
 from __future__ import annotations
 
+import re
+
 from django.db import transaction
 from django.utils import timezone
 
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
+from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.followups.models import FollowupSequence, LeadSequenceState
 from apps.integrations.models import GoogleSheetIntegration, MetaLeadForm
@@ -320,6 +323,45 @@ def _attribute_report(*, organization, attribute):
                 }
             )
 
+    template_refs = []
+    template_statuses = {
+        WhatsAppTemplate.Status.DRAFT,
+        WhatsAppTemplate.Status.PENDING,
+        WhatsAppTemplate.Status.APPROVED,
+        WhatsAppTemplate.Status.PAUSED,
+    }
+    placeholder_pattern = re.compile(
+        r"\{\{\s*" + re.escape(attribute.key) + r"\s*\}\}",
+        re.IGNORECASE,
+    )
+    metadata_by_template = {
+        item.template_id: item
+        for item in WhatsAppTemplateMetadata.objects.filter(
+            template__organization=organization,
+            template__status__in=template_statuses,
+        ).select_related("template")[:500]
+    }
+    for template in WhatsAppTemplate.objects.filter(
+        organization=organization,
+        status__in=template_statuses,
+    ).only("id", "name", "status", "body")[:500]:
+        metadata = metadata_by_template.get(template.id)
+        mapping = (
+            metadata.placeholder_mapping
+            if metadata is not None and isinstance(metadata.placeholder_mapping, dict)
+            else {}
+        )
+        if attribute.key in {str(value) for value in mapping.values()} or placeholder_pattern.search(
+            str(template.body or "")
+        ):
+            template_refs.append(
+                {
+                    "template_id": str(template.id),
+                    "template_name": template.name,
+                    "status": template.status,
+                }
+            )
+
     settings = organization.settings if isinstance(organization.settings, dict) else {}
     memory = settings.get("ai_memory") if isinstance(settings.get("ai_memory"), dict) else {}
     memory_mappings = (
@@ -346,6 +388,8 @@ def _attribute_report(*, organization, attribute):
         migration.append("Update active Google Sheets field mappings.")
     if memory_refs:
         migration.append("Update AI memory field mappings in organization settings.")
+    if template_refs:
+        migration.append("Update or retire WhatsApp templates that reference this attribute.")
 
     return {
         "object": {
@@ -366,6 +410,7 @@ def _attribute_report(*, organization, attribute):
             "meta_lead_form_references": meta_refs,
             "google_sheet_references": sheets,
             "ai_memory_references": memory_refs,
+            "whatsapp_template_references": template_refs,
         },
         "affected_records": {
             "lead_values": lead_values,
@@ -377,6 +422,7 @@ def _attribute_report(*, organization, attribute):
             + len(meta_refs)
             + len(sheets)
             + len(memory_refs)
+            + len(template_refs)
         ),
         "migration_required": bool(migration),
         "migration_requirements": migration,
