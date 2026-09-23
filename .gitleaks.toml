@@ -1,0 +1,15 @@
+title = "SHVYA AI Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "generic-api-key"
+
+[[rules.allowlists]]
+description = "Historical database.md prose describing token storage; not a credential."
+condition = "AND"
+commits = ["ce958008ad56b2f74039d7e5357f7633715db270"]
+paths = ['''^database\.md$''']
+regexTarget = "line"
+regexes = ['''Diagnostic/Operations OAuth authorization codes, access tokens and refresh tokens''']
