@@ -58,6 +58,7 @@ def test_application_replica_counts_are_declarative(
     block = _service_block(filename, service, next_service)
     assert "deploy:" in block
     assert "replicas: ${" + replica_var + ":-1}" in block
+    assert "scale: ${" + replica_var + ":-1}" in block
 
 @pytest.mark.parametrize(
     "filename",

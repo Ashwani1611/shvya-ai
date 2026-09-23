@@ -58,6 +58,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${WEB_REPLICAS:-1}
+    scale: ${WEB_REPLICAS:-1}
     env_file:
       - .env.staging
     environment:
@@ -102,6 +103,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${ASGI_REPLICAS:-1}
+    scale: ${ASGI_REPLICAS:-1}
     env_file:
       - .env.staging
     environment:
@@ -133,6 +135,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_GENERAL_REPLICAS:-1}
+    scale: ${CELERY_GENERAL_REPLICAS:-1}
     env_file:
       - .env.staging
     environment:
@@ -158,6 +161,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_AI_REALTIME_REPLICAS:-1}
+    scale: ${CELERY_AI_REALTIME_REPLICAS:-1}
     env_file:
       - .env.staging
     environment:
@@ -193,6 +197,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_HOSTED_AI_REPLICAS:-1}
+    scale: ${CELERY_HOSTED_AI_REPLICAS:-1}
     env_file:
       - .env.staging
     environment:
@@ -228,6 +233,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_CAMPAIGN_REPLICAS:-1}
+    scale: ${CELERY_CAMPAIGN_REPLICAS:-1}
     env_file: [.env.staging]
     environment:
       APP_ENV: staging
@@ -250,6 +256,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_INGESTION_REPLICAS:-1}
+    scale: ${CELERY_INGESTION_REPLICAS:-1}
     env_file: [.env.staging]
     environment:
       APP_ENV: staging
@@ -272,6 +279,7 @@ services:
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_AUTOMATION_REPLICAS:-1}
+    scale: ${CELERY_AUTOMATION_REPLICAS:-1}
     env_file: [.env.staging]
     environment:
       APP_ENV: staging
