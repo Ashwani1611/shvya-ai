@@ -55,7 +55,6 @@ services:
 
   web:
     build: .
-    container_name: shvya-staging-web
     restart: unless-stopped
     env_file:
       - .env.staging
@@ -93,14 +92,11 @@ services:
       timeout: 4s
       retries: 12
       start_period: 10s
-    ports:
-      - "127.0.0.1:8100:8000"
     expose:
       - "8000"
 
   ws:
     build: .
-    container_name: shvya-staging-ws
     restart: unless-stopped
     env_file:
       - .env.staging
@@ -125,8 +121,6 @@ services:
       - -p
       - "8001"
       - config.asgi:application
-    ports:
-      - "127.0.0.1:8101:8001"
     expose:
       - "8001"
 
