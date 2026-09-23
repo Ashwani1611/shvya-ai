@@ -828,6 +828,29 @@ def _workflow_cycles(workflows):
 def _organization_validation(organization):
     errors = []
     warnings = []
+    duplicates = []
+    orphans = []
+
+    def duplicate_groups(rows, *, object_type, parent_id=None):
+        grouped = {}
+        for row in rows:
+            name = str(getattr(row, "name", "") or "").strip()
+            key = name.casefold()
+            if not key:
+                continue
+            grouped.setdefault(key, []).append(row)
+        for key, items in grouped.items():
+            if len(items) < 2:
+                continue
+            duplicates.append(
+                {
+                    "object_type": object_type,
+                    "normalized_name": key,
+                    "count": len(items),
+                    "object_ids": [str(item.id) for item in items[:20]],
+                    **({"parent_id": str(parent_id)} if parent_id else {}),
+                }
+            )
 
     from apps.integrations.operations_extended_tools import (
         _qualification_public_snapshot,
@@ -870,12 +893,21 @@ def _organization_validation(organization):
         try:
             validate_workflow_rule(organization, payload)
         except ValidationError as exc:
+            detail = list(exc.messages)
             errors.append(
                 {
                     "code": "invalid_workflow",
                     "workflow_id": str(rule.id),
                     "workflow_name": rule.name,
-                    "detail": list(exc.messages),
+                    "detail": detail,
+                }
+            )
+            orphans.append(
+                {
+                    "object_type": "workflow",
+                    "object_id": str(rule.id),
+                    "reason": "invalid_or_stale_reference",
+                    "detail": detail,
                 }
             )
 
@@ -939,6 +971,182 @@ def _organization_validation(organization):
                 }
             )
 
+    active_pipelines = list(
+        Pipeline.objects.filter(
+            organization=organization,
+            is_active=True,
+        ).only("id", "name")
+    )
+    duplicate_groups(active_pipelines, object_type="pipeline")
+    duplicate_groups(
+        list(
+            AttributeDefinition.objects.filter(
+                organization=organization,
+                is_active=True,
+            ).only("id", "name")
+        ),
+        object_type="attribute",
+    )
+    duplicate_groups(workflows, object_type="workflow")
+    duplicate_groups(
+        list(
+            FollowupSequence.objects.filter(
+                organization=organization,
+                is_active=True,
+            ).only("id", "name")
+        ),
+        object_type="cadence",
+    )
+
+    active_faqs = list(
+        FAQ.objects.filter(
+            organization=organization,
+            is_active=True,
+        ).only("id", "question")
+    )
+    faq_groups = {}
+    for item in active_faqs:
+        key = str(item.question or "").strip().casefold()
+        if key:
+            faq_groups.setdefault(key, []).append(item)
+    for key, items in faq_groups.items():
+        if len(items) > 1:
+            duplicates.append(
+                {
+                    "object_type": "faq",
+                    "normalized_question": key,
+                    "count": len(items),
+                    "object_ids": [str(item.id) for item in items[:20]],
+                }
+            )
+
+    active_attribute_ids = {
+        str(item)
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        ).values_list("id", flat=True)
+    }
+    for pipeline in active_pipelines:
+        stages = list(
+            Stage.objects.filter(
+                pipeline=pipeline,
+                is_active=True,
+            ).only("id", "name", "config")
+        )
+        duplicate_groups(
+            stages,
+            object_type="stage",
+            parent_id=pipeline.id,
+        )
+        active_stage_names = {
+            str(stage.name or "").strip().casefold()
+            for stage in stages
+        }
+        for required_name in ("new leads", "qualified"):
+            if required_name not in active_stage_names:
+                orphan = {
+                    "object_type": "pipeline",
+                    "object_id": str(pipeline.id),
+                    "reason": "required_system_stage_missing_or_inactive",
+                    "required_stage": required_name,
+                }
+                orphans.append(orphan)
+                errors.append(
+                    {
+                        "code": "required_system_stage_missing_or_inactive",
+                        **orphan,
+                    }
+                )
+        for stage in stages:
+            required_ids = {
+                str(value)
+                for value in ((stage.config or {}).get("required_attribute_ids") or [])
+            }
+            missing = sorted(required_ids - active_attribute_ids)
+            if missing:
+                orphan = {
+                    "object_type": "stage",
+                    "object_id": str(stage.id),
+                    "reason": "missing_or_inactive_required_attribute",
+                    "attribute_ids": missing[:50],
+                }
+                orphans.append(orphan)
+                errors.append(
+                    {
+                        "code": "stage_required_attribute_orphan",
+                        **orphan,
+                    }
+                )
+
+    for sequence in FollowupSequence.objects.filter(
+        organization=organization,
+        is_active=True,
+    ).select_related("whatsapp_account").defer("whatsapp_account__access_token"):
+        account = sequence.whatsapp_account
+        if (
+            not account.is_active
+            or account.status != WhatsAppAccount.Status.CONNECTED
+        ):
+            orphan = {
+                "object_type": "cadence",
+                "object_id": str(sequence.id),
+                "reason": "sender_inactive_or_disconnected",
+            }
+            orphans.append(orphan)
+            errors.append(
+                {
+                    "code": "cadence_sender_unavailable",
+                    **orphan,
+                }
+            )
+        if not sequence.steps.filter(is_active=True).exists():
+            warnings.append(
+                {
+                    "code": "active_cadence_has_no_active_steps",
+                    "cadence_id": str(sequence.id),
+                }
+            )
+
+    from apps.followups.touchpoint_models import TouchpointCategory
+
+    empty_touchpoints = list(
+        TouchpointCategory.objects.filter(
+            organization=organization,
+        )
+        .annotate(
+            active_reply_count=Count(
+                "replies",
+                filter=Q(replies__is_active=True),
+            )
+        )
+        .filter(active_reply_count=0)
+        .values_list("id", flat=True)[:50]
+    )
+    for category_id in empty_touchpoints:
+        orphans.append(
+            {
+                "object_type": "touchpoint_category",
+                "object_id": str(category_id),
+                "reason": "no_active_saved_replies",
+            }
+        )
+    if empty_touchpoints:
+        warnings.append(
+            {
+                "code": "empty_touchpoint_categories",
+                "count": len(empty_touchpoints),
+            }
+        )
+
+    if duplicates:
+        warnings.append(
+            {
+                "code": "duplicate_configuration_names",
+                "count": len(duplicates),
+            }
+        )
+
     inactive_with_leads = list(
         Pipeline.objects.filter(
             organization=organization,
@@ -964,9 +1172,13 @@ def _organization_validation(organization):
         "configuration_etag": configuration_etag(organization),
         "errors": errors,
         "warnings": warnings,
+        "duplicates": duplicates,
+        "orphans": orphans,
         "counts": {
             "errors": len(errors),
             "warnings": len(warnings),
+            "duplicates": len(duplicates),
+            "orphans": len(orphans),
         },
     }
 
