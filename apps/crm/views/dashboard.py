@@ -4,25 +4,16 @@ from datetime import datetime
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db.models import Max
-from django.http import (
-    HttpResponse,
-    JsonResponse,
-)
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
-from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django.db import transaction
-
-from services.crm.reminder_notification_service import (
-    reset_reminder_notification_acknowledgements,
-)
 
 from services.crm_activity_service import (
     record_stage_changed,
     record_pipeline_changed,
     record_reminder_created,
-    record_reminder_completed,
     record_note_added,
     record_call_logged,
 )
@@ -37,10 +28,6 @@ from apps.crm.models import (
     Pipeline,
     Stage,
     AttributeDefinition,
-)
-
-from apps.crm.models.lead import (
-    normalize_phone,
 )
 
 from services.crm.attribute_service import (
@@ -58,34 +45,6 @@ from services.crm.dashboard_query_service import (
     build_lead_table_context as _build_lead_table_context,
 )
 from .api import get_user_pipelines
-from .filtering import (
-    global_reminders_modal,
-    lead_filters_modal,
-    lead_table_partial,
-)
-from .lead_import import (
-    lead_import_destination_modal,
-    lead_import_destination_save,
-    lead_import_execute,
-    lead_import_mapping_modal,
-    lead_import_mapping_save,
-    lead_import_review_modal,
-    lead_import_sample_file,
-    lead_import_start,
-    lead_import_start_modal,
-    lead_import_upload,
-    lead_import_upload_modal,
-)
-from .reminders import (
-    global_reminder_complete,
-    global_reminder_delete,
-    global_reminder_edit_modal,
-    global_reminder_edit_save,
-    global_reminder_snooze,
-    reminder_notification_ack,
-    reminder_notification_feed,
-)
-
 
 logger = logging.getLogger(__name__)
 
