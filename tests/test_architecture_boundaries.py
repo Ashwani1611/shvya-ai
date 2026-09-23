@@ -86,6 +86,24 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             650,
         )
 
+    def test_sales_views_are_split_by_responsibility(self):
+        facade = ROOT / "apps" / "sales" / "views.py"
+        expected = {
+            "views_documents.py",
+            "views_templates.py",
+            "views_public.py",
+        }
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            140,
+            "apps.sales.views must remain a compatibility facade.",
+        )
+        self.assertTrue(
+            expected.issubset(
+                {path.name for path in (ROOT / "apps" / "sales").glob("views_*.py")}
+            )
+        )
+
     def test_sales_services_are_split_by_responsibility(self):
         facade = ROOT / "apps" / "sales" / "services.py"
         document_services = ROOT / "apps" / "sales" / "document_services.py"
