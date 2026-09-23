@@ -91,6 +91,7 @@ __all__ = [
     "_attribute_ref",
     "_attribute_refs",
     "_clean",
+    "_clarification_plan",
     "_completion_target",
     "_config",
     "_configured_completion_reminders",
