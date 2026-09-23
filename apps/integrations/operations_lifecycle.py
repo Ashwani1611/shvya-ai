@@ -645,7 +645,7 @@ def archive_stage(*, identity, arguments):
             operation="archive_stage",
             report=report,
             can_apply=report["can_archive"],
-            reversible=report["affected_records"]["pending_or_queued_runs"] == 0,
+            reversible=True,
             proposal=proposal,
         )
     _blocked(report, operation="Stage archive")
@@ -1173,7 +1173,7 @@ def archive_workflow(*, identity, arguments):
             operation="archive_workflow",
             report=report,
             can_apply=True,
-            reversible=True,
+            reversible=report["affected_records"]["pending_or_queued_runs"] == 0,
             proposal=proposal,
         )
     with transaction.atomic():
@@ -1210,7 +1210,9 @@ def archive_workflow(*, identity, arguments):
                 "enabled": False,
             },
             "can_apply": True,
-            "reversible": True,
+            "reversible": (
+                locked_report["affected_records"]["pending_or_queued_runs"] == 0
+            ),
             "restore_via": "upsert_workflow_configuration",
             "verification": "passed",
         },
