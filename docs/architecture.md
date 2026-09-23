@@ -69,4 +69,5 @@ The current product uses Django templates, HTMX/JavaScript and shared static ass
 - [`api.md`](./api.md) — route and integration boundary map.
 - [`deployment.md`](./deployment.md) — deployment runbook.
 - [`operations-mcp.md`](./operations-mcp.md) — external AI operations boundary.
+- [`architecture-boundaries.md`](./architecture-boundaries.md) — service ownership, Operations facade rules, AI patch ceiling and the safe `apps.channels` rename plan.
 - [`shvya-sales.md`](./shvya-sales.md), [`shvya-calendar-workspace.md`](./shvya-calendar-workspace.md), [`call-intelligence.md`](./call-intelligence.md) — current staging business workspaces.
