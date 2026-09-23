@@ -101,6 +101,7 @@ def emit(lead, kind, key, payload=None):
                     for pk in SmartTrigger.objects.filter(
                         organization_id=lead.organization_id,
                         enabled=True,
+                        is_active=True,
                         trigger_type=kind,
                     ).values_list("id", flat=True)
                 ],
@@ -132,6 +133,7 @@ def evaluate(event_id):
         organization_id=event.organization_id,
         organization__is_active=True,
         enabled=True,
+        is_active=True,
         trigger_type=event.kind,
         created_at__lte=event.created_at,
         id__in=event.payload.get("eligible_rules", []),
@@ -188,7 +190,7 @@ def evaluate(event_id):
 def scan_timers():
     """One invalid saved timer must not starve other organizations' workflows."""
     for rule in SmartTrigger.objects.filter(
-        enabled=True, organization__is_active=True,
+        enabled=True, is_active=True, organization__is_active=True,
         trigger_type__in=["stage_idle", "no_response"]
     ).iterator():
         try:
