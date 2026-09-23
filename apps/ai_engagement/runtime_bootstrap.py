@@ -136,7 +136,7 @@ def install_ai_runtime() -> None:
 
     # Last-mile customer-chat cleanup remains language-only and may not own
     # qualification state, mappings, or stage transitions.
-    from apps.ai_engagement.services.customer_chat_regressions import (
+    from apps.ai_engagement.services.natural_conversation_runtime import (
         install_customer_chat_regressions,
     )
     install_customer_chat_regressions()
