@@ -46,18 +46,21 @@ def admit(*, scope, subject, limit, window_seconds=60):
 
 
 def admit_ai_start(*, organization_id, organization_limit, global_limit):
-    allowed, delay = admit(
-        scope="ai_global",
-        subject="platform",
-        limit=global_limit,
-        window_seconds=60,
-    )
-    if not allowed:
-        return False, delay, "global"
+    # Check the tenant bucket first. A tenant that is already above its own
+    # allowance must not consume scarce global admission capacity and starve
+    # unrelated organizations.
     allowed, delay = admit(
         scope="ai_organization",
         subject=organization_id,
         limit=organization_limit,
         window_seconds=60,
     )
-    return allowed, delay, "organization" if not allowed else ""
+    if not allowed:
+        return False, delay, "organization"
+    allowed, delay = admit(
+        scope="ai_global",
+        subject="platform",
+        limit=global_limit,
+        window_seconds=60,
+    )
+    return allowed, delay, "global" if not allowed else ""
