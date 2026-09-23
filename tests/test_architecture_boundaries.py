@@ -39,8 +39,11 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         path = ROOT / "apps" / "crm" / "views" / "dashboard.py"
         self.assertLess(
             len(path.read_text(encoding="utf-8").splitlines()),
-            3500,
+            2600,
             "Move focused CRM workflows to their owning view modules.",
+        )
+        self.assertTrue(
+            (ROOT / "apps" / "crm" / "views" / "dashboard_attributes.py").exists()
         )
 
     def test_legacy_calls_app_is_not_installed(self):
