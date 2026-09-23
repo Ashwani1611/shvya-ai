@@ -45,8 +45,12 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
     )
 
 
-def _queue_hosted_ai_from_persisted_message(message_id):
-    """Canonical Hosted AI enqueue path from the final persisted inbound row."""
+def _queue_hosted_ai_from_persisted_message(message_id, *, allow_history=False):
+    """Canonical Hosted AI enqueue path from the final persisted inbound row.
+
+    Historical sync remains suppressed by default. The authenticated inbox
+    Create Lead action may explicitly activate exactly one linked source turn.
+    """
     message = (
         WhatsAppMessage.objects.select_related(
             "account",
@@ -67,7 +71,7 @@ def _queue_hosted_ai_from_persisted_message(message_id):
         return
 
     payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
-    if payload.get("isHistory"):
+    if payload.get("isHistory") and not allow_history:
         return
 
     account = message.account
@@ -77,7 +81,10 @@ def _queue_hosted_ai_from_persisted_message(message_id):
         AIPermissionError,
         AIPermissionService,
     )
-    from services.channels.hosted_automation_service import enqueue_ai_engagement
+    from services.channels.hosted_automation_service import (
+        EXPLICIT_LEAD_CREATION_AI_ACTIVATION,
+        enqueue_ai_engagement,
+    )
     from services.channels.hosted_whatsapp_service import get_session_settings
 
     if not get_session_settings(account=account).get("ai_auto_reply"):
@@ -100,6 +107,11 @@ def _queue_hosted_ai_from_persisted_message(message_id):
         account=account,
         lead=lead,
         source_message=message,
+        activation=(
+            EXPLICIT_LEAD_CREATION_AI_ACTIVATION
+            if allow_history and payload.get("isHistory")
+            else ""
+        ),
     )
 
 

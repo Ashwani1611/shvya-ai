@@ -36,6 +36,13 @@ from apps.hosted_automation.models import (
 
 
 HOSTED_CONNECTION_TYPE = "hosted"
+EXPLICIT_LEAD_CREATION_AI_ACTIVATION = "explicit_lead_creation"
+
+
+def hosted_job_allows_history(job) -> bool:
+    """Only an authenticated inbox Create Lead action may activate synced history."""
+    result = job.result if isinstance(getattr(job, "result", None), dict) else {}
+    return result.get("activation") == EXPLICIT_LEAD_CREATION_AI_ACTIVATION
 
 
 def _ai_response_delay_seconds() -> int:
@@ -380,21 +387,66 @@ def media_url_for_config(hosted_config):
 
 
 @transaction.atomic
-def enqueue_ai_engagement(*, account, lead, source_message):
+def enqueue_ai_engagement(*, account, lead, source_message, activation=""):
     if account.connection_type != HOSTED_CONNECTION_TYPE:
         return None
+    activation = (
+        EXPLICIT_LEAD_CREATION_AI_ACTIVATION
+        if activation == EXPLICIT_LEAD_CREATION_AI_ACTIVATION
+        else ""
+    )
     available_at = (source_message.created_at or timezone.now()) + timedelta(
         seconds=AI_RESPONSE_DELAY_SECONDS
     )
-    job, _created = HostedAutomationJob.objects.get_or_create(
+    defaults = {
+        "organization": account.organization,
+        "account": account,
+        "lead": lead,
+        "available_at": available_at,
+    }
+    if activation:
+        defaults["result"] = {"activation": activation}
+
+    job, created = HostedAutomationJob.objects.get_or_create(
         source_message=source_message,
-        defaults={
-            "organization": account.organization,
-            "account": account,
-            "lead": lead,
-            "available_at": available_at,
-        },
+        defaults=defaults,
     )
+
+    # Older/runtime-race code may already have persisted a terminal history-skip
+    # job for this exact source. An explicit, authenticated Create Lead action is
+    # the one safe event that may reactivate that exact source once.
+    if activation and not created:
+        current = dict(job.result or {})
+        current["activation"] = activation
+        if (
+            job.status == HostedAutomationJob.Status.SKIPPED
+            and current.get("reason") == "source_message_is_history"
+        ):
+            current.pop("reason", None)
+            job.status = HostedAutomationJob.Status.QUEUED
+            job.available_at = timezone.now()
+            job.started_at = None
+            job.completed_at = None
+            job.error = ""
+            job.result = current
+            job.save(
+                update_fields=[
+                    "status",
+                    "available_at",
+                    "started_at",
+                    "completed_at",
+                    "error",
+                    "result",
+                    "updated_at",
+                ]
+            )
+        elif job.status in {
+            HostedAutomationJob.Status.QUEUED,
+            HostedAutomationJob.Status.PROCESSING,
+        }:
+            job.result = current
+            job.save(update_fields=["result", "updated_at"])
+
     return job
 
 
