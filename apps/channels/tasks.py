@@ -311,6 +311,48 @@ def send_whatsapp_message_task(self, message_id):
                     "message_id": str(message_id),
                 }
 
+            from django.conf import settings
+            from apps.core.fairness import admit_provider_start
+
+            is_hosted_account = message.account.connection_type == "hosted"
+            provider_name = (
+                "hosted_whatsapp"
+                if is_hosted_account
+                else "whatsapp"
+            )
+            account_limit = (
+                settings.HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE
+                if is_hosted_account
+                else settings.WHATSAPP_ACCOUNT_SENDS_PER_MINUTE
+            )
+            global_limit = (
+                settings.HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE
+                if is_hosted_account
+                else settings.WHATSAPP_GLOBAL_SENDS_PER_MINUTE
+            )
+            allowed, retry_after, scope = admit_provider_start(
+                provider=provider_name,
+                account_id=message.account_id,
+                account_limit=account_limit,
+                global_limit=global_limit,
+            )
+            if not allowed:
+                countdown = _whatsapp_retry_delay(
+                    message_id=message_id,
+                    retries=self.request.retries,
+                    retry_after=retry_after,
+                )
+                self.apply_async(
+                    args=[str(message_id)],
+                    countdown=countdown,
+                )
+                return {
+                    "status": "deferred",
+                    "reason": f"{provider_name}_{scope}_fairness_limit",
+                    "message_id": str(message_id),
+                    "retry_after": countdown,
+                }
+
             # Hosted AI creates the same durable WhatsAppMessage row, but its
             # delivery is owned by HostedAutomationJob. Suppress only the AI
             # finalizer's canonical sender call. Hosted agent/manual messages
