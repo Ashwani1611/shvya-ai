@@ -284,7 +284,10 @@ def _clean_qualification_data(*, organization, data):
     sensitive = _sensitive_attribute_keys(organization)
     attributes = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
         if item.key not in sensitive
     }
     requirement_ids = {item["stable_id"] for item in cleaned_requirements}
@@ -1529,6 +1532,12 @@ def archive_touchpoint(*, identity, arguments):
             data={
                 "status": "DRY_RUN",
                 "touchpoint_id": str(reply.id),
+                "dependencies": {},
+                "affected_records": {"saved_reply_records": 1},
+                "protected_object_status": {"protected": False, "reason": ""},
+                "migration_required": False,
+                "migration_requirements": [],
+                "can_apply": True,
                 "approval_required": approval_required(
                     role=identity.role,
                     organization=organization,
@@ -1565,7 +1574,20 @@ def archive_touchpoint(*, identity, arguments):
         locked.is_active = False
         locked.save(update_fields=["is_active", "updated_at"])
     return ToolExecution(
-        data={"status": "FIXED", "touchpoint_id": str(reply.id), "active": False, "verification": "passed"},
+        data={
+            "status": "ARCHIVED",
+            "touchpoint_id": str(reply.id),
+            "active": False,
+            "dependencies": {},
+            "affected_records": {"saved_reply_records": 1},
+            "protected_object_status": {"protected": False, "reason": ""},
+            "migration_required": False,
+            "migration_requirements": [],
+            "can_apply": True,
+            "reversible": True,
+            "restore_via": "upsert_touchpoint",
+            "verification": "passed",
+        },
         capability=CAP_CADENCE_CONFIG_WRITE,
         target_type="touchpoint",
         target_id=str(reply.id),
@@ -1754,6 +1776,12 @@ def archive_faq(*, identity, arguments):
             data={
                 "status": "DRY_RUN",
                 "faq_id": str(faq.id),
+                "dependencies": {},
+                "affected_records": {"faq_records": 1},
+                "protected_object_status": {"protected": False, "reason": ""},
+                "migration_required": False,
+                "migration_requirements": [],
+                "can_apply": True,
                 "approval_required": approval_required(
                     role=identity.role,
                     organization=organization,
@@ -1781,7 +1809,20 @@ def archive_faq(*, identity, arguments):
         except FAQServiceError as exc:
             raise OperationsToolError(str(exc)) from exc
     return ToolExecution(
-        data={"status": "FIXED", "faq_id": str(saved.id), "active": saved.is_active, "verification": "passed"},
+        data={
+            "status": "ARCHIVED",
+            "faq_id": str(saved.id),
+            "active": saved.is_active,
+            "dependencies": {},
+            "affected_records": {"faq_records": 1},
+            "protected_object_status": {"protected": False, "reason": ""},
+            "migration_required": False,
+            "migration_requirements": [],
+            "can_apply": True,
+            "reversible": True,
+            "restore_via": "upsert_faq",
+            "verification": "passed",
+        },
         capability=CAP_AI_CONFIG_WRITE,
         target_type="faq",
         target_id=str(saved.id),

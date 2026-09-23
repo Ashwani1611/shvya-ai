@@ -898,7 +898,8 @@ def _sensitive_attribute_keys(organization):
     return {
         item.key
         for item in AttributeDefinition.objects.filter(
-            organization=organization
+            organization=organization,
+            is_active=True,
         ).only("key", "name")
         if is_sensitive_attribute_definition(
             {"key": item.key, "name": item.name}
@@ -1018,7 +1019,8 @@ def _workflow_reference_index(organization):
         "attribute_keys": {
             str(item)
             for item in AttributeDefinition.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
             ).values_list("key", flat=True)
         },
     }
@@ -1624,7 +1626,8 @@ def get_organization_configuration(*, identity, arguments):
     )
     attribute_qs = (
         AttributeDefinition.objects.filter(
-            organization=organization
+            organization=organization,
+            is_active=True,
         )
         .exclude(key__in=sensitive_attribute_keys)
         .order_by("display_order", "name")
@@ -1726,9 +1729,14 @@ def get_organization_configuration(*, identity, arguments):
                 limit=20,
             ),
             "automation": {
-                "workflow_count": SmartTrigger.objects.filter(organization=organization).count(),
+                "workflow_count": SmartTrigger.objects.filter(
+                    organization=organization,
+                    is_active=True,
+                ).count(),
                 "workflow_enabled_count": SmartTrigger.objects.filter(
-                    organization=organization, enabled=True
+                    organization=organization,
+                    is_active=True,
+                    enabled=True,
                 ).count(),
                 "cadence_count": FollowupSequence.objects.filter(organization=organization).count(),
                 "cadence_active_count": FollowupSequence.objects.filter(
@@ -1771,7 +1779,8 @@ def get_automation_configuration(*, identity, arguments):
     limit = max(1, min(limit, 100))
 
     workflow_qs = SmartTrigger.objects.filter(
-        organization=organization
+        organization=organization,
+        is_active=True,
     )
     cadence_qs = FollowupSequence.objects.filter(
         organization=organization
@@ -2921,7 +2930,10 @@ def update_lead_attributes(*, identity, arguments):
 
     definitions = {
         item.key: item
-        for item in AttributeDefinition.objects.filter(organization=organization)
+        for item in AttributeDefinition.objects.filter(
+            organization=organization,
+            is_active=True,
+        )
     }
     unknown = sorted(set(values) - set(definitions))
     if unknown:
@@ -3367,6 +3379,7 @@ def get_conversion_analysis(*, identity, arguments):
     lost_reason_definition = (
         AttributeDefinition.objects.filter(
             organization=organization,
+            is_active=True,
         )
         .filter(
             Q(key__in=["lost_reason", "loss_reason"])
@@ -5663,6 +5676,7 @@ def upsert_attribute_configuration(*, identity, arguments):
             "field_type": attribute.field_type,
             "description": attribute.description,
             "options": attribute.options,
+            "is_active": attribute.is_active,
         }
         if attribute
         else None
@@ -5672,6 +5686,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         "field_type": field_type,
         "description": description,
         "options": options,
+        "is_active": True,
     }
     proposal = {
         "organization_id": str(organization.id),
@@ -5767,6 +5782,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                     "field_type": attribute.field_type,
                     "description": attribute.description,
                     "options": attribute.options,
+                    "is_active": attribute.is_active,
                 }
                 if attribute is not None
                 else None
@@ -5776,6 +5792,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                 "field_type": field_type,
                 "description": description,
                 "options": options,
+                "is_active": True,
             }
             locked_proposal = {
                 "organization_id": str(organization.id),
@@ -5822,7 +5839,8 @@ def upsert_attribute_configuration(*, identity, arguments):
                 )
                 if (
                     AttributeDefinition.objects.filter(
-                        organization=organization
+                        organization=organization,
+                        is_active=True,
                     ).count()
                     > MAX_CUSTOM_ATTRIBUTES
                 ):
@@ -5844,6 +5862,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                 or attribute.field_type != field_type
                 or attribute.description != description
                 or list(attribute.options or []) != list(options)
+                or not attribute.is_active
             ):
                 raise OperationsToolError(
                     "Attribute configuration verification failed."
@@ -5930,6 +5949,7 @@ def upsert_workflow_configuration(*, identity, arguments):
             "id": str(workflow.id),
             "name": workflow.name,
             "enabled": workflow.enabled,
+            "is_active": workflow.is_active,
             "position": workflow.position,
             "trigger_type": workflow.trigger_type,
             "conditions": workflow.conditions,
@@ -5945,13 +5965,15 @@ def upsert_workflow_configuration(*, identity, arguments):
         if workflow is not None
         else (
             SmartTrigger.objects.filter(
-                organization=organization
+                organization=organization,
+                is_active=True,
             ).aggregate(value=Max("position"))["value"]
             or 0
         ) + 1
     )
     workflow_after = {
         **clean,
+        "is_active": True,
         "position": proposed_position,
     }
     proposal = {
@@ -6050,7 +6072,8 @@ def upsert_workflow_configuration(*, identity, arguments):
                 if workflow is not None
                 else (
                     SmartTrigger.objects.filter(
-                        organization=organization
+                        organization=organization,
+                        is_active=True,
                     ).aggregate(value=Max("position"))["value"]
                     or 0
                 ) + 1
@@ -6060,6 +6083,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                     "id": str(workflow.id),
                     "name": workflow.name,
                     "enabled": workflow.enabled,
+                    "is_active": workflow.is_active,
                     "position": workflow.position,
                     "trigger_type": workflow.trigger_type,
                     "conditions": workflow.conditions,
@@ -6072,6 +6096,7 @@ def upsert_workflow_configuration(*, identity, arguments):
             )
             locked_after = {
                 **clean_locked,
+                "is_active": True,
                 "position": proposed_position,
             }
             locked_proposal = {
@@ -6097,6 +6122,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                 )
             for key, value in clean_locked.items():
                 setattr(workflow, key, value)
+            workflow.is_active = True
             workflow.save()
             clean = clean_locked
             workflow.refresh_from_db()
@@ -6105,6 +6131,7 @@ def upsert_workflow_configuration(*, identity, arguments):
                 or workflow.trigger_type != clean["trigger_type"]
                 or workflow.action_type != clean["action_type"]
                 or workflow.enabled != clean["enabled"]
+                or not workflow.is_active
             ):
                 raise OperationsToolError(
                     "Workflow configuration verification failed."
@@ -6223,6 +6250,12 @@ def upsert_cadence_configuration(*, identity, arguments):
     description = str(
         data.get("description", sequence.description if sequence else "") or ""
     ).strip()
+    is_active = data.get(
+        "is_active",
+        sequence.is_active if sequence is not None else True,
+    )
+    if not isinstance(is_active, bool):
+        raise OperationsToolError("Cadence is_active must be true or false.")
     if not name or len(name) > 255 or len(description) > 300:
         raise OperationsToolError("Cadence name/description is invalid.")
     duplicate = FollowupSequence.objects.filter(
@@ -6320,6 +6353,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             "description": sequence.description,
             "provider": provider,
             "whatsapp_account_id": str(sequence.whatsapp_account_id),
+            "is_active": sequence.is_active,
         }
         if sequence is not None
         else None
@@ -6329,6 +6363,7 @@ def upsert_cadence_configuration(*, identity, arguments):
         "description": description,
         "provider": provider,
         "whatsapp_account_id": str(account.id) if account else None,
+        "is_active": is_active,
     }
     proposal = {
         "organization_id": str(organization.id),
@@ -6488,6 +6523,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                     "whatsapp_account_id": str(
                         sequence.whatsapp_account_id
                     ),
+                    "is_active": sequence.is_active,
                 }
                 if sequence is not None
                 else None
@@ -6499,6 +6535,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 "whatsapp_account_id": (
                     str(account.id) if account else None
                 ),
+                "is_active": is_active,
             }
             locked_proposal = {
                 "organization_id": str(organization.id),
@@ -6531,11 +6568,16 @@ def upsert_cadence_configuration(*, identity, arguments):
                     description=description,
                 )
 
+            if sequence.is_active != is_active:
+                sequence.is_active = is_active
+                sequence.save(update_fields=["is_active", "updated_at"])
+
             sequence.refresh_from_db()
             if (
                 sequence.name != name
                 or sequence.description != description
                 or sequence.whatsapp_account_id != account.id
+                or sequence.is_active != is_active
             ):
                 raise OperationsToolError(
                     "Cadence configuration verification failed."
@@ -6924,6 +6966,10 @@ def execute_operations_tool(*, name, identity, arguments):
         )
 
         handler = CONFIGURATION_MANAGEMENT_HANDLERS.get(str(name or ""))
+    if handler is None:
+        from apps.integrations.operations_lifecycle import LIFECYCLE_HANDLERS
+
+        handler = LIFECYCLE_HANDLERS.get(str(name or ""))
     if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})

@@ -62,6 +62,8 @@ def run_block_reason(run, lead):
         return "Workflow data does not belong to the lead organization."
     if not lead.organization.is_active:
         return "Organization is inactive."
+    if getattr(run.rule, "is_active", True) is not True:
+        return "Workflow is archived."
     if not run.rule.enabled:
         return "Workflow is disabled."
     if not timer_valid(run.event, lead):
@@ -118,7 +120,7 @@ def defer_workflow_message_for_health(message):
     return bool(TriggerRun.objects.filter(
         id=metadata.get("run_id"), message_id=message.pk,
         lead_id=message.lead_id, rule__organization_id=message.organization_id,
-        rule__enabled=True, rule__organization__is_active=True,
+        rule__enabled=True, rule__is_active=True, rule__organization__is_active=True,
         status__in=["queued", "dispatching"],
     ).update(
         status="queued", due_at=until, finished_at=None,
@@ -235,7 +237,7 @@ def _apply(run, lead):
         from apps.crm.models import AttributeDefinition
         from services.triggers.rules import attribute_value
 
-        definition = AttributeDefinition.objects.get(organization=org, key=a["key"])
+        definition = AttributeDefinition.objects.get(is_active=True, organization=org, key=a["key"])
         value = attribute_value(definition, a["value"])
         lead.attributes = {**(lead.attributes or {}), a["key"]: value}
         lead.save(update_fields=["attributes", "updated_at"])

@@ -134,6 +134,7 @@ def sanitize_data(
                 "base_etag",
                 "applied_etag",
                 "plan_digest",
+                "proposal_digest",
             } and isinstance(item, str):
                 cleaned[key_text] = sanitize_text(
                     item,

@@ -315,7 +315,7 @@ def criteria_for_lead(*, lead, state: dict | None = None, requirements=None) -> 
     active = requirements if requirements is not None else _requirements_for_turn(organization=lead.organization, lead=lead)
     values = {**(lead.attributes if isinstance(lead.attributes, dict) else {}), "name": lead.name, "phone": lead.phone}
     from apps.crm.models import AttributeDefinition
-    for definition in AttributeDefinition.objects.filter(organization_id=lead.organization_id).values("name", "key"):
+    for definition in AttributeDefinition.objects.filter(is_active=True, organization_id=lead.organization_id).values("name", "key"):
         if definition["key"] in values:
             values[definition["name"]] = values.pop(definition["key"])
     current_state = state if state is not None else state_for_lead(lead, requirements=active)
