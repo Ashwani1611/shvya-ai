@@ -16,3 +16,5 @@ htmlcov/
 docs/
 tests/
 *.md
+# MCP guidance is runtime data, including nested Markdown references.
+!apps/integrations/operations/setup_assets/**
