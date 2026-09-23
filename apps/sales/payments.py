@@ -43,6 +43,30 @@ def _admit_payment_gateway(gateway):
         )
 
 
+def _payment_retry_after(response):
+    raw = str((getattr(response, "headers", {}) or {}).get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(1, min(int(float(raw)), 900))
+    except (TypeError, ValueError):
+        return None
+
+
+def _payment_http_error(response, message, provider):
+    if int(response.status_code or 0) == 429:
+        from apps.core.observability import increment
+
+        increment(
+            "provider.throttled",
+            labels={"provider": f"payment_{provider}"},
+        )
+        retry_after = _payment_retry_after(response)
+        if retry_after:
+            message = f"{message} Retry in about {retry_after} seconds."
+    return SalesGatewayError(message)
+
+
 def _provider_amount(value):
     try:
         amount = Decimal(str(value or 0)) / Decimal("100")
@@ -119,8 +143,10 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("description") or "Razorpay rejected the payment link.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("description") or "Razorpay rejected the payment link."),
+                    gateway.provider,
                 )
             checkout.provider_reference = str(data.get("id") or "")
             checkout.checkout_url = str(data.get("short_url") or "")
@@ -152,7 +178,11 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
             data = response.json() if response.content else {}
             if response.status_code >= 400:
                 message = data.get("error", {}).get("message") if isinstance(data, dict) else ""
-                raise SalesGatewayError(message or "Stripe rejected the checkout request.")
+                raise _payment_http_error(
+                    response,
+                    message or "Stripe rejected the checkout request.",
+                    gateway.provider,
+                )
             checkout.provider_reference = str(data.get("id") or "")
             checkout.checkout_url = str(data.get("url") or "")
         else:
@@ -415,8 +445,10 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("description") or "Razorpay refund failed.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("description") or "Razorpay refund failed."),
+                    gateway.provider,
                 )
             refund_id = str(data.get("id") or "")
         elif gateway.provider == SalesPaymentGateway.Provider.STRIPE:
@@ -431,8 +463,10 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("message") or "Stripe refund failed.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("message") or "Stripe refund failed."),
+                    gateway.provider,
                 )
             refund_id = str(data.get("id") or "")
         else:
