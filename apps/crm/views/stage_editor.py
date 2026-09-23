@@ -70,7 +70,7 @@ def _modal_context(*, pipeline, active_stage_id, error=""):
     return {
         "pipeline": pipeline,
         "stages": stages,
-        "attribute_definitions": AttributeDefinition.objects.filter(
+        "attribute_definitions": AttributeDefinition.objects.filter(is_active=True, 
             organization_id=pipeline.organization_id
         ),
         "stage_count": stages.count(),
@@ -290,7 +290,7 @@ def stage_editor_requirements(request, stage_id):
     selected = set(request.POST.getlist("attributes"))
     allowed = {
         str(pk)
-        for pk in AttributeDefinition.objects.filter(
+        for pk in AttributeDefinition.objects.filter(is_active=True, 
             organization=request.crm_user.organization
         ).values_list("id", flat=True)
     }
