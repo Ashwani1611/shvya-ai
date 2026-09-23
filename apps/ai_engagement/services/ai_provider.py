@@ -51,6 +51,56 @@ class AIProviderTransientError(AIProviderError):
 
     retryable = True
 
+    def __init__(self, message, *, retry_after=None):
+        super().__init__(message)
+        try:
+            self.retry_after = (
+                max(1, min(int(float(retry_after)), 900))
+                if retry_after is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            self.retry_after = None
+
+
+def _provider_retry_after(error):
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+    raw = str(headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(1, min(int(float(raw)), 900))
+    except (TypeError, ValueError):
+        return None
+
+
+def provider_retry_countdown(
+    error,
+    *,
+    identifier,
+    retries,
+    default=30,
+    maximum=300,
+):
+    """Bound exponential provider retry timing and spread fleet retries."""
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(float(retry_after)), 900))
+        except (TypeError, ValueError):
+            base = int(default)
+    else:
+        base = min(
+            max(1, int(maximum)),
+            max(1, int(default)) * (2 ** max(0, int(retries or 0))),
+        )
+    jitter = (
+        sum(ord(character) for character in str(identifier))
+        + (int(retries or 0) * 19)
+    ) % 7
+    return min(907, base + jitter)
+
 
 @dataclass(frozen=True)
 class AITextResult:
@@ -391,7 +441,14 @@ class OpenAIProvider:
         except RateLimitError as exc:
             provider_error = "rate_limit"
             self._release_credit_reservation(reservation)
-            raise AIProviderTransientError(f"OpenAI rate limit: {exc}") from exc
+            increment(
+                "ai.provider_throttled",
+                labels={"provider": "openai"},
+            )
+            raise AIProviderTransientError(
+                f"OpenAI rate limit: {exc}",
+                retry_after=_provider_retry_after(exc),
+            ) from exc
         except APIConnectionError as exc:
             provider_error = "connection"
             self._release_credit_reservation(reservation)
@@ -419,7 +476,10 @@ class OpenAIProvider:
             self._release_credit_reservation(reservation)
             status_code = getattr(exc, "status_code", None)
             if status_code is not None and status_code >= 500:
-                raise AIProviderTransientError(f"OpenAI server error: {exc}") from exc
+                raise AIProviderTransientError(
+                    f"OpenAI server error: {exc}",
+                    retry_after=_provider_retry_after(exc),
+                ) from exc
             raise AIProviderPermanentError(f"OpenAI API error: {exc}") from exc
         except Exception as exc:
             provider_error = "unexpected"
