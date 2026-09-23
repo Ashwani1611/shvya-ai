@@ -370,7 +370,7 @@ class ActionPlanner:
             ]
             keys = {str(item["key"]) for item in updates}
             definitions = list(
-                AttributeDefinition.objects.filter(
+                AttributeDefinition.objects.filter(is_active=True, 
                     organization=organization,
                     key__in=keys,
                 )

@@ -111,7 +111,7 @@ def campaign_account_for_pipeline(*, user, pipeline):
 
 
 def definitions(user):
-    return [definition for definition in AttributeDefinition.objects.filter(organization_id=user.organization_id)
+    return [definition for definition in AttributeDefinition.objects.filter(is_active=True, organization_id=user.organization_id)
             if not SENSITIVE_KEY.search(definition.key)]
 
 

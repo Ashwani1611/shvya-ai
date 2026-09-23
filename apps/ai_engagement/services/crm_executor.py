@@ -235,7 +235,7 @@ class CRMActionExecutor:
 
         existing = {
             item.key: item
-            for item in AttributeDefinition.objects.filter(organization=organization)
+            for item in AttributeDefinition.objects.filter(is_active=True, organization=organization)
         }
         requested_values = {}
         created_keys = []
@@ -249,7 +249,7 @@ class CRMActionExecutor:
                 # another field. This keeps conversational extraction from
                 # producing duplicate CRM columns.
                 definition = (
-                    AttributeDefinition.objects.filter(
+                    AttributeDefinition.objects.filter(is_active=True, 
                         organization=organization,
                         name__iexact=requested_name,
                     ).first()

@@ -244,7 +244,7 @@ def _config(
     sections = parse_playbook(raw)
     engagement_raw = raw
     definitions = list(
-        AttributeDefinition.objects.filter(organization=organization).values(
+        AttributeDefinition.objects.filter(is_active=True, organization=organization).values(
             "key",
             "name",
             "field_type",

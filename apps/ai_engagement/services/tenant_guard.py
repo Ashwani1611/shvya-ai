@@ -323,7 +323,7 @@ class TenantGuard:
             if not keys:
                 return action
             definitions = list(
-                AttributeDefinition.objects.filter(
+                AttributeDefinition.objects.filter(is_active=True, 
                     organization_id=self.organization_id,
                     key__in=keys,
                 )

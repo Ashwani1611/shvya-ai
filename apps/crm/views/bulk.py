@@ -93,7 +93,7 @@ CORE_FIELDS = [
 
 def _fields(user, leads):
     fields = list(CORE_FIELDS)
-    definitions = dict(AttributeDefinition.objects.filter(
+    definitions = dict(AttributeDefinition.objects.filter(is_active=True, 
         organization=user.organization,
     ).values_list("key", "name"))
     for lead in leads:

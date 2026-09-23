@@ -22,7 +22,7 @@ def get_cached_attribute_definitions(organization_id):
 
     definitions = list(
         AttributeDefinition.objects
-        .filter(organization_id=organization_id)
+        .filter(is_active=True, organization_id=organization_id)
         .order_by("display_order", "created_at")
         .values(
             "id",

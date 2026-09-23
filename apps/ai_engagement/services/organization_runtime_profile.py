@@ -354,7 +354,7 @@ class OrganizationAIRuntimeProfileBuilder:
                 "options": _bounded_safe_copy(row.get("options") or []),
                 "display_order": row["display_order"],
             }
-            for row in AttributeDefinition.objects.filter(
+            for row in AttributeDefinition.objects.filter(is_active=True, 
                 organization_id=organization.id
             )
             .order_by("display_order", "id")

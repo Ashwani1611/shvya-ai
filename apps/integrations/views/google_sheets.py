@@ -145,7 +145,7 @@ def google_sheets_view(request):
             mapping = {}
             allowed_attribute_ids = {
                 str(value)
-                for value in AttributeDefinition.objects.filter(
+                for value in AttributeDefinition.objects.filter(is_active=True, 
                     organization=organization
                 ).values_list("id", flat=True)
             }
@@ -242,7 +242,7 @@ def google_sheets_view(request):
         .order_by("name")
     )
     attributes = list(
-        AttributeDefinition.objects.filter(organization=organization).order_by(
+        AttributeDefinition.objects.filter(is_active=True, organization=organization).order_by(
             "display_order", "name"
         )
     )

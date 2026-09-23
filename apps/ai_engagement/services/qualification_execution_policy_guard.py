@@ -214,7 +214,7 @@ def install_qualification_execution_policy_guard() -> None:
             )
         protected.update(
             str(key).strip()
-            for key in AttributeDefinition.objects.filter(
+            for key in AttributeDefinition.objects.filter(is_active=True, 
                 organization=lead.organization
             ).values_list("key", flat=True)
             if str(key or "").strip()
