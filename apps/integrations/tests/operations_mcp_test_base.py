@@ -1,3 +1,4 @@
+# ruff: noqa: F401
 import json
 from datetime import timedelta
 from urllib.parse import parse_qs, urlparse
