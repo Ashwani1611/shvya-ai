@@ -1,4 +1,5 @@
 import hashlib
+import logging
 
 from django.conf import settings
 from django.contrib import messages
@@ -15,7 +16,6 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
-from urllib.parse import urlencode
 
 # in that view file
 from rest_framework.exceptions import APIException
@@ -32,7 +32,8 @@ from apps.organizations.access import crm_user_is_authorized
 from apps.organizations.models import Organization
 
 from .phone_numbers import normalize_free_phone
-from .models import OneTimeLoginToken, User
+from .models import OneTimeLoginToken, SignupVerificationDelivery, User
+from .signup_delivery import deliver_signup_verification
 from .session_utils import (
     delete_session_cookie,
     get_session_store,
@@ -348,31 +349,13 @@ def crm_signup_view(request):
             pipeline.phone_number = phone[3:]
             pipeline.save(update_fields=["owner", "country_code", "phone_number", "updated_at"])
 
-            verification_token = signing.dumps(
-                {
-                    "user_id": str(user.pk),
-                    "organization_id": str(organization.pk),
-                    "email": user.email,
-                },
-                salt="shvya-signup-email-v1",
-                compress=True,
+            delivery = SignupVerificationDelivery.objects.create(
+                user=user,
+                email=user.email,
+                verification_endpoint=request.build_absolute_uri(reverse("crm-verify-email")),
             )
-            verification_url = request.build_absolute_uri(
-                reverse("crm-verify-email")
-                + "?"
-                + urlencode({"token": verification_token})
-            )
-            send_mail(
-                subject="Verify your SHVYA AI email",
-                message=(
-                    "Welcome to SHVYA AI.\n\n"
-                    "Verify your email address to activate your organization:\n\n"
-                    f"{verification_url}\n\n"
-                    "This verification link expires in 24 hours."
-                ),
-                from_email=getattr(settings, "DEFAULT_FROM_EMAIL", None),
-                recipient_list=[user.email],
-                fail_silently=False,
+            transaction.on_commit(
+                lambda: deliver_signup_verification(delivery.pk), robust=True,
             )
 
     except IntegrityError:
@@ -397,8 +380,10 @@ def crm_signup_view(request):
             status=400,
         )
 
-    except Exception:
-
+    except Exception as exc:
+        logging.getLogger(__name__).error(
+            "Signup account creation failed: error_type=%s", type(exc).__name__,
+        )
         return render(
             request,
             "crm/signup.html",
@@ -427,7 +412,8 @@ def crm_signup_view(request):
         request,
         (
             "Your SHVYA AI account has been created. "
-            "Check your email and verify the address before logging in."
+            "Check your email and verify the address before logging in. "
+            "If delivery is delayed, we will retry automatically."
         ),
     )
 
