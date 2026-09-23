@@ -13,7 +13,7 @@ from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.core.fairness import admit, admit_ai_start, admit_provider_start
-from apps.core import observability
+from apps.core import fairness, observability
 from apps.core.observability import RequestObservabilityMiddleware, metrics_snapshot
 from apps.core.runtime_status import runtime_metrics
 from apps.core.scale_middleware import TenantConcurrencyMiddleware
@@ -163,6 +163,37 @@ class ScalabilityControlTests(SimpleTestCase):
             account_id="account-2",
             account_limit=1,
             global_limit=2,
+        )
+        self.assertTrue(allowed)
+        self.assertEqual(scope, "")
+
+    def test_global_rejection_releases_account_reservation(self):
+        self.assertTrue(
+            admit_provider_start(
+                provider="whatsapp",
+                account_id="account-a",
+                account_limit=1,
+                global_limit=1,
+            )[0]
+        )
+        allowed, _, scope = admit_provider_start(
+            provider="whatsapp",
+            account_id="account-b",
+            account_limit=1,
+            global_limit=1,
+        )
+        self.assertFalse(allowed)
+        self.assertEqual(scope, "global")
+
+        # Simulate the next provider window while leaving account-b's bucket
+        # untouched. It must be reusable because the global rejection rolled
+        # its reservation back.
+        cache.delete(fairness._bucket_key("whatsapp_global", "platform", 60))
+        allowed, _, scope = admit_provider_start(
+            provider="whatsapp",
+            account_id="account-b",
+            account_limit=1,
+            global_limit=1,
         )
         self.assertTrue(allowed)
         self.assertEqual(scope, "")
