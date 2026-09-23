@@ -645,7 +645,7 @@ def archive_stage(*, identity, arguments):
             operation="archive_stage",
             report=report,
             can_apply=report["can_archive"],
-            reversible=True,
+            reversible=report["affected_records"]["pending_or_queued_runs"] == 0,
             proposal=proposal,
         )
     _blocked(report, operation="Stage archive")
