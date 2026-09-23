@@ -13,7 +13,8 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
-from apps.crm.models import Lead, LeadReminder
+from apps.crm.models import AttributeDefinition, Lead, LeadReminder, Stage
+from apps.crm.views.api import get_user_pipelines
 from apps.organizations.access import crm_user_is_authorized
 from services.crm_activity_service import record_reminder_created, record_reminder_completed
 from services.crm.lead_service import create_lead
@@ -618,21 +619,103 @@ class MobileReminderActionView(APIView):
 
 
 class MobileLeadCollectionView(APIView):
+    def get(self, request):
+        user = _user(request)
+        pipelines = list(
+            get_user_pipelines(user)
+            .filter(organization=user.organization)
+            .prefetch_related("stages")
+        )
+        selected = next((p for p in pipelines if p.name.casefold() == "leads"), None)
+        if selected is None and pipelines:
+            selected = pipelines[0]
+        definitions = AttributeDefinition.objects.filter(
+            organization=user.organization
+        ).order_by("display_order", "created_at")
+        return Response({
+            "organization_name": user.organization.name,
+            "default_pipeline_id": str(selected.id) if selected else None,
+            "pipelines": [
+                {
+                    "id": str(pipeline.id),
+                    "name": pipeline.name,
+                    "country_code": pipeline.country_code,
+                    "stages": [
+                        {"id": str(stage.id), "name": stage.name}
+                        for stage in sorted(
+                            (stage for stage in pipeline.stages.all() if stage.is_active),
+                            key=lambda stage: (stage.display_order, stage.name),
+                        )
+                    ],
+                }
+                for pipeline in pipelines
+            ],
+            "attributes": [
+                {
+                    "key": definition.key,
+                    "name": definition.name,
+                    "field_type": definition.field_type,
+                    "options": definition.options if definition.field_type == "option" else [],
+                }
+                for definition in definitions
+            ],
+        })
+
     def post(self, request):
         user = _user(request)
-        name = str(request.data.get("name") or "").strip()[:255]
+        name = str(request.data.get("name") or "").strip()
         if not name:
             return Response({"detail": "Lead name is required."}, status=400)
+        pipeline_id = request.data.get("pipeline_id")
+        stage_id = request.data.get("stage_id")
+        if bool(pipeline_id) != bool(stage_id):
+            return Response({"detail": "Choose a pipeline and stage."}, status=400)
         try:
-            settings_obj = get_call_settings(user.organization)
-            pipeline, stage = resolve_default_pipeline_stage(settings_obj)
+            if pipeline_id:
+                pipeline = get_user_pipelines(user).filter(
+                    organization=user.organization, pk=pipeline_id
+                ).first()
+                if pipeline is None:
+                    return Response({"detail": "Pipeline is not available."}, status=400)
+                stage = Stage.objects.filter(
+                    pipeline=pipeline, pk=stage_id, is_active=True
+                ).first()
+                if stage is None:
+                    return Response({"detail": "Stage is not available."}, status=400)
+            else:
+                # Existing 1.1 clients only send name and phone.
+                settings_obj = get_call_settings(user.organization)
+                pipeline, stage = resolve_default_pipeline_stage(settings_obj)
+
+            incoming_attributes = request.data.get("attributes", {})
+            if not isinstance(incoming_attributes, dict):
+                return Response({"detail": "Attributes must be an object."}, status=400)
+            definitions = {
+                item.key: item
+                for item in AttributeDefinition.objects.filter(organization=user.organization)
+            }
+            if not set(incoming_attributes).issubset(definitions):
+                return Response({"detail": "Unknown lead attribute."}, status=400)
+            attributes = {}
+            for key, value in incoming_attributes.items():
+                definition = definitions[key]
+                if not isinstance(value, str):
+                    return Response({"detail": f"Invalid value for {definition.name}."}, status=400)
+                value = value.strip()
+                if definition.field_type == "option" and value and value not in definition.options:
+                    return Response({"detail": f"Invalid option for {definition.name}."}, status=400)
+                attributes[key] = value
+
             phone = normalize_call_phone(request.data.get("phone"), pipeline=pipeline)
             # Never change an existing lead's name, owner, pipeline or stage.
             existing = Lead.objects.filter(organization=user.organization, phone=phone).exists()
             if existing:
                 return Response({"detail": "This phone number is already in your CRM."}, status=409)
             lead = create_lead(organization=user.organization, pipeline=pipeline, stage=stage,
-                               name=name, phone=phone, lead_source="phone_call", send_welcome=False)
+                               name=name, phone=phone,
+                               email=str(request.data.get("email") or "").strip(),
+                               notes=str(request.data.get("notes") or "").strip(),
+                               attributes=attributes, lead_source="system", send_welcome=False)
         except DjangoValidationError as exc:
             return _error(exc)
         return Response({"ok": True, "lead_id": str(lead.id)}, status=201)

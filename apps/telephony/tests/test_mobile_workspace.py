@@ -7,7 +7,7 @@ from rest_framework.test import APIClient
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import get_session_cookie_name, set_authenticated_user
-from apps.crm.models import LeadReminder
+from apps.crm.models import AttributeDefinition, Lead, LeadReminder, Pipeline, Stage
 from apps.telephony.models import CallDevice, CallRecord, CallIntelligenceSettings
 from apps.telephony.services import ingest_call_event, register_device
 from . import test_call_intelligence as fixtures
@@ -190,3 +190,64 @@ class MobileWorkspaceTests(TestCase):
         self.assertNotEqual(call.lead.name, "Replacement")
         response = self.api().post(url, {"name": "New prospect", "phone": "9123456789"}, format="json")
         self.assertEqual(response.status_code, 201)
+
+    def test_mobile_lead_form_exposes_organization_fields_without_descriptions(self):
+        AttributeDefinition.objects.create(
+            organization=self.org, key="interest", name="Interest", field_type="option",
+            options=["CRM", "Calls"], description="Internal guidance",
+        )
+        self.user.role = User.Role.ADMIN
+        self.user.save(update_fields=["role"])
+        response = self.api().get("/api/v1/call-intelligence/leads/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["organization_name"], self.org.name)
+        self.assertEqual(response.data["attributes"][0]["options"], ["CRM", "Calls"])
+        self.assertNotIn("description", response.data["attributes"][0])
+        self.assertIn(str(self.pipeline.id), [row["id"] for row in response.data["pipelines"]])
+        other = self.api(self.other_user).get("/api/v1/call-intelligence/leads/")
+        self.assertEqual(other.status_code, 200)
+        self.assertFalse(any(row["key"] == "interest" for row in other.data["attributes"]))
+
+    def test_mobile_lead_form_saves_details_in_selected_organization_pipeline(self):
+        self.user.role = User.Role.ADMIN
+        self.user.save(update_fields=["role"])
+        AttributeDefinition.objects.create(
+            organization=self.org, key="interest", name="Interest", field_type="option",
+            options=["CRM", "Calls"],
+        )
+        url = "/api/v1/call-intelligence/leads/"
+        payload = {
+            "name": "Mobile prospect", "phone": "9876501234", "email": "lead@example.com",
+            "notes": "Requested a demo", "pipeline_id": str(self.pipeline.id),
+            "stage_id": str(self.stage.id), "attributes": {"interest": "Calls"},
+        }
+        response = self.api().post(url, payload, format="json")
+        self.assertEqual(response.status_code, 201)
+        lead = Lead.objects.get(pk=response.data["lead_id"])
+        self.assertEqual((lead.pipeline, lead.stage), (self.pipeline, self.stage))
+        self.assertEqual((lead.email, lead.notes, lead.attributes["interest"]),
+                         ("lead@example.com", "Requested a demo", "Calls"))
+        self.assertEqual(lead.lead_source, "system")
+
+        payload["phone"] = "9876501235"
+        payload["attributes"] = {"interest": "Not an option"}
+        self.assertEqual(self.api().post(url, payload, format="json").status_code, 400)
+
+        other_pipeline = Pipeline.objects.get(organization=self.other_org, name="Leads")
+        other_stage = Stage.objects.filter(pipeline=other_pipeline).first()
+        payload["attributes"] = {}
+        payload["pipeline_id"] = str(other_pipeline.id)
+        payload["stage_id"] = str(other_stage.id)
+        self.assertEqual(self.api().post(url, payload, format="json").status_code, 400)
+
+    def test_agent_cannot_choose_unassigned_pipeline(self):
+        url = "/api/v1/call-intelligence/leads/"
+        response = self.api().get(url)
+        self.assertEqual(response.status_code, 200)
+        allowed_ids = {row["id"] for row in response.data["pipelines"]}
+        self.assertNotIn(str(self.pipeline.id), allowed_ids)
+        result = self.api().post(url, {
+            "name": "Restricted", "phone": "9876501236",
+            "pipeline_id": str(self.pipeline.id), "stage_id": str(self.stage.id),
+        }, format="json")
+        self.assertEqual(result.status_code, 400)
