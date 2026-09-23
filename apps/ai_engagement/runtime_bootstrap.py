@@ -45,12 +45,6 @@ def install_ai_runtime() -> None:
     )
     install_conversation_priority_runtime()
 
-    # Reminder extraction is independent of qualification mapping authority.
-    from apps.ai_engagement.services.reminder_time_runtime import (
-        install_reminder_time_runtime,
-    )
-    install_reminder_time_runtime()
-
     # Preserve normal-conversation reminders and evidence-bound stage routing
     # without restoring fuzzy qualification mapping or automatic completion
     # stages. Qualification ownership lives in the contract below.
