@@ -6971,5 +6971,11 @@ def execute_operations_tool(*, name, identity, arguments):
 
         handler = LIFECYCLE_HANDLERS.get(str(name or ""))
     if handler is None:
+        from apps.integrations.operations_superadmin_diagnostics import (
+            SUPERADMIN_DIAGNOSTIC_HANDLERS,
+        )
+
+        handler = SUPERADMIN_DIAGNOSTIC_HANDLERS.get(str(name or ""))
+    if handler is None:
         raise OperationsToolError("Unknown SHVYA Operations tool.")
     return handler(identity=identity, arguments=arguments or {})

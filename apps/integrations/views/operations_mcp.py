@@ -1261,6 +1261,42 @@ OWN_TOOL_DEFINITIONS = [
         read_only=False,
     ),
     _tool(
+        "test_integration_connection",
+        "Test integration readiness",
+        "Run safe tenant-scoped readiness checks for email, WhatsApp, Instagram, Google Sheets or outbound webhook. Email/Instagram may perform provider read/auth tests when live=true; no customer messages or webhook payloads are sent.",
+        {
+            "integration": {
+                "type": "string",
+                "enum": ["email", "whatsapp", "instagram", "google_sheets", "webhook"],
+            },
+            "resource_id": {"type": "string"},
+            "live": {"type": "boolean", "default": False},
+        },
+        ["integration"],
+    ),
+    _tool(
+        "compare_organization_configuration",
+        "Compare organization configuration drift",
+        "Superadmin-only comparison of the active organization with another active organization using opaque configuration fingerprints and counts only. Raw tenant configuration, customer records and credentials are never returned.",
+        {
+            "target_organization_id": {"type": "string", "format": "uuid"},
+        },
+        ["target_organization_id"],
+    ),
+    _tool(
+        "get_configuration_integrity_diagnostics",
+        "Find duplicate and orphaned configuration",
+        "Detect duplicate configuration groups and orphaned/inactive references across CRM, Workflows and Cadence without changing state.",
+    ),
+    _tool(
+        "test_ai_response_policy",
+        "Test AI response policy",
+        "Compile the current AI Playbook/engagement policy, surface configuration-policy issues, and optionally run the existing no-side-effect qualification simulation against synthetic answers.",
+        {
+            "answers": {"type": "object"},
+        },
+    ),
+    _tool(
         "get_operations_audit",
         "Review SHVYA Operations audit",
         "Return safe organization-scoped audit events, or Superadmin-only platform audit events that have no customer tenant. Never mixes customer organizations.",
@@ -1398,6 +1434,10 @@ TOOL_CAPABILITIES = {
     "archive_pipeline": CAP_PIPELINE_CONFIG_WRITE,
     "archive_cadence": CAP_CADENCE_CONFIG_WRITE,
     "archive_workflow": CAP_WORKFLOW_CONFIG_WRITE,
+    "test_integration_connection": CAP_DIAGNOSTICS_READ,
+    "compare_organization_configuration": CAP_DIAGNOSTICS_READ,
+    "get_configuration_integrity_diagnostics": CAP_DIAGNOSTICS_READ,
+    "test_ai_response_policy": CAP_DIAGNOSTICS_READ,
     "get_operations_audit": CAP_AUDIT_READ,
 }
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
