@@ -1056,7 +1056,7 @@ def execute_operations_tool(*, name, identity, arguments):
         # Extended configuration tools are kept in lazily imported modules so
         # this core Operations boundary remains the single source of approval,
         # tenant, audit, and error semantics without creating import cycles.
-        from apps.integrations.operations_extended_tools import EXTENDED_HANDLERS
+        from apps.integrations.operations.registry import EXTENDED_HANDLERS
 
         handler = EXTENDED_HANDLERS.get(str(name or ""))
     if handler is None:

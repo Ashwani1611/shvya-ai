@@ -574,7 +574,7 @@ def _dependency_graph(organization):
             }
         )
 
-    from apps.integrations.operations_extended_tools import _qualification_public_snapshot
+    from apps.integrations.operations.tools.qualification import _qualification_public_snapshot
 
     qualification = _qualification_public_snapshot(organization)
     completion = qualification.get("completion_stage")
@@ -829,10 +829,8 @@ def _organization_validation(organization):
     errors = []
     warnings = []
 
-    from apps.integrations.operations_extended_tools import (
-        _qualification_public_snapshot,
-        _routing_snapshot,
-    )
+    from apps.integrations.operations.tools.qualification import _qualification_public_snapshot
+    from apps.integrations.operations.tools.whatsapp import _routing_snapshot
 
     routing = _routing_snapshot(organization)
     if not routing["valid"]:

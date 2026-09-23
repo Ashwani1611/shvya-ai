@@ -123,3 +123,25 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn('"apps.hosted_automation"', source)
 
+    def test_extended_operations_module_is_only_a_compatibility_facade(self):
+        path = ROOT / "apps" / "integrations" / "operations_extended_tools.py"
+        self.assertLess(
+            len(path.read_text(encoding="utf-8").splitlines()),
+            180,
+            "Keep extended Operations implementation in domain tool modules.",
+        )
+
+    def test_operations_extended_tools_are_split_by_domain(self):
+        base = ROOT / "apps" / "integrations" / "operations" / "tools"
+        expected = {
+            "qualification.py",
+            "whatsapp.py",
+            "workflows.py",
+            "touchpoints.py",
+            "faqs.py",
+            "knowledge.py",
+            "cadence.py",
+            "simulations.py",
+        }
+        self.assertTrue(expected.issubset({path.name for path in base.glob("*.py")}))
+
