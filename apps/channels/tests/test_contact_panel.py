@@ -377,6 +377,96 @@ class ContactPanelTests(TestCase):
         self.assertEqual(message.lead.phone, "+919123456789")
         self.assertEqual(Lead.objects.filter(organization=self.org, phone="+919123456789").count(), 1)
 
+    def test_api_create_lead_persists_exact_inbound_as_durable_ai_turn(self):
+        message = self.message()
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        data = {
+            "chat": str(message.pk),
+            "name": "AI activation customer",
+            "pipeline": str(self.pipeline.pk),
+        }
+
+        with (
+            patch(
+                "apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async"
+            ) as publish,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        message.refresh_from_db()
+        self.assertIsNotNone(message.lead_id)
+        execution = (message.raw_payload or {}).get("shvya_ai_execution") or {}
+        self.assertEqual(execution.get("status"), "queued")
+        publish.assert_called_once_with(
+            args=[str(message.lead_id)],
+            countdown=0,
+        )
+
+    def test_hosted_create_lead_activates_synced_history_once(self):
+        from apps.hosted_automation.models import HostedAutomationJob
+        from services.channels.hosted_automation_service import (
+            EXPLICIT_LEAD_CREATION_AI_ACTIVATION,
+        )
+
+        self.pipeline.country_code = "+91"
+        self.pipeline.phone_number = "9000000000"
+        self.pipeline.ai_enabled = True
+        self.pipeline.save(
+            update_fields=["country_code", "phone_number", "ai_enabled", "updated_at"]
+        )
+        self.account.connection_type = "hosted"
+        self.account.phone_number_id = "+919000000000"
+        self.account.display_phone_number = "+919000000000"
+        self.account.save(
+            update_fields=[
+                "connection_type",
+                "phone_number_id",
+                "display_phone_number",
+                "updated_at",
+            ]
+        )
+        message = self.message(
+            raw_payload={
+                "isHistory": True,
+                "peerPhone": "+919123456789",
+                "peerKey": "+919123456789",
+                "contactName": "History customer",
+            }
+        )
+        url = reverse("chat-unlinked-contact", args=[self.account.pk])
+        data = {
+            "chat": "+919123456789",
+            "name": "History customer",
+            "pipeline": str(self.pipeline.pk),
+        }
+
+        with (
+            patch("apps.hosted_automation.signals.dispatch_due_hosted_ai.apply_async"),
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            response = self.client.post(url, data)
+
+        self.assertEqual(response.status_code, 200, response.content)
+        message.refresh_from_db()
+        self.assertIsNotNone(message.lead_id)
+        job = HostedAutomationJob.objects.get(source_message=message)
+        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+        self.assertEqual(
+            (job.result or {}).get("activation"),
+            EXPLICIT_LEAD_CREATION_AI_ACTIVATION,
+        )
+
+        # Repeating Create Lead cannot create a second source-bound AI job.
+        with self.captureOnCommitCallbacks(execute=True):
+            retry = self.client.post(url, data)
+        self.assertEqual(retry.status_code, 200, retry.content)
+        self.assertEqual(
+            HostedAutomationJob.objects.filter(source_message=message).count(),
+            1,
+        )
+
     def test_existing_matching_lead_link_still_queues_ai_for_newly_attached_inbound(self):
         existing = Lead.objects.create(
             organization=self.org,
