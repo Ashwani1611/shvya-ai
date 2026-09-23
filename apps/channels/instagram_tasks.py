@@ -2,6 +2,7 @@
 import logging
 
 from celery import shared_task
+from django.conf import settings
 from django.db import transaction
 
 from .instagram_models import InstagramAccount, InstagramMessage, InstagramOAuthAttempt, InstagramWebhookDelivery
@@ -22,6 +23,17 @@ def _instagram_retry_delay(*, identifier, retries, retry_after=None):
         + (int(retries or 0) * 11)
     ) % 7
     return min(907, base + jitter)
+
+
+def _instagram_admission(account_id):
+    from apps.core.fairness import admit_provider_start
+
+    return admit_provider_start(
+        provider="instagram",
+        account_id=account_id,
+        account_limit=settings.INSTAGRAM_ACCOUNT_REQUESTS_PER_MINUTE,
+        global_limit=settings.INSTAGRAM_GLOBAL_REQUESTS_PER_MINUTE,
+    )
 
 
 def _safe_error(exc, account=None):
@@ -104,6 +116,20 @@ def sync_instagram_account_task(self, account_id):
     account = InstagramAccount.objects.filter(pk=account_id, status=InstagramAccount.Status.CONNECTED).first()
     if not account:
         return {"status": "not_connected"}
+    allowed, retry_after, scope = _instagram_admission(account.id)
+    if not allowed:
+        self.apply_async(
+            args=[str(account_id)],
+            countdown=_instagram_retry_delay(
+                identifier=account_id,
+                retries=0,
+                retry_after=retry_after,
+            ),
+        )
+        return {
+            "status": "deferred",
+            "reason": f"{scope}_fairness_limit",
+        }
     try:
         if not account.webhook_subscribed:
             _subscribe(account)
@@ -124,10 +150,30 @@ def sync_instagram_account_task(self, account_id):
     return {"status": "synced", "conversations": count}
 
 
-@shared_task
-def send_instagram_message_task(message_id):
+@shared_task(bind=True, max_retries=3, default_retry_delay=20)
+def send_instagram_message_task(self, message_id):
     from services.channels import instagram_service as provider
     from services.channels.instagram_inbox import claim_message
+
+    account_id = InstagramMessage.objects.filter(pk=message_id).values_list(
+        "account_id",
+        flat=True,
+    ).first()
+    if account_id:
+        allowed, retry_after, scope = _instagram_admission(account_id)
+        if not allowed:
+            self.apply_async(
+                args=[str(message_id)],
+                countdown=_instagram_retry_delay(
+                    identifier=message_id,
+                    retries=0,
+                    retry_after=retry_after,
+                ),
+            )
+            return {
+                "status": "deferred",
+                "reason": f"{scope}_fairness_limit",
+            }
 
     message = None
     try:
@@ -137,9 +183,31 @@ def send_instagram_message_task(message_id):
             return {"status": existing or "missing", "duplicate_task_ignored": True}
         delivered = provider.send_queued_message(message)
     except Exception as original:
-        # No automatic retry after external I/O: a timeout can mean Meta accepted
-        # the message. The durable claim also prevents concurrent task delivery.
+        # Unknown network outcomes are never replayed: Meta may already have
+        # accepted the message. An explicit 429 is different—the provider
+        # rejected the request before accepting the send, so the durable claim
+        # can be cleared and retried safely with provider-aware jitter.
         exc = _safe_error(original, message.account if message else None)
+        if (
+            isinstance(original, provider.InstagramAPIError)
+            and original.status_code == 429
+            and self.request.retries < self.max_retries
+        ):
+            if provider.requeue_explicitly_rejected_message(message_id):
+                from apps.core.observability import increment
+
+                increment(
+                    "messaging.provider_throttled",
+                    labels={"provider": "instagram"},
+                )
+                raise self.retry(
+                    exc=exc,
+                    countdown=_instagram_retry_delay(
+                        identifier=message_id,
+                        retries=self.request.retries,
+                        retry_after=exc.retry_after,
+                    ),
+                )
         provider.fail_message(message_id, exc)
         return {"status": "failed", "error": str(exc)}
     return {"status": delivered.status, "message_id": str(delivered.pk)}
