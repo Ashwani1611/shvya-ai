@@ -35,7 +35,7 @@ def install_ai_runtime() -> None:
     )
     install_fixed_prompt_overrides()
 
-    from apps.ai_engagement.services.ai_setup_runtime_fixes import (
+    from apps.ai_engagement.services.ai_brain_setup import (
         install_ai_setup_runtime_fixes,
     )
     install_ai_setup_runtime_fixes()
