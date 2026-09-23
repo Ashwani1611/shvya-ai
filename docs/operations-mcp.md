@@ -1,5 +1,7 @@
 # SHVYA Operations MCP
 
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+
 > This document describes the actor-bound Operations MCP implemented on the staging branch. The existing Diagnostic MCP remains a separate read-only connector.
 
 ## Purpose
@@ -76,12 +78,114 @@ Superadmin can independently grant:
 - `automation.workflow.config.write`
 - `automation.cadence.config.write`
 - `automation.messaging.config.write`
+- `configuration.plan.write`
 
 Legacy stored `crm.config.write` and `automation.config.write` values are recognized only for backward compatibility and are expanded into these granular controls.
 
 Write capabilities may require explicit human approval. Superadmin customer-state writes always use the approval gate.
 
 An OAuth write scope does not bypass capability policy. Authenticated `tools/list` is also policy scoped: Organization Admin clients only discover tools for capabilities currently enabled by Superadmin, while Superadmin retains the full Operations surface.
+
+
+## Current staging tool surface
+
+The staging implementation defines **70 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
+
+### Context and inspection
+
+- `get_operations_context`
+- `list_organizations`
+- `select_organization_context`
+- `clear_organization_context`
+- `get_organization_configuration`
+- `get_ai_configuration`
+- `get_knowledge_health`
+- `get_automation_configuration`
+- `get_messaging_automation_settings`
+- `get_conversion_analysis`
+- `get_operations_audit`
+
+### Lead and qualification
+
+- `diagnose_lead_qualification`
+- `move_lead_stage`
+- `repair_qualification_stage`
+- `update_lead_attributes`
+- `get_qualification_configuration`
+- `validate_qualification_configuration`
+- `upsert_qualification_configuration`
+
+### AI, CRM and messaging configuration
+
+- `update_ai_configuration`
+- `upsert_pipeline_configuration`
+- `upsert_stage_configuration`
+- `upsert_attribute_configuration`
+- `update_messaging_automation_settings`
+- `list_whatsapp_accounts`
+- `validate_whatsapp_routing`
+- `bind_whatsapp_account_to_pipeline`
+- `begin_whatsapp_connection`
+
+### Workflows, Cadence and simulations
+
+- `upsert_workflow_configuration`
+- `upsert_cadence_configuration`
+- `add_cadence_step`
+- `add_hosted_whatsapp_step`
+- `update_cadence_step`
+- `delete_cadence_step`
+- `reorder_cadence_steps`
+- `list_workflow_triggers`
+- `list_workflow_actions`
+- `get_workflow_schema`
+- `validate_workflow_configuration`
+- `simulate_ai_conversation`
+- `simulate_workflow`
+- `simulate_cadence`
+
+### Touchpoints, FAQs and knowledge lifecycle
+
+- `list_touchpoints`
+- `upsert_touchpoint`
+- `archive_touchpoint`
+- `list_faqs`
+- `upsert_faq`
+- `archive_faq`
+- `create_knowledge_source`
+- `upload_knowledge_document`
+- `publish_knowledge_document`
+- `archive_knowledge_document`
+
+### Configuration plans and lifecycle
+
+- `get_configuration_dependency_graph`
+- `validate_organization_configuration`
+- `reorder_stages`
+- `export_organization_configuration`
+- `create_configuration_plan`
+- `apply_configuration_plan`
+- `rollback_configuration_plan`
+- `import_organization_configuration`
+- `archive_stage`
+- `delete_stage`
+- `archive_attribute`
+- `delete_attribute`
+- `archive_pipeline`
+- `archive_cadence`
+- `archive_workflow`
+
+Configuration plans use the dedicated `configuration.plan.write` capability. Lifecycle operations validate dependencies and prefer reversible archive behavior where hard deletion would be unsafe.
+
+### Superadmin diagnostics
+
+- `test_integration_connection`
+- `compare_organization_configuration`
+- `get_configuration_integrity_diagnostics`
+- `test_ai_response_policy`
+
+The configuration comparison is Superadmin-only and opaque: it reports safe drift without returning credentials or raw secret values. Integrity diagnostics cover duplicate/orphan-style configuration problems, and AI response-policy testing validates bounded customer-facing behavior without turning diagnostic content into authority.
+
 
 ## Read / diagnostic tools
 
@@ -115,6 +219,15 @@ The conversion analysis distinguishes measured values from likely contributors a
 ## Mutation tools
 
 Bounded mutation surfaces include:
+
+- qualification configuration read/validate/upsert and completion-target controls
+- Hosted/API WhatsApp discovery, connection start, pipeline binding and routing validation
+- saved Touchpoint and FAQ create/update/archive lifecycle
+- knowledge source/document create, upload, publish and archive lifecycle
+- Workflow schema discovery/validation plus Workflow/Cadence simulation
+- configuration export/import, dependency graph, full validation, stage reordering, create/apply/rollback plans
+- safe archive/delete lifecycle for stages, attributes, pipelines, Cadence and Workflows
+- Superadmin integration, drift, integrity and AI response-policy diagnostics
 
 - lead pipeline/stage transition
 - completed-qualification → Qualified reconciliation
@@ -218,11 +331,19 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 - `apps/integrations/operations_auth.py`
 - `apps/integrations/operations_agent_prompt.py`
 - `apps/integrations/operations_tools.py`
+- `apps/integrations/operations_extended_tools.py`
+- `apps/integrations/operations_configuration_management.py`
+- `apps/integrations/operations_lifecycle.py`
+- `apps/integrations/operations_superadmin_diagnostics.py`
+- `apps/integrations/mcp_schema.py`
 - `apps/integrations/views/operations_mcp.py`
-- `apps/integrations/migrations/0006_operations_mcp.py`
+- `apps/integrations/migrations/0006_operations_mcp.py` through the current Operations configuration-plan migrations
 - `apps/superadmin/operations_views.py`
 - `templates/integrations/operations_authorize.html`
 - `apps/integrations/tests/test_operations_mcp.py`
+- `apps/integrations/tests/test_operations_configuration_management.py`
+- `apps/integrations/tests/test_operations_lifecycle.py`
+- `apps/integrations/tests/test_operations_additional_diagnostics.py`
 
 The Diagnostic MCP implementation remains under `apps/integrations/diagnostic_*.py` and `apps/integrations/views/mcp.py`.
 

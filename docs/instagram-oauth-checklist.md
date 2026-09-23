@@ -1,6 +1,6 @@
 # Instagram OAuth production checklist
 
-> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 
 Before enabling **Continue with Instagram** in production, confirm all of the following in Meta App Dashboard and the SHVYA VPS environment:

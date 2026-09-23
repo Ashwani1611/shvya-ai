@@ -2,7 +2,7 @@
 
 This document is the database architecture reference for **SHVYA AI**. It documents the current Django ORM schema, the important database constraints and indexes, the relationships between domains, and the reason each major group of tables exists.
 
-> **Schema snapshot:** verified on 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. This includes the AI trace/action-receipt/lead-signal and AI Playbook migrations, Hosted read-state, Bulk Campaign operational ledger, Instagram lead linkage, CRM reminder acknowledgements, support portal schema, diagnostic MCP/OAuth schema, and the marketing booking table. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
+> **Schema snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This includes the current CRM/AI/messaging/support schema plus SHVYA Sales, SHVYA Calendar, Call Intelligence, saved Touchpoints, soft-lifecycle fields, and the expanded Operations MCP configuration-plan/approval/audit models. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
 
 ---
 
@@ -1133,6 +1133,72 @@ Important ticket constraints include no self-merge, requester+submission-key ide
 **Why:** persists public “book a call / walkthrough” requests while linking the request to the CRM lead created for the enquiry.
 
 ---
+
+
+### Expanded Operations configuration management
+
+#### `integrations_operationsconfigurationplan`
+
+Durable, tenant-scoped Operations configuration plan created by the actor-bound MCP configuration-management layer. It records the organization, creating Operations token/actor context, plan status, immutable bounded plan payload/evidence, validation/apply/rollback state and timestamps. Plans are subject to the `configuration.plan.write` capability, dry-run/approval rules and post-write verification.
+
+### SHVYA Sales
+
+The current staging Sales domain persists templates, numbered customer documents and their operational lifecycle:
+
+- `sales_salestemplate`
+- `sales_salesdocumentnumbersequence`
+- `sales_salesdocument`
+- `sales_salesdocumentdelivery`
+- `sales_salesemailtrackedlink`
+- `sales_salesactivity`
+- `sales_salesattachment`
+- `sales_salesscheduleddelivery`
+- `sales_salesreminder`
+- `sales_salessettings`
+- `sales_salespaymentgateway`
+- `sales_salespaymentcheckout`
+- `sales_salespayment`
+- `sales_salescreditnote`
+- `sales_salesrecurringinvoice`
+
+`SalesDocument` supports quotation, agreement and invoice records, server-generated PDF evidence, revisions, public view/acceptance state and delivery snapshots. Payment/refund/credit/recurring-invoice models extend that document lifecycle without moving it outside the organization boundary.
+
+### SHVYA Calendar
+
+The current staging Calendar domain persists:
+
+- `shvya_calendar_calendarpage`
+- `shvya_calendar_calendarpageversion`
+- `shvya_calendar_calendarsubmission`
+- `shvya_calendar_calendarsubmissionattachment`
+- `shvya_calendar_calendarblock`
+- `shvya_calendar_googlecalendarconnection`
+- `shvya_calendar_calendarbooking`
+- `shvya_calendar_calendarremindersequence`
+- `shvya_calendar_calendarreminderstep`
+- `shvya_calendar_calendarreminderdelivery`
+
+Pages bind to an organization and can bind host/pipeline/stage context. Google OAuth tokens are encrypted, bookings remain CRM-linked, and reminder delivery resolves current tenant/pipeline state rather than trusting stale client data.
+
+### Call Intelligence
+
+The current staging telephony domain persists:
+
+- `telephony_callintelligencesettings`
+- `telephony_calldisposition`
+- `telephony_calldevice`
+- `telephony_callrecord`
+- `telephony_callevent`
+- `telephony_callintelligenceresult`
+- `telephony_callapprelease`
+
+`CallRecord` is unique by `(organization, source, source_call_id)` and may link to both the CRM lead and canonical `LeadCall`. Device identity, recordings/transcripts, disposition/follow-up state and AI analysis remain organization scoped.
+
+### Saved Touchpoints and soft lifecycle state
+
+Saved replies use `followups_touchpointcategory` and `followups_touchpointreply`. Touchpoint replies now carry `is_active` so Operations/API lifecycle tools can archive them without destroying referenced configuration.
+
+The staging schema also uses explicit soft-lifecycle flags where destructive deletion is unsafe: `crm_attributedefinition.is_active`, `triggers_smarttrigger.is_active` and `followups_touchpointreply.is_active`. Operations archive/delete tools must respect dependency checks before hard deletion.
 
 ## 9.17 Apps with no current custom tables
 

@@ -1,6 +1,6 @@
 # 07. Architecture Source-Code Map
 
-> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 This file maps architecture responsibilities to implementation locations. Use it as the starting point when you know **what behavior you want to change** but not **which file owns it**.
 
@@ -410,3 +410,15 @@ Duplicating one of these rules in a view or new task creates drift. Prefer one c
 | Help & Support | `apps/support/` | Customer portal, Shvya-Ops, policy, storage, mail, attention. |
 | Diagnostic MCP/OAuth | `apps/integrations/diagnostic_auth.py`, `diagnostic_models.py`, `diagnostic_tools.py`, `views/mcp.py` | Read-only tenant-scoped diagnostics. |
 | Marketing booking request | `apps/core/booking.py`, `apps/core/models.py` | Public booking request → CRM-linked record. |
+
+## Current staging workspace additions
+
+| Domain | Main file(s) | Notes |
+| --- | --- | --- |
+| SHVYA Sales | `apps/sales/models.py`, `models_lifecycle.py`, `services.py`, `lifecycle.py`, `pdf_service.py`, `tracking.py`, `urls.py` | Quotations/agreements/invoices, PDF snapshots, delivery tracking, revisions, reminders and payment lifecycle. |
+| SHVYA Calendar | `apps/shvya_calendar/models.py`, `services.py`, `workspace.py`, `views.py`, `tasks.py`, `urls.py`, `public_urls.py` | Lead capture, availability, booking, Google Calendar/Meet and reminder execution. |
+| Call Intelligence | `apps/telephony/models/call_log.py`, `services.py`, `views/api.py`, `urls/api_v1.py`, `urls/web.py` | Tenant-safe device/call ingestion, CRM `LeadCall` linkage, recordings/transcripts, dispositions and analysis. |
+| Android Call client | `android/call-intelligence/` | Internal Android SIM call companion; registration, heartbeat, call-log reconciliation and sync. |
+| Operations extended tools | `apps/integrations/operations_extended_tools.py` | Qualification, WhatsApp binding, workflow schema, Touchpoints, FAQs, knowledge lifecycle, Hosted Cadence and simulations. |
+| Operations configuration | `apps/integrations/operations_configuration_management.py`, `operations_lifecycle.py` | Dependency graph, validation/export/import, configuration plans, stage reorder and dependency-safe archive/delete. |
+| Operations diagnostics | `apps/integrations/operations_superadmin_diagnostics.py` | Safe integration tests, opaque Superadmin configuration drift, integrity diagnostics and AI response-policy tests. |

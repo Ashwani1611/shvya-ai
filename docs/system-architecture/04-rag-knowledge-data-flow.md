@@ -1,6 +1,6 @@
 # 04. RAG, Knowledge Ingestion and Data Flow
 
-> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 This document explains how organization knowledge moves from a file or URL into PostgreSQL/pgvector, how a customer question becomes a query embedding, how relevant chunks are selected, and how those chunks become grounded AI context.
 

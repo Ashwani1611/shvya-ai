@@ -2,7 +2,7 @@
 
 This folder is the end-to-end runtime architecture reference for SHVYA AI. It explains how requests enter the application, where data moves, how leads are created and routed, how AI decisions are produced and validated, how RAG knowledge is ingested and retrieved, and how background jobs and realtime updates connect the system.
 
-> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 ## Documentation map
 
@@ -225,3 +225,14 @@ The production baseline now also includes:
 - Help & Support + Shvya-Ops ticketing with private attachments and durable mail outbox;
 - read-only organization-scoped diagnostic MCP/OAuth access with hashed token material and safe audit metadata;
 - actor-bound Operations MCP/OAuth for ChatGPT/Claude with explicit Superadmin tenant context, Superadmin-owned organization capability policy, dry-run/approval gates, verified writes, workspace support-presence visibility and append-only audit.
+
+## Current staging business workspaces
+
+The architecture map now also includes these first-class staging domains:
+
+- **SHVYA Sales** — `apps/sales/`; quotations, agreements, invoices, PDF/delivery tracking and payment lifecycle. See [`../shvya-sales.md`](../shvya-sales.md).
+- **SHVYA Calendar** — `apps/shvya_calendar/`; lead capture, scheduling, Google Calendar/Meet, bookings and reminders. See [`../shvya-calendar-workspace.md`](../shvya-calendar-workspace.md).
+- **Call Intelligence** — `apps/telephony/` plus `android/call-intelligence/`; device/call synchronization, CRM linkage and analysis. See [`../call-intelligence.md`](../call-intelligence.md).
+- **Expanded Operations MCP** — `apps/integrations/operations_*.py`; 70 Operations-native tools plus diagnostic read tools, including configuration plans/lifecycle controls and Superadmin diagnostics. See [`../operations-mcp.md`](../operations-mcp.md).
+
+These workspaces still follow the same organization boundary, service-layer validation, idempotency and deployment rules described throughout this folder.

@@ -1,5 +1,7 @@
 # Workflows
 
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+
 The customer-facing **Workflows** module is available at `/dashboard/workflows/` through the existing dashboard sidebar. Historical/internal URL names, model names and task identifiers may still contain `smart-trigger` / `SmartTrigger`. It uses Django templates and JavaScript, with Django services and Celery background processing.
 
 ## Supported behavior

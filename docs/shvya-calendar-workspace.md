@@ -1,5 +1,7 @@
 # SHVYA Calendar workspace
 
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+
 SHVYA Calendar now contains two sidebar sections:
 
 - **Booking**: existing lead forms, booking pages, scheduling configuration, Google connections, reminders, and upcoming bookings. Existing URLs continue to work; `/dashboard/shvya-calendar/bookings/` is the new navigation entry.
@@ -26,3 +28,9 @@ The feed queries only appointments overlapping the requested date range, caps ea
 Run `pytest apps/shvya_calendar/test_workspace.py apps/shvya_calendar/tests.py` using the repository's PostgreSQL testing settings. Workspace tests cover organization boundaries, admin access, CSRF, timezone ranges, overlap, unsafe input, pipeline moves, service reuse, terminal-state rechecks, and sidebar activation.
 
 Manual browser checks: day/week/month navigation, overlapping appointments, mobile horizontal scrolling, pipeline filtering, Escape/focus behavior in details, copy/join links, unavailable dates, successful reschedule, and moving a lead between pipelines.
+
+## Public booking surface
+
+Published Calendar pages are served below `/calendar/<public_id>/<slug>/`. The current public flow supports submission, scheduling, confirmation, token-bound reschedule and token-bound cancellation. Booking writes revalidate availability and tenant/page state on the server; the browser is not the authority for slot capacity.
+
+Google Calendar connect/disconnect stays in the authenticated Calendar workspace. Connection tokens are encrypted at rest and booking/reminder behavior remains tied to the organization and current CRM lead/pipeline state.

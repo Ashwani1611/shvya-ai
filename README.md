@@ -1,6 +1,7 @@
 # SHVYA AI
 
 [![CI](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml)
+[![Staging CI](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml/badge.svg?branch=staging)](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-blue)
 ![Django](https://img.shields.io/badge/Django-6.1-0C4B33)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791)
@@ -9,7 +10,7 @@
 
 The CRM remains the system of record. AI, messaging, automation, and analytics operate on top of tenant-scoped CRM data rather than replacing it.
 
-> **Implementation baseline:** documentation verified on 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. This documentation change is docs-only; Django models, migrations, tests, and runtime configuration remain the executable source of truth.
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 > Engineering rules and architectural constraints are defined in [`CLAUDE.md`](./CLAUDE.md). Changes to tenant isolation, business logic, async work, idempotency, model structure, or external integrations must follow those rules.
 
@@ -31,11 +32,14 @@ Current platform capabilities include:
 | Hosted WhatsApp | Linked-device sessions through the internal `whatsapp-web.js` gateway, QR login, inbox, media, automation |
 | Instagram | Instagram professional account OAuth, signed webhooks, WhatsApp-style inbox, CRM lead linkage, media/story-reply handling, messaging, token refresh |
 | Meta Lead Ads | Signed lead webhook ingestion into the CRM |
+| SHVYA Sales | Quotations, agreements and invoices; templates; server-generated PDFs; revisions; email/WhatsApp delivery; tracking; attachments; payment/refund/credit/recurring-invoice lifecycle |
+| SHVYA Calendar | Lead-capture and booking pages, availability, Google Calendar/Meet, booking/reschedule/cancel, reminder sequences and CRM-linked calendar workspace |
+| Call Intelligence | Android SIM call capture/sync, device heartbeat, CRM call/lead linkage, recordings/transcripts, dispositions, follow-ups, analytics and AI call-analysis fields |
 | Automation | Cadence, Workflows, trigger/event outbox processing, scheduled/background execution |
 | Analytics | CRM and engagement insights, operational reporting, account health |
 | Support | Organization Help & Support portal, Shvya-Ops Client's Portal, private attachments, ticket response indicator, email delivery/outbox |
 | Diagnostics | Read-only organization-scoped diagnostic MCP/OAuth connector with explicit API-key permission and audit metadata |
-| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound + Superadmin-granular capabilities, dry-run approval receipts, row-locked verified writes, session controls and append-only audit |
+| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound + granular capabilities, qualification/messaging/knowledge configuration, configuration plans, lifecycle safeguards, simulations, integration/drift/integrity diagnostics, approval receipts, verified writes, session controls and append-only audit |
 | Administration | Organization management, roles, API keys, Superadmin console, global search |
 
 ---
@@ -131,6 +135,8 @@ shvya-ai/
 │   ├── hosted_automation/    # Hosted WhatsApp automation runtime
 │   ├── integrations/         # External integrations and Connect Hub
 │   ├── organizations/        # Tenant / organization models and API keys
+│   ├── sales/                # SHVYA Sales documents, delivery, tracking and payment lifecycle
+│   ├── shvya_calendar/       # Lead capture, scheduling, Google Calendar/Meet and reminders
 │   ├── support/              # Customer Help & Support + Shvya-Ops ticketing
 │   ├── superadmin/           # Platform administration
 │   ├── teams/                # Teams and assignment features
@@ -271,6 +277,10 @@ Useful local endpoints:
 | `http://127.0.0.1:8000/dashboard/` | CRM dashboard |
 | `http://127.0.0.1:8000/superadmin/` | Superadmin console |
 | `http://127.0.0.1:8000/admin/` | Django admin |
+| `http://127.0.0.1:8000/dashboard/sales/` | SHVYA Sales workspace |
+| `http://127.0.0.1:8000/dashboard/shvya-calendar/` | SHVYA Calendar workspace |
+| `http://127.0.0.1:8000/dashboard/call-intelligence/` | Call Intelligence workspace |
+| `http://127.0.0.1:8000/dashboard/support-portal/` | Organization Help & Support |
 | `http://127.0.0.1:8000/health/live/` | Liveness check |
 | `http://127.0.0.1:8000/health/ready/` | Readiness check |
 
@@ -325,6 +335,8 @@ The canonical template is [`.env.example`](./.env.example).
 | Meta | `META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `META_WA_EMBEDDED_SIGNUP_CONFIG_ID` |
 | Instagram | `META_INSTAGRAM_APP_ID`, `META_INSTAGRAM_APP_SECRET` |
 | Hosted WhatsApp | `WHATSAPP_WEB_GATEWAY_URL`, `WHATSAPP_WEB_GATEWAY_TOKEN`, `WHATSAPP_WEB_CALLBACK_TOKEN`, `WHATSAPP_WEB_SESSION_PATH` |
+| Google Calendar | `GOOGLE_CALENDAR_CLIENT_ID`, `GOOGLE_CALENDAR_CLIENT_SECRET` |
+| Private media / S3 | S3 media settings documented in `docs/aws-s3-storage.md` when object storage is enabled |
 | Mail | `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD` |
 
 Production and staging values must be maintained outside Git.
@@ -553,7 +565,11 @@ POST /api/v1/auth/token/refresh/
 /api/v1/teams/
 /api/v1/copilot/
 /api/v1/ai-engagement/
+/api/v1/call-intelligence/
+/api/v1/telephony/
 ```
+
+See [`docs/api.md`](./docs/api.md) for the current staging API and MCP boundary map.
 
 API writes and external side effects should preserve tenant isolation and idempotency guarantees.
 
@@ -590,6 +606,13 @@ Useful project documentation includes:
 - [`docs/whatsapp_ai_troubleshooting.md`](./docs/whatsapp_ai_troubleshooting.md) - WhatsApp AI troubleshooting
 - [`docs/instagram-setup.md`](./docs/instagram-setup.md) - Instagram integration setup
 - [`docs/system-architecture/README.md`](./docs/system-architecture/README.md) - end-to-end architecture map
+- [`docs/architecture.md`](./docs/architecture.md) - concise staging architecture overview
+- [`docs/api.md`](./docs/api.md) - API, webhook and MCP route map
+- [`docs/deployment.md`](./docs/deployment.md) - release/deployment runbook
+- [`docs/operations-mcp.md`](./docs/operations-mcp.md) - actor-bound external AI Operations connector
+- [`docs/shvya-calendar-workspace.md`](./docs/shvya-calendar-workspace.md) - Calendar workspace and booking operations
+- [`docs/shvya-sales.md`](./docs/shvya-sales.md) - Sales documents, delivery, tracking and payment lifecycle
+- [`docs/call-intelligence.md`](./docs/call-intelligence.md) - Android SIM + CRM Call Intelligence architecture
 
 ---
 

@@ -1,6 +1,6 @@
 # Public Features experience
 
-> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 
 `/features/` renders `templates/features.html` inside the same `marketing/dark_base.html`, header and footer as the current public landing page. Keep this interactive experience when changing the marketing theme; route tests assert its assets and controls so a static catalogue cannot silently replace it again.
@@ -27,3 +27,7 @@ Check the public URL with and without the trailing slash, shared header links, a
 The public and authenticated product surfaces use the current module names **Sales Desk**, **Cadence**, **Playbooks**, **Workflows** and **Insights**. Historical implementation identifiers such as `copilot` and `smart-trigger` may remain in URLs, Python modules or test names and should not be copied into customer-facing navigation.
 
 The public marketing shell supports day/night presentation. The initial theme follows the browser/system color preference unless the visitor has made an explicit theme choice, and the header control lets the visitor switch themes without changing product data or authentication state.
+
+## Current authenticated workspaces
+
+The staging product also exposes dedicated **SHVYA Sales**, **SHVYA Calendar**, and **Call Intelligence** workspaces. These names are customer-facing; internal app/module identifiers such as `sales`, `shvya_calendar` and `telephony` remain implementation details.

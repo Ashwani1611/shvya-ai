@@ -1,6 +1,6 @@
 # CRM bulk lead actions
 
-> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Runtime code, migrations and tests remain authoritative when later commits change behavior.
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 Select individual cards or all matching leads in the current stage. The selection toolbar appears only while leads are selected. Stage switches and table replacements clear selection; exports and cancelled dialogs retain it. All leads matching the current stage and filters are rendered by the existing dashboard, so select-all includes the complete matching stage rather than a page-sized subset.
 

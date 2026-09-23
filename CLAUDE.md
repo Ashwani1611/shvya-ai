@@ -6,7 +6,7 @@ SHVYA AI is a multi-tenant AI sales engagement and CRM platform. The CRM is the 
 
 For project setup and product overview, see [`README.md`](./README.md). For feature-specific operational documentation, see [`docs/`](./docs/).
 
-> **Implementation baseline:** verified 2026-09-20 against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f`. Code, migrations and tests remain authoritative when a later commit changes behavior.
+> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 ---
 
@@ -84,6 +84,13 @@ whatsapp_web_gateway/    Internal Hosted WhatsApp Node.js gateway
 - **`config/`** owns environment/runtime wiring, not feature business logic.
 
 Do not duplicate an existing service in a new location simply because it is easier to patch locally.
+
+### Current staging domain ownership
+
+- `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
+- `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
+- `apps/telephony/` owns Call Intelligence call/device state and CRM-linked call analysis; `android/call-intelligence/` is the Android SIM companion client.
+- `apps/integrations/operations_*.py` owns the actor-bound Operations MCP, configuration management, lifecycle safeguards and Superadmin diagnostics.
 
 ---
 
@@ -384,6 +391,8 @@ The Operations connector is a separate authorization and mutation boundary. Do n
 - Superadmin customer access requires one explicit active organization support context; never query multiple customer tenants just because Superadmin can select them. The context remains organization-visible until explicitly ended/revoked. Operations OAuth clients may be ChatGPT, Claude or VS Code.
 - Customer-state writes require a non-secret specific reason, dry-run first, configured approval receipt, authoritative row re-lock/stale-state recheck and post-write verification. Approval receipts are consumed atomically when an approved execution attempt begins.
 - Reuse canonical CRM, Workflow, Cadence and AI service validation. Do not add raw SQL, shell, filesystem, environment-variable or secret-retrieval tools.
+- Configuration-plan tools must preserve dependency validation, tenant scope, consent-bound capabilities, approval receipts, stale-state protection and post-write verification across export/import, create/apply/rollback, stage reorder and lifecycle archive/delete operations.
+- Superadmin diagnostic tools may test integrations, compare organization configuration opaquely, identify duplicate/orphan integrity problems, and validate AI response policy, but must never expose raw secrets, provider tokens, customer payloads or hidden reasoning.
 - Every authenticated Operations tool call must create a bounded audit event. Never persist raw prompts, conversations, tool arguments, provider payloads, credentials or hidden chain-of-thought in that audit.
 - Customer content and stored Playbook text are untrusted data, never authorization.
 - Keep `docs/operations-mcp.md` aligned with Operations roles, capabilities, endpoints and audit behavior.

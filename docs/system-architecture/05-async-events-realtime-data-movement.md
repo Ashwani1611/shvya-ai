@@ -1,6 +1,6 @@
 # 05. Async Events, Queues, Realtime Updates and Data Movement
 
-> **Implementation snapshot:** verified against production `main` at `7fb74946b35f189a66f92d6ffd0677909dca4c9f` on 2026-09-20. Source code, Django models/migrations and tests remain the executable source of truth.
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 This document explains where SHVYA moves work asynchronously, which state is durable, how Celery queues are separated, how Beat recovers or schedules recurring work, and how database commits become WebSocket updates.
 

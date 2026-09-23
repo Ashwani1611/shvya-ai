@@ -1,5 +1,7 @@
 # AWS S3 private media storage
 
+> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+
 SHVYA AI stores normal Django `FileField` uploads in a private Amazon S3 bucket while keeping static assets and encrypted Help & Support attachments on their existing local storage paths.
 
 ## Current SHVYA infrastructure
