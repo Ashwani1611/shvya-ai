@@ -11,6 +11,10 @@ ROLE_ORGANIZATION_ADMIN = "ORGANIZATION_ADMIN"
 CAP_ORGANIZATION_READ = "organization.read"
 CAP_DIAGNOSTICS_READ = "diagnostics.read"
 CAP_AUDIT_READ = "audit.read"
+CAP_SETUP_LIBRARY_READ = "setup.library.read"
+CAP_SETUP_ARTIFACTS_PREPARE = "setup.artifacts.prepare"
+CAP_SETUP_INTAKE_READ = "setup.intake.read"
+CAP_SETUP_INTAKE_WRITE = "setup.intake.write"
 CAP_LEAD_STAGE_WRITE = "lead.stage.write"
 CAP_LEAD_ATTRIBUTES_WRITE = "lead.attributes.write"
 CAP_AI_CONFIG_WRITE = "ai.config.write"
@@ -31,6 +35,9 @@ READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
     CAP_DIAGNOSTICS_READ,
     CAP_AUDIT_READ,
+    CAP_SETUP_LIBRARY_READ,
+    CAP_SETUP_ARTIFACTS_PREPARE,
+    CAP_SETUP_INTAKE_READ,
 )
 WRITE_CAPABILITIES = (
     CAP_LEAD_STAGE_WRITE,
@@ -43,6 +50,7 @@ WRITE_CAPABILITIES = (
     CAP_CADENCE_CONFIG_WRITE,
     CAP_MESSAGING_CONFIG_WRITE,
     CAP_CONFIGURATION_PLAN_WRITE,
+    CAP_SETUP_INTAKE_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
 
@@ -59,13 +67,23 @@ LEGACY_CAPABILITY_EXPANSIONS = {
     ),
 }
 
-DEFAULT_ORG_CAPABILITIES = list(READ_CAPABILITIES)
+# New setup permissions must be explicitly enabled and consented to. Keeping
+# these defaults explicit prevents future read capabilities expanding access.
+DEFAULT_ORG_CAPABILITIES = [
+    CAP_ORGANIZATION_READ,
+    CAP_DIAGNOSTICS_READ,
+    CAP_AUDIT_READ,
+]
 DEFAULT_APPROVAL_REQUIRED = list(WRITE_CAPABILITIES)
 
 CAPABILITY_LABELS = {
     CAP_ORGANIZATION_READ: "Read business & CRM configuration",
     CAP_DIAGNOSTICS_READ: "Run diagnostics and traces",
     CAP_AUDIT_READ: "Read Operations AI audit history",
+    CAP_SETUP_LIBRARY_READ: "Read SHVYA setup skills, prompts and templates",
+    CAP_SETUP_ARTIFACTS_PREPARE: "Prepare setup drafts and analyze supplied group exports",
+    CAP_SETUP_INTAKE_READ: "Read company setup intake and source history",
+    CAP_SETUP_INTAKE_WRITE: "Create, update and archive company setup intake",
     CAP_LEAD_STAGE_WRITE: "Move leads between active stages/pipelines",
     CAP_LEAD_ATTRIBUTES_WRITE: "Update non-sensitive lead attributes",
     CAP_AI_CONFIG_WRITE: "Update organization AI profile / Playbook",

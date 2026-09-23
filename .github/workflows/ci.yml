@@ -3,18 +3,22 @@ name: CI
 on:
   pull_request:
     branches: [main, staging]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "LICENSE.txt"
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!LICENSE.txt"
+      - "apps/integrations/operations/setup_assets/**"
   push:
     branches: [main, staging]
-    paths-ignore:
-      - "docs/**"
-      - "**/*.md"
-      - "LICENSE"
-      - "LICENSE.txt"
+    paths:
+      - "**"
+      - "!docs/**"
+      - "!**/*.md"
+      - "!LICENSE"
+      - "!LICENSE.txt"
+      - "apps/integrations/operations/setup_assets/**"
   workflow_dispatch:
 
 permissions:
@@ -485,6 +489,21 @@ jobs:
           IMAGE="shvya-ai:${{ github.sha }}"
           test "$(docker image inspect "$IMAGE" --format '{{.Config.User}}')" = "10001:10001"
           docker run --rm --entrypoint sh "$IMAGE" -c 'test "$(id -u)" = "10001" && test "$(id -g)" = "10001" && test -w /app'
+
+      - name: Verify bundled MCP setup resources in application image
+        if: needs.changes.outputs.docker_app == 'true'
+        run: |
+          docker run --rm --entrypoint python "shvya-ai:${{ github.sha }}" -c '
+          from apps.integrations.operations.setup_library import library_entries, read_resource, list_prompts, get_prompt, variable_schema
+          entries = library_entries()
+          assert entries
+          for entry in entries:
+              assert read_resource(entry["uri"])["contents"][0]["text"]
+          for prompt in list_prompts()["prompts"]:
+              assert get_prompt(prompt["name"])["messages"]
+          assert variable_schema()["variables"]
+          print("Bundled MCP setup assets are readable in the deployment image.")
+          '
 
       - name: Build WhatsApp Web gateway image
         if: needs.changes.outputs.gateway == 'true'

@@ -66,6 +66,13 @@ from apps.integrations.operations_tools import (
     OperationsToolError,
     execute_operations_tool,
 )
+from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
+from apps.integrations.operations.setup_protocol import (
+    SETUP_LIBRARY_TOOL_NAMES,
+    SETUP_PROTOCOL_METHODS,
+    SetupResourceNotFound,
+    execute_setup_protocol,
+)
 
 from apps.integrations.operations.tool_catalog import (
     DIAGNOSTIC_DEFINITIONS as DIAGNOSTIC_DEFINITIONS,
@@ -99,6 +106,13 @@ TOOL_RESPONSE_TEXT_LIMITS = {
     "create_configuration_plan": 120000,
     "import_organization_configuration": 120000,
     "apply_configuration_plan": 120000,
+    "get_setup_library_resource": 20000,
+    "get_setup_variable_schema": 20000,
+    "render_setup_template": 100000,
+    "analyze_setup_group_export": 65000,
+    "get_setup_intake": 12000,
+    "upsert_setup_intake_entry": 12000,
+    "archive_setup_intake_entry": 12000,
 }
 
 def _oauth_request_too_large(request):
@@ -191,7 +205,8 @@ def _validate_modern_headers(request, *, method, params):
             "Mcp-Method header does not match JSON-RPC method."
         )
     expected_name = (
-        str((params or {}).get("name") or "") if method == "tools/call" else ""
+        str((params or {}).get("name") or "")
+        if method in {"tools/call", "prompts/get"} else ""
     )
     if routed_name and expected_name and routed_name != expected_name:
         raise OperationsToolError(
@@ -933,6 +948,79 @@ def _record_audit(
     )
 
 
+def _setup_protocol_response(request, *, request_id, method, params, modern):
+    """Authenticate and audit native MCP reads without a tool-result wrapper."""
+    auth_header = request.headers.get("Authorization", "")
+    raw_bearer = auth_header[7:].strip() if auth_header.lower().startswith("bearer ") else ""
+    try:
+        identity = authenticate_bearer(raw_bearer)
+    except OperationsAuthError as exc:
+        challenge = _authorization_challenge(request, description=sanitize_text(exc, limit=160))
+        response = JsonResponse(
+            _jsonrpc_error(
+                request_id, -32001, "Authentication required for SHVYA Operations.",
+                modern=modern, data={"_meta": {"mcp/www_authenticate": [challenge]}},
+            ),
+            status=401,
+        )
+        response["WWW-Authenticate"] = challenge
+        response["Cache-Control"] = "no-store"
+        return response
+
+    with transaction.atomic():
+        started = time.perf_counter()
+        execution = None
+        error_code = ""
+        error_reason = ""
+        audit_outcome = None
+        status = 200
+        try:
+            execution = execute_setup_protocol(identity=identity, method=method, params=params)
+            # Static guidance is immutable and reviewed; optional prompt
+            # context was validated and secret-screened before interpolation.
+            payload = _jsonrpc_result(request_id, execution.data, modern=modern)
+        except OperationsToolError as exc:
+            error_code = exc.code
+            audit_outcome = exc.outcome
+            denied = isinstance(exc, OperationsPermissionError)
+            missing_resource = isinstance(exc, SetupResourceNotFound)
+            error_reason = "Setup protocol access denied." if denied else "Setup protocol parameters invalid."
+            status = 403 if denied else 404 if missing_resource else 400
+            payload = _jsonrpc_error(
+                request_id, -32003 if denied else -32002 if missing_resource else -32602,
+                sanitize_text(exc, limit=400), modern=modern,
+                data={"code": error_code},
+            )
+        except Exception:
+            logger.exception("Operations MCP setup protocol failed: %s", method)
+            error_code = "operations_internal_error"
+            audit_outcome = OperationsAuditEvent.Outcome.ERROR
+            error_reason = "Operations setup request failed safely."
+            status = 500
+            payload = _jsonrpc_error(
+                request_id, -32603, "Operations setup request failed safely.", modern=modern,
+            )
+
+        audit = _record_audit(
+            identity=identity,
+            tool_name=method,
+            # Native parameters may contain untrusted operator context. Only
+            # fingerprint it; never let a supplied field become an audit reason.
+            arguments={"method": method, "parameter_fingerprint": request_fingerprint(params)},
+            execution=execution, outcome=audit_outcome,
+            duration_ms=int((time.perf_counter() - started) * 1000),
+            error_code=error_code, error_reason=error_reason,
+        )
+        if "result" in payload:
+            payload["result"].setdefault("_meta", {})["shvya/audit_event_id"] = str(audit.id)
+        else:
+            payload["error"].setdefault("data", {}).setdefault("_meta", {})["shvya/audit_event_id"] = str(audit.id)
+
+    response = JsonResponse(payload, status=status)
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 @csrf_exempt
 @ratelimit(limit=240, window=60)
 @require_POST
@@ -983,7 +1071,7 @@ def operations_mcp(request):
                 request_id,
                 {
                     "supportedVersions": [MODERN_PROTOCOL_VERSION],
-                    "capabilities": {"tools": {}},
+                    "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "instructions": OPERATIONS_AGENT_INSTRUCTIONS,
                     "ttlMs": 300000,
                     "cacheScope": "public",
@@ -997,7 +1085,7 @@ def operations_mcp(request):
                 request_id,
                 {
                     "protocolVersion": LEGACY_PROTOCOL_VERSION,
-                    "capabilities": {"tools": {}},
+                    "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "serverInfo": SERVER_INFO,
                     "instructions": OPERATIONS_AGENT_INSTRUCTIONS,
                 },
@@ -1009,6 +1097,11 @@ def operations_mcp(request):
     if method == "ping":
         return JsonResponse(
             _jsonrpc_result(request_id, {}, modern=modern)
+        )
+    if method in SETUP_PROTOCOL_METHODS:
+        return _setup_protocol_response(
+            request, request_id=request_id, method=method,
+            params=payload.get("params", {}), modern=modern,
         )
     if method == "tools/list":
         auth_header = request.headers.get("Authorization", "")
@@ -1118,13 +1211,19 @@ def operations_mcp(request):
                 identity=identity,
                 arguments=arguments,
             )
-            safe_data = sanitize_data(
-                execution.data,
-                text_limit=TOOL_RESPONSE_TEXT_LIMITS.get(
-                    tool_name,
-                    800,
-                ),
-            )
+            if tool_name in SETUP_LIBRARY_TOOL_NAMES:
+                # Immutable, allowlisted repository assets contain no tenant
+                # data. Generic credential heuristics would corrupt their
+                # documented identifiers and example placeholders.
+                safe_data = execution.data
+            else:
+                safe_data = sanitize_data(
+                    execution.data,
+                    text_limit=TOOL_RESPONSE_TEXT_LIMITS.get(tool_name, 800),
+                    list_limit=500 if tool_name == "analyze_setup_group_export" else 100,
+                )
+                if tool_name in SETUP_TOOL_CAPABILITIES and safe_data != execution.data:
+                    safe_data["response_sanitized"] = True
             result = {
                 "content": [
                     {

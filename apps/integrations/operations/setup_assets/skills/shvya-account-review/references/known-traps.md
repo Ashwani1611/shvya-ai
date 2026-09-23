@@ -1,0 +1,19 @@
+# Known traps before reporting
+
+- A missing attribute after a stage move is not automatically normal or automatically defective. Use `diagnose_lead_qualification`, `get_ai_diagnostics`, workflow/message traces and canonical configuration to identify extraction delay, missing evidence, permission or execution issues. The source system's assertion that the AI can never write attributes is not a Shvya API contract; administrative attribute writes and conversation runtime behavior are distinct.
+- Legacy sequence `enabled` semantics do not carry over. Read Shvya active flags and actual trigger/dependency/execution evidence. A configured object may be inactive; a zero bounded counter does not mean it never fired.
+- Native `get_conversation` does expose recent Shvya WhatsApp/Instagram messages. Do not repeat the source claim that hosted messages exist only in external traces. Absence in a bounded/redacted read still does not prove no message ever existed.
+- Seeded test leads, channel backfills and imports can inflate counts. Identify them from actual provenance, not a round total, creation date coincidence or guessed database flag. The current stage is not necessarily the stage at the moment of an incident.
+- A high activity/health score is not proof of correct client-policy behavior. Simulated qualification success is not a live generated response or delivery test.
+- Retries inflate attempts. Count distinct leads and inspect recovery/delivery before describing an outage. Failed attempts may carry cost or delay, but neither can be quantified without suitable evidence.
+- Test/demo/replay traffic can mimic production. Filter only using reliable recorded markers; mark uncertain cases and avoid inventing environment or template fields absent from native results.
+- Dates require explicit timezones. Compare incident time, observation time and current state separately. Do not query a local-looking time as UTC or treat a partial-day window as a full period.
+- Group exports may begin when a participant joined or when the export was made. State earliest/latest included messages and known gaps. `fromMe` does not identify the Shvya side. Uninspected voice notes, screenshots and attachments are unknown evidence.
+- A recording title, duration zero or transcript-list entry does not establish usable content. Read an authorized supplied transcript before drawing conclusions. Missing pre-sale commitments are a process/evidence gap, not proof nothing was promised.
+- A price in an available policy source is a configuration-policy conflict, not proof the model invented it. Absence from metadata-only knowledge reads does not prove the model invented it either. Incident-time content can differ from current content.
+- A client's diagnosis describes a symptom. Continued outreach after a correct terminal AI decision may come from a separate Cadence, Workflow or human. Verify the producing layer before assigning an owner.
+- Two reports quoting the same call summary are one source. Reopen subagent references; confidence and repetition do not establish truth.
+- Channel capabilities can legitimately change rendered behavior. Compare supported channel/runtime settings when exposed, and do not infer a backend error from a prompt's unsupported button/format request.
+- Duplicate sale rows, subscription tags and invoice records can disagree. No native commercial data here means UNAVAILABLE. Do not import old source DB columns or declare entitlement from a guessed tag.
+- Redaction and truncation are not empty configuration. Use the full supported AI read when possible; preserved redactions remain unknown and must not be overwritten by reconstruction.
+- Inspecting a Workflow schema or generic object field does not authorize a new integration. Group reads, voice provisioning, raw recordings and an external vault remain capability gaps until real supported tools exist.

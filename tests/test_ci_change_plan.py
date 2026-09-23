@@ -17,6 +17,16 @@ def test_docs_only_is_fast():
     assert plan["targeted"] == "false"
 
 
+def test_runtime_mcp_markdown_is_tested_and_built():
+    plan = classify(["apps/integrations/operations/setup_assets/prompts/ai-playbook.template.md"])
+    assert plan["docs_only"] == "false"
+    assert plan["django"] == "true"
+    assert plan["docker_app"] == "true"
+    assert plan["targeted"] == "true"
+    assert "apps/integrations/tests" in plan["pytest_targets"]
+    assert "apps/ai_engagement/tests" in plan["pytest_targets"]
+
+
 def test_crm_change_routes_to_related_tests_without_full_suite():
     plan = classify(["apps/crm/views/lead.py"])
     assert plan["full"] == "false"

@@ -1,0 +1,11 @@
+# Backend integration and source adaptation
+
+The reusable Shvya kit is integrated into Operations MCP as immutable package resources and pure authoring services. The five SKILL workflows and all eight setup/review subprompts retain their evidence, authorization, qualification, planning and verification requirements. Reference material, four templates, the 41-variable registry, Ria reference and evaluation rubrics are available progressively through the library catalog.
+
+Local helper behavior has a backend equivalent: the historical intake helper becomes tenant-scoped revisioned intake tools; the group export formatter becomes `analyze_setup_group_export`; template rendering becomes `render_setup_template` and uses the canonical backend Playbook validator. Existing configuration plans, validations, dry-runs, approval receipts and read-back own live changes. The historical installer, stdio server, frozen tool-schema snapshot and old validation-result claims are intentionally excluded because the connected backend owns installation, transport, schemas and current test evidence.
+
+Library and prompt content never expands Allowed capabilities. OAuth snapshot grants and live policy restrictions still apply. Draft rendering cannot save a Playbook, publish knowledge, provision voice, read live groups or send messages. New capabilities must be explicitly allowed and, for an existing OAuth grant, newly consented through fresh authorization.
+
+Resource retrieval resolves an exact catalog identifier and a bounded character range. User input cannot choose a filesystem path. Prompt arguments are contextual text, not executable template syntax or tenant selectors. API errors omit submitted values. Operations audits contain bounded metadata, not full prompts, intake bodies or group transcripts.
+
+Questionnaire structure uses the actual canonical Playbook parser and qualification compiler. Structural validation is not a semantic promise: the operator must still verify factual claims, stage/attribute ownership, supported predicates, allowed values, routing and the effective write policy. Unknown business facts remain explicit gaps. Runtime custom attribute placeholders require tenant-aware native discovery; the pure renderer preserves only the registered built-in runtime keys.
