@@ -549,3 +549,5 @@ from .operations_models import (  # noqa: E402,F401
     OperationsPolicy,
     OperationsSupportSession,
 )
+
+from .setup_models import OperationsIntakeEntry  # noqa: E402,F401

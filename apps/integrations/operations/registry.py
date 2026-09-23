@@ -18,6 +18,18 @@ from apps.integrations.operations.tools.qualification import (
     upsert_qualification_configuration,
     validate_qualification_configuration,
 )
+from apps.integrations.operations.tools.setup_authoring import (
+    analyze_setup_group_export,
+    get_setup_library_resource,
+    get_setup_variable_schema,
+    list_setup_library,
+    render_setup_template,
+)
+from apps.integrations.operations.tools.setup_intake import (
+    archive_setup_intake_entry,
+    get_setup_intake,
+    upsert_setup_intake_entry,
+)
 from apps.integrations.operations.tools.simulations import (
     simulate_ai_conversation,
     simulate_cadence,
@@ -43,6 +55,14 @@ from apps.integrations.operations.tools.workflows import (
 
 
 EXTENDED_HANDLERS = {
+    "list_setup_library": list_setup_library,
+    "get_setup_library_resource": get_setup_library_resource,
+    "get_setup_variable_schema": get_setup_variable_schema,
+    "render_setup_template": render_setup_template,
+    "analyze_setup_group_export": analyze_setup_group_export,
+    "get_setup_intake": get_setup_intake,
+    "upsert_setup_intake_entry": upsert_setup_intake_entry,
+    "archive_setup_intake_entry": archive_setup_intake_entry,
     "get_qualification_configuration": get_qualification_configuration,
     "validate_qualification_configuration": validate_qualification_configuration,
     "upsert_qualification_configuration": upsert_qualification_configuration,

@@ -353,6 +353,27 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 
 The Diagnostic MCP implementation remains under `apps/integrations/diagnostic_*.py` and `apps/integrations/views/mcp.py`.
 
+## Company setup through the existing MCP endpoint
+
+The Shvya setup kit is bundled into `/operations/mcp/`; no local companion server,
+new credential or separate AI runtime is required. See [setup workflow and rollout](operations-mcp-setup.md).
+The endpoint supports authenticated `prompts/list`, `prompts/get`, `resources/list`
+and `resources/read`, plus equivalent library tools for clients that only support tools.
+
+Superadmin **Allowed capabilities** includes four independent controls:
+
+| Capability | Permitted work |
+| --- | --- |
+| `setup.library.read` | Read bundled setup/review skills, agent prompts, references and variables |
+| `setup.artifacts.prepare` | Prepare Playbook/About/voice drafts and analyze supplied group exports; no persistence |
+| `setup.intake.read` | Read the selected organization's source-attributed setup notes |
+| `setup.intake.write` | Create/update/archive intake with write scope, reason, dry-run and approval |
+
+Existing organization defaults and OAuth grants are unchanged. Enable the desired
+capabilities in policy, then reconnect the MCP client with fresh OAuth consent.
+Intake is separate from AI Brain publication, and the original AI/CRM/knowledge/
+Workflow/Cadence write capabilities still apply to those configuration changes.
+
 
 ## Transaction and audit guarantee
 

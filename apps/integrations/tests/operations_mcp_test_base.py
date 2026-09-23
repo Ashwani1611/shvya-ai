@@ -5,6 +5,7 @@ from urllib.parse import parse_qs, urlparse
 from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
+from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db.models.deletion import ProtectedError
 from django.db.migrations.loader import MigrationLoader
@@ -85,6 +86,10 @@ from services.crm.lead_transition import move_lead_to_stage
 
 class OperationsMCPBase(TestCase):
     def setUp(self):
+        # Each test is an independent MCP client session. Shared Redis-backed
+        # rate-limit counters must not accumulate across unrelated test cases.
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.organization = Organization.objects.create(name="Operations Org A")
         self.other_organization = Organization.objects.create(name="Operations Org B")
         self.admin = User.objects.create_user(
@@ -235,4 +240,3 @@ class OperationsMCPBase(TestCase):
     def _result(self, response):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]
-

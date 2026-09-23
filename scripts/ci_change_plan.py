@@ -42,6 +42,8 @@ def _bool(value: bool) -> str:
 
 
 def _docs_only_path(path: str) -> bool:
+    if path.startswith("apps/integrations/operations/setup_assets/"):
+        return False
     return (
         path.startswith("docs/")
         or path.endswith(".md")
@@ -86,6 +88,14 @@ def classify(paths: list[str], *, force_full: bool = False) -> dict[str, str]:
         suffix = Path(path).suffix
         if suffix == ".py":
             plan["python"] = True
+
+        if path.startswith("apps/integrations/operations/setup_assets/"):
+            # Markdown prompts are executable product guidance, not docs-only.
+            plan["django"] = True
+            plan["docker_app"] = True
+            _add_app_targets(targets, "integrations")
+            _add_app_targets(targets, "ai_engagement")
+            continue
 
         if path.startswith("whatsapp_web_gateway/"):
             plan["gateway"] = True
