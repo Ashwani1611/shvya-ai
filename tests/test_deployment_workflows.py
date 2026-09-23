@@ -10,8 +10,21 @@ import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 APPLICATION_SERVICES = {
-    "web", "ws", "worker", "ai_realtime_worker", "hosted_ai_worker", "beat",
+    "web",
+    "ws",
+    "worker",
+    "ai_realtime_worker",
+    "hosted_ai_worker",
+    "campaign_worker",
+    "ingestion_worker",
+    "automation_worker",
+    "beat",
 }
+WORKER_SERVICES = (
+    "worker ai_realtime_worker hosted_ai_worker campaign_worker "
+    "ingestion_worker automation_worker"
+)
+RUNNING_SERVICES = f"web ws {WORKER_SERVICES} beat"
 WORKFLOWS = [
     ("deploy.yml", "docker compose", "main"),
     ("deploy-staging.yml", "$COMPOSE", "staging"),
@@ -28,11 +41,11 @@ def test_application_drain_precedes_schema_change(filename, compose, branch):
     script = _script(filename)
     readiness = script.index(f"{compose} up -d --wait db redis")
     producers = script.index(f"{compose} stop --timeout 60 beat web ws")
-    workers = script.index(f"{compose} stop --timeout 300 worker ai_realtime_worker hosted_ai_worker")
-    stopped_guard = script.index(f"{compose} ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat")
+    workers = script.index(f"{compose} stop --timeout 300 {WORKER_SERVICES}")
+    stopped_guard = script.index(f"{compose} ps --status running -q {RUNNING_SERVICES}")
     migrate = script.index(f"{compose} run --rm --no-deps web python manage.py migrate --noinput")
     collectstatic = script.index(f"{compose} run --rm --no-deps web python manage.py collectstatic --noinput")
-    restart = script.index(f"{compose} up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat")
+    restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
 
     if filename == "deploy.yml":
         conditional = script.index('if [ "$MIGRATION_FILES_CHANGED" -eq 1 ]; then')
@@ -79,14 +92,14 @@ def test_failed_schema_rollout_reports_maintenance_without_restarting_old_images
     if filename == "deploy.yml":
         assert "${BACKUP_FILE}.gz" not in failure_hook
         maintenance = script.index("APPLICATION_MAINTENANCE=1")
-        restart = script.index(f"{compose} up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat")
+        restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
         ready = script.index("Waiting for Django/Gunicorn dependency readiness...")
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
         assert hook_end < maintenance < restart < ready < clear
     else:
         assert "${BACKUP_FILE}.gz" in failure_hook
         maintenance = script.index("APPLICATION_MAINTENANCE=1")
-        restart = script.index(f"{compose} up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat")
+        restart = script.index(f"{compose} up -d --no-deps {RUNNING_SERVICES}")
         ready = script.index(f"{compose} up -d --wait --no-deps web")
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
         assert hook_end < maintenance < restart < ready < clear
