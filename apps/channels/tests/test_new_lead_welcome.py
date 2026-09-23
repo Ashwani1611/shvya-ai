@@ -21,7 +21,7 @@ from services.crm.lead_service import create_lead, upsert_lead
 
 class NewLeadWelcomeTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Welcome Org")
+        self.org = Organization.objects.create(package="dfy", name="Welcome Org")
         self.user = User.objects.create_user(
             email="welcome-admin@example.com",
             password="test-password",
@@ -288,7 +288,7 @@ class NewLeadWelcomeTests(TestCase):
 
 class WelcomeTemplateSettingsTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Welcome UI Org")
+        self.org = Organization.objects.create(package="dfy", name="Welcome UI Org")
         self.user = User.objects.create_user(
             email="welcome-ui@example.com",
             password="test-password",

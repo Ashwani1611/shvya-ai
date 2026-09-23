@@ -16,6 +16,7 @@ from apps.organizations.models import Organization
 class WhatsAppAPI24HourSeparationTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="API Window Separation Org",
             settings={"hosted_account_enabled": True},
         )

@@ -23,8 +23,8 @@ from apps.telephony.services import ingest_call_event, register_device
 
 class CallIntelligenceTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Call Intelligence Org")
-        self.other_org = Organization.objects.create(name="Other Org")
+        self.org = Organization.objects.create(package="enterprise", name="Call Intelligence Org")
+        self.other_org = Organization.objects.create(package="enterprise", name="Other Org")
         self.user = User.objects.create_user(
             email="agent@example.com",
             name="Agent",
@@ -173,7 +173,7 @@ class CallIntelligenceTests(TestCase):
 
 class CallIntelligenceApiTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="API Call Org")
+        self.org = Organization.objects.create(package="enterprise", name="API Call Org")
         self.user = User.objects.create_user(
             email="api-agent@example.com",
             name="API Agent",
@@ -214,7 +214,7 @@ class CallIntelligenceApiTests(TestCase):
         row = CallDisposition.objects.get(organization=self.org, code="demo-booked")
         self.assertEqual(row.name, "Demo booked")
 
-        other = Organization.objects.create(name="Other disposition org")
+        other = Organization.objects.create(package="enterprise", name="Other disposition org")
         self.assertFalse(CallDisposition.objects.filter(organization=other, code=row.code).exists())
 
     @patch("apps.telephony.views.api.analyze_call_intelligence.delay")
@@ -296,7 +296,7 @@ class CallIntelligenceApiTests(TestCase):
 
 class CallIntelligenceDashboardTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Call Dashboard Org")
+        self.org = Organization.objects.create(package="enterprise", name="Call Dashboard Org")
         self.user = User.objects.create_user(
             email="call-dashboard@example.com",
             name="Call Admin",

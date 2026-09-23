@@ -24,6 +24,7 @@ from services.channels.hosted_chat_service import handle_hosted_gateway_event
 class HostedAIIdentityRepairTests(TestCase):
     def setUp(self):
         self.organization = Organization.objects.create(
+            package="dfy",
             name="Hosted Identity AI",
             settings={"hosted_account_enabled": True},
         )
@@ -144,6 +145,7 @@ class HostedAIIdentityRepairTests(TestCase):
 class HostedQueueSourceOfTruthTests(TestCase):
     def setUp(self):
         self.organization = Organization.objects.create(
+            package="dfy",
             name="Hosted Queue Org",
             settings={"hosted_account_enabled": True},
         )

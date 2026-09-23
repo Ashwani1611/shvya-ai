@@ -25,6 +25,7 @@ from services.channels.hosted_whatsapp_service import create_hosted_account, upd
 class HostedInboxReliabilityTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="Inbox reliability", settings={"hosted_account_enabled": True},
         )
         self.user = User.objects.create_user(
@@ -161,7 +162,7 @@ class HostedInboxReliabilityTests(TestCase):
     def test_read_receipt_cannot_cross_tenant_or_account(self):
         self.message()
         token = self.snapshot()["read_token"]
-        other_org = Organization.objects.create(name="Other")
+        other_org = Organization.objects.create(package="dfy", name="Other")
         other = WhatsAppAccount.objects.create(
             organization=other_org, connection_type="hosted", business_name="Other",
             phone_number_id="919811100000", display_phone_number="+919811100000",

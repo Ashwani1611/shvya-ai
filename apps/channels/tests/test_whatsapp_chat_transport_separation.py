@@ -20,6 +20,7 @@ class WhatsAppChatTransportSeparationTests(TestCase):
         self.media_override.enable()
 
         self.org = Organization.objects.create(
+            package="dfy",
             name="Transport Separation Org",
             settings={"hosted_account_enabled": True},
         )

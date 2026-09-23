@@ -22,8 +22,8 @@ from apps.organizations.models import Organization
 
 class ContactPanelTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Contact panel tests")
-        self.other = Organization.objects.create(name="Other tenant")
+        self.org = Organization.objects.create(package="dfy", name="Contact panel tests")
+        self.other = Organization.objects.create(package="dfy", name="Other tenant")
         self.user = User.objects.create_user(
             email="contact-panel@example.com",
             name="Admin",

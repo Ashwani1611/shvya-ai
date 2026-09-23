@@ -19,7 +19,7 @@ from services.channels.whatsapp_template_delivery import (
 
 class WhatsAppTemplateDeliveryTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Template Delivery Org")
+        self.org = Organization.objects.create(package="dfy", name="Template Delivery Org")
         self.user = User.objects.create_user(
             email="template-delivery@example.com",
             password="test-password",
