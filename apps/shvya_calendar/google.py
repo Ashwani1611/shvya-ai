@@ -48,6 +48,10 @@ def _retry_after_seconds(response):
 
 def _google_error(response, message):
     status = int(getattr(response, "status_code", 0) or 0)
+    if status == 429:
+        from apps.core.observability import increment
+
+        increment("provider.throttled", labels={"provider": "google_calendar"})
     return GoogleCalendarError(
         message,
         status_code=status or None,
