@@ -31,7 +31,10 @@ def rules_api(request, rule_id=None):
         return HttpResponseForbidden(
             "Only organization admins can manage Smart Triggers."
         )
-    rules = SmartTrigger.objects.filter(organization=user.organization)
+    rules = SmartTrigger.objects.filter(
+        organization=user.organization,
+        is_active=True,
+    )
     rule = get_object_or_404(rules, id=rule_id) if rule_id else None
     if request.method == "GET":
         return JsonResponse(
