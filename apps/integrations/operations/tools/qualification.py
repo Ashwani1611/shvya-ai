@@ -6,7 +6,6 @@ import re
 from copy import deepcopy
 
 from django.db import transaction
-from django.db.models import Q
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.playbook import (
