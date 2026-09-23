@@ -11,14 +11,14 @@ APP_ENV = "production"
 # ---------------------------------------------------------------------------
 # Private AWS S3 media storage
 #
-# Normal Django FileField uploads use S3 when enabled. Credentials are not
-# stored in Django settings: boto3 uses the standard AWS credential provider
-# chain, so production can use an EC2 instance role and staging can use its own
-# isolated role/credentials. Static files continue to be served by Nginx.
+# Normal Django FileField uploads use S3 when enabled. SHVYA runs on a
+# Hostinger VPS, so boto3 reads AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY from
+# the server environment. Never commit those credentials to the repository.
+# Static files continue to be served by Nginx.
 #
 # Encrypted Help & Support attachments intentionally keep using their dedicated
 # FileSystemStorage in apps/support/storage.py and the persistent MEDIA_ROOT
-# mount; changing DEFAULT storage does not alter that encrypted store.
+# mount; changing Django's default storage does not alter that encrypted store.
 # ---------------------------------------------------------------------------
 AWS_STORAGE_BUCKET_NAME = str(
     config("AWS_STORAGE_BUCKET_NAME", default="") or ""
