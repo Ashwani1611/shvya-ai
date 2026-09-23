@@ -21,6 +21,7 @@ import android.widget.ImageView
 import android.widget.Switch
 import android.app.DatePickerDialog
 import android.app.AlertDialog
+import android.app.TimePickerDialog
 import android.widget.Toast
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -59,6 +60,7 @@ class MainActivity : AppCompatActivity() {
     private var dateTo = ""
     private var pageNumber = 1
     private var renderVersion = 0
+    private var leadFormOpen = false
     private val apiPath = "api/v1/call-intelligence/"
 
     override fun onResume() {
@@ -77,11 +79,29 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         auth = AuthStore(this)
+        leadFormOpen = savedInstanceState?.getBoolean("lead_form_open") ?: false
         render()
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("lead_form_open", leadFormOpen)
+        super.onSaveInstanceState(outState)
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        if (leadFormOpen) {
+            leadFormOpen = false
+            render()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     private fun render() {
-        if (auth.hasSession()) showDashboard() else showLogin()
+        if (!auth.hasSession()) showLogin()
+        else if (leadFormOpen) showLeadForm()
+        else showDashboard()
     }
 
     private fun showLogin() {
@@ -509,7 +529,7 @@ class MainActivity : AppCompatActivity() {
             content.addView(secondaryButton("Open dashboard").apply { setOnClickListener {
                 startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/?section=analytics")))
             } })
-            content.addView(body("Version " + BuildConfig.VERSION_NAME + " (" + BuildConfig.VERSION_CODE + ")"))
+            content.addView(body("Version " + BuildConfig.VERSION_NAME))
             content.addView(secondaryButton("Sign out").apply { setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("Sign out?")
                     .setMessage("Call tracking will stop. Sync any pending calls first.")
@@ -523,33 +543,239 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addLead() {
-        val content = dialogContent()
+        leadFormOpen = true
+        showLeadForm()
+    }
+
+    private fun showLeadForm() {
+        val version = ++renderVersion
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(canvas)
+        }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(22), dp(10), dp(22), dp(10))
+            setBackgroundColor(Color.WHITE)
+        }
+        header.addView(quietButton("‹  Calls").apply {
+            setOnClickListener { leadFormOpen = false; render() }
+        })
+        header.addView(sectionTitle("Add lead").apply {
+            textSize = 18f; gravity = Gravity.CENTER; setPadding(0, 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(View(this), LinearLayout.LayoutParams(dp(66), dp(1)))
+        shell.addView(header)
+        shell.addView(divider())
+
+        val content = page()
+        content.addView(body("Loading your organization's lead form…"))
+        shell.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
+        shell.addView(divider())
+        val footer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(22), dp(12), dp(22), dp(12))
+            setBackgroundColor(Color.WHITE)
+        }
+        val submit = primaryButton("Create lead").apply { isEnabled = false }
+        footer.addView(submit)
+        shell.addView(footer)
+        ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        setContentView(shell)
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching { ApiClient(this@MainActivity).authorizedGet(apiPath + "leads/") }.getOrNull()
+            }
+            if (version != renderVersion || !leadFormOpen || isFinishing) return@launch
+            content.removeAllViews()
+            val data = if (response?.successful == true) runCatching { JSONObject(response.body) }.getOrNull() else null
+            if (data == null) {
+                content.addView(emptyCard("Form unavailable", "Check your connection and try again."))
+                content.addView(space(12))
+                content.addView(secondaryButton("Retry").apply { setOnClickListener { showLeadForm() } })
+            } else {
+                buildLeadForm(content, data, submit)
+            }
+        }
+    }
+
+    private fun leadField(container: LinearLayout, label: String, input: EditText) {
+        container.addView(fieldLabel(label))
+        container.addView(space(8))
+        container.addView(input)
+        container.addView(space(20))
+    }
+
+    private fun buildLeadForm(content: LinearLayout, data: JSONObject, submit: Button) {
+        val pipelines = data.optJSONArray("pipelines") ?: org.json.JSONArray()
+        content.addView(kicker(data.optString("organization_name").uppercase(Locale.getDefault())))
+        content.addView(title("New lead").apply { textSize = 34f })
+        content.addView(body("Add the details your team needs to follow up."))
+        content.addView(space(25))
+        if (pipelines.length() == 0) {
+            content.addView(emptyCard("No pipeline available", "Ask your organization admin to assign an active pipeline before creating leads."))
+            return
+        }
+
+        val details = card()
+        details.addView(sectionTitle("Contact details").apply { textSize = 20f })
+        details.addView(space(18))
         val name = field("Lead name")
-        val phone = field("Phone with country code").apply { inputType = InputType.TYPE_CLASS_PHONE }
-        val message = body("")
-        content.addView(body("Create a lead in your SHVYA CRM."))
-        content.addView(space(20))
-        content.addView(fieldLabel("Name")); content.addView(space(8)); content.addView(name)
-        content.addView(space(18))
-        content.addView(fieldLabel("Phone number")); content.addView(space(8)); content.addView(phone)
-        content.addView(space(8)); content.addView(message)
-        val dialog = AlertDialog.Builder(this).setTitle("Add lead").setView(content)
-            .setNegativeButton("Cancel", null).setPositiveButton("Create", null).create()
-        dialog.setOnShowListener {
-            val button = dialog.getButton(AlertDialog.BUTTON_POSITIVE)
-            button.setOnClickListener {
-                if (name.text.isBlank() || phone.text.isBlank()) { message.text = "Enter a name and phone number."; return@setOnClickListener }
-                button.isEnabled = false
-                lifecycleScope.launch {
-                    val result = withContext(Dispatchers.IO) { runCatching { ApiClient(this@MainActivity).authorizedPost(apiPath + "leads/", JSONObject().put("name", name.text.toString()).put("phone", phone.text.toString())) }.getOrNull() }
-                    if (result?.successful == true) { dialog.dismiss(); toast("Lead added to CRM") } else {
-                        button.isEnabled = true
-                        message.text = if (result?.code == 409) "This number is already in your CRM." else "Could not create lead. Check the phone number and connection."
+        val phone = field("+91 98765 43210").apply { inputType = InputType.TYPE_CLASS_PHONE }
+        val email = field("Email address").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS }
+        leadField(details, "Name *", name)
+        leadField(details, "Phone number *", phone)
+        leadField(details, "Email", email)
+        content.addView(details)
+        content.addView(space(16))
+
+        val routing = card()
+        routing.addView(sectionTitle("Pipeline & stage").apply { textSize = 20f })
+        routing.addView(space(18))
+        var pipelineIndex = (0 until pipelines.length()).firstOrNull {
+            pipelines.getJSONObject(it).optString("id") == data.optString("default_pipeline_id")
+        } ?: 0
+        var stageIndex = 0
+        val pipelineButton = secondaryButton("")
+        val stageButton = secondaryButton("")
+        fun refreshSelection() {
+            val pipeline = pipelines.getJSONObject(pipelineIndex)
+            pipelineButton.text = pipeline.optString("name") + "  ⌄"
+            val stages = pipeline.optJSONArray("stages") ?: org.json.JSONArray()
+            stageButton.isEnabled = stages.length() > 0
+            stageButton.text = if (stages.length() > 0) stages.getJSONObject(stageIndex).optString("name") + "  ⌄" else "No active stages"
+        }
+        refreshSelection()
+        pipelineButton.setOnClickListener {
+            val names = Array(pipelines.length()) { pipelines.getJSONObject(it).optString("name") }
+            AlertDialog.Builder(this).setTitle("Choose pipeline").setItems(names) { _, index ->
+                pipelineIndex = index; stageIndex = 0; refreshSelection()
+            }.show()
+        }
+        stageButton.setOnClickListener {
+            val stages = pipelines.getJSONObject(pipelineIndex).getJSONArray("stages")
+            val names = Array(stages.length()) { stages.getJSONObject(it).optString("name") }
+            AlertDialog.Builder(this).setTitle("Choose stage").setItems(names) { _, index ->
+                stageIndex = index; refreshSelection()
+            }.show()
+        }
+        routing.addView(fieldLabel("Pipeline *")); routing.addView(space(8)); routing.addView(pipelineButton)
+        routing.addView(space(20))
+        routing.addView(fieldLabel("Stage *")); routing.addView(space(8)); routing.addView(stageButton)
+        content.addView(routing)
+        content.addView(space(16))
+
+        val attributeInputs = mutableMapOf<String, () -> String>()
+        val definitions = data.optJSONArray("attributes") ?: org.json.JSONArray()
+        if (definitions.length() > 0) {
+            val attributesCard = card()
+            attributesCard.addView(sectionTitle("Additional attributes").apply { textSize = 20f })
+            attributesCard.addView(space(18))
+            for (i in 0 until definitions.length()) {
+                val definition = definitions.getJSONObject(i)
+                val key = definition.getString("key")
+                val label = definition.getString("name")
+                when (definition.optString("field_type")) {
+                    "option" -> {
+                        var selected = ""
+                        val options = definition.optJSONArray("options") ?: org.json.JSONArray()
+                        val button = secondaryButton("Select $label  ⌄")
+                        button.setOnClickListener {
+                            val names = Array(options.length()) { options.getString(it) }
+                            AlertDialog.Builder(this).setTitle(label).setItems(names) { _, index ->
+                                selected = names[index]; button.text = selected + "  ⌄"
+                            }.show()
+                        }
+                        attributeInputs[key] = { selected }
+                        attributesCard.addView(fieldLabel(label)); attributesCard.addView(space(8)); attributesCard.addView(button)
+                        attributesCard.addView(space(20))
+                    }
+                    "date", "datetime" -> {
+                        var selected = ""
+                        val button = secondaryButton("Select $label  ⌄")
+                        button.setOnClickListener {
+                            val now = Calendar.getInstance()
+                            DatePickerDialog(this, { _, year, month, day ->
+                                val date = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
+                                if (definition.optString("field_type") == "datetime") {
+                                    TimePickerDialog(this, { _, hour, minute ->
+                                        selected = String.format(Locale.US, "%sT%02d:%02d", date, hour, minute)
+                                        button.text = "$date  " + String.format(Locale.US, "%02d:%02d", hour, minute)
+                                    }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
+                                } else { selected = date; button.text = date }
+                            }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+                        }
+                        attributeInputs[key] = { selected }
+                        attributesCard.addView(fieldLabel(label)); attributesCard.addView(space(8)); attributesCard.addView(button)
+                        attributesCard.addView(space(20))
+                    }
+                    else -> {
+                        val input = field(label)
+                        if (definition.optString("field_type") == "numeric") {
+                            input.inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_FLAG_DECIMAL or InputType.TYPE_NUMBER_FLAG_SIGNED
+                        }
+                        attributeInputs[key] = { input.text.toString().trim() }
+                        leadField(attributesCard, label, input)
                     }
                 }
             }
+            content.addView(attributesCard)
+            content.addView(space(16))
         }
-        dialog.show()
+        val notesCard = card()
+        notesCard.addView(sectionTitle("Notes").apply { textSize = 20f })
+        notesCard.addView(space(12))
+        val notes = field("What should your team know?").apply {
+            minLines = 4; gravity = Gravity.TOP
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_MULTI_LINE or InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
+            setPadding(dp(16), dp(14), dp(16), dp(14))
+        }
+        notesCard.addView(notes)
+        content.addView(notesCard)
+        content.addView(space(24))
+        val message = body("").apply { setTextColor(Color.rgb(204, 79, 65)) }
+        content.addView(message)
+        submit.isEnabled = true
+        submit.setOnClickListener {
+            val pipeline = pipelines.getJSONObject(pipelineIndex)
+            val stages = pipeline.optJSONArray("stages") ?: org.json.JSONArray()
+            if (name.text.isBlank() || phone.text.isBlank() || stages.length() == 0) {
+                message.text = "Enter a name and phone number, then choose an active stage."
+                return@setOnClickListener
+            }
+            submit.isEnabled = false
+            message.text = ""
+            val attributes = JSONObject()
+            attributeInputs.forEach { (key, value) -> attributes.put(key, value()) }
+            val payload = JSONObject()
+                .put("name", name.text.toString().trim())
+                .put("phone", phone.text.toString().trim())
+                .put("email", email.text.toString().trim())
+                .put("notes", notes.text.toString().trim())
+                .put("pipeline_id", pipeline.getString("id"))
+                .put("stage_id", stages.getJSONObject(stageIndex).getString("id"))
+                .put("attributes", attributes)
+            lifecycleScope.launch {
+                val response = withContext(Dispatchers.IO) {
+                    runCatching { ApiClient(this@MainActivity).authorizedPost(apiPath + "leads/", payload) }.getOrNull()
+                }
+                if (!leadFormOpen || isFinishing) return@launch
+                if (response?.successful == true) {
+                    toast("Lead added to CRM")
+                    leadFormOpen = false
+                    render()
+                } else {
+                    submit.isEnabled = true
+                    message.text = if (response?.code == 409) "This number is already in your CRM."
+                    else runCatching { JSONObject(response?.body ?: "").optString("detail") }.getOrNull()
+                        .orEmpty().ifBlank { "Could not create lead. Check the details and retry." }
+                }
+            }
+        }
     }
 
     private fun loadInto(content: LinearLayout, version: Int, request: () -> com.shvya.callintelligence.net.ApiResponse, loaded: (JSONObject) -> Unit) {
