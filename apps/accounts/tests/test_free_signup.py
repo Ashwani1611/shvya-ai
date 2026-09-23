@@ -10,6 +10,10 @@ from apps.superadmin.forms import OrganizationUserUpdateForm, PipelineCreateForm
 
 
 class FreeSignupTests(TestCase):
+    def signup_post(self, *args, **kwargs):
+        with self.captureOnCommitCallbacks(execute=True):
+            return self.client.post(*args, **kwargs)
+
     def setUp(self):
         cache.clear()
         self.payload = {
@@ -23,9 +27,9 @@ class FreeSignupTests(TestCase):
             "role": "admin",
         }
 
-    @patch("apps.accounts.views_flat.send_mail")
+    @patch("apps.accounts.signup_delivery.send_mail", return_value=1)
     def test_signup_enforces_free_agent_and_owns_matching_pipeline(self, send_mail):
-        response = self.client.post(reverse("crm-signup"), self.payload)
+        response = self.signup_post(reverse("crm-signup"), self.payload)
         self.assertEqual(response.status_code, 302)
         user = User.objects.get(email=self.payload["email"])
         self.assertEqual(user.role, User.Role.AGENT)
@@ -48,7 +52,7 @@ class FreeSignupTests(TestCase):
         for phone in ["123456789", "12345678901", "+441234567890", "+9198765432100", "abcdefghij"]:
             with self.subTest(phone=phone):
                 cache.clear()
-                response = self.client.post(reverse("crm-signup"), {**self.payload, "phone": phone})
+                response = self.signup_post(reverse("crm-signup"), {**self.payload, "phone": phone})
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("phone", response.context["errors"])
                 self.assertFalse(Organization.objects.filter(name="Free Workspace").exists())

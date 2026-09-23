@@ -257,3 +257,14 @@ class OneTimeLoginToken(models.Model):
 
     def __str__(self):
         return f"{self.user.email} → one-time login"
+
+class SignupVerificationDelivery(models.Model):
+    """Durable verification mail; never store passwords or signed tokens."""
+
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name="signup_delivery")
+    email = models.EmailField()
+    verification_endpoint = models.URLField(max_length=500)
+    attempts = models.PositiveIntegerField(default=0)
+    next_attempt_at = models.DateTimeField(default=timezone.now, db_index=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    error_type = models.CharField(max_length=100, blank=True)

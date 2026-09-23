@@ -39,6 +39,7 @@ app.conf.task_routes = {
 # self-schedules a due-time wake-up, and the dedicated recovery scans catch jobs
 # or sender publications that were missed around a deploy/broker interruption.
 app.conf.beat_schedule = {
+    "signup-verification-delivery": {"task": "accounts.deliver_signup_verifications", "schedule": 60.0},
     "cleanup-deleted-organizations": {"task": "organizations.cleanup_deleted", "schedule": 60.0},
     "recover-api-ai-every-10-seconds": {"task": "ai.recover_api_engagement", "schedule": 10.0},
     "dispatch-smart-triggers-every-10-seconds": {
