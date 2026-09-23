@@ -254,6 +254,25 @@ AI_GLOBAL_STARTS_PER_MINUTE = config(
     cast=int,
 )
 
+# Smart Trigger timer scanning is incremental and cursor-based so a large
+# organization cannot turn one Beat invocation into an unbounded full-table
+# walk or outlive the dispatcher lease.
+WORKFLOW_TIMER_RULES_PER_PASS = config(
+    "WORKFLOW_TIMER_RULES_PER_PASS",
+    default=40,
+    cast=int,
+)
+WORKFLOW_TIMER_RULES_PER_ORGANIZATION = config(
+    "WORKFLOW_TIMER_RULES_PER_ORGANIZATION",
+    default=2,
+    cast=int,
+)
+WORKFLOW_TIMER_LEADS_PER_RULE = config(
+    "WORKFLOW_TIMER_LEADS_PER_RULE",
+    default=100,
+    cast=int,
+)
+
 
 # ---------------------------------------------------------------------------
 # Channels -- WebSocket support (live WhatsApp chat updates).
