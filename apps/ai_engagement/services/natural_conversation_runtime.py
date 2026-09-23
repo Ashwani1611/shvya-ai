@@ -287,11 +287,11 @@ def _patch_failsoft() -> None:
             })
 
         if call_request:
-            from apps.ai_engagement.services.qualification_crm_action_runtime import (
-                _parse_grounded_due_at,
+            from apps.ai_engagement.services.reminder_time_runtime import (
+                parse_grounded_due_at,
             )
 
-            due_at = _parse_grounded_due_at(latest_text)
+            due_at = parse_grounded_due_at(latest_text)
             if due_at:
                 actions.append({
                     "type": "create_reminder",
