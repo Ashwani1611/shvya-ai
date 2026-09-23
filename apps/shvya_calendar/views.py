@@ -5,8 +5,6 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.contrib import messages
-from django.core import signing
-from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
@@ -15,12 +13,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.text import slugify
-from django.views.decorators.clickjacking import xframe_options_exempt
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
 from apps.accounts.models import User
-from apps.core.ratelimit import _client_ip
 from apps.crm.authentication import crm_login_required, get_crm_session
 from apps.crm.models import AttributeDefinition, Stage
 from apps.crm.views.api import get_user_pipelines
@@ -40,22 +35,13 @@ from .models import (
     CalendarReminderDelivery,
     CalendarReminderSequence,
     CalendarReminderStep,
-    CalendarSubmission,
     CalendarSubmissionAttachment,
     GoogleCalendarConnection,
 )
 
 from .services import (
-    attribution_from_request,
-    book_slot,
-    create_submission_and_lead,
-    hash_ip,
-    latest_published_version,
     publish_page,
-    reschedule_booking,
     schema_from_json,
-    upcoming_slot_days,
-    validate_public_submission,
 )
 
 logger = logging.getLogger(__name__)
