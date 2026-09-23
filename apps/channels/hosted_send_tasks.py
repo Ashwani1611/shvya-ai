@@ -243,6 +243,7 @@ def send_hosted_whatsapp_message_task(self, message_id):
                 countdown = _hosted_retry_delay(
                     message_id=message.id,
                     retries=self.request.retries,
+                    retry_after=getattr(exc, "retry_after", None),
                 )
                 if exc.status_code == 429:
                     from apps.core.observability import increment
