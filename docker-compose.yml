@@ -74,6 +74,8 @@ services:
   web:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${WEB_REPLICAS:-1}
 
     env_file:
       - .env
@@ -128,6 +130,8 @@ services:
   ws:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${ASGI_REPLICAS:-1}
 
     # Separate from `web` on purpose: gunicorn (WSGI) cannot serve
     # WebSocket connections, so live chat updates need their own
@@ -165,6 +169,8 @@ services:
   worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_GENERAL_REPLICAS:-1}
 
     env_file:
       - .env
@@ -202,6 +208,8 @@ services:
   ai_realtime_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_AI_REALTIME_REPLICAS:-1}
 
     # Customer-facing WhatsApp API AI replies get their own Celery lane so
     # summaries, knowledge ingestion, follow-ups, and other background tasks
@@ -242,6 +250,8 @@ services:
   hosted_ai_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_HOSTED_AI_REPLICAS:-1}
 
     # Hosted Account AI keeps its durable delayed DB queue, but due-time wakes
     # and actual AI processing run independently of the general worker so a
@@ -282,6 +292,8 @@ services:
   campaign_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_CAMPAIGN_REPLICAS:-1}
     env_file: [.env]
     environment:
       DB_HOST: pgbouncer
@@ -302,6 +314,8 @@ services:
   ingestion_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_INGESTION_REPLICAS:-1}
     env_file: [.env]
     environment:
       DB_HOST: pgbouncer
@@ -322,6 +336,8 @@ services:
   automation_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_AUTOMATION_REPLICAS:-1}
     env_file: [.env]
     environment:
       DB_HOST: pgbouncer
