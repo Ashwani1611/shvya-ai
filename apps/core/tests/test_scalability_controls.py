@@ -13,6 +13,7 @@ from django.http import HttpResponse
 from django.test import RequestFactory, SimpleTestCase, override_settings
 
 from apps.core.fairness import admit, admit_ai_start
+from apps.core import observability
 from apps.core.observability import RequestObservabilityMiddleware, metrics_snapshot
 from apps.core.runtime_status import runtime_metrics
 from apps.core.scale_middleware import TenantConcurrencyMiddleware
@@ -41,6 +42,40 @@ class ScalabilityControlTests(SimpleTestCase):
         uuid.UUID(response["X-Request-ID"])
         self.assertNotEqual(response["X-Request-ID"], "not-a-uuid")
         self.assertTrue(metrics_snapshot()["series"])
+
+    def test_request_metric_labels_exclude_customer_identifiers(self):
+        request = self.factory.get("/health/live/")
+        request.crm_user = SimpleNamespace(
+            id=uuid.uuid4(),
+            organization_id=uuid.uuid4(),
+        )
+        RequestObservabilityMiddleware(lambda _request: HttpResponse("ok"))(request)
+
+        request_series = [
+            item
+            for item in metrics_snapshot()["series"]
+            if item["metric"] == "http.requests"
+        ]
+        self.assertTrue(request_series)
+        for item in request_series:
+            self.assertNotIn("organization_id", item["labels"])
+            self.assertNotIn("user_id", item["labels"])
+
+    @patch("apps.core.observability.MAX_REGISTERED_SERIES", 2)
+    def test_metric_series_cap_prevents_unregistered_redis_keys(self):
+        observability.increment("bounded.metric", labels={"slot": "one"})
+        observability.increment("bounded.metric", labels={"slot": "two"})
+        _, _, rejected_series = observability._series(
+            "bounded.metric",
+            {"slot": "three"},
+        )
+        observability.increment("bounded.metric", labels={"slot": "three"})
+
+        snapshot = metrics_snapshot()
+        self.assertEqual(len(snapshot["series"]), 2)
+        self.assertIsNone(
+            cache.get(f"{observability.METRIC_PREFIX}:counter:{rejected_series}")
+        )
 
     @override_settings(OBSERVABILITY_TOKEN="monitor-secret")
     @patch("apps.core.runtime_status._websocket_snapshot", return_value={})
