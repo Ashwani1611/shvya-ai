@@ -1,0 +1,567 @@
+<div class="mb-6 flex items-center justify-between">
+
+    <div>
+
+        <div class="flex items-center gap-3">
+
+            <a
+                href="{% url 'superadmin-org-list' %}"
+                class="text-sm text-gray-500 hover:text-indigo-600"
+            >
+                ← Organizations
+            </a>
+
+            <span class="text-gray-300">
+                /
+            </span>
+
+            <h1 class="text-xl font-semibold">
+                {{ organization.name }}
+            </h1>
+
+        </div>
+
+        <div class="mt-1 text-xs text-gray-400">
+            Organization ID:
+            {{ organization.id }}
+        </div>
+
+    </div>
+
+
+    <!-- Account Status -->
+
+    {% if organization.is_active %}
+
+        <span
+            class="px-3 py-1 text-xs rounded-full bg-green-100 text-green-700"
+        >
+            Active
+        </span>
+
+    {% else %}
+
+        <span
+            class="px-3 py-1 text-xs rounded-full bg-red-100 text-red-700"
+        >
+            Disabled
+        </span>
+
+    {% endif %}
+
+</div>
+
+
+<!-- =========================================================
+     ORGANIZATION INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Organization Information
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Core organization and account information.
+            </p>
+
+        </div>
+
+
+        <!-- Edit Organization -->
+
+        <a
+            href="{% url 'superadmin-organization-update' organization_id=organization.id %}"
+            class="px-3 py-1.5 text-xs border rounded-md text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+        >
+            Edit
+        </a>
+
+    </div>
+
+
+    <div class="p-5 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+
+
+        <!-- Name -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Organization
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.name }}
+            </div>
+
+        </div>
+
+
+        <!-- Assigned POC -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Assigned POC
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.assigned_poc %}
+
+                    {{ organization.assigned_poc }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not assigned
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Package -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Package
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.get_package_display }}
+            </div>
+
+        </div>
+
+
+        <!-- Payment Mode -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Payment Mode
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.get_payment_mode_display }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Used -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Used
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_used }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Remaining -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Remaining
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_remaining }}
+            </div>
+
+        </div>
+
+
+        <!-- Credits Total -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Credits Total
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.credits_total }}
+            </div>
+
+        </div>
+
+
+        <!-- Number of Seats -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Number of Seats
+            </div>
+
+            <div class="mt-1 font-medium">
+                {{ organization.number_of_seats }}
+            </div>
+
+        </div>
+
+
+        <!-- Renewal Payment -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Renewal Payment At
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.renewal_payment_at %}
+
+                    {{ organization.renewal_payment_at|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Next Payment -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Next Payment At
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.next_payment_at %}
+
+                    {{ organization.next_payment_at|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Day of Sale -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Day of Sale
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.day_of_sale %}
+
+                    {{ organization.day_of_sale|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <!-- Onboarding -->
+
+        <div class="border rounded-md p-4">
+
+            <div class="text-xs text-gray-400">
+                Onboarding Completion
+            </div>
+
+            <div class="mt-1 font-medium">
+
+                {% if organization.onboarding_completion_date %}
+
+                    {{ organization.onboarding_completion_date|date:"d M Y" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        Not set
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     OPERATIONAL NOTES
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b">
+
+        <h2 class="text-base font-semibold">
+            Operational Notes
+        </h2>
+
+        <p class="text-xs text-gray-400 mt-1">
+            Internal notes visible to Superadmin users.
+        </p>
+
+    </div>
+
+
+    <div class="p-5">
+
+        {% if organization.operational_notes %}
+
+            <div class="whitespace-pre-wrap text-sm text-gray-700">
+                {{ organization.operational_notes }}
+            </div>
+
+        {% else %}
+
+            <div class="text-sm text-gray-400">
+                No operational notes have been added.
+            </div>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     TAGS
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Tags
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Organization-level Superadmin tags.
+            </p>
+
+        </div>
+
+
+        <button
+            type="button"
+            disabled
+            class="px-3 py-1.5 text-xs border rounded-md text-gray-400 cursor-not-allowed"
+        >
+            Manage Tags
+        </button>
+
+    </div>
+
+
+    <div class="p-5">
+
+        {% if organization.tags.all %}
+
+            <div class="flex flex-wrap gap-2">
+
+                {% for tag in organization.tags.all %}
+
+                    <span
+                        class="px-2 py-1 text-xs border rounded-md bg-gray-50"
+                    >
+                        {{ tag.name }}
+                    </span>
+
+                {% empty %}
+
+                    <span class="text-sm text-gray-400">
+                        No tags assigned.
+                    </span>
+
+                {% endfor %}
+
+            </div>
+
+        {% else %}
+
+            <span class="text-sm text-gray-400">
+                No tags assigned.
+            </span>
+
+        {% endif %}
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     ACCOUNT INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mb-6">
+
+    <div class="px-5 py-4 border-b">
+
+        <h2 class="text-base font-semibold">
+            Account Information
+        </h2>
+
+    </div>
+
+
+    <div class="p-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Organization ID
+            </div>
+
+            <div class="mt-1 text-sm font-mono break-all">
+                {{ organization.id }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Timezone
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.timezone }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Created At
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.created_at|date:"d M Y, H:i" }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Updated At
+            </div>
+
+            <div class="mt-1 text-sm">
+                {{ organization.updated_at|date:"d M Y, H:i" }}
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Account Status
+            </div>
+
+            <div class="mt-1 text-sm">
+
+                {% if organization.is_active %}
+
+                    <span class="text-green-600 font-medium">
+                        Active
+                    </span>
+
+                {% else %}
+
+                    <span class="text-red-600 font-medium">
+                        Disabled
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+
+        <div>
+
+            <div class="text-xs text-gray-400">
+                Disabled At
+            </div>
+
+            <div class="mt-1 text-sm">
+
+                {% if organization.disabled_at %}
+
+                    {{ organization.disabled_at|date:"d M Y, H:i" }}
+
+                {% else %}
+
+                    <span class="text-gray-400">
+                        —
+                    </span>
+
+                {% endif %}
+
+            </div>
+
+        </div>
+
+    </div>
+
+</div>

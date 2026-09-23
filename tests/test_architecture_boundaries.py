@@ -62,6 +62,24 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             900,
         )
 
+    def test_superadmin_organization_detail_uses_focused_partials(self):
+        template = ROOT / "templates" / "superadmin" / "org_detail.html"
+        partials = ROOT / "templates" / "superadmin" / "org_detail"
+        expected = {
+            "_overview.html",
+            "_control_center.html",
+            "_modals.html",
+            "_payment_user_scripts.html",
+            "_external_ai_operations.html",
+            "_footer_scripts.html",
+        }
+        self.assertLess(
+            len(template.read_text(encoding="utf-8").splitlines()),
+            40,
+            "Compose organization detail from focused partials.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in partials.glob("*.html")}))
+
     def test_calendar_availability_is_owned_by_focused_service(self):
         service_path = ROOT / "apps" / "shvya_calendar" / "services.py"
         self.assertLess(

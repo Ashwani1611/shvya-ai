@@ -1,0 +1,706 @@
+<!-- =========================================================
+     SUPERADMIN CONTROL CENTER
+========================================================= -->
+
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+
+    <!-- =====================================================
+         USERS
+    ====================================================== -->
+
+    <div class="bg-white border rounded-lg">
+
+        <div class="px-5 py-4 border-b flex items-center justify-between">
+
+            <div>
+                <h2 class="text-base font-semibold">
+                    Organization Users
+                </h2>
+
+                <p class="text-xs text-gray-400 mt-1">
+                    Users belonging to this organization.
+                </p>
+            </div>
+
+            <button
+                type="button"
+                id="openCreateUserModal"
+                class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+                + Create User
+            </button>
+
+        </div>
+
+        <div class="p-5">
+
+            {% with organization_users=organization.users.all %}
+
+                {% if organization_users %}
+
+                    <div class="overflow-x-auto">
+
+                        <table class="min-w-full text-sm">
+
+                            <thead>
+                                <tr class="border-b text-left text-xs text-gray-400">
+
+                                    <th class="py-3 pr-4">
+                                        Name
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Email
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Phone
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Role
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Status
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Last Login
+                                    </th>
+
+                                    <th class="py-3 pr-4">
+                                        Created
+                                    </th>
+
+                                    <th class="py-3 text-right">
+                                        Actions
+                                    </th>
+
+                                </tr>
+                            </thead>
+
+                            <tbody class="divide-y">
+
+                                {% for user in organization_users %}
+
+                                    <tr class="hover:bg-gray-50">
+
+                                        <td class="py-3 pr-4 font-medium">
+                                            {% if user.name %}
+                                                {{ user.name }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {{ user.email }}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {% if user.phone %}
+                                                {{ user.phone }}
+                                            {% else %}
+                                                <span class="text-gray-400">—</span>
+                                            {% endif %}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+                                            {{ user.get_role_display }}
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.is_active %}
+                                                <span class="px-2 py-1 text-xs rounded-full bg-green-100 text-green-700">
+                                                    Active
+                                                </span>
+                                            {% else %}
+                                                <span class="px-2 py-1 text-xs rounded-full bg-red-100 text-red-700">
+                                                    Inactive
+                                                </span>
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.last_login_at %}
+                                                {{ user.last_login_at|date:"d M Y, H:i" }}
+                                            {% else %}
+                                                <span class="text-gray-400">
+                                                    Never
+                                                </span>
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 pr-4">
+
+                                            {% if user.created_at %}
+                                                {{ user.created_at|date:"d M Y" }}
+                                            {% else %}
+                                                —
+                                            {% endif %}
+
+                                        </td>
+
+                                        <td class="py-3 text-right">
+
+                                            <div class="flex items-center justify-end gap-2">
+
+                                                <!-- Edit User -->
+                                                <a
+                                                    href="{% url 'superadmin-organization-user-edit' organization_id=organization.id user_id=user.id %}"
+                                                    class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-gray-300 rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                                                >
+                                                    Edit
+                                                </a>
+
+                                                <!-- Enable / Disable User -->
+                                                <form
+                                                    method="post"
+                                                    action="{% url 'superadmin-organization-user-toggle-active' organization_id=organization.id user_id=user.id %}"
+                                                    class="inline"
+                                                    onsubmit="return confirm('{% if user.is_active %}Disable this user?{% else %}Enable this user?{% endif %}');"
+                                                >
+                                                    {% csrf_token %}
+
+                                                    {% if user.is_active %}
+                                                        <input type="hidden" name="is_active" value="0">
+                                                        <button
+                                                            type="submit"
+                                                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-red-200 rounded-md text-red-700 bg-red-50 hover:bg-red-100"
+                                                        >
+                                                            Disable
+                                                        </button>
+                                                    {% else %}
+                                                        <input type="hidden" name="is_active" value="1">
+                                                        <button
+                                                            type="submit"
+                                                            class="inline-flex items-center px-2.5 py-1.5 text-xs font-medium border border-green-200 rounded-md text-green-700 bg-green-50 hover:bg-green-100"
+                                                        >
+                                                            Enable
+                                                        </button>
+                                                    {% endif %}
+                                                </form>
+
+                                            </div>
+
+                                        </td>
+
+                                    </tr>
+
+                                {% endfor %}
+
+                            </tbody>
+
+                        </table>
+
+                    </div>
+
+                {% else %}
+
+                    <div class="text-sm text-gray-400">
+                        No users have been added to this organization yet.
+                    </div>
+
+                {% endif %}
+
+            {% endwith %}
+
+        </div>
+
+    </div>
+
+
+<!-- =====================================================
+     PIPELINES
+====================================================== -->
+
+<div class="bg-white border rounded-lg">
+
+    <!-- Header -->
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+            <h2 class="text-base font-semibold">
+                Pipeline Settings
+            </h2>
+
+            <p class="text-xs text-gray-500 mt-1">
+                Manage pipelines belonging to this organization.
+            </p>
+        </div>
+
+        <a
+            href="{% url 'superadmin-organization-pipeline-add' organization.id %}"
+            class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+        >
+            Create Pipeline
+        </a>
+
+    </div>
+
+
+    <!-- Pipeline List -->
+    <div class="p-5">
+
+        <div class="overflow-x-auto">
+
+            <table class="w-full text-sm">
+
+                <thead>
+                    <tr class="border-b text-left text-xs text-gray-500">
+
+                        <th class="py-3 pr-4 font-medium">
+                            Pipeline
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Country
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Phone
+                        </th>
+
+                        <th class="py-3 px-4 font-medium">
+                            Owner
+                        </th>
+
+                        <th class="py-3 pl-4 font-medium text-right">
+                            Status
+                        </th>
+
+                        <th class="py-3 pl-4 font-medium text-right">
+                            Actions
+                        </th>
+
+                    </tr>
+                </thead>
+
+
+                <tbody>
+
+                    {% for pipeline in organization.pipelines.all %}
+
+                        <tr class="border-b last:border-b-0">
+
+                            <!-- Pipeline Name -->
+                            <td class="py-3 pr-4">
+
+                                <div class="font-medium text-gray-900">
+                                    {{ pipeline.name }}
+                                </div>
+
+                            </td>
+
+
+                            <!-- Country -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.country_code %}
+                                    {{ pipeline.country_code }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Phone -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.phone_number %}
+                                    {{ pipeline.phone_number }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Owner -->
+                            <td class="py-3 px-4 text-gray-600">
+
+                                {% if pipeline.owner %}
+                                    {{ pipeline.owner.email }}
+                                {% else %}
+                                    —
+                                {% endif %}
+
+                            </td>
+
+
+                            <!-- Status -->
+                            <td class="py-3 pl-4 text-right">
+
+                                {% if pipeline.is_active %}
+
+                                    <span
+                                        class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-50 text-green-700"
+                                    >
+                                        Active
+                                    </span>
+
+                                {% else %}
+
+                                    <span
+                                        class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-600"
+                                    >
+                                        Inactive
+                                    </span>
+
+                                {% endif %}
+
+                            <td class="py-3 pl-4 text-right">
+
+    <div class="inline-flex items-center gap-2">
+
+        <!-- Edit Pipeline -->
+        <a
+            href="{% url 'superadmin-organization-pipeline-edit' organization.id pipeline.id %}"
+            class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-md hover:bg-indigo-50"
+        >
+            Edit
+        </a>
+
+        <!-- Delete Pipeline -->
+        <form
+            method="post"
+            action="{% url 'superadmin-organization-pipeline-delete' organization.id pipeline.id %}"
+            class="inline"
+            onsubmit="return confirm('Are you sure you want to delete this pipeline?');"
+        >
+
+            {% csrf_token %}
+
+            <button
+                type="submit"
+                class="inline-flex items-center px-3 py-1.5 text-xs font-medium text-red-600 border border-red-200 rounded-md hover:bg-red-50"
+            >
+                Delete
+            </button>
+
+        </form>
+
+    </div>
+
+</td>
+
+                        </tr>
+
+                    {% empty %}
+
+                        <tr>
+
+                            <td
+                                colspan="6"
+                                class="py-8 text-center"
+                            >
+
+                                <div class="text-sm text-gray-500">
+                                    No pipelines have been created for this organization yet.
+                                </div>
+
+                                <div class="text-xs text-gray-400 mt-1">
+                                    Click "Create Pipeline" to add the first pipeline.
+                                </div>
+
+                            </td>
+
+                        </tr>
+
+                    {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </div>
+
+</div>
+
+
+<!-- =========================================================
+     PAYMENT INFORMATION
+========================================================= -->
+
+<div class="bg-white border rounded-lg mt-6">
+
+    <!-- Header -->
+
+    <div class="px-5 py-4 border-b flex items-center justify-between">
+
+        <div>
+
+            <h2 class="text-base font-semibold">
+                Payment Information
+            </h2>
+
+            <p class="text-xs text-gray-400 mt-1">
+                Payment history, collections and outstanding balance.
+            </p>
+
+        </div>
+
+
+        <button
+            type="button"
+            id="openAddPaymentModal"
+            class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+        >
+            + Add Payment
+        </button>
+
+    </div>
+
+
+    <!-- Payment Summary -->
+
+    <div class="p-5">
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+
+
+            <!-- Total Sale -->
+
+            <div class="border rounded-lg p-4">
+
+                <div class="text-xs text-gray-400">
+                    Total Sale Amount
+                </div>
+
+                <div class="mt-1 text-xl font-semibold">
+                    ₹{{ organization.total_sale_amount|default:"0.00" }}
+                </div>
+
+            </div>
+
+
+            <!-- Total Paid -->
+
+            <div class="border rounded-lg p-4">
+
+                <div class="text-xs text-gray-400">
+                    Total Paid
+                </div>
+
+                <div class="mt-1 text-xl font-semibold text-green-600">
+                    ₹{{ payment_total|default:"0.00" }}
+                </div>
+
+            </div>
+
+
+            <!-- Balance -->
+
+            <div
+                class="border rounded-lg p-4"
+                data-total-sale="{{ organization.total_sale_amount|default:'0' }}"
+                data-total-paid="{{ payment_total|default:'0' }}"
+            >
+
+                <div class="text-xs text-gray-400">
+                    Balance Remaining
+                </div>
+
+                <div
+                    id="paymentBalance"
+                    class="mt-1 text-xl font-semibold"
+                >
+                    ₹0.00
+                </div>
+
+            </div>
+
+        </div>
+
+
+        <!-- Payment History -->
+
+        <div class="border rounded-lg overflow-hidden">
+
+            <div class="px-4 py-3 border-b bg-gray-50">
+
+                <h3 class="text-sm font-semibold">
+                    Payment History
+                </h3>
+
+            </div>
+
+
+            {% if payments %}
+
+                <div class="overflow-x-auto">
+
+                    <table class="min-w-full text-sm">
+
+                        <thead class="bg-gray-50 border-b">
+
+                            <tr>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Date
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Amount
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Method
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Reference
+                                </th>
+
+                                <th class="px-4 py-3 text-left text-xs font-medium text-gray-500">
+                                    Notes
+                                </th>
+
+                                <th class="px-4 py-3 text-right text-xs font-medium text-gray-500">
+                                    Actions
+                                </th>
+
+                            </tr>
+
+                        </thead>
+
+
+                        <tbody class="divide-y">
+
+                            {% for payment in payments %}
+
+                                <tr
+                                    class="hover:bg-gray-50"
+                                    data-payment-row="{{ payment.id }}"
+                                    data-payment-amount="{{ payment.amount }}"
+                                    data-payment-date="{{ payment.payment_date|date:'Y-m-d' }}"
+                                    data-payment-method="{{ payment.payment_method }}"
+                                    data-payment-reference="{{ payment.reference_number|default:'' }}"
+                                    data-payment-notes="{{ payment.notes|default:'' }}"
+                                >
+
+                                    <td class="px-4 py-3 whitespace-nowrap">
+
+                                        {{ payment.payment_date|date:"d M Y" }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3 font-medium">
+
+                                        ₹{{ payment.amount }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        {{ payment.get_payment_method_display }}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        {% if payment.reference_number %}
+
+                                            {{ payment.reference_number }}
+
+                                        {% else %}
+
+                                            <span class="text-gray-400">
+                                                —
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3 max-w-xs">
+
+                                        {% if payment.notes %}
+
+                                            <span class="text-gray-600">
+                                                {{ payment.notes }}
+                                            </span>
+
+                                        {% else %}
+
+                                            <span class="text-gray-400">
+                                                —
+                                            </span>
+
+                                        {% endif %}
+
+                                    </td>
+
+
+                                    <td class="px-4 py-3">
+
+                                        <div class="flex items-center justify-end gap-2">
+
+                                            <button
+                                                type="button"
+                                                class="editPaymentButton px-2.5 py-1 text-xs border rounded-md text-indigo-600 border-indigo-200 hover:bg-indigo-50"
+                                                data-payment-id="{{ payment.id }}"
+                                            >
+                                                Edit
+                                            </button>
+
+
+                                            <button
+                                                type="button"
+                                                class="deletePaymentButton px-2.5 py-1 text-xs border rounded-md text-red-600 border-red-200 hover:bg-red-50"
+                                                data-payment-id="{{ payment.id }}"
+                                                data-payment-amount="{{ payment.amount }}"
+                                                data-payment-date="{{ payment.payment_date|date:'d M Y' }}"
+                                            >
+                                                Delete
+                                            </button>
+
+                                        </div>
+
+                                    </td>
+
+                                </tr>
+
+                            {% endfor %}
+
+                        </tbody>
+
+                    </table>
+
+                </div>
+
+            {% else %}
+
+                <div class="p-8 text-center">
+
+                    <div class="text-sm font-medium text-gray-600">
+                        No payments recorded yet.
+                    </div>
+
+                    <div class="text-xs text-gray-400 mt-1">
+                        Add the organization's first payment using
+                        the button above.
+                    </div>
+
+                </div>
+
+            {% endif %}
+
+        </div>
+
+    </div>
+
+</div>
