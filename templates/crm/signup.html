@@ -161,7 +161,7 @@
 
                 <div class="form-group">
                     <label class="form-label" for="id_phone">
-                        Phone Number <span class="required-mark" aria-hidden="true">*</span>
+                        Phone Number (+91 India) <span class="required-mark" aria-hidden="true">*</span>
                     </label>
                     <div class="field-shell{% if errors.phone %} field-shell-error{% endif %}">
                         <span class="field-icon" aria-hidden="true">
@@ -174,7 +174,10 @@
                             name="phone"
                             type="tel"
                             class="form-input"
-                            placeholder="Enter your phone number"
+                            placeholder="+919876543210"
+                            pattern="(\+91)?[0-9]{10}"
+                            maxlength="13"
+                            title="Enter 10 digits, optionally prefixed with +91"
                             value="{{ form_data.phone|default:'' }}"
                             autocomplete="tel"
                             inputmode="tel"

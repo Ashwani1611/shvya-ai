@@ -1,3 +1,4 @@
+from apps.accounts.phone_numbers import normalize_free_phone
 from django import forms
 
 from apps.accounts.models import User
@@ -708,6 +709,13 @@ class OrganizationUserForm(forms.ModelForm):
         self.fields["role"].label = "Role"
         self.fields["is_active"].label = "Active"
 
+    def clean_phone(self):
+        phone = self.cleaned_data.get("phone", "")
+        organization = self.instance.organization if self.instance.organization_id else None
+        if organization and organization.package == Organization.Package.FREE:
+            return normalize_free_phone(phone)
+        return phone
+
     def clean_email(self):
         email = self.cleaned_data.get("email")
 
@@ -907,6 +915,13 @@ class OrganizationUserUpdateForm(forms.ModelForm):
         self.fields["phone"].label = "Phone"
         self.fields["role"].label = "Role"
         self.fields["is_active"].label = "Active"
+
+    def clean_phone(self):
+        phone = self.cleaned_data.get("phone", "")
+        organization = self.instance.organization if self.instance.organization_id else None
+        if organization and organization.package == Organization.Package.FREE:
+            return normalize_free_phone(phone)
+        return phone
 
     def clean_email(self):
         email = self.cleaned_data.get("email")
@@ -1119,6 +1134,10 @@ class PipelineCreateForm(forms.ModelForm):
         )
 
         self.organization = organization
+        if organization and organization.package == Organization.Package.FREE:
+            self.fields["country_code"].initial = "+91"
+            if not self.instance.country_code:
+                self.initial["country_code"] = "+91"
 
         # ---------------------------------------------------------
         # Owner
@@ -1145,6 +1164,12 @@ class PipelineCreateForm(forms.ModelForm):
         self.fields["country_code"].label = "Country Code"
         self.fields["phone_number"].label = "Phone Number"
         self.fields["owner"].label = "Owner"
+
+    def clean_country_code(self):
+        country_code = self.cleaned_data.get("country_code", "")
+        if not country_code and self.organization and self.organization.package == Organization.Package.FREE:
+            return "+91"
+        return country_code
 
     def clean_name(self):
         name = self.cleaned_data.get(
