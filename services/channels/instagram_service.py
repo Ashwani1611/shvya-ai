@@ -974,6 +974,31 @@ def fail_message(message_id, error: Exception) -> None:
     )
 
 
+@transaction.atomic
+def requeue_explicitly_rejected_message(message_id) -> bool:
+    """Clear the durable send claim only when Meta explicitly rejected the send."""
+    message = (
+        InstagramMessage.objects.select_for_update()
+        .filter(pk=message_id)
+        .first()
+    )
+    if message is None or message.external_id:
+        return False
+    payload = (
+        dict(message.raw_payload)
+        if isinstance(message.raw_payload, dict)
+        else {}
+    )
+    payload.pop("shvya_send_claimed_at", None)
+    message.raw_payload = payload
+    message.status = InstagramMessage.Status.QUEUED
+    message.error = ""
+    message.save(
+        update_fields=["raw_payload", "status", "error", "updated_at"]
+    )
+    return True
+
+
 def _webhook_message_type(message_payload: dict) -> str:
     if message_payload.get("text"):
         return InstagramMessage.MessageType.TEXT
