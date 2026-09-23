@@ -23,6 +23,10 @@ class SmartTrigger(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    # Operational round-robin cursor for bounded timer scans. This is separate
+    # from updated_at so background scheduling never changes the trigger's
+    # user-facing modification timestamp.
+    timer_scan_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["position", "created_at", "id"]
