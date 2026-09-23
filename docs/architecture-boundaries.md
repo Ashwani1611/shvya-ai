@@ -11,7 +11,8 @@ New business logic should be placed with the domain that owns it:
 - CRM-specific logic: `apps/crm/services/` or an established canonical CRM
   service when the existing root service is already the shared contract.
 - AI engagement logic: `apps/ai_engagement/services/`.
-- Integrations/Operations logic: `apps/integrations/` and its focused service
+- Integrations/Operations logic: `apps/integrations/operations/`, with stable
+  compatibility entry points in the historical `apps/integrations/operations_*`
   modules.
 - Sales, Calendar, Support and Telephony logic remain inside their owning apps.
 
@@ -32,17 +33,35 @@ tools and tests.
 
 Implementation is split by responsibility:
 
-- `operations_tool_read.py` — organization/configuration inspection helpers.
-- `operations_tool_actions.py` — lead mutations, qualification repair, AI
-  configuration and analysis.
-- `operations_tool_config.py` — pipeline, stage, attribute, workflow and Cadence
-  configuration.
-- `operations_configuration_management.py` — export/import/plans/rollback.
-- `operations_lifecycle.py`, `operations_policy.py`, `operations_auth.py` —
-  lifecycle, capability and actor-bound authorization.
+- `operations/registry.py` and `operations/tool_catalog.py` — canonical tool
+  discovery and registration.
+- `operations/tools/` — domain-oriented CRM, qualification, messaging, Cadence,
+  Workflow, knowledge, FAQ and configuration tools.
+- `operations/configuration/` — validation, export, import and plan execution.
+- `operations/diagnostics/` — lead, messaging and runtime diagnostics.
+- `operations_lifecycle.py`, `operations_policy.py`, `operations_auth.py` and
+  `views/operations_mcp.py` — lifecycle, capability, actor-bound authorization
+  and protocol transport.
+
+`operations_tool_read.py`, `operations_tool_actions.py`,
+`operations_tool_config.py`, `operations_extended_tools.py` and
+`operations_configuration_management.py` remain compatibility facades for
+existing imports and patch seams; new behavior belongs in `operations/`.
 
 New Operations tools should be added to the focused owner rather than growing the
 facade back into a monolith.
+
+## AI task and qualification boundaries
+
+`apps/ai_engagement/tasks.py` preserves the public Celery task names and queue
+contracts. Focused task orchestration lives in `apps/ai_engagement/task_handlers/`
+and reusable engagement execution lives in
+`apps/ai_engagement/services/engagement_execution.py`.
+
+`qualification_execution_contract.py` remains the stable qualification contract.
+Planning, evidence validation, completion, reconciliation and finalization live in
+`apps/ai_engagement/services/qualification_execution/`. Do not introduce another
+qualification state machine or bypass the tenant-scoped CRM execution contracts.
 
 ## AI runtime patch ceiling
 

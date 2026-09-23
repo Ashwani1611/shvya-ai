@@ -330,9 +330,14 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 - `apps/integrations/operations_policy.py`
 - `apps/integrations/operations_auth.py`
 - `apps/integrations/operations_agent_prompt.py`
-- `apps/integrations/operations_tools.py`
-- `apps/integrations/operations_extended_tools.py`
-- `apps/integrations/operations_configuration_management.py`
+- `apps/integrations/operations/registry.py`
+- `apps/integrations/operations/tool_catalog.py`
+- `apps/integrations/operations/tools/`
+- `apps/integrations/operations/configuration/`
+- `apps/integrations/operations/diagnostics/`
+- `apps/integrations/operations_tools.py` and the historical
+  `operations_tool_*`, `operations_extended_tools.py` and
+  `operations_configuration_management.py` compatibility entry points
 - `apps/integrations/operations_lifecycle.py`
 - `apps/integrations/operations_superadmin_diagnostics.py`
 - `apps/integrations/mcp_schema.py`
@@ -340,7 +345,8 @@ Operations MCP is a separate authorization, policy, support-context and audit bo
 - `apps/integrations/migrations/0006_operations_mcp.py` through the current Operations configuration-plan migrations
 - `apps/superadmin/operations_views.py`
 - `templates/integrations/operations_authorize.html`
-- `apps/integrations/tests/test_operations_mcp.py`
+- `apps/integrations/tests/operations_mcp_test_base.py`
+- `apps/integrations/tests/test_operations_mcp_*.py`
 - `apps/integrations/tests/test_operations_configuration_management.py`
 - `apps/integrations/tests/test_operations_lifecycle.py`
 - `apps/integrations/tests/test_operations_additional_diagnostics.py`

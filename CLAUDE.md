@@ -93,7 +93,7 @@ The historical Django app module `apps.channels` intentionally retains the app l
 - `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
 - `apps/telephony/` owns Call Intelligence call/device state and CRM-linked call analysis; `android/call-intelligence/` is the Android SIM companion client.
-- `apps/integrations/operations_tools.py` is the stable Operations MCP tool facade; focused implementation lives in `operations_tool_read.py`, `operations_tool_actions.py`, `operations_tool_config.py`, configuration management, lifecycle, policy and diagnostic modules.
+- `apps/integrations/operations_tools.py` and the historical `operations_*` modules are stable Operations MCP compatibility entry points. New implementation is organized under `apps/integrations/operations/` into the tool registry/catalog, domain tool modules, configuration services and diagnostics; lifecycle, policy, authorization and transport remain focused integration boundaries.
 
 ---
 

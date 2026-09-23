@@ -162,10 +162,10 @@ Instagram uses its own account/conversation/message models rather than sharing W
 | AI permission hierarchy | `apps/ai_engagement/services/ai_permissions.py` | Org -> pipeline -> stage -> lead -> valid transport. |
 | AI context construction | `apps/ai_engagement/services/context.py` | CRM/conversation/summary/knowledge snapshot. |
 | OpenAI text adapter | `apps/ai_engagement/services/ai_provider.py` | Responses API, structured output, retry classification, credit reserve/settle. |
-| Canonical AI task/finalizer | `apps/ai_engagement/tasks.py` | Rechecks state, final lock, idempotency, CRM actions, outbound message. |
+| Canonical AI task boundary | `apps/ai_engagement/tasks.py`, `task_handlers/`, `services/engagement_execution.py` | Stable Celery names with focused orchestration, final lock, idempotency, CRM actions and outbound delivery. |
 | CRM action validation | `apps/ai_engagement/services/crm_actions.py` | Allowed action schemas. |
 | CRM action execution | `apps/ai_engagement/services/crm_executor.py` | Tenant-scoped deterministic side effects. |
-| Qualification logic | `apps/ai_engagement/services/qualification.py` and `qualification_state.py` | Requirements, answer state, completion summaries. |
+| Qualification logic | `apps/ai_engagement/services/qualification.py`, `qualification_state.py`, `qualification_execution/` and `qualification_execution_contract.py` | Requirements, deterministic answer/evidence state, planning, reconciliation, finalization and completion summaries. |
 | Runtime state contract | `apps/ai_engagement/services/runtime_state.py` | Flow version/state revision/message observation/finalization. |
 | Organization AI profile | `apps/ai_engagement/services/organization_profile.py`, `org_info.py` | Org instructions and qualification compilation. |
 | Fail-soft decision logic | `apps/ai_engagement/services/engagement_failsoft.py` | Hosted deterministic fallback behavior. |
@@ -195,10 +195,10 @@ The prompt is only one part of the contract.
 | Responsibility | Main file(s) | Notes |
 | --- | --- | --- |
 | Internal summary generation | `apps/ai_engagement/services/internal_summary.py` | Builds/publishes derived conversation summary. |
-| Summary task | `apps/ai_engagement/tasks.py` | Staleness check and retry. |
+| Summary task | `apps/ai_engagement/tasks.py`, `task_handlers/summaries.py` | Stable task entry point with focused staleness checks and retry orchestration. |
 | Summary lock | `apps/ai_engagement/services/summary_lock.py` | Per-lead Redis lock. |
 | Background enrichment | `apps/ai_engagement/services/background_enrichment.py` | Queues/coordinates derived AI enrichment. |
-| Qualification summary task | `apps/ai_engagement/tasks.py` | Generates changed qualification notes. |
+| Qualification summary task | `apps/ai_engagement/tasks.py`, `task_handlers/qualification.py` | Generates changed qualification notes behind the stable task name. |
 
 ---
 
@@ -213,7 +213,7 @@ The prompt is only one part of the contract.
 | Ingestion/index/publication orchestration | `apps/ai_engagement/services/knowledge_pipeline.py` | Safe version publication. |
 | Vector/keyword/hybrid retrieval | `apps/ai_engagement/services/retrieval.py` | Organization-scoped retrieval methods. |
 | Engagement-time use | `apps/ai_engagement/services/context.py`, `engagement.py` | Conditional query embedding and vector retrieval. |
-| Ingestion Celery tasks | `apps/ai_engagement/tasks.py` | Async ingest/index paths. |
+| Ingestion Celery tasks | `apps/ai_engagement/tasks.py`, `task_handlers/knowledge.py` | Stable task names for async ingest/index paths. |
 
 ### If changing chunk size/model dimension
 
@@ -411,14 +411,14 @@ Duplicating one of these rules in a view or new task creates drift. Prefer one c
 | Diagnostic MCP/OAuth | `apps/integrations/diagnostic_auth.py`, `diagnostic_models.py`, `diagnostic_tools.py`, `views/mcp.py` | Read-only tenant-scoped diagnostics. |
 | Marketing booking request | `apps/core/booking.py`, `apps/core/models.py` | Public booking request → CRM-linked record. |
 
-## Current staging workspace additions
+## Current domain modules
 
 | Domain | Main file(s) | Notes |
 | --- | --- | --- |
-| SHVYA Sales | `apps/sales/models.py`, `models_lifecycle.py`, `services.py`, `lifecycle.py`, `pdf_service.py`, `tracking.py`, `urls.py` | Quotations/agreements/invoices, PDF snapshots, delivery tracking, revisions, reminders and payment lifecycle. |
-| SHVYA Calendar | `apps/shvya_calendar/models.py`, `services.py`, `workspace.py`, `views.py`, `tasks.py`, `urls.py`, `public_urls.py` | Lead capture, availability, booking, Google Calendar/Meet and reminder execution. |
+| SHVYA Sales | `apps/sales/document_services.py`, `delivery_services.py`, `views_documents.py`, `views_public.py`, `views_templates.py`, plus the stable `services.py` and `views.py` entry points | Quotations/agreements/invoices, PDF snapshots, delivery tracking, revisions, reminders and payment lifecycle. |
+| SHVYA Calendar | `apps/shvya_calendar/availability.py`, `booking_services.py`, `configuration_services.py`, `lead_capture_services.py`, `page_services.py`, `reminder_services.py`, `public_views.py`, plus stable `services.py` and `views.py` entry points | Lead capture, availability, booking, Google Calendar/Meet and reminder execution. |
 | Call Intelligence | `apps/telephony/models/call_log.py`, `services.py`, `views/api.py`, `urls/api_v1.py`, `urls/web.py` | Tenant-safe device/call ingestion, CRM `LeadCall` linkage, recordings/transcripts, dispositions and analysis. |
 | Android Call client | `android/call-intelligence/` | Internal Android SIM call companion; registration, heartbeat, call-log reconciliation and sync. |
-| Operations extended tools | `apps/integrations/operations_extended_tools.py` | Qualification, WhatsApp binding, workflow schema, Touchpoints, FAQs, knowledge lifecycle, Hosted Cadence and simulations. |
-| Operations configuration | `apps/integrations/operations_configuration_management.py`, `operations_lifecycle.py` | Dependency graph, validation/export/import, configuration plans, stage reorder and dependency-safe archive/delete. |
-| Operations diagnostics | `apps/integrations/operations_superadmin_diagnostics.py` | Safe integration tests, opaque Superadmin configuration drift, integrity diagnostics and AI response-policy tests. |
+| Operations tools | `apps/integrations/operations/tools/`, `operations/registry.py`, `operations/tool_catalog.py` | Domain-focused qualification, messaging, workflow, Touchpoints, FAQ, knowledge, Cadence and simulation tools behind stable MCP names. |
+| Operations configuration | `apps/integrations/operations/configuration/`, `operations_lifecycle.py` | Dependency graph, validation/export/import, configuration plans, stage reorder and dependency-safe archive/delete. |
+| Operations diagnostics | `apps/integrations/operations/diagnostics/`, `operations_superadmin_diagnostics.py` | Safe integration tests, opaque Superadmin configuration drift, integrity diagnostics and AI response-policy tests. |
