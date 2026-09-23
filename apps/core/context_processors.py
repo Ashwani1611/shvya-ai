@@ -421,9 +421,23 @@ def sidebar_nav(request):
     has_whatsapp_connection = _has_connected_whatsapp_account(request)
     has_hosted_account_access = _has_hosted_account_access(request)
 
+    from apps.organizations.features import MODULE_LABELS, module_enabled
+    organization = getattr(getattr(request, "user", None), "organization", None)
+    modules_by_label = {label: key for key, label in MODULE_LABELS.items()}
     for item in NAV_ITEMS:
+        module = modules_by_label.get(item["label"])
+        locked = bool(organization and module and not module_enabled(organization, module))
+        if locked and organization.package != "free":
+            continue
         entry = dict(item)
+        if locked:
+            entry["icon"] = "ti-lock"
+            entry["locked"] = True
         entry["href"] = _resolve_href(entry)
+        if locked:
+            children = entry.pop("children", [])
+            if children and not entry.get("url_name"):
+                entry["href"] = _resolve_href(children[0])
         children = entry.get("children")
 
         if children:

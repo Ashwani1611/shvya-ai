@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
-from django.db.models.deletion import ProtectedError
 from django.db.migrations.loader import MigrationLoader
 from django.test import TestCase
 from django.urls import reverse
@@ -10203,7 +10202,7 @@ class OperationsMCPTests(TestCase):
             result["structuredContent"]["error"],
         )
 
-    def test_operations_audit_relationships_are_protected_from_deletion(self):
+    def test_operations_audit_identity_survives_actor_deletion(self):
         protected_actor = User.objects.create_superuser(
             email="protected-audit-actor@example.test",
             password=None,
@@ -10223,11 +10222,12 @@ class OperationsMCPTests(TestCase):
             change_summary={"status": "preserved"},
         )
 
-        with self.assertRaises(ProtectedError):
-            protected_actor.delete()
+        actor_id = protected_actor.id
+        protected_actor.delete()
 
         event.refresh_from_db()
-        self.assertEqual(event.actor_id, protected_actor.id)
+        self.assertIsNone(event.actor_id)
+        self.assertEqual(event.actor_reference, actor_id)
 
     def test_operations_audit_events_are_append_only_even_through_queryset(self):
         event = OperationsAuditEvent.objects.create(

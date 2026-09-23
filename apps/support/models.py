@@ -146,8 +146,8 @@ def ticket_reference():
 class Ticket(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     reference = models.CharField(max_length=20, unique=True, default=ticket_reference, editable=False)
-    organization = models.ForeignKey("organizations.Organization", on_delete=models.PROTECT, related_name="support_tickets")
-    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="requested_support_tickets")
+    organization = models.ForeignKey("organizations.Organization", on_delete=models.CASCADE, related_name="support_tickets")
+    requester = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.RESTRICT, related_name="requested_support_tickets")
     pipeline = models.ForeignKey("crm.Pipeline", on_delete=models.SET_NULL, null=True, blank=True, related_name="support_tickets")
     # Snapshot only the support context, not unrelated CRM data or HTTP headers.
     context = models.JSONField(default=dict, editable=False)
@@ -161,7 +161,7 @@ class Ticket(models.Model):
     custom_values = models.JSONField(default=dict, blank=True)
     submission_key = models.UUIDField(null=True, blank=True)
     source = models.CharField(max_length=12, choices=[("portal", "Portal"), ("email", "Email")], default="portal")
-    merged_into = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="merged_sources")
+    merged_into = models.ForeignKey("self", on_delete=models.RESTRICT, null=True, blank=True, related_name="merged_sources")
     first_staff_reply_at = models.DateTimeField(null=True, blank=True)
     last_public_activity_at = models.DateTimeField(default=timezone.now)
     created_at = models.DateTimeField(default=timezone.now, editable=False)
@@ -207,7 +207,7 @@ class Ticket(models.Model):
 class TicketMessage(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="messages")
-    origin_ticket = models.ForeignKey(Ticket, on_delete=models.PROTECT, related_name="original_messages")
+    origin_ticket = models.ForeignKey(Ticket, on_delete=models.RESTRICT, related_name="original_messages")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     author_name = models.CharField(max_length=150)
     author_kind = models.CharField(max_length=12, choices=[("customer", "Customer"), ("staff", "Shvya-Ops"), ("shared", "Shared link")])
@@ -263,7 +263,7 @@ class WorkItem(models.Model):
     ticket = models.ForeignKey(Ticket, on_delete=models.CASCADE, related_name="work_items")
     kind = models.CharField(max_length=12, choices=[("task", "Related task"), ("reminder", "Reminder")])
     title = models.CharField(max_length=200)
-    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="support_work_items")
+    assigned_to = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.RESTRICT, related_name="support_work_items")
     due_at = models.DateTimeField()
     completed_at = models.DateTimeField(null=True, blank=True)
     notified_at = models.DateTimeField(null=True, blank=True)

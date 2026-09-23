@@ -48,7 +48,7 @@ class FollowupSequence(models.Model):
     description = models.CharField(max_length=300, blank=True)
     whatsapp_account = models.ForeignKey(
         "channels.WhatsAppAccount",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="followup_sequences",
     )
     is_active = models.BooleanField(default=True)
@@ -121,7 +121,7 @@ class FollowupStep(models.Model):
 
     whatsapp_template = models.ForeignKey(
         "channels.WhatsAppTemplate",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="followup_steps",
@@ -313,7 +313,7 @@ class FollowupExecution(models.Model):
     )
     step = models.ForeignKey(
         FollowupStep,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="executions",
     )
     scheduled_for = models.DateTimeField(db_index=True)

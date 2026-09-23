@@ -105,6 +105,10 @@ def crm_login_required(view_func):
         # CONTINUE TO VIEW
         # =====================================================
 
+        from apps.organizations.middleware import package_denial_response
+        denied = package_denial_response(request, user)
+        if denied is not None:
+            return denied
         return view_func(
             request,
             *args,

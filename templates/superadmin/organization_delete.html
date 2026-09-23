@@ -1,0 +1,11 @@
+{% extends "superadmin/base.html" %}
+{% block content %}
+<section class="max-w-2xl mx-auto p-8 bg-white border rounded-2xl">
+<h1 class="text-2xl font-semibold">Delete organisation?</h1>
+<p class="mt-4">Permanently delete <strong>{{ organization.name }}</strong> and its users, leads, messages, configurations and operational records? This cannot be undone. Platform audit history is retained.</p>
+<form method="post" class="mt-6 flex gap-3">{% csrf_token %}
+<input type="hidden" name="confirmation" value="{{ organization.id }}">
+<a href="{% url 'superadmin-organization-detail' organization.id %}" class="px-4 py-2 border rounded-lg">Cancel</a>
+<button type="submit" class="px-4 py-2 bg-red-600 text-white rounded-lg">Confirm permanent deletion</button>
+</form></section>
+{% endblock %}

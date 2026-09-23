@@ -1,0 +1,13 @@
+{% extends "superadmin/base.html" %}
+{% block content %}
+<section class="max-w-3xl mx-auto bg-white p-8 border rounded-2xl">
+<h1 class="text-2xl font-semibold">Organisation tags</h1>
+<p class="mt-2 text-gray-500">Create any tag. Renaming or deleting a tag applies to every organisation using it.</p>
+<form method="post" class="flex gap-3 my-6">{% csrf_token %}<input type="hidden" name="action" value="create"><input name="name" required maxlength="50" placeholder="New tag name" aria-label="New tag name" class="border rounded-lg px-3 py-2"><button class="bg-indigo-600 text-white px-4 py-2 rounded-lg">Create tag</button></form>
+{% for tag in tags %}
+<div class="flex flex-wrap gap-3 py-4 border-t">
+<form method="post" class="flex gap-3">{% csrf_token %}<input type="hidden" name="action" value="edit"><input type="hidden" name="tag_id" value="{{ tag.pk }}"><input name="name" value="{{ tag.name }}" required maxlength="50" aria-label="Tag name" class="border rounded-lg px-3 py-2"><button class="px-4 py-2 border rounded-lg">Save</button></form>
+<form method="post" onsubmit="return confirm('Delete this tag from all organisations?')">{% csrf_token %}<input type="hidden" name="action" value="delete"><input type="hidden" name="tag_id" value="{{ tag.pk }}"><input type="hidden" name="confirmation" value="{{ tag.pk }}"><button class="text-red-600 px-4 py-2 border rounded-lg">Delete</button></form>
+</div>{% empty %}<p>No tags yet.</p>{% endfor %}
+<a href="{% url 'superadmin-org-list' %}" class="inline-block mt-6 text-indigo-600">Back to organisations</a>
+</section>{% endblock %}

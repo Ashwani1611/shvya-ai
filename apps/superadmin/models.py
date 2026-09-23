@@ -46,6 +46,9 @@ class AuditLog(models.Model):
             "user_created",
             "User created",
         )
+        ORGANIZATION_DELETED = "organization_deleted", "Organization deleted"
+        ORGANIZATION_TAG_UPDATED = "organization_tag_updated", "Organization tag updated"
+        ORGANIZATION_TAG_DELETED = "organization_tag_deleted", "Organization tag deleted"
         ORGANIZATION_CREATED = (
             "organization_created",
             "Organization created",

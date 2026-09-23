@@ -3,6 +3,7 @@ from django.contrib import admin
 from .models import (
     APIKey,
     Organization,
+    OrganizationDeletionCleanup,
     OrganizationPayment,
     OrganizationTag,
 )
@@ -63,6 +64,8 @@ class OrganizationAdmin(admin.ModelAdmin):
     )
 
     readonly_fields = (
+        "is_active",
+        "disabled_at",
         "id",
         "created_at",
         "updated_at",
@@ -149,3 +152,14 @@ class OrganizationTagAdmin(admin.ModelAdmin):
     search_fields = (
         "name",
     )
+
+@admin.register(OrganizationDeletionCleanup)
+class OrganizationDeletionCleanupAdmin(admin.ModelAdmin):
+    list_display = ("organization_id", "attempts", "last_error", "created_at")
+    readonly_fields = ("organization_id", "files", "hosted_session_ids", "attempts", "last_error", "created_at")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
