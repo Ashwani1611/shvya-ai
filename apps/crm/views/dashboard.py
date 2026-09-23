@@ -45,6 +45,36 @@ from services.crm.dashboard_query_service import (
     build_lead_table_context as _build_lead_table_context,
 )
 from .api import get_user_pipelines
+from . import filtering as _filtering_views
+from . import lead_import as _lead_import_views
+from . import reminders as _reminder_views
+
+# Compatibility aliases: implementations were split into focused modules, but
+# callers that historically imported these names from dashboard.py remain valid.
+global_reminders_modal = _filtering_views.global_reminders_modal
+lead_filters_modal = _filtering_views.lead_filters_modal
+lead_table_partial = _filtering_views.lead_table_partial
+
+lead_import_start_modal = _lead_import_views.lead_import_start_modal
+lead_import_start = _lead_import_views.lead_import_start
+lead_import_upload_modal = _lead_import_views.lead_import_upload_modal
+lead_import_upload = _lead_import_views.lead_import_upload
+lead_import_sample_file = _lead_import_views.lead_import_sample_file
+lead_import_mapping_modal = _lead_import_views.lead_import_mapping_modal
+lead_import_mapping_save = _lead_import_views.lead_import_mapping_save
+lead_import_destination_modal = _lead_import_views.lead_import_destination_modal
+lead_import_destination_save = _lead_import_views.lead_import_destination_save
+lead_import_review_modal = _lead_import_views.lead_import_review_modal
+lead_import_execute = _lead_import_views.lead_import_execute
+
+reminder_notification_feed = _reminder_views.reminder_notification_feed
+reminder_notification_ack = _reminder_views.reminder_notification_ack
+global_reminder_complete = _reminder_views.global_reminder_complete
+global_reminder_snooze = _reminder_views.global_reminder_snooze
+global_reminder_delete = _reminder_views.global_reminder_delete
+global_reminder_edit_modal = _reminder_views.global_reminder_edit_modal
+global_reminder_edit_save = _reminder_views.global_reminder_edit_save
+
 
 logger = logging.getLogger(__name__)
 
