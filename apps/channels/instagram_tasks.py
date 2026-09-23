@@ -9,6 +9,21 @@ from .instagram_models import InstagramAccount, InstagramMessage, InstagramOAuth
 logger = logging.getLogger(__name__)
 
 
+def _instagram_retry_delay(*, identifier, retries, retry_after=None):
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(retry_after), 900))
+        except (TypeError, ValueError):
+            base = 20
+    else:
+        base = min(300, 15 * (2 ** max(0, int(retries or 0))))
+    jitter = (
+        sum(ord(character) for character in str(identifier))
+        + (int(retries or 0) * 11)
+    ) % 7
+    return min(907, base + jitter)
+
+
 def _safe_error(exc, account=None):
     from services.channels.instagram_inbox import connection_error
     from services.channels.instagram_service import InstagramAPIError
@@ -18,6 +33,7 @@ def _safe_error(exc, account=None):
         detail,
         status_code=getattr(exc, "status_code", None), code=getattr(exc, "code", None),
         subcode=getattr(exc, "subcode", None), transient=getattr(exc, "transient", False),
+        retry_after=getattr(exc, "retry_after", None),
     )
 
 
@@ -64,7 +80,14 @@ def complete_instagram_oauth_task(self, attempt_id):
         if account and account.status == InstagramAccount.Status.CONNECTED:
             _record_account_failure(account, exc)
             if exc.transient and self.request.retries < self.max_retries:
-                raise self.retry(exc=exc)
+                raise self.retry(
+                    exc=exc,
+                    countdown=_instagram_retry_delay(
+                        identifier=attempt_id,
+                        retries=self.request.retries,
+                        retry_after=exc.retry_after,
+                    ),
+                )
             return {"status": "connected_with_warning", "error": str(exc)}
         # OAuth codes are single-use. Blindly retrying after a token exchange
         # timeout can only obscure the original failure with "code already used".
@@ -89,7 +112,14 @@ def sync_instagram_account_task(self, account_id):
         exc = _safe_error(original, account)
         _record_account_failure(account, exc)
         if exc.transient and self.request.retries < self.max_retries:
-            raise self.retry(exc=exc)
+            raise self.retry(
+                exc=exc,
+                countdown=_instagram_retry_delay(
+                    identifier=account_id,
+                    retries=self.request.retries,
+                    retry_after=exc.retry_after,
+                ),
+            )
         return {"status": "failed", "error": str(exc)}
     return {"status": "synced", "conversations": count}
 
