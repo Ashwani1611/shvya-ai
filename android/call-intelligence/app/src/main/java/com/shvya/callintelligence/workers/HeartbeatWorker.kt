@@ -16,7 +16,7 @@ class HeartbeatWorker(
         return try {
             val api = ApiClient(applicationContext)
             val registration = api.registerDevice()
-            if (!registration.successful) return Result.retry()
+            if (!registration.successful) return if (AuthStore(applicationContext).hasSession()) Result.retry() else Result.success()
             val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             val ignored = powerManager.isIgnoringBatteryOptimizations(applicationContext.packageName)
             if (api.heartbeat(ignored).successful) Result.success() else Result.retry()

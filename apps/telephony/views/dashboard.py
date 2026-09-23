@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from django.conf import settings as django_settings
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
+from django.core.paginator import Paginator
 from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
@@ -84,35 +85,42 @@ def call_intelligence_dashboard(request):
     settings_obj, _ = CallIntelligenceSettings.objects.get_or_create(
         organization=user.organization
     )
-    start = timezone.localtime().replace(hour=0, minute=0, second=0, microsecond=0)
-    scoped = _scoped_calls(user)
     calls = _filtered_calls(request, user)
-    today = scoped.filter(ended_at__gte=start)
+    today = calls  # All analytics share the activity filters, including dates.
     stats = today.aggregate(
         total=Count("id"),
-        average_talk=Avg("talk_duration_seconds"),
+        average_talk=Avg("talk_duration_seconds", filter=Q(status=CallRecord.Status.ANSWERED)),
         average_response=Avg(
             "ring_duration_seconds",
             filter=Q(
                 direction=CallRecord.Direction.INCOMING,
                 status=CallRecord.Status.ANSWERED,
+                ring_duration_seconds__gt=0,
             ),
         ),
         converted=Count("id", filter=Q(disposition="converted")),
+        total_ring=Sum("ring_duration_seconds"),
+        measured_ring=Count("id", filter=Q(ring_duration_seconds__gt=0)),
+        average_ring=Avg("ring_duration_seconds", filter=Q(ring_duration_seconds__gt=0)),
     )
 
-    recent_calls = list(
-        calls.select_related(
-            "lead", "lead__pipeline", "lead__stage", "user", "intelligence"
-        ).order_by("-ended_at", "-created_at")[:50]
-    )
+    page = Paginator(calls.select_related(
+        "lead", "lead__pipeline", "lead__stage", "user", "intelligence"
+    ).order_by("-ended_at", "-created_at"), 50).get_page(request.GET.get("page"))
+    recent_calls = list(page.object_list)
+    page_query = request.GET.copy()
+    page_query["section"] = "analytics"
+    page_query.pop("page", None)
     missed_calls = list(
-        scoped.filter(status=CallRecord.Status.MISSED)
+        calls.filter(status=CallRecord.Status.MISSED)
         .select_related("lead", "user")
         .order_by("-ended_at", "-created_at")[:12]
     )
+    device_qs = CallDevice.objects.filter(organization=user.organization, is_active=True)
+    if user.role != User.Role.ADMIN:
+        device_qs = device_qs.filter(user=user)
     devices = list(
-        CallDevice.objects.filter(organization=user.organization, is_active=True)
+        device_qs
         .select_related("user")
         .order_by("-last_seen_at", "user__name")
     )
@@ -123,7 +131,7 @@ def call_intelligence_dashboard(request):
             calls=Count("id"),
             answered=Count("id", filter=Q(status=CallRecord.Status.ANSWERED)),
             missed=Count("id", filter=Q(status=CallRecord.Status.MISSED)),
-            average_talk=Avg("talk_duration_seconds"),
+            average_talk=Avg("talk_duration_seconds", filter=Q(status=CallRecord.Status.ANSWERED)),
             high_intent=Count(
                 "id",
                 filter=Q(intelligence__intent=CallIntelligenceResult.Intent.HIGH),
@@ -145,6 +153,11 @@ def call_intelligence_dashboard(request):
 
     return render(request, "telephony/call_intelligence.html", {
         "crm_user": user,
+        "active_section": "analytics" if request.GET.get("section") == "analytics" or any(
+            request.GET.get(k) for k in ("q", "status", "direction", "source", "intent", "pipeline", "agent", "date_from", "date_to")
+        ) else "overview",
+        "call_page": page,
+        "page_query": page_query.urlencode(),
         "call_settings": settings_obj,
         "recent_calls": recent_calls,
         "missed_calls": missed_calls,
@@ -160,13 +173,16 @@ def call_intelligence_dashboard(request):
         "owners": owners,
         "stats": {
             "total": stats["total"] or 0,
+            "total_ring": stats["total_ring"] or 0,
+            "measured_ring": stats["measured_ring"] or 0,
+            "average_ring": int(stats["average_ring"] or 0),
             "answered": today.filter(status=CallRecord.Status.ANSWERED).count(),
             "missed": today.filter(status=CallRecord.Status.MISSED).count(),
             "outgoing": today.filter(direction=CallRecord.Direction.OUTGOING).count(),
             "average_talk": int(stats["average_talk"] or 0),
-            "average_response": int(stats["average_response"] or 0),
+            "average_response": int(stats["average_response"]) if stats["average_response"] is not None else None,
             "converted": stats["converted"] or 0,
-            "followups": scoped.filter(
+            "followups": calls.filter(
                 follow_up_required=True,
                 follow_up_at__isnull=False,
                 follow_up_at__lte=timezone.now() + timedelta(days=1),
@@ -262,7 +278,7 @@ def post_call_action(request, call_id):
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return JsonResponse({"ok": True})
-    return HttpResponseRedirect(reverse("call-intelligence-dashboard") + "#calls")
+    return HttpResponseRedirect(reverse("call-intelligence-dashboard") + "?section=analytics#calls")
 
 
 @crm_login_required
@@ -354,3 +370,15 @@ def update_call_settings(request):
     settings_obj.full_clean()
     settings_obj.save()
     return JsonResponse({"ok": True})
+
+
+@crm_login_required
+@require_POST
+def remove_call_device(request, device_id):
+    user = request.crm_user
+    qs = CallDevice.objects.filter(organization=user.organization, pk=device_id)
+    if user.role != User.Role.ADMIN:
+        qs = qs.filter(user=user)
+    if not qs.update(is_active=False, updated_at=timezone.now()):
+        raise Http404("Device not found.")
+    return redirect(reverse("call-intelligence-dashboard") + "#devices")

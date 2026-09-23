@@ -88,3 +88,11 @@ dmypy.json
 
 # Nginx runtime data (certs, secrets) - never commit
 nginx/certbot/
+
+# Android local build products
+.gradle/
+android/**/build/
+android/**/local.properties
+
+# Kotlin compiler workspace cache
+.kotlin/

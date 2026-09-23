@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Avg, Count, Q
+from django.db.models import Avg, Count, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.text import slugify
@@ -13,9 +13,10 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.accounts.models import User
-from apps.crm.models import LeadReminder
+from apps.crm.models import Lead, LeadReminder
 from apps.organizations.access import crm_user_is_authorized
-from services.crm_activity_service import record_reminder_created
+from services.crm_activity_service import record_reminder_created, record_reminder_completed
+from services.crm.lead_service import create_lead
 
 from ..models import (
     CallAppRelease,
@@ -31,6 +32,8 @@ from ..services import (
     get_call_settings,
     ingest_call_event,
     register_device,
+    normalize_call_phone,
+    resolve_default_pipeline_stage,
 )
 from ..tasks import analyze_call_intelligence
 
@@ -43,6 +46,8 @@ def _user(request):
 
 
 def _error(exc):
+    if getattr(exc, "code", None) == "device_removed":
+        return Response({"code": "device_removed", "detail": "This device has been removed."}, status=403)
     detail = exc.message_dict if hasattr(exc, "message_dict") else (
         getattr(exc, "messages", None) or [str(exc)]
     )
@@ -244,8 +249,25 @@ class CallCollectionView(APIView):
         if date_to:
             qs = qs.filter(ended_at__date__lte=date_to)
 
-        rows = list(qs.order_by("-ended_at", "-created_at")[:250])
-        return Response({"calls": [serialize_call(row) for row in rows]})
+        if request.query_params.get("mine") == "1":
+            qs = qs.filter(user=user)
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid page."}, status=400)
+        stats = qs.aggregate(
+            total=Count("id"), incoming=Count("id", filter=Q(direction="incoming")),
+            outgoing=Count("id", filter=Q(direction="outgoing")),
+            missed=Count("id", filter=Q(status="missed")),
+            picked=Count("id", filter=Q(status="answered")),
+            total_ring=Sum("ring_duration_seconds"),
+        )
+        stats["not_picked"] = stats["total"] - stats["picked"]
+        stats["total_ring"] = stats["total_ring"] or 0
+        start = (page - 1) * 50
+        rows = list(qs.order_by("-ended_at", "-created_at")[start:start + 51])
+        return Response({"calls": [serialize_call(row) for row in rows[:50]],
+                         "stats": stats, "page": page, "has_next": len(rows) > 50})
 
 
 class CallMediaView(APIView):
@@ -312,7 +334,7 @@ class CallNotesView(APIView):
             return Response({"detail": "Call not found."}, status=404)
 
         notes = str(request.data.get("notes") or "").strip()[:20000]
-        disposition = str(request.data.get("disposition") or "").strip()[:80]
+        disposition = str(request.data.get("disposition", call.disposition) or "").strip()[:80]
         if disposition and not get_call_dispositions(user.organization).filter(
             code=disposition
         ).exists():
@@ -485,6 +507,7 @@ class CallSettingsView(APIView):
         release = CallAppRelease.objects.filter(is_active=True).first()
         dispositions = get_call_dispositions(user.organization)
         return Response({
+            "can_edit": user.role == User.Role.ADMIN,
             "enabled": settings_obj.enabled,
             "auto_create_answered_incoming": settings_obj.auto_create_answered_incoming,
             "auto_create_answered_outgoing": settings_obj.auto_create_answered_outgoing,
@@ -516,3 +539,100 @@ class CallSettingsView(APIView):
                 if release else None
             ),
         })
+
+
+    def patch(self, request):
+        user = _user(request)
+        if user.role != User.Role.ADMIN:
+            raise PermissionDenied("Only organization admins can change lead creation settings.")
+        fields = ("auto_create_answered_incoming", "auto_create_answered_outgoing", "auto_create_missed")
+        if not request.data or any(k not in fields or not isinstance(v, bool) for k, v in request.data.items()):
+            return Response({"detail": "Supply boolean lead creation settings."}, status=400)
+        with transaction.atomic():
+            obj = get_call_settings(user.organization)
+            obj = type(obj).objects.select_for_update().get(pk=obj.pk)
+            for key, value in request.data.items():
+                setattr(obj, key, value)
+            obj.save(update_fields=[*request.data.keys(), "updated_at"])
+        return self.get(request)
+
+
+def _reminders(user):
+    # Mobile reminders only expose the signed-in employee's assignments.
+    return LeadReminder.objects.filter(
+        lead__organization=user.organization, assigned_to=user
+    ).select_related("lead")
+
+
+class MobileReminderCollectionView(APIView):
+    def get(self, request):
+        user = _user(request)
+        qs = _reminders(user).filter(status="pending")
+        now = timezone.now()
+        today = timezone.localdate()
+        counts = qs.aggregate(
+            total=Count("id"), overdue=Count("id", filter=Q(due_at__lt=now)),
+            today=Count("id", filter=Q(due_at__date=today)),
+            upcoming=Count("id", filter=Q(due_at__date__gt=today)),
+        )
+        try:
+            page = max(1, int(request.query_params.get("page", 1)))
+        except (TypeError, ValueError):
+            return Response({"detail": "Invalid page."}, status=400)
+        start = (page - 1) * 50
+        rows = list(qs.order_by("due_at", "id")[start:start + 51])
+        return Response({"stats": counts, "has_next": len(rows) > 50, "reminders": [{
+            "id": str(row.id), "lead_name": row.lead.name, "phone": row.lead.phone,
+            "title": row.title, "description": row.description,
+            "due_at": row.due_at.isoformat(), "overdue": row.due_at < now,
+        } for row in rows[:50]]})
+
+
+class MobileReminderActionView(APIView):
+    def post(self, request, reminder_id):
+        user = _user(request)
+        action = request.data.get("action")
+        if action not in {"complete", "snooze", "delete"}:
+            return Response({"detail": "Invalid reminder action."}, status=400)
+        with transaction.atomic():
+            row = _reminders(user).select_for_update().filter(pk=reminder_id, status="pending").first()
+            if row is None:
+                return Response({"detail": "Reminder not found."}, status=404)
+            if action == "delete":
+                row.delete()
+            elif action == "complete":
+                row.status = "completed"
+                row.completed_at = timezone.now()
+                row.save(update_fields=["status", "completed_at", "updated_at"])
+                record_reminder_completed(lead=row.lead, actor=user, reminder=row)
+            else:
+                row.due_at = max(row.due_at, timezone.now()) + timedelta(minutes=30)
+                row.save(update_fields=["due_at", "updated_at"])
+                row.notification_acknowledgements.all().delete()
+            calls = CallRecord.objects.filter(organization=user.organization, lead=row.lead)
+            if action == "snooze":
+                calls.filter(follow_up_required=True).update(follow_up_at=row.due_at)
+            else:
+                calls.update(follow_up_required=False, follow_up_at=None)
+        return Response({"ok": True})
+
+
+class MobileLeadCollectionView(APIView):
+    def post(self, request):
+        user = _user(request)
+        name = str(request.data.get("name") or "").strip()[:255]
+        if not name:
+            return Response({"detail": "Lead name is required."}, status=400)
+        try:
+            settings_obj = get_call_settings(user.organization)
+            pipeline, stage = resolve_default_pipeline_stage(settings_obj)
+            phone = normalize_call_phone(request.data.get("phone"), pipeline=pipeline)
+            # Never change an existing lead's name, owner, pipeline or stage.
+            existing = Lead.objects.filter(organization=user.organization, phone=phone).exists()
+            if existing:
+                return Response({"detail": "This phone number is already in your CRM."}, status=409)
+            lead = create_lead(organization=user.organization, pipeline=pipeline, stage=stage,
+                               name=name, phone=phone, lead_source="phone_call", send_welcome=False)
+        except DjangoValidationError as exc:
+            return _error(exc)
+        return Response({"ok": True, "lead_id": str(lead.id)}, status=201)

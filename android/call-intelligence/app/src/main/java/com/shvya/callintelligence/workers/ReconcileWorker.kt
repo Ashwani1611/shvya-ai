@@ -3,6 +3,7 @@ package com.shvya.callintelligence.workers
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import com.shvya.callintelligence.net.AuthStore
 import com.shvya.callintelligence.calls.CallLogReader
 import com.shvya.callintelligence.calls.PostCallNotifier
 import com.shvya.callintelligence.calls.TrackingScheduler
@@ -17,6 +18,7 @@ class ReconcileWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
+        if (!AuthStore(applicationContext).hasSession()) return Result.success()
         val state = TrackingState(applicationContext)
         val reader = CallLogReader(applicationContext)
         var baseline = state.lastCallLogId
