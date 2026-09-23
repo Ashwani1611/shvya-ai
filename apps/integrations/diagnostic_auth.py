@@ -59,6 +59,7 @@ _SAFE_SECRET_METADATA_KEYS = {
     "token_refreshed_at",
     "has_credential",
     "has_last_error",
+    "secret_material_included",
 }
 
 _PRIVATE_KEY_PATTERN = re.compile(
