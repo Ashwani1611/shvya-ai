@@ -665,7 +665,7 @@ class MainActivity : AppCompatActivity() {
             setBackgroundColor(canvas)
         }
         shell.addView(ScrollView(this).apply {
-            fillViewport = true
+            isFillViewport = true
             clipToPadding = false
             addView(content)
         }, LinearLayout.LayoutParams(-1, 0, 1f))
