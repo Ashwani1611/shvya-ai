@@ -26,6 +26,7 @@ class AuditLog(models.Model):
     """
 
     class Action(models.TextChoices):
+        PLATFORM_EMAIL_UPDATED = "platform_email_updated", "Platform email updated"
         LOGIN_LINK_GENERATED = (
             "login_link_generated",
             "Login link generated",
@@ -135,3 +136,37 @@ class AuditLog(models.Model):
             ip_address=ip_address,
             metadata=metadata,
         )
+
+class PlatformEmailConfiguration(models.Model):
+    """Singleton sender for platform-owned verification emails, never tenant mail."""
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    email_address = models.EmailField()
+    sender_name = models.CharField(max_length=120, default="SHVYA AI")
+    smtp_host = models.CharField(max_length=255, default="smtp.gmail.com")
+    smtp_port = models.PositiveIntegerField(default=587)
+    smtp_security = models.CharField(max_length=16, choices=[("starttls", "STARTTLS"), ("ssl", "SSL/TLS")], default="starttls")
+    smtp_username = models.CharField(max_length=254)
+    encrypted_password = models.TextField(blank=True)
+    is_enabled = models.BooleanField(default=False)
+    last_tested_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.CharField(max_length=100, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="singleton_platform_email")]
+
+    def __str__(self):
+        return "Platform email configuration"
+
+    def as_smtp_configuration(self):
+        from apps.integrations.models import EmailConfiguration
+        return EmailConfiguration(**{name: getattr(self, name) for name in (
+            "email_address", "sender_name", "smtp_host", "smtp_port", "smtp_security",
+            "smtp_username", "encrypted_password",
+        )})
+
+    def set_password(self, password):
+        configuration = self.as_smtp_configuration()
+        configuration.set_password(password)
+        self.encrypted_password = configuration.encrypted_password
