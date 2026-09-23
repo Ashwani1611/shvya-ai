@@ -28,7 +28,7 @@ def _worker_services(script, compose):
             services = stripped[len(prefix):].strip()
             if services:
                 return services
-    raise AssertionError(f"{filename if False else compose} worker drain command is missing")
+    raise AssertionError(f"{compose} worker drain command is missing")
 
 
 def _running_services(script, compose):
