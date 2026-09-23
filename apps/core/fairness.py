@@ -16,6 +16,18 @@ def _bucket_key(scope, subject, window_seconds):
     return f"shvya:fairness:{scope}:{digest}:{window}"
 
 
+def _release(scope, subject, window_seconds):
+    """Return one reservation to the current fixed-window bucket."""
+    key = _bucket_key(scope, subject, window_seconds)
+    try:
+        current = int(cache.get(key, 0) or 0)
+        if current > 0:
+            cache.decr(key)
+    except Exception:
+        # Admission is fail-open; rollback is best-effort for the same reason.
+        return
+
+
 def admit(*, scope, subject, limit, window_seconds=60):
     """Return ``(allowed, retry_after)`` for one shared fixed-window bucket."""
     limit = int(limit or 0)
@@ -40,6 +52,8 @@ def admit(*, scope, subject, limit, window_seconds=60):
         return True, 0
     if int(count) <= limit:
         return True, 0
+    # A rejected attempt must not itself consume more of the bucket.
+    _release(scope, subject, window_seconds)
     retry_after = max(1, window_seconds - (int(time.time()) % window_seconds))
     increment("fairness.throttled", labels={"scope": scope})
     return False, retry_after
@@ -63,7 +77,10 @@ def admit_ai_start(*, organization_id, organization_limit, global_limit):
         limit=global_limit,
         window_seconds=60,
     )
-    return allowed, delay, "global" if not allowed else ""
+    if not allowed:
+        _release("ai_organization", organization_id, 60)
+        return False, delay, "global"
+    return True, 0, ""
 
 
 def admit_provider_start(
@@ -89,4 +106,7 @@ def admit_provider_start(
         limit=global_limit,
         window_seconds=60,
     )
-    return allowed, delay, "global" if not allowed else ""
+    if not allowed:
+        _release(f"{provider}_account", account_id, 60)
+        return False, delay, "global"
+    return True, 0, ""
