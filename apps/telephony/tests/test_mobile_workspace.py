@@ -132,12 +132,47 @@ class MobileWorkspaceTests(TestCase):
         self.assertEqual(call.crm_call.notes, call.notes)
 
     def reminder(self):
+        self.pipeline.owner = self.user
+        self.pipeline.save(update_fields=["owner", "updated_at"])
         call = self.call()
         call.follow_up_required = True
         call.save(update_fields=["follow_up_required"])
         row = LeadReminder.objects.create(lead=call.lead, assigned_to=self.user, title="Call back",
                                          due_at=timezone.now() - timedelta(days=2))
         return call, row
+
+    def test_mobile_reminders_follow_accessible_pipeline_not_assignee(self):
+        call, row = self.reminder()
+        peer = User.objects.create_user(email="reminder-peer@example.com", organization=self.org, password="secret123")
+        row.assigned_to = peer
+        row.save(update_fields=["assigned_to", "updated_at"])
+        response = self.api().get("/api/v1/call-intelligence/reminders/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual([r["id"] for r in response.data["reminders"]], [str(row.id)])
+        self.assertEqual(response.data["stats"]["overdue"], 1)
+        self.assertEqual(self.api().post(
+            f"/api/v1/call-intelligence/reminders/{row.id}/action/", {"action": "snooze"}, format="json",
+        ).status_code, 200)
+
+        other_pipeline = Pipeline.objects.create(organization=self.org, name="Private pipeline", owner=peer)
+        other_stage = Stage.objects.create(pipeline=other_pipeline, name="New")
+        hidden_lead = Lead.objects.create(organization=self.org, pipeline=other_pipeline, stage=other_stage,
+                                          name="Hidden lead", phone="+919800000001")
+        hidden = LeadReminder.objects.create(lead=hidden_lead, assigned_to=self.user, title="Hidden reminder",
+                                             due_at=timezone.now() + timedelta(days=1))
+        response = self.api().get("/api/v1/call-intelligence/reminders/")
+        self.assertEqual(response.data["stats"]["total"], 1)
+        self.assertEqual(self.api().post(
+            f"/api/v1/call-intelligence/reminders/{hidden.id}/action/", {"action": "delete"}, format="json",
+        ).status_code, 404)
+        self.assertTrue(LeadReminder.objects.filter(pk=hidden.pk).exists())
+
+    def test_reminder_counts_do_not_count_overdue_today_twice(self):
+        _, row = self.reminder()
+        row.due_at = timezone.now() - timedelta(minutes=5)
+        row.save(update_fields=["due_at", "updated_at"])
+        stats = self.api().get("/api/v1/call-intelligence/reminders/").data["stats"]
+        self.assertEqual((stats["total"], stats["overdue"], stats["today"]), (1, 1, 0))
 
     def test_reminder_snooze_uses_now_for_overdue_and_updates_call(self):
         call, row = self.reminder()

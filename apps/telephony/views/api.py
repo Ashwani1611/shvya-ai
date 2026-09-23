@@ -562,9 +562,11 @@ class CallSettingsView(APIView):
 
 
 def _reminders(user):
-    # Mobile reminders only expose the signed-in employee's assignments.
+    # CRM reminders belong to leads in a pipeline; the creator/assignee may differ
+    # from the employee who owns that pipeline.
     return LeadReminder.objects.filter(
-        lead__organization=user.organization, assigned_to=user
+        lead__organization=user.organization,
+        lead__pipeline__in=get_user_pipelines(user),
     ).select_related("lead")
 
 
@@ -576,7 +578,7 @@ class MobileReminderCollectionView(APIView):
         today = timezone.localdate()
         counts = qs.aggregate(
             total=Count("id"), overdue=Count("id", filter=Q(due_at__lt=now)),
-            today=Count("id", filter=Q(due_at__date=today)),
+            today=Count("id", filter=Q(due_at__gte=now, due_at__date=today)),
             upcoming=Count("id", filter=Q(due_at__date__gt=today)),
         )
         try:
