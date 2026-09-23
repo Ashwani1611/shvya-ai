@@ -756,58 +756,246 @@ def clear_organization_context(*, identity, arguments):
 
 
 
-# Focused implementation modules are imported in dependency order.  This file
-# remains the stable compatibility facade for existing MCP, tests and config
-# management imports.
-from apps.integrations.operations_tool_read import (
-    _reject_secret_like_content,
-    _attribute_value_compatible,
-    _normalized_lead_attribute_values,
-    _validated_lead_attribute_values,
-    _attribute_schema_snapshot,
-    _incompatible_existing_attribute_value_count,
-    _sensitive_attribute_keys,
-    _safe_workflow_config,
-    _assert_workflow_safe_attribute_references,
-    _workflow_reference_index,
-    _assert_workflow_tenant_references,
-    _safe_url_host,
-    _safe_knowledge_name,
-    _knowledge_health,
-    _safe_full_config_text,
-    get_ai_configuration,
-    get_knowledge_health,
-    get_organization_configuration,
-    get_automation_configuration,
-    _qualification_snapshot,
-    _qualification_contract_snapshot,
-    _messaging_account,
-    _public_messaging_settings,
-    _safe_messaging_settings_row,
-    get_messaging_automation_settings,
+# Focused implementation modules are loaded behind a compatibility proxy.
+# Existing callers/tests may patch symbols on this stable facade; before each
+# delegated call we mirror those overrides into the focused implementation
+# modules so the historical patch/injection contract remains intact.
+from apps.integrations import operations_tool_read as _operations_read
+from apps.integrations import operations_tool_actions as _operations_actions
+from apps.integrations import operations_tool_config as _operations_config
+
+# Internal helper exports retained for extended tools, configuration management,
+# tests, and any existing importers of the historical monolithic module.
+_reject_secret_like_content = _operations_read._reject_secret_like_content
+_attribute_value_compatible = _operations_read._attribute_value_compatible
+_normalized_lead_attribute_values = _operations_read._normalized_lead_attribute_values
+_validated_lead_attribute_values = _operations_read._validated_lead_attribute_values
+_attribute_schema_snapshot = _operations_read._attribute_schema_snapshot
+_incompatible_existing_attribute_value_count = (
+    _operations_read._incompatible_existing_attribute_value_count
+)
+_sensitive_attribute_keys = _operations_read._sensitive_attribute_keys
+_safe_workflow_config = _operations_read._safe_workflow_config
+_assert_workflow_safe_attribute_references = (
+    _operations_read._assert_workflow_safe_attribute_references
+)
+_workflow_reference_index = _operations_read._workflow_reference_index
+_assert_workflow_tenant_references = _operations_read._assert_workflow_tenant_references
+_safe_url_host = _operations_read._safe_url_host
+_safe_knowledge_name = _operations_read._safe_knowledge_name
+_knowledge_health = _operations_read._knowledge_health
+_safe_full_config_text = _operations_read._safe_full_config_text
+_qualification_snapshot = _operations_read._qualification_snapshot
+_qualification_contract_snapshot = _operations_read._qualification_contract_snapshot
+_messaging_account = _operations_read._messaging_account
+_public_messaging_settings = _operations_read._public_messaging_settings
+_safe_messaging_settings_row = _operations_read._safe_messaging_settings_row
+_validate_operations_stage_move = _operations_actions._validate_operations_stage_move
+_cadence_schedule = _operations_config._cadence_schedule
+
+_OPERATIONS_DELEGATED_ENTRYPOINTS = frozenset(
+    {
+        "get_ai_configuration",
+        "get_knowledge_health",
+        "get_organization_configuration",
+        "get_automation_configuration",
+        "get_messaging_automation_settings",
+        "update_messaging_automation_settings",
+        "diagnose_lead_qualification",
+        "move_lead_stage",
+        "repair_qualification_stage",
+        "update_lead_attributes",
+        "update_ai_configuration",
+        "get_conversion_analysis",
+        "get_operations_audit",
+        "upsert_pipeline_configuration",
+        "upsert_stage_configuration",
+        "upsert_attribute_configuration",
+        "upsert_workflow_configuration",
+        "upsert_cadence_configuration",
+        "add_cadence_step",
+    }
 )
 
-from apps.integrations.operations_tool_actions import (
-    update_messaging_automation_settings,
-    diagnose_lead_qualification,
-    _validate_operations_stage_move,
-    move_lead_stage,
-    repair_qualification_stage,
-    update_lead_attributes,
-    update_ai_configuration,
-    get_conversion_analysis,
-    get_operations_audit,
-)
 
-from apps.integrations.operations_tool_config import (
-    upsert_pipeline_configuration,
-    upsert_stage_configuration,
-    upsert_attribute_configuration,
-    upsert_workflow_configuration,
-    _cadence_schedule,
-    upsert_cadence_configuration,
-    add_cadence_step,
-)
+def _sync_facade_overrides():
+    """Mirror facade-level patches into focused Operations implementation modules.
+
+    The pre-split module was routinely patched in tests and diagnostics.  Moving
+    functions must not silently change that contract: any symbol overridden on
+    this facade is copied into matching implementation globals immediately before
+    execution. Entrypoint functions themselves are excluded to avoid recursion.
+    """
+
+    facade = globals()
+    for module in (_operations_read, _operations_actions, _operations_config):
+        for name in tuple(module.__dict__):
+            if name in _OPERATIONS_DELEGATED_ENTRYPOINTS:
+                continue
+            if name in facade:
+                setattr(module, name, facade[name])
+
+
+def _delegate_operations(module, name, *, identity, arguments):
+    _sync_facade_overrides()
+    return getattr(module, name)(identity=identity, arguments=arguments)
+
+
+def get_ai_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_read, "get_ai_configuration", identity=identity, arguments=arguments
+    )
+
+
+def get_knowledge_health(*, identity, arguments):
+    return _delegate_operations(
+        _operations_read, "get_knowledge_health", identity=identity, arguments=arguments
+    )
+
+
+def get_organization_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_read,
+        "get_organization_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def get_automation_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_read,
+        "get_automation_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def get_messaging_automation_settings(*, identity, arguments):
+    return _delegate_operations(
+        _operations_read,
+        "get_messaging_automation_settings",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def update_messaging_automation_settings(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "update_messaging_automation_settings",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def diagnose_lead_qualification(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "diagnose_lead_qualification",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def move_lead_stage(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions, "move_lead_stage", identity=identity, arguments=arguments
+    )
+
+
+def repair_qualification_stage(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "repair_qualification_stage",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def update_lead_attributes(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "update_lead_attributes",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def update_ai_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "update_ai_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def get_conversion_analysis(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions,
+        "get_conversion_analysis",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def get_operations_audit(*, identity, arguments):
+    return _delegate_operations(
+        _operations_actions, "get_operations_audit", identity=identity, arguments=arguments
+    )
+
+
+def upsert_pipeline_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config,
+        "upsert_pipeline_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def upsert_stage_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config,
+        "upsert_stage_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def upsert_attribute_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config,
+        "upsert_attribute_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def upsert_workflow_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config,
+        "upsert_workflow_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def upsert_cadence_configuration(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config,
+        "upsert_cadence_configuration",
+        identity=identity,
+        arguments=arguments,
+    )
+
+
+def add_cadence_step(*, identity, arguments):
+    return _delegate_operations(
+        _operations_config, "add_cadence_step", identity=identity, arguments=arguments
+    )
+
 
 def execute_operations_tool(*, name, identity, arguments):
     if name in DIAGNOSTIC_TOOL_NAMES:
