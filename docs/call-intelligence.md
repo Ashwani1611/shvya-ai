@@ -81,7 +81,7 @@ Additional mobile API behavior:
 - `POST /api/v1/call-intelligence/leads/` accepts name, phone, email, notes,
   the selected pipeline/stage and validated custom attributes. Existing leads
   are not overwritten by this creation path.
-- The Android app displays version 1.0 with version code 3 so installed internal
+- The Android app displays version 1.0 with version code 4 so installed internal
   builds can upgrade from earlier lower version codes.
 
 Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
