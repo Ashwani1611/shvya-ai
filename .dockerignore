@@ -9,8 +9,6 @@ staticfiles/
 media/
 htmlcov/
 .coverage
-coverage_baseline.txt
-coverage_now.txt
 .pytest_cache/
 .ruff_cache/
 *.egg-info/

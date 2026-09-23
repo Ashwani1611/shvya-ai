@@ -35,10 +35,13 @@ from django.contrib.auth import (
 )
 from django.contrib.sessions.backends.db import SessionStore
 
-from apps.accounts.session_utils import invalidate_authenticated_session
+from apps.accounts.session_utils import (
+    get_session_cookie_name,
+    invalidate_authenticated_session,
+)
 from apps.organizations.access import crm_user_is_authorized
 
-CRM_SESSION_COOKIE_NAME = "shvya_crm_sessionid"
+CRM_SESSION_COOKIE_NAME = get_session_cookie_name("dashboard")
 
 
 def _parse_cookies(scope):

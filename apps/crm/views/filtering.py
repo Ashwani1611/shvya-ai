@@ -55,6 +55,8 @@ def _prepare_lead(lead, attribute_definitions):
         "new_stage",
     ).order_by("-created_at")
     lead.attribute_definitions = attribute_definitions
+    # Summary is an action surface; the live modal owns availability state.
+    lead.has_conversation_summary = True
     return lead
 
 
