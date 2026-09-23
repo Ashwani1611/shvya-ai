@@ -124,7 +124,7 @@ redirects to that release by default; `CALL_INTELLIGENCE_APK_URL` can override
 the location if distribution moves to private object storage.
 
 
-## Overview / Analytics and Android 1.1.0
+## Overview / Analytics and Android 1.0
 
 The sidebar entry opens Overview. Analytics is selected with
 `?section=analytics` and contains Calls at a glance, the full paginated call
@@ -161,14 +161,18 @@ Additional mobile API endpoints:
 
 - `GET reminders/` (current employee assignments; paginated)
 - `POST reminders/<uuid>/action/` (`complete`, `snooze`, `delete`)
-- `POST leads/` (name, phone; existing leads are never overwritten)
+- `GET leads/` (organization-scoped pipelines, active stages and every custom
+  attribute's name, type and options; descriptions are omitted)
+- `POST leads/` (name, phone, email, notes, selected pipeline/stage and custom
+  attributes; existing leads are never overwritten)
 - `PATCH settings/` (admin-only lead-creation booleans)
 - `GET calls/?mine=1&page=1` includes filtered totals and `has_next`
 
 SHVYA vector artwork source:
 https://kraya-ai.com/images/Assets-SHVYA-Homepage/kraya-blue-logo.svg
-The existing Android package identifier remains unchanged. Version is 1.1.0
-(code 2). CI remains the canonical signing/distribution route; a locally
+The existing Android package identifier remains unchanged. The displayed
+version is 1.0 (code 3, which is higher than the previously shipped code so
+Android can update installed devices). CI remains the canonical signing/distribution route; a locally
 built APK uses a local debug signing key and is for review only.
 
 ### Review builds and validation
