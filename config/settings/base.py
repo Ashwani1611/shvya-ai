@@ -244,7 +244,6 @@ INSTALLED_APPS = [
 
     # --- Business & AI Feature Apps ---
     "apps.channels",
-    "apps.calls",
     "apps.copilot",
     "apps.ai_engagement",
     "apps.triggers",

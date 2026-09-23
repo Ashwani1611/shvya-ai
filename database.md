@@ -1200,12 +1200,12 @@ Saved replies use `followups_touchpointcategory` and `followups_touchpointreply`
 
 The staging schema also uses explicit soft-lifecycle flags where destructive deletion is unsafe: `crm_attributedefinition.is_active`, `triggers_smarttrigger.is_active` and `followups_touchpointreply.is_active`. Operations archive/delete tools must respect dependency checks before hard deletion.
 
-## 9.17 Apps with no current custom tables
+## 9.17 Legacy call-app cleanup
 
-- `apps.calls`: `models.py` currently defines no models.
-- `apps.telephony`: current model modules define no models.
-
-Do not invent tables for these apps until a migration creates them.
+The empty legacy `apps.calls` compatibility shell has been removed. Call
+Intelligence is owned by `apps.telephony` and its existing telephony tables.
+New call-related behavior must extend that domain rather than recreating a
+parallel Django app.
 
 ---
 
