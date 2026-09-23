@@ -72,6 +72,7 @@ def create_default_pipeline(sender, instance, created, **kwargs):
         name="Leads",
         defaults={
             "description": "Default SHVYA lead pipeline.",
+            "country_code": "+91" if instance.package == Organization.Package.FREE else "",
             "is_active": True,
         },
     )
