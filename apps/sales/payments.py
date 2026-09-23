@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urljoin
 
 import requests
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.urls import reverse
@@ -24,6 +25,22 @@ from apps.sales.models_lifecycle import (
 
 class SalesGatewayError(RuntimeError):
     pass
+
+
+def _admit_payment_gateway(gateway):
+    from apps.core.fairness import admit_provider_start
+
+    allowed, retry_after, _scope = admit_provider_start(
+        provider=f"payment_{gateway.provider}",
+        account_id=gateway.pk,
+        account_limit=settings.PAYMENT_GATEWAY_REQUESTS_PER_MINUTE,
+        global_limit=settings.PAYMENT_PROVIDER_REQUESTS_PER_MINUTE,
+    )
+    if not allowed:
+        raise SalesGatewayError(
+            "Payment provider is temporarily busy. "
+            f"Retry in about {retry_after} seconds."
+        )
 
 
 def _provider_amount(value):
@@ -77,6 +94,7 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
         raise SalesGatewayError("Payment gateway secret is missing.")
 
     try:
+        _admit_payment_gateway(gateway)
         if gateway.provider == SalesPaymentGateway.Provider.RAZORPAY:
             if not gateway.public_key:
                 raise SalesGatewayError("Razorpay Key ID is missing.")
@@ -387,6 +405,7 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
         raise ValidationError("Refund exceeds the remaining amount of this payment.")
 
     try:
+        _admit_payment_gateway(gateway)
         if gateway.provider == SalesPaymentGateway.Provider.RAZORPAY:
             response = requests.post(
                 f"https://api.razorpay.com/v1/payments/{payment.external_payment_id}/refund",
