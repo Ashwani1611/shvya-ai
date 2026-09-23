@@ -2391,7 +2391,7 @@ def lead_edit_save(
 
 # Attribute-management views live in a focused module; aliases preserve
 # historical imports and all URL contracts.
-from . import dashboard_attributes as _dashboard_attribute_views
+from . import dashboard_attributes as _dashboard_attribute_views  # noqa: E402
 
 attribute_create_modal = _dashboard_attribute_views.attribute_create_modal
 attribute_create_save = _dashboard_attribute_views.attribute_create_save
