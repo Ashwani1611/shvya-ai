@@ -271,11 +271,15 @@ def _queue_internal_conversation_summary(
 def _queue_whatsapp_engagement(
     *,
     lead_id,
+    source_message_id=None,
 ):
     """Queue the durable, source-message-idempotent API AI execution path."""
     from apps.ai_engagement.services.execution_tracker import queue_api_engagement
 
-    return queue_api_engagement(lead_id=lead_id)
+    return queue_api_engagement(
+        lead_id=lead_id,
+        source_message_id=source_message_id,
+    )
 
 
 # ============================================================
