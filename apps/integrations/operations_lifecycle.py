@@ -197,19 +197,13 @@ def _stage_report(*, organization, stage):
     )
     relations = _reverse_relation_counts(stage)
 
+    # Any live relational configuration should be migrated before a
+    # stage is hidden or deleted. LeadActivity is historical evidence and does
+    # not keep the stage operationally active; Lead itself is counted above.
     blocking_relations = [
         item
         for item in relations
-        if item["model"] == "crm.Lead"
-        or item["on_delete"] in {"PROTECT", "RESTRICT"}
-        or (
-            item["on_delete"] == "CASCADE"
-            and item["model"] not in {"crm.LeadActivity"}
-        )
-    ]
-    # Lead is already represented as a first-class count.
-    blocking_relations = [
-        item for item in blocking_relations if item["model"] != "crm.Lead"
+        if item["model"] not in {"crm.Lead", "crm.LeadActivity"}
     ]
 
     protected = bool(stage.is_system_locked)
@@ -414,21 +408,18 @@ def _pipeline_report(*, organization, pipeline):
 
     relations = _reverse_relation_counts(pipeline)
     ignored_models = {
+        "crm.Lead",
         "crm.Stage",
         "crm.PipelinePermission",
         "crm.LeadActivity",
+        # Support tickets retain pipeline context for history but do not route
+        # CRM or automation behavior through that pipeline.
+        "support.SupportTicket",
     }
     blocking_relations = [
         item
         for item in relations
         if item["model"] not in ignored_models
-        and (
-            item["on_delete"] in {"PROTECT", "RESTRICT"}
-            or item["on_delete"] == "CASCADE"
-        )
-    ]
-    blocking_relations = [
-        item for item in blocking_relations if item["model"] != "crm.Lead"
     ]
 
     migration = []
