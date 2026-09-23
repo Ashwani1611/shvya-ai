@@ -62,7 +62,7 @@ def run_block_reason(run, lead):
         return "Workflow data does not belong to the lead organization."
     if not lead.organization.is_active:
         return "Organization is inactive."
-    if not run.rule.is_active:
+    if getattr(run.rule, "is_active", True) is not True:
         return "Workflow is archived."
     if not run.rule.enabled:
         return "Workflow is disabled."
