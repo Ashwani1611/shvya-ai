@@ -49,7 +49,7 @@ def catalog(org):
             )
         ),
         "attributes": list(
-            AttributeDefinition.objects.filter(organization=org).values(
+            AttributeDefinition.objects.filter(is_active=True, organization=org).values(
                 "key", "name", "field_type", "options"
             )
         ),
@@ -123,7 +123,7 @@ def validate(org, data):
     c, a = data.get("conditions", {}), data.get("action", {})
     if not isinstance(c, dict) or not isinstance(a, dict):
         fail("Conditions and action must be objects.")
-    attrs = {x.key: x for x in AttributeDefinition.objects.filter(organization=org)}
+    attrs = {x.key: x for x in AttributeDefinition.objects.filter(is_active=True, organization=org)}
 
     def attribute(key):
         if not isinstance(key, str) or key not in attrs:
@@ -355,7 +355,11 @@ def save_rule(user, data, rule_id=None):
         fail("Only admins can edit rules.")
     Organization.objects.select_for_update().get(id=user.organization_id)
     rule = (
-        SmartTrigger.objects.get(id=rule_id, organization=user.organization)
+        SmartTrigger.objects.get(
+            id=rule_id,
+            organization=user.organization,
+            is_active=True,
+        )
         if rule_id
         else None
     )
@@ -382,7 +386,10 @@ def save_rule(user, data, rule_id=None):
         fail("An identical rule already exists. Change its conditions or action.")
     if not rule:
         position = (
-            SmartTrigger.objects.filter(organization=user.organization).aggregate(
+            SmartTrigger.objects.filter(
+                organization=user.organization,
+                is_active=True,
+            ).aggregate(
                 n=Max("position")
             )["n"]
             or 0
@@ -401,7 +408,12 @@ def reorder(user, ids):
     if user.role != "admin":
         fail("Only admins can reorder rules.")
     Organization.objects.select_for_update().get(id=user.organization_id)
-    rules = list(SmartTrigger.objects.filter(organization=user.organization))
+    rules = list(
+        SmartTrigger.objects.filter(
+            organization=user.organization,
+            is_active=True,
+        )
+    )
     if (
         not isinstance(ids, list)
         or not all(isinstance(item, str) for item in ids)
