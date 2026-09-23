@@ -128,14 +128,14 @@ jobs:
             $COMPOSE config --quiet
 
             echo "Building staging application containers..."
-            $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker beat whatsapp-web-gateway
+            $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat whatsapp-web-gateway
 
             echo "Preparing writable staging bind mounts for the non-root runtime user..."
             $COMPOSE run --rm --no-deps --user 0 web sh -c \
               'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
 
-            echo "Starting isolated staging PostgreSQL and Redis..."
-            $COMPOSE up -d --wait db redis
+            echo "Starting isolated staging PostgreSQL, Redis, and PgBouncer..."
+            $COMPOSE up -d --wait db redis pgbouncer
 
             echo "Creating a staging database backup before migrations..."
             BACKUP_FILE="$APP_DIR/backups/shvya-staging-$(date -u +%Y%m%dT%H%M%SZ).sql"
@@ -163,8 +163,8 @@ jobs:
             echo "Pausing staging schedulers and HTTP/WebSocket traffic..."
             $COMPOSE stop --timeout 60 beat web ws
             echo "Draining staging workers with a bounded graceful shutdown..."
-            $COMPOSE stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
-            if [ -n "$($COMPOSE ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
+            $COMPOSE stop --timeout 300 worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker
+            if [ -n "$($COMPOSE ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat)" ]; then
               echo "Refusing migrations while an old staging application service is still running."
               exit 1
             fi
@@ -176,12 +176,12 @@ jobs:
             $COMPOSE run --rm --no-deps web python manage.py collectstatic --noinput
 
             echo "Starting staging application services..."
-            $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
+            $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat
             $COMPOSE up -d --wait --no-deps web
             APPLICATION_MAINTENANCE=0
 
             echo "Verifying staging Python application services run as the non-root app user..."
-            for service in web ws worker ai_realtime_worker hosted_ai_worker beat; do
+            for service in web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat; do
               uid="$($COMPOSE exec -T "$service" id -u)"
               gid="$($COMPOSE exec -T "$service" id -g)"
               if [ "$uid" != "10001" ] || [ "$gid" != "10001" ]; then
@@ -211,7 +211,7 @@ jobs:
             if [ "$ready" -ne 1 ]; then
               echo "Staging readiness check failed."
               $COMPOSE ps
-              $COMPOSE logs --tail=150 nginx web worker ai_realtime_worker hosted_ai_worker
+              $COMPOSE logs --tail=150 nginx web worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker
               exit 1
             fi
 
