@@ -12,7 +12,7 @@ from services.channels.whatsapp_service import list_conversations
 
 class WhatsAppChatInboxTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Inbox Org")
+        self.org = Organization.objects.create(package="dfy", name="Inbox Org")
         self.user = User.objects.create_user(
             email="inbox@example.com", password="test-password",
             name="Inbox Admin", organization=self.org, role=User.Role.ADMIN,
@@ -129,7 +129,7 @@ class WhatsAppChatInboxTests(TestCase):
         ).exists())
 
     def test_other_organization_is_excluded(self):
-        other = Organization.objects.create(name="Other Inbox")
+        other = Organization.objects.create(package="dfy", name="Other Inbox")
         account = WhatsAppAccount.objects.create(
             organization=other, phone_number_id="other-inbox",
         )

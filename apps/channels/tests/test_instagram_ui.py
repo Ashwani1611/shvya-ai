@@ -24,7 +24,7 @@ from services.channels.instagram_service import get_connection, save_connection
 @override_settings(META_APP_ID="meta-app-123", META_APP_SECRET="meta-secret-123")
 class InstagramUITests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Instagram Org")
+        self.org = Organization.objects.create(package="dfy", name="Instagram Org")
         self.user = User.objects.create_user(
             email="instagram@example.com",
             password="test-password",
@@ -130,7 +130,7 @@ class InstagramUITests(TestCase):
             raw_value = cursor.fetchone()[0]
         self.assertNotIn("instagram-secret-token", raw_value)
 
-        other = Organization.objects.create(name="Other Instagram Org")
+        other = Organization.objects.create(package="dfy", name="Other Instagram Org")
         self.assertIsNone(get_connection(other))
 
     def test_chats_redirect_to_connect_when_account_is_missing(self):
@@ -175,7 +175,7 @@ class InstagramUITests(TestCase):
         self.assertTrue(message.is_read)
         self.assertEqual(conversation.unread_count, 0)
 
-        other = Organization.objects.create(name="Other Org")
+        other = Organization.objects.create(package="dfy", name="Other Org")
         other_account = self.connect_instagram(
             organization=other,
             ig_user_id="17841400000000001",
@@ -229,7 +229,7 @@ class InstagramUITests(TestCase):
     @patch("apps.channels.instagram_ui.disconnect_instagram_account_task.delay")
     def test_disconnect_is_workspace_scoped_and_queued(self, delay):
         account = self.connect_instagram()
-        other = Organization.objects.create(name="Other Instagram Org")
+        other = Organization.objects.create(package="dfy", name="Other Instagram Org")
         self.connect_instagram(
             organization=other,
             ig_user_id="17841400000000001",

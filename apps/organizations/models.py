@@ -141,7 +141,7 @@ class Organization(models.Model):
         DIY = "diy", "DIY"
         DFY = "dfy", "DFY"
         FREE = "free", "Free"
-        PRO = "pro", "Pro"
+        ENTERPRISE = "enterprise", "Enterprise"
 
     class PaymentMode(models.TextChoices):
         FULL = "full", "Full Payment"
@@ -271,6 +271,18 @@ class Organization(models.Model):
     class Meta:
         app_label = "organizations"
         ordering = ["-created_at"]
+
+    def save(self, *args, **kwargs):
+        update_fields = kwargs.get("update_fields")
+        if not self._state.adding and (update_fields is None or "package" in update_fields):
+            previous = type(self).objects.filter(pk=self.pk).values_list("package", flat=True).first()
+            if previous is not None and previous != self.package:
+                settings = dict(self.settings) if isinstance(self.settings, dict) else {}
+                settings.pop("package_module_grants", None)
+                self.settings = settings
+                if update_fields is not None:
+                    kwargs["update_fields"] = set(update_fields) | {"settings"}
+        return super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
@@ -405,3 +417,14 @@ class APIKey(models.Model):
             raw_key,
             self.key_hash,
         )
+
+class OrganizationDeletionCleanup(models.Model):
+    """Durable external cleanup outbox; intentionally has no tenant FK."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization_id = models.UUIDField()
+    files = models.JSONField(default=list)
+    hosted_session_ids = models.JSONField(default=list)
+    attempts = models.PositiveIntegerField(default=0)
+    last_error = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)

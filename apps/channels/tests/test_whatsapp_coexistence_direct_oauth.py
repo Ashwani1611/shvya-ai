@@ -23,7 +23,7 @@ from services.channels.embedded_signup_service import EmbeddedSignupPhoneSelecti
 
 class WhatsAppCoexistenceDirectOAuthTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Direct Coexistence Org")
+        self.org = Organization.objects.create(package="dfy", name="Direct Coexistence Org")
         self.user = User.objects.create_user(
             email="direct-coexistence@example.com",
             password="test-password",

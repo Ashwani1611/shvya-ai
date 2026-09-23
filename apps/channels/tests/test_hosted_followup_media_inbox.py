@@ -19,6 +19,7 @@ from services.channels.hosted_whatsapp_transport import send_hosted_message
 class HostedFollowupMediaInboxTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="Hosted Follow-up Media Org",
             settings={"hosted_account_enabled": True},
         )

@@ -17,7 +17,7 @@ from services.channels.whatsapp_error_service import describe_whatsapp_failure
 
 class WhatsAppFailureDetailsTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Failure Details Org")
+        self.org = Organization.objects.create(package="dfy", name="Failure Details Org")
         self.user = User.objects.create_user(
             email="failure-details@example.com",
             password="test-password",

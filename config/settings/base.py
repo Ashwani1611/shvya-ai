@@ -271,6 +271,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.accounts.middleware.SHVYAAreaAuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "apps.organizations.middleware.PackageAccessMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 

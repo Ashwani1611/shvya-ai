@@ -24,6 +24,7 @@ from .services import move_booking_pipeline, reschedule_booking
 class CalendarWorkspaceTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="enterprise",
             name="Calendar workspace", timezone="Asia/Kolkata"
         )
         self.user = User.objects.create_user(
@@ -160,7 +161,7 @@ class CalendarWorkspaceTests(TestCase):
         self.assertNotContains(response, "javascript:")
 
     def test_other_organization_cannot_read_or_change(self):
-        org = Organization.objects.create(name="Other")
+        org = Organization.objects.create(package="enterprise", name="Other")
         other = User.objects.create_user(
             email="other@example.com",
             password="test",
@@ -231,7 +232,7 @@ class CalendarWorkspaceTests(TestCase):
         self.assertEqual(self.client.get(endpoint, params).json()["events"], [])
 
     def test_move_rejects_stage_from_wrong_pipeline_and_foreign_target(self):
-        other = Organization.objects.create(name="Other")
+        other = Organization.objects.create(package="enterprise", name="Other")
         target = Pipeline.objects.create(organization=other, name="Other")
         for pipeline_id, stage_id in [
             (target.pk, self.stage.pk),

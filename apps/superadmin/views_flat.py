@@ -16,6 +16,7 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 from apps.crm.models import Lead, Pipeline
+from apps.organizations.features import module_controls
 from apps.organizations.models import (
     APIKey,
     Organization,
@@ -513,6 +514,7 @@ def organization_detail_view(
         {
             "organization": organization,
             "organization_form": organization_form,
+            "package_module_controls": module_controls(organization),
             "payment_form": payment_form,
             "payments": payments,
             "payment_total": payment_total,

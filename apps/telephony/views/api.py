@@ -43,6 +43,9 @@ def _user(request):
     user = request.user
     if not crm_user_is_authorized(user):
         raise PermissionDenied("Active organization user is required.")
+    from apps.organizations.features import module_enabled
+    if not module_enabled(user.organization, "calls"):
+        raise PermissionDenied("Upgrade to unlock Call Intelligence.")
     return user
 
 

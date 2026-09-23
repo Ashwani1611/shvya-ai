@@ -12,7 +12,7 @@ from services.channels.whatsapp_api_chat_service import list_api_conversations
 
 class WhatsAppApiChatScopeAndSourceTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="WhatsApp Scope Org")
+        self.org = Organization.objects.create(package="dfy", name="WhatsApp Scope Org")
         self.user = User.objects.create_user(
             email="scope@example.com",
             password="test-password",

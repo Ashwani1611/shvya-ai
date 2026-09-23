@@ -20,7 +20,7 @@ from services.followup_service import FollowupError, assign_sequence
 @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
 class BulkLeadTests(TestCase):
     def setUp(self):
-        self.organization = Organization.objects.create(name="Bulk test")
+        self.organization = Organization.objects.create(package="dfy", name="Bulk test")
         self.user = User.objects.create_user(
             email="bulk@example.com", password="test-password", name="Admin",
             organization=self.organization, role=User.Role.ADMIN,
@@ -191,7 +191,7 @@ class BulkLeadTests(TestCase):
         self.assertEqual(response.status_code, 400)
 
     def test_other_organization_is_never_exported_or_modified(self):
-        organization = Organization.objects.create(name="Other org")
+        organization = Organization.objects.create(package="dfy", name="Other org")
         pipeline = organization.pipelines.first()
         lead = Lead.objects.create(organization=organization, pipeline=pipeline, stage=pipeline.stages.first(), name="Private", phone="+919999999998")
         for action in ("options", "export", "update", "delete"):

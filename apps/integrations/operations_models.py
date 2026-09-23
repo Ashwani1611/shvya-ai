@@ -244,21 +244,23 @@ class OperationsAuditEvent(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         related_name="operations_mcp_audit_events",
     )
+    actor_reference = models.UUIDField(null=True, editable=False)
+    organization_reference = models.UUIDField(null=True, editable=False)
     role = models.CharField(max_length=32)
     organization = models.ForeignKey(
         "organizations.Organization",
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="operations_mcp_audit_events",
     )
     support_session = models.ForeignKey(
         OperationsSupportSession,
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="audit_events",
@@ -295,6 +297,8 @@ class OperationsAuditEvent(models.Model):
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError("Operations audit events are immutable.")
+        self.actor_reference = self.actor_id
+        self.organization_reference = self.organization_id
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
@@ -382,17 +386,17 @@ class OperationsConfigurationPlan(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
-        on_delete=models.PROTECT,
+        on_delete=models.CASCADE,
         related_name="operations_configuration_plans",
     )
     actor = models.ForeignKey(
         settings.AUTH_USER_MODEL,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="operations_configuration_plans",
     )
     token = models.ForeignKey(
         OperationsOAuthToken,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="configuration_plans",
     )
     role = models.CharField(max_length=32)

@@ -17,6 +17,7 @@ from services.channels.hosted_whatsapp_service import create_hosted_account
 class HostedWhatsAppRecoveryTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="Hosted Recovery Org",
             settings={"hosted_account_enabled": True},
         )

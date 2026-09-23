@@ -17,7 +17,7 @@ from services.channels.whatsapp_coexistence_service import (
 
 class WhatsAppCoexistenceTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Coexistence Org")
+        self.org = Organization.objects.create(package="dfy", name="Coexistence Org")
         self.user = User.objects.create_user(
             email="coexistence@example.com",
             password="test-password",

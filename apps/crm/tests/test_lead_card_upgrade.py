@@ -23,7 +23,7 @@ from services.channels.whatsapp_api_chat_service import get_api_conversation_mes
 @override_settings(CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
 class LeadCardUpgradeTests(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Card upgrade")
+        self.org = Organization.objects.create(package="dfy", name="Card upgrade")
         self.pipeline = self.org.pipelines.first()
         self.pipeline.phone_number = "+919000000001"
         self.pipeline.save()
@@ -174,7 +174,7 @@ class LeadCardUpgradeTests(TestCase):
 
     def test_cross_tenant_instagram_link_is_rejected(self):
         conversation = self.instagram(linked=False)
-        other = Organization.objects.create(name="Other tenant")
+        other = Organization.objects.create(package="dfy", name="Other tenant")
         conversation.organization = other
         conversation.save()
         with self.assertRaises(InstagramConversation.DoesNotExist):

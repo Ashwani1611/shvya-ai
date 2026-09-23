@@ -26,7 +26,7 @@ from services.channels.instagram_service import InstagramAPIError
 class InstagramInboxTests(TestCase):
     def setUp(self):
         cache.clear()
-        self.org = Organization.objects.create(name="Instagram inbox tests")
+        self.org = Organization.objects.create(package="dfy", name="Instagram inbox tests")
         self.user = User.objects.create_user(email="ig-inbox@example.com", password="test-password", name="IG Admin", organization=self.org, role=User.Role.ADMIN)
         session = SessionStore()
         set_authenticated_user(session, self.user)
@@ -120,7 +120,7 @@ class InstagramInboxTests(TestCase):
         send.assert_not_called()
 
     def test_foreign_workspace_cannot_read_or_queue_conversation(self):
-        other = Organization.objects.create(name="Foreign workspace")
+        other = Organization.objects.create(package="dfy", name="Foreign workspace")
         with self.assertRaises(InstagramAPIError):
             inbox_thread(other, self.conversation.pk)
         with self.assertRaises(InstagramAPIError):

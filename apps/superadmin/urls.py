@@ -38,7 +38,12 @@ from .views import (
     superadmin_login_view,
 )
 
+from .plan_controls import organization_modules_view, organization_delete_view, organization_tag_manage_view
+
 urlpatterns = [
+    path("tags/", organization_tag_manage_view, name="superadmin-tags"),
+    path("organization/<uuid:organization_id>/modules/", organization_modules_view, name="superadmin-organization-modules"),
+    path("organization/<uuid:organization_id>/delete/", organization_delete_view, name="superadmin-organization-delete"),
     path("bac/", bac_list, name="superadmin-bac"),
     # =========================================================
     # SUPER ADMIN — LOGIN

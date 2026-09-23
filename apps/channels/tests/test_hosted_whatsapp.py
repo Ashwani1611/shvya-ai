@@ -21,6 +21,7 @@ from services.channels.hosted_whatsapp_service import (
 class HostedWhatsAppTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="Hosted Org",
             settings={"hosted_account_enabled": True},
         )

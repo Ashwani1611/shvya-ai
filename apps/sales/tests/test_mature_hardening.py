@@ -58,7 +58,7 @@ from apps.sales.views import _clean_date
 
 class SalesHardeningBase(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Sales hardening")
+        self.org = Organization.objects.create(package="enterprise", name="Sales hardening")
         self.admin = User.objects.create_user(
             email="sales-admin@example.com",
             password="test-password",

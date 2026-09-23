@@ -358,7 +358,7 @@ class SalesPaymentCheckout(models.Model):
     )
     gateway = models.ForeignKey(
         SalesPaymentGateway,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="checkouts",
     )
     amount = models.DecimalField(max_digits=14, decimal_places=2)

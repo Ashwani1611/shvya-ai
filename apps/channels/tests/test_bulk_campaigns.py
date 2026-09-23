@@ -42,7 +42,7 @@ from services.channels.campaign_service import (
 class CampaignFixture:
     def setUp(self):
         super().setUp()
-        self.org = Organization.objects.create(name="Campaign Test Organization")
+        self.org = Organization.objects.create(package="dfy", name="Campaign Test Organization")
         self.user = User.objects.create_user(email="campaign-test@example.com", password="test-password",
                                              name="Campaign Admin", organization=self.org, role=User.Role.ADMIN)
         self.pipeline = Pipeline.objects.create(organization=self.org, name="Campaign Sales")
@@ -206,7 +206,7 @@ class BulkCampaignTests(CampaignFixture, TestCase):
         CampaignUpload.objects.filter(pk=upload.pk).update(expires_at=timezone.now() - timedelta(seconds=1))
         with self.assertRaises(CampaignInputError):
             owned_upload(user=self.user, token=upload.pk)
-        other = Organization.objects.create(name="Other organization")
+        other = Organization.objects.create(package="dfy", name="Other organization")
         stranger = User.objects.create_user(email="stranger@example.com", password="test-password", name="Stranger", organization=other, role=User.Role.ADMIN)
         with self.assertRaises(PermissionDenied):
             get_template(user=stranger, template_id=self.template.pk)
@@ -501,7 +501,7 @@ class BulkCampaignTests(CampaignFixture, TestCase):
         foreign_id = str(second.campaign_delivery_rows.get().pk)
         response = self.post("actions", {"action": "export", "selection": {"ids": [foreign_id]}}, campaign_id=first.pk)
         self.assertEqual(response.status_code, 400)
-        other = Organization.objects.create(name="Other")
+        other = Organization.objects.create(package="dfy", name="Other")
         self.user.organization = other
         self.user.save(update_fields=["organization"])
         self.assertFalse(visible_campaigns(self.user).filter(pk=first.pk).exists())

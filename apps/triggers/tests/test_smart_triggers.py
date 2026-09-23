@@ -27,6 +27,7 @@ from services.triggers.rules import catalog, reorder, save_rule, validate
 class SmartTriggerTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(
+            package="dfy",
             name="Smart Triggers Test", timezone="Asia/Kolkata"
         )
         self.user = User.objects.create_user(
@@ -124,7 +125,7 @@ class SmartTriggerTests(TestCase):
             self.rule(name="Different name")
 
     def test_foreign_stage_and_sequence_are_rejected(self):
-        foreign = Organization.objects.create(name="Other")
+        foreign = Organization.objects.create(package="dfy", name="Other")
         stage = foreign.pipelines.first().stages.first()
         data = copy.deepcopy(self.data)
         data["conditions"]["scopes"][0]["stages"] = [str(stage.id)]
@@ -500,7 +501,7 @@ class SmartTriggerTests(TestCase):
 
     def test_http_foreign_rule_inaccessible_and_csrf_required(self):
         rule = self.rule()
-        other = Organization.objects.create(name="Foreign")
+        other = Organization.objects.create(package="dfy", name="Foreign")
         user = User.objects.create_user(
             email="other-trigger@example.com",
             organization=other,

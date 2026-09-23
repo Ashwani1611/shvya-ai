@@ -90,14 +90,14 @@ class CalendarPage(models.Model):
     )
     pipeline = models.ForeignKey(
         "crm.Pipeline",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="calendar_pages",
     )
     stage = models.ForeignKey(
         "crm.Stage",
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         null=True,
         blank=True,
         related_name="calendar_pages",
@@ -348,7 +348,7 @@ class CalendarSubmission(models.Model):
     )
     page_version = models.ForeignKey(
         CalendarPageVersion,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="submissions",
     )
     lead = models.ForeignKey(
@@ -676,7 +676,7 @@ class CalendarReminderDelivery(models.Model):
     )
     step = models.ForeignKey(
         CalendarReminderStep,
-        on_delete=models.PROTECT,
+        on_delete=models.RESTRICT,
         related_name="deliveries",
     )
     due_at = models.DateTimeField(db_index=True)

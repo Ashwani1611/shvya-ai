@@ -159,16 +159,19 @@ class DiagnosticAccessLog(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
-        on_delete=models.PROTECT,
-        related_name="diagnostic_access_logs",
-    )
-    api_key = models.ForeignKey(
-        "organizations.APIKey",
-        on_delete=models.PROTECT,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
         related_name="diagnostic_access_logs",
     )
+    api_key = models.ForeignKey(
+        "organizations.APIKey",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="diagnostic_access_logs",
+    )
+    organization_reference = models.UUIDField(null=True, editable=False)
     oauth_client_id = models.CharField(max_length=255, blank=True)
     tool_name = models.CharField(max_length=100)
     outcome = models.CharField(
@@ -202,6 +205,7 @@ class DiagnosticAccessLog(models.Model):
     def save(self, *args, **kwargs):
         if not self._state.adding:
             raise ValidationError("Diagnostic access logs are immutable.")
+        self.organization_reference = self.organization_id
         return super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):

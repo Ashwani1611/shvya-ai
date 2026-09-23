@@ -495,10 +495,10 @@ class MetaLeadForm(models.Model):
     form_id = models.CharField(max_length=100)
     form_name = models.CharField(max_length=200)
     pipeline = models.ForeignKey(
-        "crm.Pipeline", on_delete=models.PROTECT, related_name="meta_lead_forms"
+        "crm.Pipeline", on_delete=models.RESTRICT, related_name="meta_lead_forms"
     )
     stage = models.ForeignKey(
-        "crm.Stage", on_delete=models.PROTECT, related_name="meta_lead_forms"
+        "crm.Stage", on_delete=models.RESTRICT, related_name="meta_lead_forms"
     )
     field_mapping = models.JSONField(default=dict, blank=True)
     is_active = models.BooleanField(default=True)

@@ -25,7 +25,7 @@ from apps.sales.services import deliver_whatsapp
 
 class SalesHotfixBase(TestCase):
     def setUp(self):
-        self.org = Organization.objects.create(name="Sales hotfix org")
+        self.org = Organization.objects.create(package="enterprise", name="Sales hotfix org")
         self.admin = User.objects.create_user(
             email="sales-hotfix-admin@example.com",
             password="test-password",
