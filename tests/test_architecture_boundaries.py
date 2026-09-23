@@ -203,6 +203,22 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         )
         self.assertTrue(expected.issubset({path.name for path in base.glob("*.py")}))
 
+    def test_diagnostic_tools_are_split_by_responsibility(self):
+        facade = ROOT / "apps" / "integrations" / "diagnostic_tools.py"
+        base = ROOT / "apps" / "integrations" / "operations" / "diagnostics"
+        expected = {
+            "common.py",
+            "leads.py",
+            "messaging.py",
+            "runtime.py",
+        }
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            190,
+            "diagnostic_tools.py must remain a compatibility facade.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in base.glob("*.py")}))
+
     def test_operations_configuration_management_is_split_by_responsibility(self):
         facade = ROOT / "apps" / "integrations" / "operations_configuration_management.py"
         base = ROOT / "apps" / "integrations" / "operations" / "configuration"
