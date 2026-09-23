@@ -48,6 +48,20 @@ class ArchitectureBoundaryTests(SimpleTestCase):
 
 
 
+    def test_crm_stage_views_are_focused(self):
+        dashboard = ROOT / "apps" / "crm" / "views" / "dashboard.py"
+        stages = ROOT / "apps" / "crm" / "views" / "dashboard_stages.py"
+        self.assertTrue(stages.exists())
+        self.assertLess(
+            len(dashboard.read_text(encoding="utf-8").splitlines()),
+            1900,
+            "Keep stage management in dashboard_stages.py.",
+        )
+        self.assertLess(
+            len(stages.read_text(encoding="utf-8").splitlines()),
+            900,
+        )
+
     def test_calendar_availability_is_owned_by_focused_service(self):
         service_path = ROOT / "apps" / "shvya_calendar" / "services.py"
         self.assertLess(
