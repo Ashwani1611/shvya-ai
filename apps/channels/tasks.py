@@ -469,6 +469,17 @@ def send_whatsapp_message_task(self, message_id):
             original.status_code in {408, 425, 429}
             or (original.status_code is not None and original.status_code >= 500)
         ):
+            if self.request.retries >= self.max_retries:
+                _persist_whatsapp_message_failure(
+                    message_id=message_id,
+                    error=exc,
+                )
+                return {
+                    "status": "failed",
+                    "reason": "provider_retry_limit_reached",
+                    "message_id": str(message_id),
+                    "error": str(exc),
+                }
             _requeue_whatsapp_message_after_transient_failure(
                 message_id=message_id
             )
