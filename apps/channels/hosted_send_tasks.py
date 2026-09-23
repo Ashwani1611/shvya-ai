@@ -27,8 +27,14 @@ logger = logging.getLogger(__name__)
 _HOSTED_SENDING_STATUS = "sending"
 
 
-def _hosted_retry_delay(*, message_id, retries):
-    base = min(180, 10 * (2 ** max(0, int(retries or 0))))
+def _hosted_retry_delay(*, message_id, retries, retry_after=None):
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(retry_after), 900))
+        except (TypeError, ValueError):
+            base = 20
+    else:
+        base = min(180, 10 * (2 ** max(0, int(retries or 0))))
     jitter = (
         sum(ord(character) for character in str(message_id))
         + (int(retries or 0) * 13)
@@ -98,6 +104,31 @@ def send_hosted_whatsapp_message_task(self, message_id):
             message.save(update_fields=["status", "error", "updated_at"])
             failed_disconnected = True
         else:
+            from django.conf import settings
+            from apps.core.fairness import admit_provider_start
+
+            allowed, retry_after, scope = admit_provider_start(
+                provider="hosted_whatsapp",
+                account_id=account.id,
+                account_limit=settings.HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE,
+                global_limit=settings.HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE,
+            )
+            if not allowed:
+                countdown = _hosted_retry_delay(
+                    message_id=message.id,
+                    retries=self.request.retries,
+                    retry_after=retry_after,
+                )
+                self.apply_async(
+                    args=[str(message.id)],
+                    countdown=countdown,
+                )
+                return {
+                    "status": "deferred",
+                    "reason": f"hosted_whatsapp_{scope}_fairness_limit",
+                    "retry_after": countdown,
+                }
+
             message.status = _HOSTED_SENDING_STATUS
             message.error = ""
             message.save(update_fields=["status", "error", "updated_at"])
