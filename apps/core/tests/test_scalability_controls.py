@@ -78,6 +78,7 @@ class ScalabilityControlTests(SimpleTestCase):
         )
 
     @override_settings(OBSERVABILITY_TOKEN="monitor-secret")
+    @patch("apps.core.runtime_status._hosted_gateway_snapshot", return_value={})
     @patch("apps.core.runtime_status._websocket_snapshot", return_value={})
     @patch("apps.core.runtime_status._celery_snapshot", return_value={})
     @patch("apps.core.runtime_status._redis_snapshot", return_value={})
@@ -94,6 +95,54 @@ class ScalabilityControlTests(SimpleTestCase):
         response = runtime_metrics(authorized)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.content)["status"], "ok")
+
+    @patch(
+        "apps.channels.hosted_gateway_routing.configured_gateways",
+        return_value={"east": "http://gateway-east:3000"},
+    )
+    @patch("apps.core.runtime_status.requests.get")
+    def test_runtime_snapshot_includes_bounded_hosted_gateway_health(
+        self,
+        get,
+        _gateways,
+    ):
+        from apps.core.runtime_status import _hosted_gateway_snapshot
+
+        response = get.return_value
+        response.raise_for_status.return_value = None
+        response.json.return_value = {
+            "ok": True,
+            "shard": "east",
+            "owner": "east-1",
+            "sessions": 7,
+            "maxSessions": 25,
+            "capacityRemaining": 18,
+            "memoryBytes": {
+                "rss": 123456,
+                "heapUsed": 23456,
+                "external": 3456,
+            },
+            "cpuMicros": {"user": 100, "system": 20},
+            "metrics": {
+                "reconnects": 2,
+                "leaseConflicts": 1,
+                "callbacksFailed": 3,
+                "historySyncFailures": 4,
+                "sessionsCreated": 8,
+            },
+            "uptimeSeconds": 900,
+            "unexpectedSensitiveField": "must-not-leak",
+        }
+
+        snapshot = _hosted_gateway_snapshot()
+
+        self.assertTrue(snapshot["available"])
+        gateway = snapshot["gateways"]["east"]
+        self.assertEqual(gateway["sessions"], 7)
+        self.assertEqual(gateway["max_sessions"], 25)
+        self.assertEqual(gateway["lease_conflicts"], 1)
+        self.assertNotIn("unexpectedSensitiveField", gateway)
+        get.assert_called_once_with("http://gateway-east:3000/health", timeout=3)
 
     def test_shared_fixed_window_admission_rejects_only_after_the_limit(self):
         self.assertEqual(
