@@ -42,17 +42,22 @@ from apps.crm.views.dashboard import (
     attribute_create_save,
     lead_attribute_values_modal,
     lead_attribute_values_save,
-    lead_import_start_modal,
-    lead_import_start,
-    lead_import_upload_modal,
-    lead_import_upload,
-    lead_import_sample_file,
-    lead_import_mapping_modal,
-    lead_import_mapping_save,
+)
+
+from apps.crm.views.lead_import import (
     lead_import_destination_modal,
     lead_import_destination_save,
-    lead_import_review_modal,
     lead_import_execute,
+    lead_import_mapping_modal,
+    lead_import_mapping_save,
+    lead_import_review_modal,
+    lead_import_sample_file,
+    lead_import_start,
+    lead_import_start_modal,
+    lead_import_upload,
+    lead_import_upload_modal,
+)
+from apps.crm.views.reminders import (
     global_reminder_complete,
     global_reminder_delete,
     global_reminder_edit_save,
