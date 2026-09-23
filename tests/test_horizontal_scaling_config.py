@@ -33,6 +33,33 @@ def test_web_and_asgi_services_have_no_fixed_replica_identity(
 
 
 @pytest.mark.parametrize(
+    ("service", "next_service", "replica_var"),
+    [
+        ("web", "ws", "WEB_REPLICAS"),
+        ("ws", "worker", "ASGI_REPLICAS"),
+        ("worker", "ai_realtime_worker", "CELERY_GENERAL_REPLICAS"),
+        ("ai_realtime_worker", "hosted_ai_worker", "CELERY_AI_REALTIME_REPLICAS"),
+        ("hosted_ai_worker", "campaign_worker", "CELERY_HOSTED_AI_REPLICAS"),
+        ("campaign_worker", "ingestion_worker", "CELERY_CAMPAIGN_REPLICAS"),
+        ("ingestion_worker", "automation_worker", "CELERY_INGESTION_REPLICAS"),
+        ("automation_worker", "beat", "CELERY_AUTOMATION_REPLICAS"),
+    ],
+)
+@pytest.mark.parametrize(
+    "filename",
+    ["docker-compose.yml", "docker-compose.staging.yml"],
+)
+def test_application_replica_counts_are_declarative(
+    filename,
+    service,
+    next_service,
+    replica_var,
+):
+    block = _service_block(filename, service, next_service)
+    assert "deploy:" in block
+    assert "replicas: ${" + replica_var + ":-1}" in block
+
+@pytest.mark.parametrize(
     "filename",
     [
         "nginx/conf.d/dashboard.conf",
