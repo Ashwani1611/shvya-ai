@@ -3,8 +3,6 @@
 import logging
 
 from celery import shared_task
-from django.db import transaction
-
 from apps.ai_engagement.services.ai_provider import AIProviderTransientError
 from apps.ai_engagement.services.qualification import (
     QualificationError,

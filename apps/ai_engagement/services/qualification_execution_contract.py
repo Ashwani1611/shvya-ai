@@ -177,8 +177,7 @@ def install_qualification_execution_contract() -> None:
 
     ResponseActionValidator.validate = validate
 
-    from apps.ai_engagement.tasks import engagement as task_module
-    from apps.ai_engagement import tasks as task_compat
+    from apps.ai_engagement import tasks as task_module
     from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.crm.models import Lead
     from services.channels.whatsapp_service import resolve_account_for_lead
@@ -225,7 +224,6 @@ def install_qualification_execution_contract() -> None:
         return current_task(task=task, lead_id=lead_id)
 
     task_module._execute_ai_engagement_response_impl = execute
-    task_compat._execute_ai_engagement_response_impl = execute
 
     from apps.hosted_automation import execution as hosted_execution
 

@@ -1,4 +1,4 @@
-"""Silent-lead bump-up task boundary."""
+from __future__ import annotations
 
 import logging
 from datetime import timedelta
@@ -8,9 +8,64 @@ from django.db import transaction
 from django.utils import timezone
 
 from apps.ai_engagement.prompts import BUMP_UP_MESSAGE_INSTRUCTIONS
+from apps.ai_engagement.services.engagement_execution import (
+    _execute_ai_engagement_response_impl,
+    _has_existing_ai_response,
+    _latest_whatsapp_message,
+    _persist_engagement_answers,
+    _whatsapp_send_eligible,
+)
+from apps.ai_engagement.task_handlers.knowledge import (
+    ingest_and_index_document,
+    ingest_and_index_url_source,
+    reindex_document_embeddings,
+)
+from apps.ai_engagement.task_handlers.qualification import generate_lead_qualification
+from apps.ai_engagement.task_handlers.summaries import (
+    generate_internal_conversation_summary,
+)
 
 
 logger = logging.getLogger(__name__)
+
+__all__ = [
+    "_execute_ai_engagement_response",
+    "_execute_ai_engagement_response_impl",
+    "_has_existing_ai_response",
+    "_latest_whatsapp_message",
+    "_persist_engagement_answers",
+    "_whatsapp_send_eligible",
+    "dispatch_bump_ups",
+    "flush_background_enrichment",
+    "generate_ai_engagement_response",
+    "generate_internal_conversation_summary",
+    "generate_lead_qualification",
+    "ingest_and_index_document",
+    "ingest_and_index_url_source",
+    "reconcile_credit_settlements",
+    "recover_api_engagement",
+    "reindex_document_embeddings",
+]
+
+
+@shared_task(name="ai.flush_background_enrichment")
+def flush_background_enrichment(lead_id):
+    from apps.ai_engagement.services.background_enrichment import queue_background_enrichment
+
+    return queue_background_enrichment(lead_id=lead_id, force=True)
+
+@shared_task(name="ai.reconcile_credit_settlements")
+def reconcile_credit_settlements():
+    """Retry provider-completed AI credit reservations that failed to settle."""
+    from apps.ai_engagement.services.credits import AICreditService
+
+    result = AICreditService.reconcile_pending_settlements(limit=100)
+    if result["failed"]:
+        logger.warning(
+            "AI credit settlement reconciliation left %s reservation(s) pending",
+            result["failed"],
+        )
+    return result
 
 
 @shared_task(name="ai.dispatch_bump_ups")
@@ -125,3 +180,82 @@ def dispatch_bump_ups():
 # ============================================================
 # INTERNAL CONVERSATION SUMMARY
 # ============================================================
+
+
+# ============================================================
+# INTERNAL CONVERSATION SUMMARY
+# ============================================================
+# The task itself is implemented in task_handlers.summaries and re-exported
+# above. Keeping this boundary preserves historical imports and patch paths.
+
+
+def _execute_ai_engagement_response(*, task, lead_id):
+    from celery.exceptions import Retry
+    from apps.channels.models import WhatsAppMessage
+    from apps.ai_engagement.services.execution_tracker import (
+        claim_execution,
+        record_execution,
+    )
+    source = WhatsAppMessage.objects.filter(
+        lead_id=lead_id,
+        direction="inbound",
+    ).order_by("-created_at", "-id").first()
+    if source and not claim_execution(source.pk):
+        return {
+            "status": "skipped",
+            "reason": "duplicate_turn_in_progress_or_processed",
+            "lead_id": str(lead_id),
+            "source_message_id": str(source.pk),
+        }
+    try:
+        result = _execute_ai_engagement_response_impl(task=task, lead_id=lead_id)
+    except Retry:
+        if source:
+            record_execution(source.pk, status="retrying", reason="temporary_failure")
+        raise
+    except Exception:
+        if source:
+            record_execution(source.pk, status="failed", reason="execution_error")
+        raise
+    if source:
+        record_execution(source.pk, status=str((result or {}).get("status") or "failed"),
+            reason=str((result or {}).get("reason") or ""))
+    return result
+
+
+@shared_task(name="ai.recover_api_engagement")
+def recover_api_engagement():
+    from apps.ai_engagement.services.execution_tracker import recover_api_engagement as recover
+    return recover()
+
+
+# ============================================================
+# CANONICAL AI ENGAGEMENT TASK
+# ============================================================
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=30,
+    name="ai.generate_ai_engagement_response",
+)
+def generate_ai_engagement_response(
+    self,
+    lead_id: str,
+):
+    """
+    Canonical production AI Engagement worker.
+
+    Celery payload contains Lead ID only.
+    """
+    return _execute_ai_engagement_response(
+        task=self,
+        lead_id=lead_id,
+    )
+
+
+# ============================================================
+# KNOWLEDGE INGESTION — UPLOADED DOCUMENT
+# ============================================================
+
