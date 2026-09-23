@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -22,6 +23,7 @@ from apps.ai_engagement.services.credits import (
     AICreditService,
     AICreditUnavailableError,
 )
+from apps.core.observability import emit_event, increment, observe_latency
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +50,63 @@ class AIProviderTransientError(AIProviderError):
     """Temporary provider/network failure safe for Celery retry."""
 
     retryable = True
+
+    def __init__(self, message, *, retry_after=None):
+        super().__init__(message)
+        try:
+            self.retry_after = (
+                max(1, min(int(float(retry_after)), 900))
+                if retry_after is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            self.retry_after = None
+
+
+def _provider_retry_after(error):
+    response = getattr(error, "response", None)
+    headers = getattr(response, "headers", {}) or {}
+    raw = str(headers.get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(1, min(int(float(raw)), 900))
+    except (TypeError, ValueError):
+        return None
+
+
+def provider_retry_countdown(
+    error,
+    *,
+    identifier,
+    retries,
+    default=30,
+    maximum=300,
+):
+    """Bound exponential provider retry timing and spread fleet retries."""
+    try:
+        retry_count = max(0, int(retries or 0))
+    except (TypeError, ValueError):
+        # Celery normally supplies an int. Tests and defensive wrappers can
+        # expose mock/non-numeric request objects; treat them as the first retry.
+        retry_count = 0
+
+    retry_after = getattr(error, "retry_after", None)
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(float(retry_after)), 900))
+        except (TypeError, ValueError):
+            base = int(default)
+    else:
+        base = min(
+            max(1, int(maximum)),
+            max(1, int(default)) * (2 ** retry_count),
+        )
+    jitter = (
+        sum(ord(character) for character in str(identifier))
+        + (retry_count * 19)
+    ) % 7
+    return min(907, base + jitter)
 
 
 @dataclass(frozen=True)
@@ -149,6 +208,7 @@ class OpenAIProvider:
         try:
             AICreditService.release(reservation)
         except AICreditError:
+            increment("ai.credit_release_failures")
             pass
 
     def _strict_engagement_schema(self, schema: dict[str, Any]) -> dict[str, Any]:
@@ -373,44 +433,87 @@ class OpenAIProvider:
                     reference_id=AICreditService.reference_from_metadata(metadata),
                 )
             except AICreditUnavailableError as exc:
+                increment("ai.credit_reservation_failures", labels={"reason": "unavailable"})
                 raise AIProviderPermanentError(str(exc)) from exc
             except AICreditError as exc:
+                increment("ai.credit_reservation_failures", labels={"reason": "error"})
                 raise AIProviderPermanentError(
                     f"Unable to reserve organization AI credits: {exc}"
                 ) from exc
 
+        provider_started = time.perf_counter()
+        provider_error = ""
         try:
             response = self.client.responses.create(**request_kwargs)
         except RateLimitError as exc:
+            provider_error = "rate_limit"
             self._release_credit_reservation(reservation)
-            raise AIProviderTransientError(f"OpenAI rate limit: {exc}") from exc
+            increment(
+                "ai.provider_throttled",
+                labels={"provider": "openai"},
+            )
+            raise AIProviderTransientError(
+                f"OpenAI rate limit: {exc}",
+                retry_after=_provider_retry_after(exc),
+            ) from exc
         except APIConnectionError as exc:
+            provider_error = "connection"
             self._release_credit_reservation(reservation)
             raise AIProviderTransientError(
                 f"OpenAI connection failure: {exc}"
             ) from exc
         except AuthenticationError as exc:
+            provider_error = "authentication"
             self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI authentication failed: {exc}"
             ) from exc
         except PermissionDeniedError as exc:
+            provider_error = "permission"
             self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(f"OpenAI permission denied: {exc}") from exc
         except BadRequestError as exc:
+            provider_error = "bad_request"
             self._release_credit_reservation(reservation)
             raise AIProviderPermanentError(
                 f"OpenAI rejected the request: {exc}"
             ) from exc
         except APIStatusError as exc:
+            provider_error = "api_status"
             self._release_credit_reservation(reservation)
             status_code = getattr(exc, "status_code", None)
             if status_code is not None and status_code >= 500:
-                raise AIProviderTransientError(f"OpenAI server error: {exc}") from exc
+                raise AIProviderTransientError(
+                    f"OpenAI server error: {exc}",
+                    retry_after=_provider_retry_after(exc),
+                ) from exc
             raise AIProviderPermanentError(f"OpenAI API error: {exc}") from exc
         except Exception as exc:
+            provider_error = "unexpected"
             self._release_credit_reservation(reservation)
             raise AIProviderTransientError(f"Unexpected OpenAI failure: {exc}") from exc
+        finally:
+            observe_latency(
+                "ai.provider_latency_ms",
+                (time.perf_counter() - provider_started) * 1000,
+                labels={"provider": "openai", "feature": self._feature(metadata)},
+            )
+            if provider_error:
+                increment(
+                    "ai.provider_errors",
+                    labels={"provider": "openai", "reason": provider_error},
+                )
+                emit_event(
+                    "ai.provider.failed",
+                    provider="openai",
+                    reason=provider_error,
+                    organization_id=organization_id,
+                )
+            else:
+                increment(
+                    "ai.provider_calls",
+                    labels={"provider": "openai", "feature": self._feature(metadata)},
+                )
 
         if reservation is not None:
             input_tokens, output_tokens = AICreditService.extract_usage(response)
@@ -428,6 +531,7 @@ class OpenAIProvider:
                     },
                 )
             except Exception:
+                increment("ai.credit_settlement_failures")
                 # The provider already completed successfully. Do not discard a
                 # valid customer response because an internal ledger write failed.
                 # Keep the reservation active so its credits remain unavailable,

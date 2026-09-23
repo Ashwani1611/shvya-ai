@@ -8,8 +8,8 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
 def initialize_hosted_session_task(self, account_id):
     from apps.channels.models import WhatsAppAccount
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
 
@@ -22,7 +22,7 @@ def initialize_hosted_session_task(self, account_id):
         return {"status": "skipped", "reason": "account_not_found"}
 
     try:
-        result = WhatsAppWebClient().create_session(
+        result = gateway_client_for_account(account).create_session(
             session_id=account.id,
             phone_number=account.display_phone_number or account.phone_number_id,
         )
@@ -42,8 +42,8 @@ def initialize_hosted_session_task(self, account_id):
 def sync_hosted_history_task(self, account_id):
     """Reconcile a hosted session with the gateway and backfill recent history."""
     from apps.channels.models import WhatsAppAccount
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
     from services.channels.hosted_whatsapp_service import handle_gateway_event
@@ -56,7 +56,7 @@ def sync_hosted_history_task(self, account_id):
     if not account:
         return {"status": "skipped", "reason": "account_not_found"}
 
-    client = WhatsAppWebClient()
+    client = gateway_client_for_account(account)
     try:
         session = client.get_session(session_id=account.id)
     except WhatsAppWebGatewayError as exc:
@@ -102,8 +102,8 @@ def sync_hosted_history_task(self, account_id):
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)
 def refresh_hosted_qr_task(self, account_id):
     from apps.channels.models import WhatsAppAccount
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
 
@@ -116,7 +116,7 @@ def refresh_hosted_qr_task(self, account_id):
         return {"status": "skipped", "reason": "account_not_found"}
 
     try:
-        result = WhatsAppWebClient().refresh_qr(session_id=account.id)
+        result = gateway_client_for_account(account).refresh_qr(session_id=account.id)
     except WhatsAppWebGatewayError as exc:
         if exc.status_code is None or exc.status_code >= 500:
             raise self.retry(exc=exc)
@@ -130,8 +130,8 @@ def refresh_hosted_qr_task(self, account_id):
 @shared_task(bind=True, max_retries=2, default_retry_delay=10)
 def logout_hosted_session_task(self, account_id):
     from apps.channels.models import WhatsAppAccount
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
 
@@ -144,7 +144,7 @@ def logout_hosted_session_task(self, account_id):
         return {"status": "skipped", "reason": "account_not_found"}
 
     try:
-        result = WhatsAppWebClient().logout(session_id=account.id)
+        result = gateway_client_for_account(account).logout(session_id=account.id)
     except WhatsAppWebGatewayError as exc:
         if exc.status_code is None or exc.status_code >= 500:
             raise self.retry(exc=exc)

@@ -15,25 +15,15 @@ app.config_from_object(
 
 app.autodiscover_tasks()
 
+# Register queue/task execution metrics after Django settings are available.
+from config import celery_observability  # noqa: E402,F401
+
 # Customer-facing WhatsApp AI must not wait behind conversation summaries,
 # ingestion, follow-ups, or other long-running default-queue work. Meta API
 # engagement and its final single-message delivery share the realtime lane;
 # Hosted Account AI keeps its own isolated production lane.
-app.conf.task_routes = {
-    "ai.recover_api_engagement": {"queue": "ai_realtime"},
-    "ai.generate_ai_engagement_response": {
-        "queue": "ai_realtime",
-    },
-    "apps.channels.tasks.send_whatsapp_message_task": {
-        "queue": "ai_realtime",
-    },
-    "hosted.dispatch_due_ai": {
-        "queue": "hosted_ai",
-    },
-    "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
-        "queue": "hosted_ai",
-    },
-}
+# Routes are defined in settings so workers, tests and observability all read
+# one canonical map. ``config_from_object`` has already loaded them here.
 
 # Central Beat schedule for recurring background work. Each Hosted AI job
 # self-schedules a due-time wake-up, and the dedicated recovery scans catch jobs

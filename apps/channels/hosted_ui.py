@@ -11,6 +11,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.crm.decorators import crm_login_required
 from apps.organizations.features import is_hosted_account_enabled
+from apps.channels.hosted_gateway_routing import gateway_client_for_account
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     create_hosted_account,
@@ -184,7 +185,9 @@ def hosted_session_status_view(request, account_id):
     if not account:
         raise Http404
     try:
-        result = WhatsAppWebClient().get_session(session_id=account.id)
+        result = gateway_client_for_account(
+            account, client_class=WhatsAppWebClient
+        ).get_session(session_id=account.id)
         raw_status = _reconcile_gateway_status(account, result)
         return JsonResponse(
             {
@@ -217,7 +220,9 @@ def hosted_session_qr_view(request, account_id):
     if not account:
         raise Http404
     try:
-        result = WhatsAppWebClient().get_qr(session_id=account.id)
+        result = gateway_client_for_account(
+            account, client_class=WhatsAppWebClient
+        ).get_qr(session_id=account.id)
     except WhatsAppWebGatewayError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=503)
     return JsonResponse(

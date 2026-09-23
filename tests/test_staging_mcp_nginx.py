@@ -53,7 +53,7 @@ def test_only_operations_mcp_protocol_paths_bypass_outer_basic_auth():
     for path in MCP_PUBLIC_PATHS:
         body = _exact_location_body(config, path)
         assert "auth_basic off;" in body
-        assert "proxy_pass http://web:8000;" in body
+        assert "proxy_pass $django_web;" in body
         assert "proxy_set_header Host staging.shvya-ai.com;" in body
         assert "proxy_set_header X-Forwarded-Proto https;" in body
 

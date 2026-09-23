@@ -11,7 +11,10 @@ import logging
 
 from django.db import transaction
 
-from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+from apps.ai_engagement.services.ai_provider import (
+    AIProviderTransientError,
+    provider_retry_countdown,
+)
 from apps.ai_engagement.services.ai_permissions import AIPermissionError, AIPermissionService
 from apps.ai_engagement.services.context import AIContextBuilder
 from apps.ai_engagement.services.crm_executor import CRMActionExecutionError, CRMActionExecutor
@@ -225,7 +228,15 @@ def execute_hosted_ai_engagement(*, task, job):
     except EngagementError as exc:
         provider_error = exc.__cause__
         if isinstance(provider_error, AIProviderTransientError):
-            raise task.retry(exc=provider_error, countdown=60)
+            raise task.retry(
+                exc=provider_error,
+                countdown=provider_retry_countdown(
+                    provider_error,
+                    identifier=lead.id,
+                    retries=task.request.retries,
+                    default=30,
+                ),
+            )
         logger.error(
             "Hosted AI engagement permanently failed for lead %s; using deterministic fail-soft",
             lead.id,
@@ -236,7 +247,15 @@ def execute_hosted_ai_engagement(*, task, job):
             latest_inbound=source,
         )
     except AIProviderTransientError as exc:
-        raise task.retry(exc=exc, countdown=60)
+        raise task.retry(
+            exc=exc,
+            countdown=provider_retry_countdown(
+                exc,
+                identifier=lead.id,
+                retries=task.request.retries,
+                default=30,
+            ),
+        )
     except Exception as exc:
         logger.exception("Unexpected Hosted AI generation failure for lead %s", lead.id)
         raise task.retry(exc=exc)

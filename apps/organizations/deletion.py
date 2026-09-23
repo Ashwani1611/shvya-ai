@@ -30,15 +30,20 @@ def delete_organization(organization):
                             "name": value.name,
                         }
                     )
-    sessions = list(
-        organization.whatsapp_accounts.filter(connection_type="hosted").values_list(
-            "id", flat=True
+    sessions = []
+    for account in organization.whatsapp_accounts.filter(connection_type="hosted"):
+        from apps.channels.hosted_gateway_routing import gateway_shard_for_account
+
+        sessions.append(
+            {
+                "id": str(account.pk),
+                "shard": gateway_shard_for_account(account),
+            }
         )
-    )
     if files or sessions:
         OrganizationDeletionCleanup.objects.create(
             organization_id=organization.pk,
             files=files,
-            hosted_session_ids=[str(pk) for pk in sessions],
+            hosted_session_ids=sessions,
         )
     return collector.delete()

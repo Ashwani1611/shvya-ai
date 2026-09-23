@@ -3,7 +3,7 @@
 import logging
 
 from celery import shared_task
-from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+from apps.ai_engagement.services.ai_provider import AIProviderTransientError, provider_retry_countdown
 from apps.ai_engagement.services.qualification import (
     QualificationError,
     QualificationService,
@@ -165,7 +165,12 @@ def generate_lead_qualification(
 
         raise self.retry(
             exc=exc,
-            countdown=60,
+            countdown=provider_retry_countdown(
+                exc,
+                identifier=lead_id,
+                retries=self.request.retries,
+                default=30,
+            ),
         )
 
     except QualificationError as exc:

@@ -1,0 +1,37 @@
+{
+  "smoke": {
+    "organizations": 1,
+    "users_per_organization": 2,
+    "leads_per_organization": 100,
+    "concurrency": 4,
+    "iterations": 40
+  },
+  "A": {
+    "organizations": 100,
+    "users_per_organization": 5,
+    "leads_per_organization": 1000,
+    "concurrency": 25,
+    "iterations": 500
+  },
+  "B": {
+    "organizations": 500,
+    "users_per_organization": 10,
+    "leads_per_organization": 5000,
+    "concurrency": 75,
+    "iterations": 2000
+  },
+  "C": {
+    "organizations": 1000,
+    "users_per_organization": 20,
+    "leads_per_organization": 10000,
+    "concurrency": 150,
+    "iterations": 5000
+  },
+  "D": {
+    "organizations": 10,
+    "users_per_organization": 200,
+    "leads_per_organization": 200000,
+    "concurrency": 250,
+    "iterations": 10000
+  }
+}

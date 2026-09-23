@@ -40,6 +40,7 @@ function context(names, overrides = {}) {
     callback: async () => true,
     resolveLidPhoneMap: async () => new Map(),
     sessions: new Map(), clearTimeout() {},
+    gatewayMetrics: { historySyncFailures: 0 },
     setTimeout: () => ({ unref() {} }),
     ...overrides,
   };
@@ -66,6 +67,15 @@ test('production patch chain applies and sync orders before truncating the chat 
   assert.equal(Math.min(...visited.map(row => row[0])), 5);
   assert.equal(visited.filter(row => row[1] === 100).length, 100);
   assert.ok(identities.every(ids => ids.length <= 50));
+});
+
+test('callback retries retain gateway lease fencing metadata and failure metrics', () => {
+  const callbackSource = functionSource('callback');
+  assert.match(callbackSource, /gatewayShard: GATEWAY_SHARD/);
+  assert.match(callbackSource, /gatewayOwner: INSTANCE_ID/);
+  assert.match(callbackSource, /leaseExpiresAt:/);
+  assert.match(callbackSource, /attempt <= 3/);
+  assert.match(callbackSource, /gatewayMetrics\.callbacksFailed \+= 1/);
 });
 
 test('failed chat does not stop other imports or falsely complete history', async () => {

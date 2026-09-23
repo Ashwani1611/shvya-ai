@@ -129,7 +129,7 @@ jobs:
             docker compose config --quiet
 
             echo "Building updated Python application containers..."
-            docker compose build web ws worker ai_realtime_worker hosted_ai_worker beat
+            docker compose build web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat
 
             if [ "$GATEWAY_CHANGED" -eq 1 ]; then
               echo "WhatsApp Web gateway changed; rebuilding its image..."
@@ -142,8 +142,8 @@ jobs:
             docker compose run --rm --no-deps --user 0 web sh -c \
               'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
 
-            echo "Ensuring database and Redis are healthy..."
-            docker compose up -d --wait db redis
+            echo "Ensuring database, Redis, and PgBouncer are healthy..."
+            docker compose up -d --wait db redis pgbouncer
 
             APPLICATION_MAINTENANCE=0
             report_maintenance_failure() {
@@ -166,8 +166,8 @@ jobs:
               echo "Migration files changed; pausing HTTP/WebSocket traffic and schedulers..."
               docker compose stop --timeout 60 beat web ws
               echo "Draining application workers with a bounded graceful shutdown..."
-              docker compose stop --timeout 300 worker ai_realtime_worker hosted_ai_worker
-              if [ -n "$(docker compose ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker beat)" ]; then
+              docker compose stop --timeout 300 worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker
+              if [ -n "$(docker compose ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat)" ]; then
                 echo "Refusing migrations while an old application service is still running."
                 exit 1
               fi
@@ -182,28 +182,16 @@ jobs:
             docker compose run --rm --no-deps web python manage.py collectstatic --noinput
 
             echo "Updating application services..."
-            docker compose up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker beat
+            docker compose up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat
 
             echo "Waiting for Django/Gunicorn dependency readiness..."
-            ready=0
-            for attempt in $(seq 1 30); do
-              if curl --fail --silent --show-error --max-time 2 \
-                -H "Host: dashboard.shvya-ai.com" \
-                -H "X-Forwarded-Proto: https" \
-                http://127.0.0.1:8000/health/ready/ >/dev/null; then
-                ready=1
-                echo "Django dependency readiness check passed."
-                break
-              fi
-              echo "Waiting for Django readiness... attempt ${attempt}/30"
-              sleep 1
-            done
-            if [ "$ready" -ne 1 ]; then
+            if ! docker compose up -d --wait --no-deps web; then
               echo "Web service did not become ready."
               docker compose ps
               docker compose logs --tail=150 web
               exit 1
             fi
+            echo "Django dependency readiness check passed."
             APPLICATION_MAINTENANCE=0
 
             echo "Verifying realtime AI workers are running..."
@@ -221,7 +209,7 @@ jobs:
             fi
 
             echo "Verifying Python application services run as the non-root app user..."
-            for service in web ws worker ai_realtime_worker hosted_ai_worker beat; do
+            for service in web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat; do
               uid="$(docker compose exec -T "$service" id -u)"
               gid="$(docker compose exec -T "$service" id -g)"
               if [ "$uid" != "10001" ] || [ "$gid" != "10001" ]; then

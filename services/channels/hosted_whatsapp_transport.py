@@ -114,7 +114,11 @@ def send_hosted_message(*, message, defer_on_pause=True):
 
     provider_confirmed = False
     try:
-        response = WhatsAppWebClient().send_message(
+        from apps.channels.hosted_gateway_routing import gateway_client_for_account
+
+        response = gateway_client_for_account(
+            account, client_class=WhatsAppWebClient
+        ).send_message(
             session_id=account.id,
             to_number=message.to_number,
             body=message.body,

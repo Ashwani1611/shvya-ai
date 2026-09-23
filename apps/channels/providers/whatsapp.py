@@ -15,6 +15,18 @@ GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 REQUEST_TIMEOUT_SECONDS = 15
 
 
+def _retry_after_seconds(response):
+    """Return a bounded Retry-After delay when the provider supplies one."""
+    raw = str((getattr(response, "headers", {}) or {}).get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(value, 900))
+
+
 class WhatsAppAPIError(Exception):
     """Raised when Meta's API returns a non-2xx response."""
 
@@ -23,10 +35,12 @@ class WhatsAppAPIError(Exception):
         message,
         status_code=None,
         response_body=None,
+        retry_after=None,
     ):
         super().__init__(message)
         self.status_code = status_code
         self.response_body = response_body
+        self.retry_after = retry_after
 
 
 class WhatsAppClient:
@@ -106,6 +120,7 @@ class WhatsAppClient:
                 ),
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
 
         try:
@@ -116,6 +131,7 @@ class WhatsAppClient:
                 "WhatsApp API returned invalid JSON.",
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             ) from exc
 
     # ============================================================
@@ -256,6 +272,7 @@ class WhatsAppClient:
                 ),
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
 
         try:
@@ -266,6 +283,7 @@ class WhatsAppClient:
                 "WhatsApp media upload returned invalid JSON.",
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             ) from exc
 
         media_id = data.get("id")
@@ -278,6 +296,7 @@ class WhatsAppClient:
                 ),
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
 
         return data

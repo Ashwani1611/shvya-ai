@@ -31,8 +31,19 @@ sending a WhatsApp message still goes through the existing HTTP
 queuing exactly as before). The socket only pushes updates back.
 """
 
+import asyncio
+from contextlib import suppress
+
+from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
+
+from apps.core.observability import increment
+from apps.core.websocket_metrics import remove as remove_websocket_metric
+from apps.core.websocket_metrics import touch as touch_websocket_metric
+
+
+HEARTBEAT_INTERVAL_SECONDS = 25
 
 
 class WhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
@@ -83,8 +94,21 @@ class WhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
             )
 
         await self.accept()
+        await sync_to_async(touch_websocket_metric, thread_sensitive=False)(
+            "whatsapp", self.channel_name, self.organization_id
+        )
+        await sync_to_async(increment, thread_sensitive=False)(
+            "websocket.connections", labels={"kind": "whatsapp"}
+        )
+        self.heartbeat_task = asyncio.create_task(self._heartbeat_loop())
 
     async def disconnect(self, close_code):
+
+        heartbeat_task = getattr(self, "heartbeat_task", None)
+        if heartbeat_task:
+            heartbeat_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await heartbeat_task
 
         if hasattr(self, "inbox_group"):
 
@@ -100,10 +124,29 @@ class WhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
                 self.channel_name,
             )
 
+        if hasattr(self, "organization_id"):
+            await sync_to_async(remove_websocket_metric, thread_sensitive=False)(
+                "whatsapp", self.channel_name, self.organization_id
+            )
+
     async def receive_json(self, content, **kwargs):
         # Intentionally a no-op -- see module docstring. Browser
         # doesn't send app-level messages over this socket today.
         pass
+
+    async def _heartbeat_loop(self):
+        try:
+            while True:
+                await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
+                if hasattr(self, "channel_name") and hasattr(self, "organization_id"):
+                    await sync_to_async(
+                        touch_websocket_metric, thread_sensitive=False
+                    )("whatsapp", self.channel_name, self.organization_id)
+                await self.send_json({"kind": "heartbeat"})
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            return
 
     # ========================================================
     # SERVER -> CLIENT EVENT HANDLERS

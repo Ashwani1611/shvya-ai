@@ -250,10 +250,17 @@ META_INSTAGRAM_REQUIRE_DEDICATED_CREDENTIALS = True
 # for deployments that later introduce PgBouncer.
 DATABASES["default"]["CONN_MAX_AGE"] = config(
     "DB_CONN_MAX_AGE",
-    default=60,
+    # Transaction-pooled PgBouncer should use 0. Direct PostgreSQL deployments
+    # may explicitly choose a small positive lifetime for WSGI workers.
+    default=0 if config("DB_USE_PGBOUNCER", default=True, cast=bool) else 60,
     cast=int,
 )
 DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+DB_USE_PGBOUNCER = config("DB_USE_PGBOUNCER", default=True, cast=bool)
+if DB_USE_PGBOUNCER:
+    # QuerySet.iterator() server-side cursors can outlive one transaction and
+    # are therefore incompatible with PgBouncer transaction pooling.
+    DATABASES["default"]["DISABLE_SERVER_SIDE_CURSORS"] = True
 
 MIDDLEWARE = [
     *MIDDLEWARE,

@@ -249,6 +249,34 @@ def generate_ai_engagement_response(
 
     Celery payload contains Lead ID only.
     """
+    from django.conf import settings
+
+    from apps.core.fairness import admit_ai_start
+    from apps.crm.models import Lead
+
+    organization_id = Lead.objects.filter(pk=lead_id).values_list(
+        "organization_id", flat=True
+    ).first()
+    if organization_id:
+        allowed, retry_after, scope = admit_ai_start(
+            organization_id=organization_id,
+            organization_limit=settings.AI_ORGANIZATION_STARTS_PER_MINUTE,
+            global_limit=settings.AI_GLOBAL_STARTS_PER_MINUTE,
+        )
+        if not allowed:
+            # Re-publish rather than consuming the task retry budget. The
+            # canonical execution/idempotency claim has not started yet.
+            self.apply_async(
+                args=[str(lead_id)],
+                countdown=int(retry_after)
+                + (sum(ord(character) for character in str(lead_id)) % 5),
+            )
+            return {
+                "status": "deferred",
+                "reason": f"{scope}_fairness_limit",
+                "lead_id": str(lead_id),
+            }
+
     return _execute_ai_engagement_response(
         task=self,
         lead_id=lead_id,
@@ -258,4 +286,3 @@ def generate_ai_engagement_response(
 # ============================================================
 # KNOWLEDGE INGESTION — UPLOADED DOCUMENT
 # ============================================================
-

@@ -118,12 +118,12 @@ def delete_hosted_account(*, account):
     gateway_error = ""
     try:
         from apps.channels.providers.whatsapp_web import (
-            WhatsAppWebClient,
             WhatsAppWebGatewayError,
         )
+        from apps.channels.hosted_gateway_routing import gateway_client_for_account
 
         try:
-            WhatsAppWebClient().logout(session_id=account.id)
+            gateway_client_for_account(account).logout(session_id=account.id)
         except WhatsAppWebGatewayError as exc:
             gateway_error = str(exc)
     except Exception as exc:

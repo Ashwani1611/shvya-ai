@@ -6,6 +6,7 @@ from django.views.generic import RedirectView, TemplateView
 from apps.channels.instagram_webhook import instagram_webhook_view
 from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.core.health import live as health_live, ready as health_ready
+from apps.core.runtime_status import runtime_metrics
 from apps.integrations.views.meta_leads import meta_lead_webhook
 from apps.superadmin.views import admin_global_search
 
@@ -17,6 +18,7 @@ urlpatterns = [
     path("", include("apps.integrations.urls.diagnostics")),
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
+    path("health/runtime-metrics/", runtime_metrics, name="runtime-metrics"),
     path("sales/", include("apps.sales.public_urls")),
     path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),

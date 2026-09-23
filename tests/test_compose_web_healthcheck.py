@@ -13,6 +13,13 @@ def _web_service_block(compose_path: Path) -> str:
     return content[start:end]
 
 
+def _pgbouncer_service_block(compose_path: Path) -> str:
+    content = compose_path.read_text(encoding="utf-8")
+    start = content.index("\n  pgbouncer:\n")
+    end = content.index("\n  redis:\n", start)
+    return content[start:end]
+
+
 @pytest.mark.parametrize(
     ("filename", "expected_host"),
     [
@@ -34,3 +41,10 @@ def test_production_web_healthcheck_does_not_accept_arbitrary_4xx():
 
     assert "100 <= r.status < 500" not in block
     assert "c.request('GET','/')" not in block
+
+
+@pytest.mark.parametrize("filename", ["docker-compose.yml", "docker-compose.staging.yml"])
+def test_pgbouncer_uses_postgresql_scram_authentication(filename):
+    block = _pgbouncer_service_block(ROOT / filename)
+
+    assert "AUTH_TYPE: scram-sha-256" in block

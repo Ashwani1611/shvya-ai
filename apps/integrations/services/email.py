@@ -8,6 +8,7 @@ import ssl
 from dataclasses import dataclass
 from email.utils import formataddr
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.mail import EmailMultiAlternatives
 from django.core.mail.backends.smtp import EmailBackend
@@ -287,6 +288,20 @@ def send_organization_email(
             "At least one recipient email address is required."
         )
 
+    from apps.core.fairness import admit_provider_start
+
+    allowed, retry_after, _scope = admit_provider_start(
+        provider="smtp",
+        account_id=organization.pk,
+        account_limit=settings.EMAIL_ORGANIZATION_SENDS_PER_MINUTE,
+        global_limit=settings.EMAIL_GLOBAL_SENDS_PER_MINUTE,
+    )
+    if not allowed:
+        raise EmailConfigurationError(
+            "The connected email provider is temporarily busy. "
+            f"Retry in about {retry_after} seconds."
+        )
+
     target = assert_public_smtp_target(
         configuration.smtp_host,
         configuration.smtp_port,
@@ -328,6 +343,20 @@ def send_organization_email(
 
     try:
         return message.send(fail_silently=False)
+    except smtplib.SMTPResponseException as exc:
+        if 400 <= int(exc.smtp_code or 0) < 500:
+            from apps.core.observability import increment
+
+            increment("provider.throttled", labels={"provider": "smtp"})
+        logger.exception(
+            "Configured email delivery was rejected for organization %s.",
+            organization.pk,
+        )
+        raise EmailConfigurationError(
+            "The email provider temporarily rejected delivery."
+            if 400 <= int(exc.smtp_code or 0) < 500
+            else "The email provider rejected delivery."
+        ) from exc
     except Exception as exc:
         logger.exception(
             "Configured email delivery failed for organization %s.",

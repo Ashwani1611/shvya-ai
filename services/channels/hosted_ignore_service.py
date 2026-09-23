@@ -107,10 +107,12 @@ def sync_existing_hosted_chats(*, organization):
             "No connected Hosted Account is available for this organization."
         )
 
-    client = WhatsAppWebClient()
     staged_rows = []
 
     for account in accounts:
+        from apps.channels.hosted_gateway_routing import gateway_client_for_account
+
+        client = gateway_client_for_account(account, client_class=WhatsAppWebClient)
         try:
             payload = client.get_existing_chats(session_id=account.id)
         except WhatsAppWebGatewayError as exc:

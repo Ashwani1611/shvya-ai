@@ -26,56 +26,72 @@ function replaceOnce(before, after, label) {
   console.log(`Applied Hosted lease invariant patch: ${label}`);
 }
 
-replaceOnce(
-  lines(
-    'async function renewLocks() {',
-    '  if (!redis || shuttingDown) return;',
-    '  for (const sessionId of sessions.keys()) {',
-    '    const key = lockKey(sessionId);',
-    '    ' + 'const current = await redis.get(key);',
-    '    if (current === INSTANCE_ID) await redis.expire(key, 90);',
-    '  }',
-    '}',
-  ),
-  lines(
-    'async function renewLocks() {',
-    '  if (!redis || shuttingDown) return;',
-    '  for (const [sessionId, state] of Array.from(sessions.entries())) {',
-    "    // Initialization failures intentionally release their lease and are",
-    "    // recreated by the persisted-session retry loop. Do not reacquire a",
-    "    // lease for a failed client that should be torn down/retried.",
-    "    if (!state || state.status === 'failed') continue;",
-    '    try {',
-    '      // acquireLock() renews our lease when present and safely recreates it',
-    '      // with SET NX when it disappeared. A foreign owner is never stolen.',
-    '      const owned = await acquireLock(sessionId);',
-    '      if (owned) continue;',
-    '',
-    '      // An in-memory browser without Redis ownership is unsafe: another',
-    '      // gateway may now own the same LocalAuth profile. Tear this client',
-    '      // down and let restoreSessions() retry after the foreign lease ends.',
-    '      if (sessions.get(sessionId) !== state) continue;',
-    "      console.error('Hosted session ' + sessionId + ' lost Redis lease; tearing down local client to prevent dual ownership.');",
-    '      sessions.delete(sessionId);',
-    "      await destroyClientBounded(sessionId, state, 'lost Redis lease');",
-    '    } catch (error) {',
-    "      // A transient Redis error is not proof that ownership was lost. Keep",
-    "      // the local client and retry on the next renewal tick.",
-    "      console.warn('Could not renew Hosted session lease ' + sessionId + ':', error.message);",
-    '    }',
-    '  }',
-    '}',
-  ),
-  'reacquire missing active-session leases and fence foreign ownership',
-);
+const hasTokenFencedRenewal = [
+  "redis.call('get', KEYS[1]) == ARGV[1]",
+  "await fenceSession(sessionId, state, 'lease_lost')",
+  'state.leaseRenewFailures >= 2',
+  'await Promise.allSettled(heartbeatCallbacks)',
+].every((marker) => source.includes(marker));
+
+if (hasTokenFencedRenewal) {
+  console.log('Hosted lease invariant already enforced by token-fenced renewal.');
+} else {
+  replaceOnce(
+    lines(
+      'async function renewLocks() {',
+      '  if (!redis || shuttingDown) return;',
+      '  for (const sessionId of sessions.keys()) {',
+      '    const key = lockKey(sessionId);',
+      '    ' + 'const current = await redis.get(key);',
+      '    if (current === INSTANCE_ID) await redis.expire(key, 90);',
+      '  }',
+      '}',
+    ),
+    lines(
+      'async function renewLocks() {',
+      '  if (!redis || shuttingDown) return;',
+      '  for (const [sessionId, state] of Array.from(sessions.entries())) {',
+      "    // Initialization failures intentionally release their lease and are",
+      "    // recreated by the persisted-session retry loop. Do not reacquire a",
+      "    // lease for a failed client that should be torn down/retried.",
+      "    if (!state || state.status === 'failed') continue;",
+      '    try {',
+      '      // acquireLock() renews our lease when present and safely recreates it',
+      '      // with SET NX when it disappeared. A foreign owner is never stolen.',
+      '      const owned = await acquireLock(sessionId);',
+      '      if (owned) continue;',
+      '',
+      '      // An in-memory browser without Redis ownership is unsafe: another',
+      '      // gateway may now own the same LocalAuth profile. Tear this client',
+      '      // down and let restoreSessions() retry after the foreign lease ends.',
+      '      if (sessions.get(sessionId) !== state) continue;',
+      "      console.error('Hosted session ' + sessionId + ' lost Redis lease; tearing down local client to prevent dual ownership.');",
+      '      sessions.delete(sessionId);',
+      "      await destroyClientBounded(sessionId, state, 'lost Redis lease');",
+      '    } catch (error) {',
+      "      // A transient Redis error is not proof that ownership was lost. Keep",
+      "      // the local client and retry on the next renewal tick.",
+      "      console.warn('Could not renew Hosted session lease ' + sessionId + ':', error.message);",
+      '    }',
+      '  }',
+      '}',
+    ),
+    'reacquire missing active-session leases and fence foreign ownership',
+  );
+}
 
 fs.writeFileSync(target, source);
 
-for (const marker of [
+const verificationMarkers = hasTokenFencedRenewal ? [
+  "await fenceSession(sessionId, state, 'lease_lost')",
+  'state.leaseRenewFailures >= 2',
+  'await Promise.allSettled(heartbeatCallbacks)',
+] : [
   'const owned = await acquireLock(sessionId)',
   'lost Redis lease; tearing down local client to prevent dual ownership.',
   "state.status === 'failed'",
-]) {
+];
+for (const marker of verificationMarkers) {
   if (!source.includes(marker)) {
     throw new Error(`Hosted lease invariant verification failed: ${marker}`);
   }

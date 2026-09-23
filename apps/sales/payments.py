@@ -8,6 +8,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import urljoin
 
 import requests
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.urls import reverse
@@ -24,6 +25,46 @@ from apps.sales.models_lifecycle import (
 
 class SalesGatewayError(RuntimeError):
     pass
+
+
+def _admit_payment_gateway(gateway):
+    from apps.core.fairness import admit_provider_start
+
+    allowed, retry_after, _scope = admit_provider_start(
+        provider=f"payment_{gateway.provider}",
+        account_id=gateway.pk,
+        account_limit=settings.PAYMENT_GATEWAY_REQUESTS_PER_MINUTE,
+        global_limit=settings.PAYMENT_PROVIDER_REQUESTS_PER_MINUTE,
+    )
+    if not allowed:
+        raise SalesGatewayError(
+            "Payment provider is temporarily busy. "
+            f"Retry in about {retry_after} seconds."
+        )
+
+
+def _payment_retry_after(response):
+    raw = str((getattr(response, "headers", {}) or {}).get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        return max(1, min(int(float(raw)), 900))
+    except (TypeError, ValueError):
+        return None
+
+
+def _payment_http_error(response, message, provider):
+    if int(response.status_code or 0) == 429:
+        from apps.core.observability import increment
+
+        increment(
+            "provider.throttled",
+            labels={"provider": f"payment_{provider}"},
+        )
+        retry_after = _payment_retry_after(response)
+        if retry_after:
+            message = f"{message} Retry in about {retry_after} seconds."
+    return SalesGatewayError(message)
 
 
 def _provider_amount(value):
@@ -77,6 +118,7 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
         raise SalesGatewayError("Payment gateway secret is missing.")
 
     try:
+        _admit_payment_gateway(gateway)
         if gateway.provider == SalesPaymentGateway.Provider.RAZORPAY:
             if not gateway.public_key:
                 raise SalesGatewayError("Razorpay Key ID is missing.")
@@ -101,8 +143,10 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("description") or "Razorpay rejected the payment link.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("description") or "Razorpay rejected the payment link."),
+                    gateway.provider,
                 )
             checkout.provider_reference = str(data.get("id") or "")
             checkout.checkout_url = str(data.get("short_url") or "")
@@ -134,7 +178,11 @@ def create_payment_checkout(*, invoice, gateway, actor=None, base_url):
             data = response.json() if response.content else {}
             if response.status_code >= 400:
                 message = data.get("error", {}).get("message") if isinstance(data, dict) else ""
-                raise SalesGatewayError(message or "Stripe rejected the checkout request.")
+                raise _payment_http_error(
+                    response,
+                    message or "Stripe rejected the checkout request.",
+                    gateway.provider,
+                )
             checkout.provider_reference = str(data.get("id") or "")
             checkout.checkout_url = str(data.get("url") or "")
         else:
@@ -387,6 +435,7 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
         raise ValidationError("Refund exceeds the remaining amount of this payment.")
 
     try:
+        _admit_payment_gateway(gateway)
         if gateway.provider == SalesPaymentGateway.Provider.RAZORPAY:
             response = requests.post(
                 f"https://api.razorpay.com/v1/payments/{payment.external_payment_id}/refund",
@@ -396,8 +445,10 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("description") or "Razorpay refund failed.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("description") or "Razorpay refund failed."),
+                    gateway.provider,
                 )
             refund_id = str(data.get("id") or "")
         elif gateway.provider == SalesPaymentGateway.Provider.STRIPE:
@@ -412,8 +463,10 @@ def refund_gateway_payment(*, payment, amount, actor=None, note=""):
             )
             data = response.json() if response.content else {}
             if response.status_code >= 400:
-                raise SalesGatewayError(
-                    str(data.get("error", {}).get("message") or "Stripe refund failed.")
+                raise _payment_http_error(
+                    response,
+                    str(data.get("error", {}).get("message") or "Stripe refund failed."),
+                    gateway.provider,
                 )
             refund_id = str(data.get("id") or "")
         else:

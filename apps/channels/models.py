@@ -200,9 +200,39 @@ class WhatsAppAccount(models.Model):
         auto_now=True,
     )
 
+    # Durable control-plane routing for browser-backed Hosted WhatsApp
+    # sessions. API/Coexistence accounts leave these fields empty.
+    hosted_gateway_shard = models.CharField(
+        max_length=64,
+        blank=True,
+        db_index=True,
+    )
+    hosted_lease_owner = models.CharField(
+        max_length=128,
+        blank=True,
+    )
+    hosted_lease_expires_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    hosted_gateway_heartbeat_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+    hosted_session_state = models.CharField(
+        max_length=32,
+        blank=True,
+    )
+
     class Meta:
         ordering = [
             "-connected_at",
+        ]
+        indexes = [
+            models.Index(
+                fields=["connection_type", "hosted_gateway_shard", "status"],
+                name="wa_acct_hosted_shard_idx",
+            ),
         ]
 
     def __str__(self):

@@ -289,9 +289,13 @@ class LeadQualificationTaskTests(TestCase):
             mocked_retry.call_args
         )
 
-        self.assertEqual(
+        self.assertGreaterEqual(
             retry_call.kwargs["countdown"],
-            60,
+            30,
+        )
+        self.assertLessEqual(
+            retry_call.kwargs["countdown"],
+            36,
         )
 
     # ========================================================

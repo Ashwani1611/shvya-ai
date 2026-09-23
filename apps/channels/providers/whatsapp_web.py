@@ -11,7 +11,7 @@ from urllib.parse import quote
 import requests
 from decouple import config
 
-from apps.channels.providers.whatsapp import WhatsAppAPIError
+from apps.channels.providers.whatsapp import WhatsAppAPIError, _retry_after_seconds
 
 
 REQUEST_TIMEOUT_SECONDS = 20
@@ -22,11 +22,17 @@ class WhatsAppWebGatewayError(WhatsAppAPIError):
 
 
 class WhatsAppWebClient:
-    def __init__(self):
-        self.base_url = config(
-            "WHATSAPP_WEB_GATEWAY_URL",
-            default="http://whatsapp-web-gateway:3000",
-        ).rstrip("/")
+    def __init__(self, *, shard=None):
+        from apps.channels.hosted_gateway_routing import configured_gateways
+
+        gateways = configured_gateways()
+        self.shard = str(shard or "primary")
+        if self.shard not in gateways:
+            raise WhatsAppWebGatewayError(
+                f"Hosted WhatsApp gateway shard {self.shard!r} is not configured.",
+                status_code=503,
+            )
+        self.base_url = gateways[self.shard]
         self.token = config("WHATSAPP_WEB_GATEWAY_TOKEN", default="")
 
     def _headers(self):
@@ -60,6 +66,7 @@ class WhatsAppWebClient:
                 f"WhatsApp Web gateway returned {response.status_code}: {detail}",
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
 
         try:

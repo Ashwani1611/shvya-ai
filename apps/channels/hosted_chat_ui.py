@@ -22,6 +22,7 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
 from apps.organizations.features import is_hosted_account_enabled
+from apps.channels.hosted_gateway_routing import gateway_client_for_account
 from services.channels.hosted_chat_service import (
     build_hosted_chat_snapshot,
     handle_hosted_gateway_event,
@@ -186,7 +187,9 @@ def _repair_live_status(account):
     if account.status == WhatsAppAccount.Status.CONNECTED:
         return
     try:
-        result = WhatsAppWebClient().get_session(session_id=account.id)
+        result = gateway_client_for_account(
+            account, client_class=WhatsAppWebClient
+        ).get_session(session_id=account.id)
     except WhatsAppWebGatewayError:
         return
 
@@ -331,7 +334,9 @@ def hosted_session_chat_media_view(request, account_id, message_id):
                 status=409,
             )
         try:
-            result = WhatsAppWebClient().download_message_media(
+            result = gateway_client_for_account(
+                account, client_class=WhatsAppWebClient
+            ).download_message_media(
                 session_id=account.id,
                 message_id=external_id[len("wweb:"):],
             )

@@ -25,6 +25,33 @@ services:
       - "5432"
 
 
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.25.2-p0
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      AUTH_TYPE: scram-sha-256
+      POOL_MODE: transaction
+      MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-500}
+      DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-40}
+      RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-10}
+      MAX_DB_CONNECTIONS: ${PGBOUNCER_MAX_DB_CONNECTIONS:-60}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 5432 -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+
   redis:
     image: redis:8-alpine
     restart: unless-stopped
@@ -47,12 +74,18 @@ services:
   web:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${WEB_REPLICAS:-1}
+    scale: ${WEB_REPLICAS:-1}
 
     env_file:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     volumes:
@@ -60,7 +93,7 @@ services:
       - media_volume:/app/media
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -75,7 +108,7 @@ services:
       - --bind
       - 0.0.0.0:8000
       - --workers
-      - "3"
+      - ${GUNICORN_WORKERS:-3}
 
     # Require the real dependency readiness endpoint to succeed. This prevents
     # redirects, auth errors, missing routes, and other 4xx responses from
@@ -91,9 +124,6 @@ services:
       retries: 12
       start_period: 10s
 
-    ports:
-      - "127.0.0.1:8000:8000"
-
     expose:
       - "8000"
 
@@ -101,6 +131,9 @@ services:
   ws:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${ASGI_REPLICAS:-1}
+    scale: ${ASGI_REPLICAS:-1}
 
     # Separate from `web` on purpose: gunicorn (WSGI) cannot serve
     # WebSocket connections, so live chat updates need their own
@@ -110,11 +143,14 @@ services:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -135,19 +171,25 @@ services:
   worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_GENERAL_REPLICAS:-1}
+    scale: ${CELERY_GENERAL_REPLICAS:-1}
 
     env_file:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     volumes:
       - media_volume:/app/media
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -160,11 +202,18 @@ services:
       - worker
       - -l
       - info
+      - -Q
+      - celery
+      - --concurrency=${CELERY_GENERAL_CONCURRENCY:-4}
+      - --prefetch-multiplier=1
 
 
   ai_realtime_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_AI_REALTIME_REPLICAS:-1}
+    scale: ${CELERY_AI_REALTIME_REPLICAS:-1}
 
     # Customer-facing WhatsApp API AI replies get their own Celery lane so
     # summaries, knowledge ingestion, follow-ups, and other background tasks
@@ -173,14 +222,17 @@ services:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     volumes:
       - media_volume:/app/media
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -195,13 +247,16 @@ services:
       - info
       - -Q
       - ai_realtime
-      - --concurrency=2
+      - --concurrency=${CELERY_AI_REALTIME_CONCURRENCY:-2}
       - --prefetch-multiplier=1
 
 
   hosted_ai_worker:
     build: .
     restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_HOSTED_AI_REPLICAS:-1}
+    scale: ${CELERY_HOSTED_AI_REPLICAS:-1}
 
     # Hosted Account AI keeps its durable delayed DB queue, but due-time wakes
     # and actual AI processing run independently of the general worker so a
@@ -210,14 +265,17 @@ services:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     volumes:
       - media_volume:/app/media
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -232,8 +290,75 @@ services:
       - info
       - -Q
       - hosted_ai
-      - --concurrency=1
+      - --concurrency=${CELERY_HOSTED_AI_CONCURRENCY:-1}
       - --prefetch-multiplier=1
+
+
+  campaign_worker:
+    build: .
+    restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_CAMPAIGN_REPLICAS:-1}
+    scale: ${CELERY_CAMPAIGN_REPLICAS:-1}
+    env_file: [.env]
+    environment:
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "campaigns", "--concurrency=${CELERY_CAMPAIGN_CONCURRENCY:-2}", "--prefetch-multiplier=1"]
+
+
+  ingestion_worker:
+    build: .
+    restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_INGESTION_REPLICAS:-1}
+    scale: ${CELERY_INGESTION_REPLICAS:-1}
+    env_file: [.env]
+    environment:
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - media_volume:/app/media
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "ingestion", "--concurrency=${CELERY_INGESTION_CONCURRENCY:-2}", "--prefetch-multiplier=1"]
+
+
+  automation_worker:
+    build: .
+    restart: unless-stopped
+    deploy:
+      replicas: ${CELERY_AUTOMATION_REPLICAS:-1}
+    scale: ${CELERY_AUTOMATION_REPLICAS:-1}
+    env_file: [.env]
+    environment:
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      pgbouncer:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "automation", "--concurrency=${CELERY_AUTOMATION_CONCURRENCY:-2}", "--prefetch-multiplier=1"]
 
 
   beat:
@@ -244,11 +369,14 @@ services:
       - .env
 
     environment:
-      DB_HOST: db
+      DB_HOST: pgbouncer
+      DB_PORT: "5432"
+      DB_USE_PGBOUNCER: "True"
+      DB_CONN_MAX_AGE: "0"
       REDIS_URL: redis://redis:6379/0
 
     depends_on:
-      db:
+      pgbouncer:
         condition: service_healthy
 
       redis:
@@ -272,7 +400,10 @@ services:
       - .env
 
     environment:
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://redis:6379/4
+      WHATSAPP_WEB_GATEWAY_SHARD: ${WHATSAPP_WEB_GATEWAY_SHARD:-primary}
+      WHATSAPP_WEB_GATEWAY_INSTANCE_ID: ${WHATSAPP_WEB_GATEWAY_INSTANCE_ID:-}
+      WHATSAPP_WEB_MAX_SESSIONS: ${WHATSAPP_WEB_MAX_SESSIONS:-50}
       WHATSAPP_WEB_SESSION_PATH: /data/wwebjs_auth
       SHVYA_HOSTED_CALLBACK_URL: http://web:8000/dashboard/whatsapp/connect/hosted/events/
 

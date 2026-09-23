@@ -1,25 +1,114 @@
 import logging
 from datetime import timedelta
+import uuid
 
 from celery import shared_task
-from django.db import connection
+from django.conf import settings
+from django.core.cache import cache
+from django.db.models import F, Window
+from django.db.models.functions import RowNumber
 from django.utils import timezone
+import redis
 
 logger = logging.getLogger(__name__)
 
 
 @shared_task
 def dispatch_smart_triggers():
-    # PostgreSQL session lock serializes rule order across Beat deliveries.
-    with connection.cursor() as cursor:
-        cursor.execute("SELECT pg_try_advisory_lock(%s)", [831947201])
-        if not cursor.fetchone()[0]:
+    # A PostgreSQL session advisory lock is unsafe behind transaction-pooled
+    # PgBouncer because lock/unlock can use different server connections.
+    # Redis provides a short, token-fenced dispatcher lease across workers.
+    client = redis.Redis.from_url(settings.CACHE_REDIS_URL)
+    key = "shvya:automation:trigger-dispatch"
+    owner = str(uuid.uuid4())
+    try:
+        if not client.set(key, owner, nx=True, ex=600):
             return
+    except Exception:
+        logger.exception("Smart Trigger dispatch lease is unavailable")
+        return
     try:
         _dispatch()
     finally:
-        with connection.cursor() as cursor:
-            cursor.execute("SELECT pg_advisory_unlock(%s)", [831947201])
+        try:
+            client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                key,
+                owner,
+            )
+        except Exception:
+            logger.exception("Smart Trigger dispatch lease release failed")
+
+
+def _fair_queryset(
+    queryset,
+    *,
+    partition_by,
+    order_by,
+    per_organization,
+    limit,
+    cursor_key=None,
+):
+    """Bound one pass and rotate the active organization subset across runs."""
+    per_organization = max(1, int(per_organization))
+    limit = max(1, int(limit))
+    organization_batch = max(1, limit // per_organization)
+
+    # A per-tenant row cap prevents one organization filling the batch. The
+    # cursor also rotates which organizations are eligible so a permanent
+    # backlog in the oldest tenants cannot starve organization 501+ forever.
+    cursor = ""
+    if cursor_key:
+        try:
+            cursor = str(cache.get(cursor_key) or "").strip()
+        except Exception:
+            cursor = ""
+
+    organization_queryset = queryset
+    after_cursor = organization_queryset
+    if cursor:
+        after_cursor = after_cursor.filter(
+            **{f"{partition_by}__gt": cursor}
+        )
+    organizations = list(
+        after_cursor.order_by(partition_by)
+        .values_list(partition_by, flat=True)
+        .distinct()[:organization_batch]
+    )
+    if cursor and len(organizations) < organization_batch:
+        remaining = organization_batch - len(organizations)
+        wrapped = list(
+            organization_queryset.filter(
+                **{f"{partition_by}__lte": cursor}
+            )
+            .order_by(partition_by)
+            .values_list(partition_by, flat=True)
+            .distinct()[:remaining]
+        )
+        organizations.extend(
+            organization_id
+            for organization_id in wrapped
+            if organization_id not in organizations
+        )
+
+    if organizations:
+        queryset = queryset.filter(**{f"{partition_by}__in": organizations})
+        if cursor_key:
+            try:
+                cache.set(cursor_key, str(organizations[-1]), timeout=None)
+            except Exception:
+                pass
+
+    ranked = queryset.annotate(
+        _tenant_rank=Window(
+            expression=RowNumber(),
+            partition_by=[F(partition_by)],
+            order_by=[F(order_by).asc(), F("id").asc()],
+        )
+    ).filter(_tenant_rank__lte=per_organization)
+    return ranked.order_by("_tenant_rank", order_by, "id")[:limit]
 
 
 def _dispatch():
@@ -32,29 +121,44 @@ def _dispatch():
         scan_timers()
     except Exception:
         logger.exception("Smart Trigger timer scan failed")
-    for event_id in (
-        TriggerEvent.objects.filter(processed_at__isnull=True)
-        .order_by("created_at")
-        .values_list("id", flat=True)[:500]
-    ):
+    pending_events = TriggerEvent.objects.filter(processed_at__isnull=True)
+    for event_id in _fair_queryset(
+        pending_events,
+        partition_by="organization_id",
+        order_by="created_at",
+        per_organization=10,
+        limit=500,
+        cursor_key="shvya:automation:event-org-cursor",
+    ).values_list("id", flat=True):
         try:
             evaluate(event_id)
         except Exception:
             logger.exception("Smart Trigger event failed: %s", event_id)
-    for run_id in (
-        TriggerRun.objects.filter(
-            status__in=["pending", "scheduled"], due_at__lte=timezone.now()
-        )
-        .order_by("event__created_at", "rule__position", "rule__created_at")
-        .values_list("id", flat=True)[:500]
-    ):
+    due_runs = TriggerRun.objects.filter(
+        status__in=["pending", "scheduled"],
+        due_at__lte=timezone.now(),
+    )
+    for run_id in _fair_queryset(
+        due_runs,
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=10,
+        limit=500,
+        cursor_key="shvya:automation:run-org-cursor",
+    ).values_list("id", flat=True):
         try:
             execute(run_id)
         except Exception:
             logger.exception("Smart Trigger run failed: %s", run_id)
-    for run_id in TriggerRun.objects.filter(status="email_ready").values_list(
-        "id", flat=True
-    )[:100]:
+    email_runs = TriggerRun.objects.filter(status="email_ready")
+    for run_id in _fair_queryset(
+        email_runs,
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=5,
+        limit=100,
+        cursor_key="shvya:automation:email-org-cursor",
+    ).values_list("id", flat=True):
         try:
             deliver_email(run_id)
         except Exception:
@@ -79,9 +183,16 @@ def _dispatch_messages():
 
     now = timezone.now()
     lease = timedelta(minutes=10)
-    runs = TriggerRun.objects.filter(
-        status__in=["queued", "dispatching"]
-    ).select_related("message").order_by("due_at", "created_at")[:500]
+    runs = _fair_queryset(
+        TriggerRun.objects.filter(
+            status__in=["queued", "dispatching"]
+        ).select_related("message"),
+        partition_by="rule__organization_id",
+        order_by="due_at",
+        per_organization=10,
+        limit=500,
+        cursor_key="shvya:automation:message-org-cursor",
+    )
     for run in runs:
         try:
             message = run.message

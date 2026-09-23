@@ -83,6 +83,34 @@ def send_delivery(delivery_id):
         if delivery.attempt_count >= 1 + plan.retry_attempts:
             _skip(delivery, "The campaign attempt limit has been reached.")
             return {"status": "attempt_limit"}
+
+        from django.conf import settings
+        from apps.core.fairness import admit_provider_start
+
+        allowed, retry_after, scope = admit_provider_start(
+            provider="whatsapp",
+            account_id=plan.campaign.account_id,
+            account_limit=settings.WHATSAPP_ACCOUNT_SENDS_PER_MINUTE,
+            global_limit=settings.WHATSAPP_GLOBAL_SENDS_PER_MINUTE,
+        )
+        if not allowed:
+            jitter = (
+                sum(ord(character) for character in str(delivery.id))
+                + delivery.attempt_count
+            ) % 7
+            delivery.due_at = now + timedelta(
+                seconds=int(retry_after) + jitter
+            )
+            delivery.published_at = now
+            delivery.save(
+                update_fields=["due_at", "published_at", "updated_at"]
+            )
+            return {
+                "status": "deferred",
+                "reason": f"whatsapp_{scope}_fairness_limit",
+                "due_at": delivery.due_at.isoformat(),
+            }
+
         CampaignSenderGate.objects.get_or_create(account_id=plan.campaign.account_id, defaults={"next_slot_at": now})
         gate = CampaignSenderGate.objects.select_for_update().get(account_id=plan.campaign.account_id)
         if gate.next_slot_at > now:

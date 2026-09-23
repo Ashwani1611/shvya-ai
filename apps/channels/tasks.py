@@ -23,9 +23,9 @@ logger = logging.getLogger(__name__)
 def reconcile_hosted_sessions():
     """Self-heal Hosted accounts whose persisted DB status drifted from the gateway."""
     from apps.channels.hosted_tasks import initialize_hosted_session_task
+    from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.models import WhatsAppAccount
     from apps.channels.providers.whatsapp_web import (
-        WhatsAppWebClient,
         WhatsAppWebGatewayError,
     )
     from services.channels.hosted_whatsapp_service import handle_gateway_event
@@ -35,9 +35,15 @@ def reconcile_hosted_sessions():
             connection_type=WhatsAppAccount.ConnectionType.coexisted,
             is_active=True,
             status=WhatsAppAccount.Status.CONNECTED,
-        ).only("id", "organization_id", "display_phone_number", "phone_number_id", "status")[:200]
+        ).only(
+            "id",
+            "organization_id",
+            "display_phone_number",
+            "phone_number_id",
+            "status",
+            "hosted_gateway_shard",
+        )[:200]
     )
-    client = WhatsAppWebClient()
     result = {
         "inspected": len(accounts),
         "running": 0,
@@ -49,6 +55,7 @@ def reconcile_hosted_sessions():
     }
 
     for account in accounts:
+        client = gateway_client_for_account(account)
         try:
             session = client.get_session(session_id=account.id)
         except WhatsAppWebGatewayError as exc:
@@ -101,6 +108,24 @@ def reconcile_hosted_sessions():
 # before the network call prevents concurrent workers from sending the same
 # queued row while keeping the external HTTP request outside a DB transaction.
 _WHATSAPP_SENDING_STATUS = "sending"
+
+
+def _whatsapp_retry_delay(*, message_id, retries, retry_after=None):
+    """Bound provider retries and spread workers around shared reset times."""
+    if retry_after is not None:
+        try:
+            base = max(1, min(int(retry_after), 900))
+        except (TypeError, ValueError):
+            base = 30
+    else:
+        base = min(300, 15 * (2 ** max(0, int(retries or 0))))
+    # Stable per-message jitter avoids a synchronized retry wave without
+    # requiring shared state or making tests nondeterministic.
+    jitter = (
+        sum(ord(character) for character in str(message_id))
+        + (int(retries or 0) * 17)
+    ) % 7
+    return min(907, base + jitter)
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=30)
@@ -229,9 +254,11 @@ def send_whatsapp_message_task(self, message_id):
           so no database row lock is held while waiting on Meta/Hosted.
 
     Retries:
-        - Network failures and Meta 5xx responses are returned to QUEUED
-          before Celery retries them.
-        - Meta 4xx and other permanent failures remain durably FAILED.
+        - Unknown network outcomes are never blindly replayed because Meta may
+          already have accepted the message.
+        - Explicit Meta throttles/transient HTTP responses are returned to
+          QUEUED and retried with bounded provider-aware jitter.
+        - Other Meta 4xx and permanent failures remain durably FAILED.
     """
     from apps.channels.models import WhatsAppMessage
     from apps.channels.providers.whatsapp import WhatsAppAPIError
@@ -282,6 +309,48 @@ def send_whatsapp_message_task(self, message_id):
                     "status": "skipped",
                     "reason": "message_not_queued",
                     "message_id": str(message_id),
+                }
+
+            from django.conf import settings
+            from apps.core.fairness import admit_provider_start
+
+            is_hosted_account = message.account.connection_type == "hosted"
+            provider_name = (
+                "hosted_whatsapp"
+                if is_hosted_account
+                else "whatsapp"
+            )
+            account_limit = (
+                settings.HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE
+                if is_hosted_account
+                else settings.WHATSAPP_ACCOUNT_SENDS_PER_MINUTE
+            )
+            global_limit = (
+                settings.HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE
+                if is_hosted_account
+                else settings.WHATSAPP_GLOBAL_SENDS_PER_MINUTE
+            )
+            allowed, retry_after, scope = admit_provider_start(
+                provider=provider_name,
+                account_id=message.account_id,
+                account_limit=account_limit,
+                global_limit=global_limit,
+            )
+            if not allowed:
+                countdown = _whatsapp_retry_delay(
+                    message_id=message_id,
+                    retries=self.request.retries,
+                    retry_after=retry_after,
+                )
+                self.apply_async(
+                    args=[str(message_id)],
+                    countdown=countdown,
+                )
+                return {
+                    "status": "deferred",
+                    "reason": f"{provider_name}_{scope}_fairness_limit",
+                    "message_id": str(message_id),
+                    "retry_after": countdown,
                 }
 
             # Hosted AI creates the same durable WhatsAppMessage row, but its
@@ -376,22 +445,66 @@ def send_whatsapp_message_task(self, message_id):
                 )
                 return {"status": "needs_review" if uncertain else "failed", "message_id": str(message_id)}
 
+        if isinstance(original, WhatsAppAPIError) and original.status_code is None:
+            # No HTTP response means the request outcome is unknowable. A
+            # connection timeout can happen after Meta accepted the message, so
+            # automatic replay can duplicate a customer-facing send.
+            _persist_whatsapp_message_failure(
+                message_id=message_id,
+                error=exc,
+            )
+            logger.warning(
+                "send_whatsapp_message_task: provider outcome uncertain for "
+                "message %s; automatic retry suppressed",
+                message_id,
+            )
+            return {
+                "status": "failed",
+                "reason": "provider_outcome_uncertain",
+                "message_id": str(message_id),
+                "error": str(exc),
+            }
+
         if isinstance(original, WhatsAppAPIError) and (
-            original.status_code is None
-            or original.status_code >= 500
+            original.status_code in {408, 425, 429}
+            or (original.status_code is not None and original.status_code >= 500)
         ):
+            if self.request.retries >= self.max_retries:
+                _persist_whatsapp_message_failure(
+                    message_id=message_id,
+                    error=exc,
+                )
+                return {
+                    "status": "failed",
+                    "reason": "provider_retry_limit_reached",
+                    "message_id": str(message_id),
+                    "error": str(exc),
+                }
             _requeue_whatsapp_message_after_transient_failure(
                 message_id=message_id
             )
+            countdown = _whatsapp_retry_delay(
+                message_id=message_id,
+                retries=self.request.retries,
+                retry_after=getattr(original, "retry_after", None),
+            )
+            if original.status_code == 429:
+                from apps.core.observability import increment
+
+                increment(
+                    "messaging.provider_throttled",
+                    labels={"provider": "whatsapp"},
+                )
             logger.warning(
-                "send_whatsapp_message_task: "
-                "transient failure for message %s; retrying: %s",
+                "send_whatsapp_message_task: transient failure for message "
+                "%s; retrying in %ss: %s",
                 message_id,
+                countdown,
                 exc,
             )
             raise self.retry(
                 exc=exc,
-                countdown=30,
+                countdown=countdown,
             )
 
         _persist_whatsapp_message_failure(
