@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import resource
@@ -138,8 +139,7 @@ def _hosted_gateway_snapshot():
         result["error"] = type(exc).__name__
         return result
 
-    any_available = False
-    for shard, base_url in gateways.items():
+    def fetch_one(shard, base_url):
         item = {"available": False}
         try:
             response = requests.get(
@@ -180,14 +180,24 @@ def _hosted_gateway_snapshot():
                     "uptime_seconds": int(payload.get("uptimeSeconds") or 0),
                 }
             )
-            any_available = True
         except Exception as exc:
             item["error"] = type(exc).__name__
-        result["gateways"][str(shard)[:64]] = item
+        return str(shard)[:64], item
 
-    result["available"] = any_available
+    items = list(gateways.items())[:64]
+    if not items:
+        return result
+    with ThreadPoolExecutor(max_workers=min(8, len(items))) as executor:
+        futures = [
+            executor.submit(fetch_one, shard, base_url)
+            for shard, base_url in items
+        ]
+        for future in as_completed(futures):
+            shard, item = future.result()
+            result["gateways"][shard] = item
+            if item.get("available"):
+                result["available"] = True
     return result
-
 
 def _process_snapshot():
     usage = resource.getrusage(resource.RUSAGE_SELF)
