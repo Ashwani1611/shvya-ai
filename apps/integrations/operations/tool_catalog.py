@@ -22,7 +22,6 @@ from apps.integrations.operations_policy import (
     CAP_STAGE_CONFIG_WRITE,
     CAP_WORKFLOW_CONFIG_WRITE,
     ROLE_SUPERADMIN,
-    approval_required,
     effective_capabilities,
 )
 from apps.integrations.operations_tools import DIAGNOSTIC_TOOL_NAMES
