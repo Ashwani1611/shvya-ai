@@ -21,14 +21,49 @@ GOOGLE_SCOPES = (
 
 
 class GoogleCalendarError(RuntimeError):
-    pass
+    def __init__(
+        self,
+        message,
+        *,
+        status_code=None,
+        transient=False,
+        retry_after=None,
+    ):
+        super().__init__(message)
+        self.status_code = status_code
+        self.transient = bool(transient)
+        self.retry_after = retry_after
+
+
+def _retry_after_seconds(response):
+    raw = str((getattr(response, "headers", {}) or {}).get("Retry-After") or "").strip()
+    if not raw:
+        return None
+    try:
+        value = int(float(raw))
+    except (TypeError, ValueError):
+        return None
+    return max(1, min(value, 900))
+
+
+def _google_error(response, message):
+    status = int(getattr(response, "status_code", 0) or 0)
+    return GoogleCalendarError(
+        message,
+        status_code=status or None,
+        transient=status in {408, 425, 429} or status >= 500,
+        retry_after=_retry_after_seconds(response),
+    )
 
 
 def _google_request(method, url, *, failure_message, **kwargs):
     try:
         return requests.request(method, url, **kwargs)
     except requests.RequestException as exc:
-        raise GoogleCalendarError(failure_message) from exc
+        raise GoogleCalendarError(
+            failure_message,
+            transient=True,
+        ) from exc
 
 
 def _response_json(response, *, failure_message):
@@ -158,7 +193,7 @@ def _refresh_access_token(connection):
     if not response.ok:
         connection.last_error = "Google access token refresh failed."
         connection.save(update_fields=["last_error", "updated_at"])
-        raise GoogleCalendarError(connection.last_error)
+        raise _google_error(response, connection.last_error)
 
     payload = _response_json(
         response,
@@ -228,7 +263,7 @@ def free_busy(*, page, time_min, time_max):
             f"Google free/busy check failed ({response.status_code})."
         )
         connection.save(update_fields=["last_error", "updated_at"])
-        raise GoogleCalendarError(connection.last_error)
+        raise _google_error(response, connection.last_error)
 
     payload = _response_json(
         response,
@@ -402,8 +437,9 @@ def refresh_booking_event_details(booking):
         timeout=20,
     )
     if not response.ok:
-        raise GoogleCalendarError(
-            f"Google Calendar event refresh failed ({response.status_code})."
+        raise _google_error(
+            response,
+            f"Google Calendar event refresh failed ({response.status_code}).",
         )
 
     event = _response_json(
@@ -549,6 +585,7 @@ def cancel_booking_event(booking):
         timeout=20,
     )
     if response.status_code not in {200, 204, 404, 410}:
-        raise GoogleCalendarError(
-            f"Google Calendar event cancellation failed ({response.status_code})."
+        raise _google_error(
+            response,
+            f"Google Calendar event cancellation failed ({response.status_code}).",
         )
