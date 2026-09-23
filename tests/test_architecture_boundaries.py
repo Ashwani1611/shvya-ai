@@ -197,6 +197,23 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             with self.subTest(path=relative):
                 self.assertFalse((ROOT / relative).exists())
 
+    def test_team_service_is_owned_by_teams_app(self):
+        canonical = ROOT / "apps" / "teams" / "services" / "team_service.py"
+        compatibility = ROOT / "services" / "teams" / "team_service.py"
+        self.assertTrue(canonical.exists())
+        self.assertLess(
+            len(compatibility.read_text(encoding="utf-8").splitlines()),
+            40,
+            "services.teams.team_service must remain a compatibility facade.",
+        )
+        for relative in (
+            "apps/teams/views/web.py",
+            "apps/teams/views/team_views.py",
+            "apps/teams/tests/test_service.py",
+        ):
+            source = (ROOT / relative).read_text(encoding="utf-8")
+            self.assertNotIn("from services.teams.team_service import", source)
+
     def test_empty_parallel_root_service_trees_stay_removed(self):
         for relative in (
             "services/ai",
