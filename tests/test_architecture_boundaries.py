@@ -58,6 +58,40 @@ class ArchitectureBoundaryTests(SimpleTestCase):
             (ROOT / "apps" / "shvya_calendar" / "availability.py").exists()
         )
 
+    def test_calendar_public_booking_views_are_focused(self):
+        legacy_path = ROOT / "apps" / "shvya_calendar" / "views.py"
+        public_path = ROOT / "apps" / "shvya_calendar" / "public_views.py"
+        self.assertTrue(public_path.exists())
+        self.assertLess(
+            len(legacy_path.read_text(encoding="utf-8").splitlines()),
+            1300,
+            "Keep public booking endpoints in public_views.py.",
+        )
+        self.assertLess(
+            len(public_path.read_text(encoding="utf-8").splitlines()),
+            650,
+        )
+
+    def test_sales_services_are_split_by_responsibility(self):
+        facade = ROOT / "apps" / "sales" / "services.py"
+        document_services = ROOT / "apps" / "sales" / "document_services.py"
+        delivery_services = ROOT / "apps" / "sales" / "delivery_services.py"
+        self.assertTrue(document_services.exists())
+        self.assertTrue(delivery_services.exists())
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            100,
+            "apps.sales.services must remain a compatibility facade.",
+        )
+        self.assertLess(
+            len(document_services.read_text(encoding="utf-8").splitlines()),
+            800,
+        )
+        self.assertLess(
+            len(delivery_services.read_text(encoding="utf-8").splitlines()),
+            800,
+        )
+
     def test_legacy_calls_app_is_not_installed(self):
         self.assertNotIn("apps.calls", settings.INSTALLED_APPS)
         self.assertFalse((ROOT / "apps" / "calls").exists())
