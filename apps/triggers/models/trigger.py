@@ -27,6 +27,7 @@ class SmartTrigger(models.Model):
     # from updated_at so background scheduling never changes the trigger's
     # user-facing modification timestamp.
     timer_scan_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    timer_lead_cursor = models.UUIDField(null=True, blank=True)
 
     class Meta:
         ordering = ["position", "created_at", "id"]
