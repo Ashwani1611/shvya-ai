@@ -42,14 +42,17 @@ from apps.integrations.operations_tools import (
 
 
 ATTRIBUTE_PURGE_LIMIT = 5_000
-ACTIVE_RUN_STATUSES = {
+CANCELABLE_RUN_STATUSES = {
     "pending",
     "scheduled",
     "queued",
-    "dispatching",
     "email_ready",
+}
+IN_FLIGHT_RUN_STATUSES = {
+    "dispatching",
     "sending",
 }
+ACTIVE_RUN_STATUSES = CANCELABLE_RUN_STATUSES | IN_FLIGHT_RUN_STATUSES
 
 
 def _reverse_relation_counts(obj):
@@ -509,9 +512,13 @@ def _cadence_report(*, organization, cadence):
 
 
 def _workflow_report(*, organization, workflow):
-    pending_runs = TriggerRun.objects.filter(
+    cancelable_runs = TriggerRun.objects.filter(
         rule=workflow,
-        status__in=ACTIVE_RUN_STATUSES,
+        status__in=CANCELABLE_RUN_STATUSES,
+    ).count()
+    in_flight_runs = TriggerRun.objects.filter(
+        rule=workflow,
+        status__in=IN_FLIGHT_RUN_STATUSES,
     ).count()
     return {
         "object": {
@@ -524,7 +531,8 @@ def _workflow_report(*, organization, workflow):
         "protected_object_status": {"protected": False, "reason": ""},
         "dependencies": {},
         "affected_records": {
-            "pending_or_queued_runs": pending_runs,
+            "pending_or_queued_runs": cancelable_runs,
+            "in_flight_runs": in_flight_runs,
             "historical_runs": workflow.runs.count(),
         },
         "blocking_dependency_count": 0,
@@ -1159,7 +1167,10 @@ def archive_workflow(*, identity, arguments):
             operation="archive_workflow",
             report=report,
             can_apply=True,
-            reversible=report["affected_records"]["pending_or_queued_runs"] == 0,
+            reversible=(
+                report["affected_records"]["pending_or_queued_runs"] == 0
+                and report["affected_records"]["in_flight_runs"] == 0
+            ),
             proposal=proposal,
         )
     with transaction.atomic():
@@ -1178,13 +1189,25 @@ def archive_workflow(*, identity, arguments):
         locked.is_active = False
         locked.enabled = False
         locked.save(update_fields=["is_active", "enabled", "updated_at"])
+        now = timezone.now()
         TriggerRun.objects.filter(
             rule=locked,
-            status__in=ACTIVE_RUN_STATUSES,
+            status__in=CANCELABLE_RUN_STATUSES,
         ).update(
             status="skipped",
             detail="Workflow archived before execution.",
-            finished_at=timezone.now(),
+            finished_at=now,
+        )
+        TriggerRun.objects.filter(
+            rule=locked,
+            status__in=IN_FLIGHT_RUN_STATUSES,
+        ).update(
+            status="needs_review",
+            detail=(
+                "Workflow archived while delivery was in flight. "
+                "Verify the provider outcome before any retry."
+            ),
+            finished_at=now,
         )
     return ToolExecution(
         data={
@@ -1198,6 +1221,7 @@ def archive_workflow(*, identity, arguments):
             "can_apply": True,
             "reversible": (
                 locked_report["affected_records"]["pending_or_queued_runs"] == 0
+                and locked_report["affected_records"]["in_flight_runs"] == 0
             ),
             "restore_via": "upsert_workflow_configuration",
             "verification": "passed",
@@ -1211,6 +1235,9 @@ def archive_workflow(*, identity, arguments):
             "cancelled_pending_runs": locked_report["affected_records"][
                 "pending_or_queued_runs"
             ],
+            "in_flight_runs_marked_needs_review": locked_report[
+                "affected_records"
+            ]["in_flight_runs"],
             "verification": "passed",
         },
     )
