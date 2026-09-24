@@ -280,7 +280,7 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = state.get("runtime_policy") or {}
     if file_candidates:
-        org_context["_file_candidates"] = file_candidates[: service.KNOWLEDGE_LIMIT]
+        org_context["_file_candidates"] = file_candidates[:10]
     context = replace(context, organization=org_context)
 
     logger.info(
@@ -305,6 +305,14 @@ def _generate(state: EngagementGraphState) -> dict:
     # persisted flow snapshot as this graph; serializing questions back to prose
     # destroys explicit IDs, conditional rules and flow-version metadata.
     context = state["context"]
+    from apps.ai_engagement.services.file_sharing import FileSharingService
+    candidates = (context.organization or {}).get("_file_candidates")
+    if candidates is None:
+        candidates = FileSharingService().build_file_candidates(
+            organization=state["organization"], context=context,
+        ) if (context.pipeline or {}).get("id") else []
+    if candidates:
+        context = replace(context, organization={**context.organization, "_file_candidates": candidates})
 
     decision = state["legacy_engage"](
         state["service"],
@@ -313,7 +321,7 @@ def _generate(state: EngagementGraphState) -> dict:
         knowledge_query=None,
         context=context,
     )
-    return {"decision": decision}
+    return {"decision": decision, "context": context}
 
 
 def _use_direct_decision(state: EngagementGraphState) -> dict:

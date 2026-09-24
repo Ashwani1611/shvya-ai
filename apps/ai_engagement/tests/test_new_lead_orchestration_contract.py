@@ -251,4 +251,7 @@ class ExplicitGuidedFileCandidateTests(TestCase):
         candidates = FileSharingService().build_file_candidates(organization=organization, context=context)
         self.assertEqual([item["document_id"] for item in candidates], [document.id])
         context.conversation["messages"][0]["body"] = "Thanks"
-        self.assertEqual(FileSharingService().build_file_candidates(organization=organization, context=context), [])
+        # Candidates expose authored conditions on ordinary turns too. Selection
+        # remains subject to the independent grounding guard, not this allow-list.
+        self.assertEqual([item["document_id"] for item in FileSharingService().build_file_candidates(
+            organization=organization, context=context)], [document.id])

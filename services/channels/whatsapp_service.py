@@ -933,6 +933,11 @@ def _send_outbound_media_message(
             or "application/octet-stream"
         )
 
+        # CSV is plain-text content. Meta's document endpoint accepts text/plain,
+        # not text/csv; keep the original filename and bytes for the recipient.
+        if document.file.name.lower().endswith(".csv"):
+            mime_type = "text/plain"
+
         document.file.open(
             "rb"
         )

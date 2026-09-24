@@ -15,7 +15,7 @@ class RetrievalError(Exception):
     """Raised when knowledge retrieval cannot be completed."""
 
 
-_WORD_RE = re.compile(r"[a-z0-9][a-z0-9_+.-]*", flags=re.IGNORECASE)
+_WORD_RE = re.compile(r"[^\W_][\w\u0900-\u0dff+.-]*", flags=re.IGNORECASE | re.UNICODE)
 
 
 def _normalized_text(value) -> str:

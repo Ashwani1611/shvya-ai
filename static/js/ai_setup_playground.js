@@ -160,6 +160,8 @@
             ].join(" ");
         }
 
+        bubble.style.whiteSpace = "pre-wrap";
+
         if (isPending) {
             wrapper.dataset.playgroundPending = "true";
             bubble.innerHTML =
@@ -176,6 +178,32 @@
         scrollToBottom();
 
         return wrapper;
+    }
+
+    function renderEffects(payload) {
+        const stageStatus = document.querySelector("#playground-current-stage");
+        if (stageStatus && payload.stage?.name) {
+            stageStatus.textContent = [payload.stage.pipeline, payload.stage.name].filter(Boolean).join(" / ");
+        }
+        for (const event of payload.events || []) {
+            if (event.type === "stage_transition") {
+                const notice = appendMessage("assistant", "Test lead moved to " + event.stage + " (" + event.pipeline + ").");
+                if (notice) {
+                    notice.setAttribute("role", "status");
+                    notice.firstChild.className = "rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-700";
+                }
+            }
+        }
+        for (const file of payload.files || []) {
+            if (typeof file.url !== "string" || !/^\/api\/v1\/ai-engagement\/playground\/files\/\d+\/$/.test(file.url)) continue;
+            const card = appendMessage("assistant", "");
+            if (!card) continue;
+            const link = document.createElement("a");
+            link.href = file.url;
+            link.textContent = "Download " + String(file.name || "file");
+            link.className = "block rounded-lg border border-gray-200 p-3 text-sm font-medium";
+            card.firstChild.appendChild(link);
+        }
     }
 
     function removePendingMessage() {
@@ -253,6 +281,9 @@
     async function getErrorMessage(response) {
         try {
             const payload = await response.json();
+            const stagePicker = document.querySelector("#playground-start-stage");
+            if (stagePicker) stagePicker.disabled = true;
+            renderEffects(payload);
             const detailText = firstErrorText(payload.detail);
             const messageText = firstErrorText(payload.message);
             const errorText = typeof payload.error === "string"
@@ -321,6 +352,7 @@
                     session_id: sessionId,
                     message: messageText,
                     history: history.slice(-MAX_HISTORY_MESSAGES),
+                    stage_id: document.querySelector("#playground-start-stage")?.value || null,
                 }),
             });
 
@@ -329,6 +361,8 @@
             }
 
             const payload = await response.json();
+            const stagePicker = document.querySelector("#playground-start-stage");
+            if (stagePicker) stagePicker.disabled = true;
             const responseText = typeof payload.response === "string"
                 ? payload.response.trim()
                 : "";
@@ -337,6 +371,7 @@
 
             removePendingMessage();
             appendMessage("assistant", assistantText);
+            renderEffects(payload);
 
             history.push({
                 role: "user",
@@ -403,6 +438,10 @@
 
             history = [];
             hasStarted = true;
+            const stagePicker = document.querySelector("#playground-start-stage");
+            if (stagePicker) stagePicker.disabled = false;
+            const stageStatus = document.querySelector("#playground-current-stage");
+            if (stageStatus) stageStatus.textContent = "New test. Send a message to begin.";
 
             if (page) {
                 page.dataset.playgroundSessionId = createSessionId();

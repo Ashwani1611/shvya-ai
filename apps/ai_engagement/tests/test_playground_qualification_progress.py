@@ -18,6 +18,9 @@ from apps.ai_engagement.services.playground import PlaygroundService
 class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
     def setUp(self):
         cache.clear()
+        files = patch("apps.ai_engagement.services.file_sharing.FileSharingService.build_file_candidates", return_value=[])
+        files.start()
+        self.addCleanup(files.stop)
         self.raw = (
             "Q1. What is your biggest challenge with managing or converting leads right now? "
             "A. Slow replies B. Missed follow-ups C. Leads going cold D. No proper tracking\n"
@@ -48,7 +51,7 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
         self._set_provider_to_fail_after_q4()
 
         retrieval = Mock()
-        retrieval.retrieve_by_vector.return_value = []
+        retrieval.retrieve_hybrid.return_value = []
         self.service = PlaygroundService(
             provider=self.provider,
             org_info_service=self.org_info,

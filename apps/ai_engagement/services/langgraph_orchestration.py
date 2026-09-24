@@ -43,8 +43,12 @@ Rules:
 - Do not invent pipeline/stage identifiers or file document identifiers.
 - FILE_CANDIDATES, when present, is the complete allow-list for AI-guided file
   sharing. Select a file only when its share_instruction matches the lead's
-  current request. If no candidate clearly matches, file_document_id must be null.
-- For organization facts, use About Organization or verified RAG context only.
+  conversation and current stage. An explicit file request is not required if the
+  authored condition is otherwise satisfied. If no candidate clearly matches,
+  file_document_id must be null.
+- For organization facts, use About Organization, backend-approved FAQ answers,
+  or verified RAG context only. Rules and Notes are private instructions, not
+  customer-facing answers.
 - AI model names, provider names, model upgrades, deployment/version details,
   and other platform implementation details are unverified internal facts unless
   they are explicitly supplied in About Organization or verified RAG context.
@@ -111,7 +115,7 @@ def install_langgraph_orchestration() -> None:
 
         file_candidates = organization_context.get("_file_candidates")
         if isinstance(file_candidates, list) and file_candidates:
-            payload["file_candidates"] = file_candidates[: self.KNOWLEDGE_LIMIT]
+            payload["file_candidates"] = file_candidates[:10]
 
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

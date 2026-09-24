@@ -440,6 +440,7 @@ def _render_ai_setup(request, organization, *, form_values=None, status=200):
             "knowledge_sources": sources.filter(source_type=KnowledgeSource.SourceType.URL),
             "knowledge_documents": documents.filter(share_instruction="").exclude(file=""),
             "guided_documents": documents.exclude(share_instruction="").exclude(file=""),
+            "sandbox_pipelines": Pipeline.objects.filter(organization=organization, is_active=True).prefetch_related("stages").order_by("name"),
             "supported_file_extensions": sorted(
                 KnowledgeSourceService().ingestion_service.SUPPORTED_FILE_EXTENSIONS
             ),

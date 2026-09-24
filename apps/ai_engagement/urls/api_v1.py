@@ -17,10 +17,11 @@ from apps.ai_engagement.views.faq import (
 from apps.ai_engagement.views.org_info import OrgInfoView
 
 from apps.ai_engagement.views.playground import (
-    PlaygroundAPIView,
+    PlaygroundAPIView, PlaygroundFileAPIView,
 )
 
 urlpatterns = [
+    path("playground/files/<int:document_id>/", PlaygroundFileAPIView.as_view(), name="ai-playground-file"),
     path(
         "org-info/",
         OrgInfoView.as_view(),

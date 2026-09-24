@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
-from dataclasses import dataclass
+from contextlib import nullcontext
+from dataclasses import dataclass, field
 from types import SimpleNamespace
 from typing import Any
 
@@ -191,12 +192,13 @@ class _SandboxContextBuilder:
                     "ai_sandbox_embedding_unavailable organization=%s",
                     getattr(organization, "id", ""),
                 )
-                return []
+                vector = None
 
         try:
             limit = min(max(int(knowledge_limit or 3), 1), 20)
-            results = self.retrieval_service.retrieve_by_vector(
+            results = self.retrieval_service.retrieve_hybrid(
                 organization=organization,
+                query_text=query,
                 query_vector=vector,
                 limit=limit,
             )
@@ -263,6 +265,7 @@ class _SandboxContextBuilder:
                 "attributes": visitor_attributes,
                 "qualification": state_for_lead(self.visitor),
                 "lead_source": "playground",
+                "shared_document_ids": list(getattr(self.visitor, "shared_document_ids", [])),
                 "stage_entered_at": None,
                 "created_at": None,
                 "updated_at": None,
@@ -302,6 +305,9 @@ class PlaygroundResult:
     should_engage: bool
     knowledge: list[dict[str, Any]]
     model: str
+    stage: dict = field(default_factory=dict)
+    events: list = field(default_factory=list)
+    files: list = field(default_factory=list)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -311,6 +317,7 @@ class PlaygroundResult:
             "should_engage": self.should_engage,
             "knowledge": self.knowledge,
             "model": self.model,
+            "stage": self.stage, "events": self.events, "files": self.files,
         }
 
 
@@ -344,6 +351,7 @@ class PlaygroundService:
         session_id: str,
         message: str,
         history: list[dict[str, Any]] | None = None,
+        stage_id: str | None = None,
     ) -> PlaygroundResult:
         if organization is None:
             raise PlaygroundError("Organization is required.")
@@ -376,6 +384,14 @@ class PlaygroundService:
         conversation[-1]["id"] = f"playground:{session_id}:turn:{turn}"
 
         pipeline, stage = self._resolve_new_lead_stage(organization=organization)
+        selected_stage_id = saved.get("stage_id") or stage_id
+        if selected_stage_id:
+            from apps.crm.models import Stage
+            stage = Stage.objects.filter(pk=selected_stage_id, pipeline__organization=organization,
+                        pipeline__is_active=True, is_active=True).select_related("pipeline").first()
+            if stage is None:
+                raise PlaygroundError("Choose an active stage in your organization and restart the test.")
+            pipeline = stage.pipeline
         visitor_id = f"playground:{session_id}"
         visitor = _SandboxLead(
             id=visitor_id,
@@ -386,7 +402,8 @@ class PlaygroundService:
             pipeline_id=getattr(pipeline, "id", None),
             stage=stage or SimpleNamespace(name="New Lead"),
             stage_id=getattr(stage, "id", None),
-            name="Playground Visitor",
+            name="Playground Visitor", phone="", email="",
+            shared_document_ids=list(saved.get("sent_files") or []),
             attributes=deepcopy(saved.get("attributes") or {}),
         )
         visitor.attributes[STATE_KEY] = observe_message(
@@ -416,10 +433,12 @@ class PlaygroundService:
 
         try:
             try:
-                decision = service.engage(
-                    organization=organization,
-                    lead=visitor,
-                )
+                from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
+                evidence_scope = (sandbox_evidence_context(organization=organization, lead=visitor,
+                                  message=message, provider=self.provider)
+                                  if hasattr(organization, "_meta") else nullcontext())
+                with evidence_scope:
+                    decision = service.engage(organization=organization, lead=visitor)
             except Exception as exc:
                 # The production runtime already has validation/schema fail-soft,
                 # but Sandbox is synchronous (no Celery retry owner). Never turn
@@ -435,7 +454,7 @@ class PlaygroundService:
                     cause=exc,
                 )
         finally:
-            if self.engagement_service is not None and previous_builder is not None:
+            if self.engagement_service is not None:
                 service.context_builder = previous_builder
 
         # The live WhatsApp wrapper detects the first inbound from persisted
@@ -494,6 +513,10 @@ class PlaygroundService:
             response_hash=response_hash(decision.message),
         )
 
+        from apps.ai_engagement.services.playground_effects import preview_effects
+        sent_files = list(saved.get("sent_files") or [])
+        events, files = preview_effects(organization=organization, visitor=visitor, decision=decision,
+            requirements=requirements, qualification=qualification, sent_files=sent_files)
         response_text = decision.message if decision.should_engage else ""
         updated_history = list(source_history)
         updated_history.extend(
@@ -507,7 +530,7 @@ class PlaygroundService:
             session_id=session_id,
             history=updated_history,
             attributes=visitor.attributes,
-            turn=turn,
+            turn=turn, stage_id=str(visitor.stage_id or ""), sent_files=sent_files,
         )
 
         return PlaygroundResult(
@@ -517,6 +540,9 @@ class PlaygroundService:
             should_engage=decision.should_engage,
             knowledge=list(context_builder.last_knowledge),
             model=decision.model,
+            stage={"id": str(visitor.stage_id or ""), "name": visitor.stage.name,
+                   "pipeline": getattr(visitor.pipeline, "name", "")},
+            events=events, files=files,
         )
 
     def _fallback_decision(
@@ -627,6 +653,8 @@ class PlaygroundService:
         history: list[dict[str, Any]],
         attributes: dict | None = None,
         turn: int = 0,
+        stage_id: str = "",
+        sent_files: list | None = None,
     ) -> None:
         normalized = self._normalize_role_history(history)[-self.MAX_HISTORY_MESSAGES :]
         try:
@@ -638,7 +666,7 @@ class PlaygroundService:
                 {
                     "history": normalized,
                     "attributes": deepcopy(attributes or {}),
-                    "turn": turn,
+                    "turn": turn, "stage_id": stage_id, "sent_files": list(sent_files or []),
                 },
                 timeout=self.SESSION_TTL_SECONDS,
             )
@@ -693,7 +721,7 @@ class PlaygroundService:
                     "direction": "inbound" if role == "user" else "outbound",
                     "speaker": "lead" if role == "user" else "shvya",
                     "body": body,
-                    "status": "playground",
+                    "status": "received" if role == "user" else "sent",
                     "created_at": None,
                 }
             )
@@ -704,7 +732,7 @@ class PlaygroundService:
                 "direction": "inbound",
                 "speaker": "lead",
                 "body": current_message,
-                "status": "playground",
+                "status": "received",
                 "created_at": None,
             }
         )
