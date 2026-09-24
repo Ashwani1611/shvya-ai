@@ -2,6 +2,7 @@
 """Domain-focused coverage split from the historical Operations MCP suite."""
 
 from apps.integrations.tests.operations_mcp_test_base import *
+from django.contrib.postgres.operations import AddIndexConcurrently
 
 
 class TestOperationsMCPProtocol(OperationsMCPBase):
@@ -111,12 +112,24 @@ class TestOperationsMCPProtocol(OperationsMCPBase):
         )
 
     def test_operations_related_migration_graphs_have_single_leaf(self):
-        conflicts = MigrationLoader(
+        loader = MigrationLoader(
             None,
             ignore_no_migrations=True,
-        ).detect_conflicts()
+        )
+        conflicts = loader.detect_conflicts()
         self.assertNotIn("integrations", conflicts)
         self.assertNotIn("channels", conflicts)
+        index_migration = loader.disk_migrations[
+            ("integrations", "0016_operations_oauth_lookup_indexes")
+        ]
+        self.assertFalse(index_migration.atomic)
+        self.assertTrue(index_migration.operations)
+        self.assertTrue(
+            all(
+                isinstance(operation, AddIndexConcurrently)
+                for operation in index_migration.operations
+            )
+        )
 
     def test_operations_tool_schema_rejects_non_object_arguments(self):
         bearer = self._token(
