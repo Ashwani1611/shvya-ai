@@ -13,14 +13,17 @@
             One global Operations MCP connection for SHVYA Superadmin. Connect from ChatGPT, Claude, VS Code, Cursor, Gemini CLI, Claude Code, Codex, Windsurf, or another standards-compliant remote MCP client, then select one organization support context at a time.
         </p>
     </div>
-    <span class="sa-badge sa-badge--primary">Operations MCP</span>
+    <div class="flex flex-wrap items-center gap-2">
+        <span class="sa-badge">Environment: {{ operations_environment }}</span>
+        <span class="sa-badge sa-badge--primary">Operations MCP</span>
+    </div>
 </div>
 
 <div class="sa-stat-grid">
     <div class="sa-stat-card">
-        <div class="sa-stat-label">MCP credentials</div>
-        <div class="sa-stat-value">{{ superadmin_tokens|length }}</div>
-        <div class="sa-stat-note">Active direct keys and OAuth grants</div>
+        <div class="sa-stat-label">Active OAuth grants</div>
+        <div class="sa-stat-value">{{ oauth_grant_tokens|length }}</div>
+        <div class="sa-stat-note">Actor-bound Superadmin sessions</div>
     </div>
     <div class="sa-stat-card">
         <div class="sa-stat-label">Open support contexts</div>
@@ -28,9 +31,9 @@
         <div class="sa-stat-note">Organizations currently selected by Superadmin MCP sessions</div>
     </div>
     <div class="sa-stat-card">
-        <div class="sa-stat-label">Org Admin MCP enabled</div>
-        <div class="sa-stat-value">{{ enabled_policy_count }}</div>
-        <div class="sa-stat-note">Of {{ organization_count }} organizations</div>
+        <div class="sa-stat-label">Direct MCP keys</div>
+        <div class="sa-stat-value">{{ direct_key_tokens|length }}</div>
+        <div class="sa-stat-note">Hashed, expiring, and revocable</div>
     </div>
     <div class="sa-stat-card">
         <div class="sa-stat-label">Org Admin grants</div>
@@ -38,6 +41,78 @@
         <div class="sa-stat-note">Active tenant-bound External AI grants</div>
     </div>
 </div>
+
+<section class="mb-6 grid gap-6 xl:grid-cols-2">
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">MCP Health</div>
+                <div class="sa-table-subtitle">Local code and registry verification. No staging-server request is performed.</div>
+            </div>
+            <span class="sa-badge {% if self_test.overall == 'PASS' %}sa-badge--primary{% endif %}">{{ self_test.overall }}</span>
+        </div>
+        <div class="grid gap-3 p-5 text-xs text-gray-600">
+            <div><span class="font-semibold text-gray-900">Environment:</span> {{ operations_environment }}</div>
+            <div><span class="font-semibold text-gray-900">Endpoint:</span> <code class="break-all">{{ operations_mcp_url }}</code></div>
+            <div><span class="font-semibold text-gray-900">Protocol versions:</span> {{ supported_protocol_versions|join:", " }}</div>
+            <div><span class="font-semibold text-gray-900">Tool registry:</span> {{ self_test.counts.PASS }} checks passed; {{ self_test.counts.FAIL }} failed</div>
+        </div>
+    </div>
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">OAuth Health</div>
+                <div class="sa-table-subtitle">Canonical issuer/resource binding, public PKCE, CIMD, DCR, refresh, and revocation surfaces.</div>
+            </div>
+            <span class="sa-badge {% if self_test.overall == 'PASS' %}sa-badge--primary{% endif %}">{{ self_test.overall }}</span>
+        </div>
+        <div class="grid gap-3 p-5 text-xs text-gray-600">
+            <div><span class="font-semibold text-gray-900">Issuer:</span> <code class="break-all">{{ oauth_issuer_url }}</code></div>
+            <div><span class="font-semibold text-gray-900">Protected resource:</span> <code class="break-all">{{ operations_mcp_url }}</code></div>
+            <div><span class="font-semibold text-gray-900">Scopes:</span> {{ supported_scopes|join:", " }}</div>
+            <div><span class="font-semibold text-gray-900">Client authentication:</span> Public client · PKCE S256 · no secret</div>
+        </div>
+    </div>
+</section>
+
+<section class="sa-panel mb-6 overflow-hidden">
+    <div class="sa-table-header">
+        <div>
+            <div class="sa-table-title">Client Compatibility</div>
+            <div class="sa-table-subtitle">Code verification is intentionally distinct from live third-party verification.</div>
+        </div>
+        <span class="sa-badge">{{ client_compatibility|length }} clients</span>
+    </div>
+    <div class="sa-table-scroll">
+        <table class="sa-data-table">
+            <thead>
+                <tr>
+                    <th>Client</th>
+                    <th>Protocol</th>
+                    <th>Preferred authentication</th>
+                    <th>Known callback</th>
+                    <th>Configuration</th>
+                    <th>Verification</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for client in client_compatibility %}
+                <tr>
+                    <td class="font-semibold text-gray-900">{{ client.name }}</td>
+                    <td>{{ client.protocol }}</td>
+                    <td>{{ client.authentication }}</td>
+                    <td><code class="break-all text-[10px]">{{ client.callback }}</code></td>
+                    <td>{{ client.configuration }}</td>
+                    <td>
+                        <span class="sa-badge sa-badge--primary">{{ client.verification }}</span>
+                        <div class="mt-1 text-[10px] font-semibold text-amber-600">{{ client.live_verification }}</div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
 
 <section class="sa-panel mb-6 overflow-hidden">
     <div class="border-b border-gray-100 px-5 py-4">
@@ -235,6 +310,9 @@
             <summary class="cursor-pointer text-xs font-semibold text-gray-700">OAuth / discovery endpoints</summary>
             <div class="mt-3 grid gap-2 text-xs">
                 <div><span class="font-semibold text-gray-600">Authorization:</span> <code class="break-all text-gray-500">{{ oauth_authorize_url }}</code></div>
+                <div><span class="font-semibold text-gray-600">Token:</span> <code class="break-all text-gray-500">{{ oauth_token_url }}</code></div>
+                <div><span class="font-semibold text-gray-600">Registration:</span> <code class="break-all text-gray-500">{{ oauth_registration_url }}</code></div>
+                <div><span class="font-semibold text-gray-600">Revocation:</span> <code class="break-all text-gray-500">{{ oauth_revocation_url }}</code></div>
                 <div><span class="font-semibold text-gray-600">Protected resource:</span> <code class="break-all text-gray-500">{{ resource_metadata_url }}</code></div>
                 <div><span class="font-semibold text-gray-600">Authorization server:</span> <code class="break-all text-gray-500">{{ server_metadata_url }}</code></div>
             </div>
@@ -242,80 +320,71 @@
     </div>
 </section>
 
-<section class="sa-panel mb-6 overflow-hidden">
-    <div class="sa-table-header">
-        <div>
-            <div class="sa-table-title">Superadmin MCP credentials</div>
-            <div class="sa-table-subtitle">Direct keys and OAuth grants share the same actor, organization-context, capability, revocation, and audit controls.</div>
+<section class="mb-6 grid gap-6 xl:grid-cols-2">
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">Active OAuth Grants</div>
+                <div class="sa-table-subtitle">Browser-authorized, actor-bound grants with rotating refresh credentials.</div>
+            </div>
+            <span class="sa-badge">{{ oauth_grant_tokens|length }} active</span>
         </div>
-        <span class="sa-badge">{{ superadmin_tokens|length }} active</span>
+        {% include "superadmin/mcp_credentials_table.html" with credentials=oauth_grant_tokens credential_label="OAuth" empty_message="No active Superadmin OAuth grants." %}
     </div>
-    {% if superadmin_tokens %}
-    <div class="sa-table-scroll">
-        <table class="sa-data-table">
-            <thead>
-                <tr>
-                    <th>Client</th>
-                    <th>Superadmin</th>
-                    <th>Scope</th>
-                    <th>Current organization</th>
-                    <th>Last used</th>
-                    <th>Credential expires</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for token in superadmin_tokens %}
-                <tr>
-                    <td>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <div class="font-semibold text-gray-900">{{ token.client.client_name|default:"External AI" }}</div>
-                            {% if token.is_direct_key %}
-                                <span class="sa-badge sa-badge--primary">Direct key</span>
-                            {% else %}
-                                <span class="sa-badge">OAuth</span>
-                            {% endif %}
-                        </div>
-                        <div class="mt-1 text-[10px] text-gray-400">{{ token.client.client_id|truncatechars:36 }}</div>
-                    </td>
-                    <td>{{ token.actor.name|default:token.actor.email }}</td>
-                    <td>
-                        <span class="sa-badge {% if 'operations.write' in token.scope %}sa-badge--primary{% endif %}">
-                            {% if 'operations.write' in token.scope %}Read + Write{% else %}Read only{% endif %}
-                        </span>
-                        {% if not token.live_authority_valid %}
-                        <div class="mt-1 text-[10px] font-semibold text-red-600">Authority invalid</div>
-                        {% endif %}
-                    </td>
-                    <td>
-                        {% if token.active_organization %}
-                            <a href="{% url 'superadmin-organization-detail' organization_id=token.active_organization.id %}" class="font-semibold text-indigo-600 hover:text-indigo-700">{{ token.active_organization.name }}</a>
-                        {% else %}
-                            <span class="text-gray-400">No context selected</span>
-                        {% endif %}
-                    </td>
-                    <td>{{ token.last_used_at|date:"d M Y, h:i A"|default:"Never" }}</td>
-                    <td>{{ token.refresh_expires_at|date:"d M Y, h:i A" }}</td>
-                    <td class="text-right">
-                        <form method="post" action="{% url 'superadmin-operations-mcp-session-revoke' token_id=token.id %}" onsubmit="return confirm('Revoke this Superadmin External AI MCP session?');">
-                            {% csrf_token %}
-                            <button type="submit" class="sa-secondary-button">Revoke</button>
-                        </form>
-                    </td>
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">Direct MCP Keys</div>
+                <div class="sa-table-subtitle">Expiring, revocable keys whose raw values were shown only once.</div>
+            </div>
+            <span class="sa-badge">{{ direct_key_tokens|length }} active</span>
+        </div>
+        {% include "superadmin/mcp_credentials_table.html" with credentials=direct_key_tokens credential_label="Direct key" empty_message="No active direct MCP keys." %}
     </div>
-    {% else %}
-    <div class="px-5 py-8 text-center text-sm text-gray-500">No active Superadmin MCP credentials. Generate a direct key above or connect a client through OAuth.</div>
-    {% endif %}
+</section>
+
+<section class="mb-6 grid gap-6 xl:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">Security</div>
+                <div class="sa-table-subtitle">Controls enforced below the client and model layer.</div>
+            </div>
+        </div>
+        <div class="grid gap-3 p-5 text-xs leading-5 text-gray-600">
+            <div><strong class="text-gray-900">Credentials:</strong> hashed at rest, short-lived OAuth access, rotating refresh, expiring direct keys.</div>
+            <div><strong class="text-gray-900">Tenant boundary:</strong> one server-side Superadmin organization context; tool arguments cannot replace it.</div>
+            <div><strong class="text-gray-900">Writes:</strong> capability + live policy + grant snapshot + OAuth scope + dry-run/approval + backend validation.</div>
+            <div><strong class="text-gray-900">Evidence:</strong> safe append-only audits and single-use approval receipts; secrets and customer content are excluded.</div>
+        </div>
+    </div>
+    <div class="sa-panel overflow-hidden">
+        <div class="sa-table-header">
+            <div>
+                <div class="sa-table-title">MCP Self-Test</div>
+                <div class="sa-table-subtitle">Server-side/local diagnostics only. PASS does not mean a third-party client was tested live.</div>
+            </div>
+            <span class="sa-badge {% if self_test.overall == 'PASS' %}sa-badge--primary{% endif %}">{{ self_test.counts.PASS }} PASS · {{ self_test.counts.WARNING }} WARNING · {{ self_test.counts.FAIL }} FAIL</span>
+        </div>
+        <div class="divide-y divide-gray-100">
+            {% for check in self_test.checks %}
+            <div class="grid gap-2 px-5 py-3 md:grid-cols-[minmax(0,.8fr)_auto_minmax(0,1.4fr)] md:items-center">
+                <div>
+                    <div class="text-xs font-semibold text-gray-900">{{ check.name }}</div>
+                    <div class="mt-1 text-[10px] uppercase tracking-[0.08em] text-gray-400">{{ check.group }}</div>
+                </div>
+                <span class="sa-badge {% if check.status == 'PASS' %}sa-badge--primary{% endif %}">{{ check.status }}</span>
+                <div class="text-xs leading-5 text-gray-600">{{ check.detail }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
 </section>
 
 <section class="sa-panel mb-6 overflow-hidden">
     <div class="sa-table-header">
         <div>
-            <div class="sa-table-title">Open organization support contexts</div>
+            <div class="sa-table-title">Active Organization Support Contexts</div>
             <div class="sa-table-subtitle">Only one organization is active per Superadmin OAuth grant at a time.</div>
         </div>
         <span class="sa-badge">{{ open_support_sessions|length }} open</span>
@@ -362,7 +431,7 @@
 <section class="sa-panel mb-6 overflow-hidden">
     <div class="sa-table-header">
         <div>
-            <div class="sa-table-title">Organization Admin MCP policies</div>
+            <div class="sa-table-title">Organization AI Policies</div>
             <div class="sa-table-subtitle">Organization-specific permissions remain managed on each organization page; the Superadmin endpoint itself stays global.</div>
         </div>
         <span class="sa-badge">{{ enabled_policy_count }} enabled</span>
@@ -408,7 +477,7 @@
 <section class="sa-panel overflow-hidden">
     <div class="sa-table-header">
         <div>
-            <div class="sa-table-title">Platform MCP audit</div>
+            <div class="sa-table-title">Audit Activity</div>
             <div class="sa-table-subtitle">Tenantless Operations/OAuth lifecycle events only. Customer organization audit rows are intentionally not mixed here.</div>
         </div>
         <span class="sa-badge">Last 30</span>

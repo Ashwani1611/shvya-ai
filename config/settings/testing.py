@@ -32,3 +32,7 @@ CSRF_COOKIE_SECURE = False
 SECURE_HSTS_SECONDS = 0
 SECURE_HSTS_INCLUDE_SUBDOMAINS = False
 SECURE_HSTS_PRELOAD = False
+
+# Preserve deterministic Django-test-client URLs while production remains
+# pinned to dashboard.shvya-ai.com.
+OPERATIONS_PUBLIC_ORIGIN = "http://testserver"

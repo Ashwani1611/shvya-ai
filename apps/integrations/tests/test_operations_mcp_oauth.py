@@ -1,12 +1,153 @@
 # ruff: noqa: F403,F405
 """Domain-focused coverage split from the historical Operations MCP suite."""
 
+from django.core.exceptions import ImproperlyConfigured
 from django.test import override_settings
 
+from apps.integrations.mcp_oauth_clients import MCPClientMetadataError
+from apps.integrations.operations_endpoints import operations_public_origin
 from apps.integrations.tests.operations_mcp_test_base import *
 
 
 class TestOperationsMCPOAuth(OperationsMCPBase):
+    @override_settings(
+        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com:invalid"
+    )
+    def test_operations_public_origin_rejects_malformed_port(self):
+        with self.assertRaises(ImproperlyConfigured):
+            operations_public_origin()
+
+    @override_settings(
+        ALLOWED_HOSTS=[
+            "testserver",
+            "staging.shvya-ai.com",
+            "attacker.example",
+        ],
+        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com",
+    )
+    def test_production_metadata_ignores_host_and_forwarded_header_spoofing(self):
+        expected = {
+            "resource": "https://dashboard.shvya-ai.com/operations/mcp/",
+            "issuer": "https://dashboard.shvya-ai.com/operations",
+            "authorization_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/authorize",
+            "token_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/token",
+            "registration_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/register",
+            "revocation_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/revoke",
+        }
+        for hostile_host in (
+            "staging.shvya-ai.com",
+            "attacker.example",
+        ):
+            resource = self.client.get(
+                "/.well-known/oauth-protected-resource/operations/mcp/",
+                HTTP_HOST=hostile_host,
+                HTTP_X_FORWARDED_HOST=hostile_host,
+                HTTP_X_FORWARDED_PROTO="http",
+            ).json()
+            server = self.client.get(
+                "/.well-known/oauth-authorization-server/operations",
+                HTTP_HOST=hostile_host,
+                HTTP_X_FORWARDED_HOST=hostile_host,
+                HTTP_X_FORWARDED_PROTO="http",
+            ).json()
+            self.assertEqual(resource["resource"], expected["resource"])
+            self.assertEqual(
+                resource["authorization_servers"],
+                [expected["issuer"]],
+            )
+            for field in (
+                "issuer",
+                "authorization_endpoint",
+                "token_endpoint",
+                "registration_endpoint",
+                "revocation_endpoint",
+            ):
+                self.assertEqual(server[field], expected[field])
+            self.assertNotIn(
+                "staging.shvya-ai.com",
+                json.dumps({"resource": resource, "server": server}),
+            )
+
+    def test_authorization_errors_show_safe_code_stage_and_client(self):
+        response = self.client.get(
+            "/operations/oauth/authorize",
+            {
+                "client_id": self.oauth_client.client_id,
+                "redirect_uri": "https://example.com/not-registered",
+                "response_type": "code",
+                "code_challenge": "A" * 43,
+                "code_challenge_method": "S256",
+                "scope": OPERATIONS_READ_SCOPE,
+                "resource": "http://testserver/operations/mcp/",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertContains(
+            response,
+            "REDIRECT_NOT_REGISTERED",
+            status_code=400,
+        )
+        self.assertContains(
+            response,
+            "Stage: Redirect Validation",
+            status_code=400,
+        )
+        self.assertContains(response, "Client: Test MCP", status_code=400)
+        self.assertNotContains(response, "Traceback", status_code=400)
+
+    @patch("apps.integrations.operations_auth.fetch_cimd_metadata")
+    def test_authorization_post_reuses_metadata_validated_by_get(self, fetch_metadata):
+        client_id = "https://claude.ai/oauth/mcp-oauth-client-metadata"
+        callback = "https://claude.ai/api/mcp/auth_callback"
+        metadata = {
+            "client_id": client_id,
+            "client_name": "Claude",
+            "application_type": "web",
+            "redirect_uris": [callback],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+        }
+        fetch_metadata.side_effect = [
+            metadata,
+            MCPClientMetadataError(
+                "Second fetch must not happen.",
+                code="CIMD_FETCH_FAILED",
+            ),
+        ]
+        session = SessionStore()
+        set_authenticated_user(session, self.superadmin)
+        session.create()
+        self.client.cookies[get_session_cookie_name("superadmin")] = (
+            session.session_key
+        )
+        verifier = "m" * 64
+        fields = {
+            "client_id": client_id,
+            "redirect_uri": callback,
+            "response_type": "code",
+            "code_challenge": pkce_s256(verifier),
+            "code_challenge_method": "S256",
+            "scope": f"{OPERATIONS_READ_SCOPE} {OFFLINE_SCOPE}",
+            "resource": "http://testserver/operations/mcp/",
+            "state": "claude-state",
+        }
+        consent = self.client.get(
+            "/operations/oauth/authorize",
+            fields,
+        )
+        self.assertEqual(consent.status_code, 200)
+
+        authorized = self.client.post(
+            "/operations/oauth/authorize",
+            data={**fields, "actor_mode": ROLE_SUPERADMIN},
+        )
+        self.assertEqual(authorized.status_code, 302)
+        params = parse_qs(urlparse(authorized["Location"]).query)
+        self.assertEqual(params["state"], ["claude-state"])
+        self.assertEqual(params["iss"], ["http://testserver/operations"])
+        self.assertIn("code", params)
+        self.assertEqual(fetch_metadata.call_count, 1)
+
     def test_oauth_consent_shows_requested_scope_and_effective_capabilities(self):
         OperationsPolicy.objects.create(
             organization=self.organization,
@@ -155,7 +296,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
             )
 
     @override_settings(
-        OPERATIONS_PUBLIC_BASE_URL="https://dashboard.shvya-ai.com",
+        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com",
         ALLOWED_HOSTS=["testserver", "staging.shvya-ai.com"],
     )
     def test_oauth_discovery_and_challenge_ignore_request_host(self):
@@ -365,6 +506,10 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         for unsafe_callback in (
             "http://example.com/callback",
             "http://localhost:7777/callback#fragment",
+            "https://user:password@example.com/callback",
+            "https://example.com/callback#fragment",
+            "https://example.com:99999/callback",
+            "javascript:alert(1)",
         ):
             rejected = self.client.post(
                 "/operations/oauth/register",

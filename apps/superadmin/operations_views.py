@@ -6,7 +6,6 @@ from django.contrib import messages
 from django.db import transaction
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -22,6 +21,16 @@ from apps.integrations.operations_auth import (
     operations_grant_status,
     revoke_token_record,
     token_hash,
+)
+from apps.integrations.operations_endpoints import (
+    PRODUCTION_OPERATIONS_ORIGIN,
+    operations_authorization_url,
+    operations_issuer,
+    operations_registration_url,
+    operations_resource,
+    operations_resource_metadata_url,
+    operations_revocation_url,
+    operations_token_url,
 )
 from apps.integrations.operations_models import (
     OperationsAuditEvent,
@@ -40,7 +49,7 @@ from apps.integrations.operations_policy import (
     WRITE_CAPABILITIES,
     capabilities_for_grant,
 )
-from apps.integrations.public_urls import operations_public_url
+from apps.integrations.operations_self_test import run_operations_self_test
 from apps.organizations.models import Organization
 from apps.superadmin.models import AuditLog
 from apps.superadmin.views_flat import superuser_required
@@ -51,21 +60,16 @@ def operations_mcp_workspace_view(request):
     """Global Superadmin workspace for the single SHVYA Operations MCP."""
 
     now = timezone.now()
-    operations_mcp_url = operations_public_url(
-        request,
-        reverse("shvya-operations-mcp"),
-    )
-    oauth_authorize_url = operations_public_url(
-        request,
-        reverse("shvya-operations-oauth-authorize"),
-    )
-    resource_metadata_url = operations_public_url(
-        request,
-        reverse("shvya-operations-oauth-resource-metadata-rfc9728"),
-    )
-    server_metadata_url = operations_public_url(
-        request,
-        reverse("shvya-operations-oauth-server-metadata-rfc8414"),
+    operations_mcp_url = operations_resource()
+    oauth_issuer_url = operations_issuer()
+    oauth_authorize_url = operations_authorization_url()
+    oauth_token_url = operations_token_url()
+    oauth_registration_url = operations_registration_url()
+    oauth_revocation_url = operations_revocation_url()
+    resource_metadata_url = operations_resource_metadata_url()
+    server_metadata_url = (
+        operations_issuer()
+        + "/.well-known/oauth-authorization-server"
     )
 
     superadmin_tokens = list(
@@ -90,6 +94,12 @@ def operations_mcp_workspace_view(request):
         token.is_direct_key = str(token.client.client_id).startswith(
             "shvya_key_"
         )
+    direct_key_tokens = [
+        token for token in superadmin_tokens if token.is_direct_key
+    ]
+    oauth_grant_tokens = [
+        token for token in superadmin_tokens if not token.is_direct_key
+    ]
 
     open_support_sessions = list(
         OperationsSupportSession.objects.filter(
@@ -175,21 +185,121 @@ def operations_mcp_workspace_view(request):
         f"shvya-superadmin {operations_mcp_url}"
     )
 
+    self_test = run_operations_self_test()
+    client_compatibility = [
+        {
+            "name": "ChatGPT",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth 2.1 · CIMD/DCR",
+            "callback": "https://chatgpt.com/connector_platform_oauth_redirect",
+            "configuration": "Universal production MCP URL",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Claude",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth 2.1 · CIMD",
+            "callback": "https://claude.ai/api/mcp/auth_callback",
+            "configuration": "Production MCP URL + public OAuth",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Codex",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth or direct key",
+            "callback": "Client-managed OAuth callback",
+            "configuration": "config.toml example below",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "VS Code",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth or direct key",
+            "callback": "HTTPS or RFC 8252 loopback",
+            "configuration": "mcp.json example below",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Cursor",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth or direct key",
+            "callback": "HTTPS or RFC 8252 loopback",
+            "configuration": "mcp.json example below",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Claude Code",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth or direct key",
+            "callback": "Client-managed OAuth callback",
+            "configuration": "CLI example below",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Gemini CLI",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "Direct key",
+            "callback": "Not required for direct key",
+            "configuration": "settings.json example below",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+        {
+            "name": "Windsurf",
+            "protocol": "Streamable HTTP MCP",
+            "authentication": "OAuth or direct key",
+            "callback": "HTTPS or RFC 8252 loopback",
+            "configuration": "Remote MCP + Bearer header",
+            "verification": "CODE VERIFIED",
+            "live_verification": "NOT LIVE VERIFIED",
+        },
+    ]
+
     return render(
         request,
         "superadmin/mcp_workspace.html",
         {
             "operations_mcp_url": operations_mcp_url,
+            "operations_environment": (
+                "Production"
+                if operations_mcp_url.startswith(
+                    PRODUCTION_OPERATIONS_ORIGIN
+                )
+                else "Local test"
+            ),
+            "oauth_issuer_url": oauth_issuer_url,
             "claude_browser_client_id": CLAUDE_BROWSER_CLIENT_ID,
             "oauth_authorize_url": oauth_authorize_url,
+            "oauth_token_url": oauth_token_url,
+            "oauth_registration_url": oauth_registration_url,
+            "oauth_revocation_url": oauth_revocation_url,
             "resource_metadata_url": resource_metadata_url,
             "server_metadata_url": server_metadata_url,
+            "supported_protocol_versions": [
+                "2026-07-28",
+                "2025-11-25",
+            ],
+            "supported_scopes": [
+                "operations.read",
+                "operations.write",
+                "offline_access",
+            ],
+            "self_test": self_test,
+            "client_compatibility": client_compatibility,
             "vscode_configuration": vscode_configuration,
             "cursor_configuration": cursor_configuration,
             "gemini_configuration": gemini_configuration,
             "codex_configuration": codex_configuration,
             "claude_code_command": claude_code_command,
             "superadmin_tokens": superadmin_tokens,
+            "direct_key_tokens": direct_key_tokens,
+            "oauth_grant_tokens": oauth_grant_tokens,
             "open_support_sessions": open_support_sessions,
             "operations_policies": policies,
             "enabled_policy_count": enabled_policy_count,
@@ -266,10 +376,7 @@ def operations_mcp_access_key_generate_view(request):
         "direct-key-refresh-disabled:" + secrets.token_urlsafe(48)
     )
     expires_at = now + timedelta(days=ttl_days)
-    operations_mcp_url = operations_public_url(
-        request,
-        reverse("shvya-operations-mcp"),
-    )
+    operations_mcp_url = operations_resource()
 
     with transaction.atomic():
         client = OperationsOAuthClient.objects.create(
