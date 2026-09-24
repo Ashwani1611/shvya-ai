@@ -33,6 +33,7 @@ from apps.hosted_automation.models import (
     HostedAutomationJob,
     HostedFollowupStepConfig,
 )
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 
 
 HOSTED_CONNECTION_TYPE = "hosted"
@@ -494,7 +495,6 @@ def hosted_ai_block_reason(*, account, lead):
     from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.crm.models import Lead
     from services.channels.hosted_whatsapp_service import get_session_settings
-from services.content_authoring import ContentAuthoringError, normalize_plain_text
 
     lead = Lead.objects.select_related(
         "organization", "pipeline", "stage"
