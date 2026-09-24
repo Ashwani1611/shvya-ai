@@ -51,7 +51,7 @@ def _acknowledgment_message_id(lead, ai_playbook: str) -> str | None:
     template = parse_playbook(ai_playbook)["acknowledgment_message"]
     template = re.sub(r"</?[a-z_]+>", "", template, flags=re.I)
     # Match all fixed template parts, permitting only configured name variables.
-    parts = [" ".join(part.casefold().split()) for part in re.split(r"\{[^{}]+\}|\[[A-Za-z_ ]+\]", template)]
+    parts = [" ".join(part.casefold().split()) for part in re.split(r"\{\{lead_first_name\}\}|\{[^{}]+\}|\[[A-Za-z_ ]+\]", template)]
     parts = [part for part in parts if len(part) >= 5]
     if not parts:
         return None

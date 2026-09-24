@@ -29,6 +29,8 @@ Produce: client profile; exact qualification/Playbook; factual About and grounde
 
 ## Variables and AI Brain
 
+Apply the [standard content rules](../skills/shvya-account-setup/references/content-rules.md): always author plain text and include `{{lead_first_name}}` in every customer message body, using the verified first-name mapping for approved API templates. Do not use bold/HTML or substitute a full or hard-coded recipient name. Keep required Playbook parser markers and tool JSON intact; factual knowledge and internal metadata do not need recipient tokens. Verify rendering and missing-name behavior before publication.
+
 Use `get_setup_variable_schema` and `render_setup_template` to resolve uppercase `{{SHVYA_*}}` authoring variables before any upload. Select `ai-playbook`, `company-about`, `voice-agent` or `voice-call-instructions` and supply explicit values; examples are never defaults. Preserve only verified native runtime placeholders on supported surfaces. Bind organization/pipeline/stage/attribute/channel IDs from actual returned records; do not fabricate IDs or derive attribute keys from labels.
 
 The canonical customer operating document is `OrgInfo.ai_playbook`, edited through `update_ai_configuration(changes.ai_playbook)`. Use all eight supported sections. Keep customer copy inside its message tags and private instructions outside. Match exact existing attributes and allowed options. If setup requires a new attribute, propose it as a separate authorized configuration step; the customer-facing Playbook cannot create it implicitly.
@@ -37,7 +39,7 @@ Qualification only runs in New Lead / New Leads. Use all required valid values, 
 
 ## Apply only when live setup is requested
 
-Read, diff, validate, dry-run, apply, read back, and report. Reuse equivalent records. Build dependencies before referencing their returned IDs. Keep new Workflows disabled while authoring. Shvya requires an active Cadence to add steps: keep that unfinished Cadence isolated from enrollment and enabled triggers. Activation of its enrollment paths is a distinct consequential step after routing, exits and effects are reviewed. Do not send test WhatsApp/email messages or make calls unless the user specifically authorizes that send/call.
+Read, diff, validate, dry-run, apply, read back, and report. Reuse equivalent records. Build dependencies before referencing their returned IDs. Always create Cadences with `data.is_active: true` and verify they remain active on readback. Keep new Workflows disabled while authoring and unfinished Cadences isolated from enrollment and enabled triggers. Activation of enrollment paths is a distinct consequential step after routing, exits and effects are reviewed. Preserve existing Cadence status on unrelated edits; disable/archive only when requested. Do not send test WhatsApp/email messages or make calls unless the user specifically authorizes that send/call.
 
 Use the exact backend-returned approval requirements. If a dry-run requires approval, show the concrete proposal, affected records, effects and reversibility. After the human approves that proposal, execute with `approved=true` and its matching unexpired `approval_event_id`. A receipt is bound to that actor, tenant, tool and proposal and consumed on an attempt. If state or proposal changes, or the receipt expires/is consumed, get a new dry-run. Never create an approval flag or receipt to stand in for consent.
 
