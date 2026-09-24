@@ -25,6 +25,7 @@ from django.utils import timezone
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.followups.models import (
     FollowupExecution,
+    FollowupSequence,
     FollowupStep,
     LeadSequenceState,
 )
@@ -255,7 +256,7 @@ def add_hosted_whatsapp_step(
 ):
     from services.followup_service import _validate_schedule
 
-    if sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if sequence.provider != FollowupSequence.Provider.HOSTED:
         raise HostedAutomationError("Use WhatsApp is available only for Hosted Account sequences.")
     title = str(title or "").strip()
     body = str(body or "").strip()
@@ -309,7 +310,7 @@ def add_hosted_whatsapp_step(
 
 @transaction.atomic
 def update_hosted_whatsapp_step(*, step, title, body, attachment=None, remove_attachment=False):
-    if step.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if step.sequence.provider != FollowupSequence.Provider.HOSTED:
         raise HostedAutomationError("This is not a Hosted Account WhatsApp step.")
     title = str(title or "").strip()
     body = str(body or "").strip()
@@ -343,7 +344,7 @@ def update_hosted_whatsapp_step(*, step, title, body, attachment=None, remove_at
 
 
 def duplicate_hosted_configs(*, source_sequence, copied_sequence):
-    if source_sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if source_sequence.provider != FollowupSequence.Provider.HOSTED:
         return copied_sequence
     source_steps = list(source_sequence.steps.order_by("position", "created_at"))
     copied_steps = list(copied_sequence.steps.order_by("position", "created_at"))
@@ -685,7 +686,7 @@ def register_hosted_lead_reply(*, account, lead, at=None):
 
     states = LeadSequenceState.objects.select_for_update().filter(
         lead=lead,
-        sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+        sequence__provider=FollowupSequence.Provider.HOSTED,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
     ).select_related("sequence__whatsapp_account")
     state = next(
@@ -719,7 +720,7 @@ def register_hosted_manual_outbound(*, account, lead, at=None):
 
     states = LeadSequenceState.objects.select_for_update().filter(
         lead=lead,
-        sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+        sequence__provider=FollowupSequence.Provider.HOSTED,
         status__in=[LeadSequenceState.Status.ACTIVE, LeadSequenceState.Status.PAUSED],
     ).select_related("sequence__whatsapp_account")
     state = next(
@@ -770,7 +771,7 @@ def _historical_duplicate(*, state, content_hash):
     return FollowupExecution.objects.filter(
         lead=state.lead,
         status=FollowupExecution.Status.SENT,
-        sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+        sequence__provider=FollowupSequence.Provider.HOSTED,
         payload__hosted_content_hash=content_hash,
     ).exists()
 
@@ -816,7 +817,7 @@ def process_hosted_due_state(state_id):
     )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
-    if state.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if state.sequence.provider != FollowupSequence.Provider.HOSTED:
         return False
     from services.followup_service import resolve_linked_whatsapp_account
 
@@ -997,7 +998,7 @@ def dispatch_one_hosted_due_state():
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
-                sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+                sequence__provider=FollowupSequence.Provider.HOSTED,
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
             )
@@ -1026,7 +1027,7 @@ def dispatch_one_api_due_state():
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
-                sequence__whatsapp_account__connection_type="api",
+                sequence__provider=FollowupSequence.Provider.API,
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
             )
@@ -1075,7 +1076,7 @@ def hosted_queue_items(*, account):
 
     candidates = (
         LeadSequenceState.objects.filter(
-            sequence__whatsapp_account__connection_type=HOSTED_CONNECTION_TYPE,
+            sequence__provider=FollowupSequence.Provider.HOSTED,
             status=LeadSequenceState.Status.ACTIVE,
             lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
             next_step__isnull=False,
