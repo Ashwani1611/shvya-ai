@@ -7,12 +7,15 @@ CRM reminder creation. Views only validate request shape and call this layer.
 
 from __future__ import annotations
 
+import mimetypes
 import re
 from datetime import datetime, timedelta, timezone as datetime_timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -27,6 +30,7 @@ from apps.followups.models import (
     FollowupSenderState,
     FollowupSequence,
     FollowupStep,
+    FollowupStepAttachment,
     LeadSequenceState,
 )
 from apps.integrations.services.email import send_organization_email
@@ -36,10 +40,126 @@ from services.channels.template_service import render_template_body
 WHATSAPP_MIN_SEND_GAP_SECONDS = 60
 DISPATCH_LOCK_KEY = "shvya:auto-followups:dispatcher"
 DISPATCH_LOCK_SECONDS = 55
+MAX_EMAIL_ATTACHMENTS = 5
+MAX_EMAIL_ATTACHMENT_BYTES = 18 * 1024 * 1024
+ALLOWED_EMAIL_ATTACHMENT_EXTENSIONS = {
+    ".pdf",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".ppt",
+    ".pptx",
+    ".txt",
+    ".csv",
+    ".rtf",
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".wav",
+    ".ogg",
+    ".opus",
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".3gp",
+    ".zip",
+}
 
 
 class FollowupError(Exception):
     pass
+
+
+def validate_email_attachments(attachments):
+    files = list(attachments or [])
+    if len(files) > MAX_EMAIL_ATTACHMENTS:
+        raise FollowupError(
+            f"Email Cadence steps support up to {MAX_EMAIL_ATTACHMENTS} attachments."
+        )
+    total = 0
+    for upload in files:
+        size = int(getattr(upload, "size", 0) or 0)
+        if size <= 0:
+            raise FollowupError("Email attachments cannot be empty.")
+        total += size
+        extension = Path(getattr(upload, "name", "") or "").suffix.lower()
+        if extension not in ALLOWED_EMAIL_ATTACHMENT_EXTENSIONS:
+            raise FollowupError(
+                "Unsupported email attachment. Use common document, spreadsheet, "
+                "presentation, text, image, or ZIP files."
+            )
+    if total > MAX_EMAIL_ATTACHMENT_BYTES:
+        raise FollowupError(
+            "Email Cadence attachments can total at most 18 MiB per step."
+        )
+    return files
+
+
+@transaction.atomic
+def replace_email_step_attachments(*, step, attachments):
+    if step.step_type != FollowupStep.StepType.EMAIL:
+        raise FollowupError("Attachments can be stored only on email Cadence steps.")
+    files = validate_email_attachments(attachments)
+    existing = list(step.attachments.all())
+    old_files = [old.file for old in existing if old.file]
+    step.attachments.all().delete()
+    for position, upload in enumerate(files, start=1):
+        mime_type = (
+            getattr(upload, "content_type", "")
+            or mimetypes.guess_type(getattr(upload, "name", "") or "")[0]
+            or "application/octet-stream"
+        )
+        FollowupStepAttachment.objects.create(
+            step=step,
+            file=upload,
+            original_name=(getattr(upload, "name", "") or "attachment")[:255],
+            mime_type=str(mime_type)[:120],
+            size=int(getattr(upload, "size", 0) or 0),
+            position=position,
+        )
+
+    def _cleanup_old_files():
+        for old_file in old_files:
+            try:
+                old_file.delete(save=False)
+            except Exception:
+                pass
+
+    if old_files:
+        transaction.on_commit(_cleanup_old_files)
+    return list(step.attachments.order_by("position", "created_at"))
+
+
+def _email_attachment_payloads(step):
+    manager = getattr(step, "attachments", None)
+    if manager is None:
+        return []
+    payloads = []
+    for attachment in manager.all().order_by("position", "created_at"):
+        if not attachment.file:
+            continue
+        try:
+            attachment.file.open("rb")
+            content = attachment.file.read()
+        finally:
+            try:
+                attachment.file.close()
+            except Exception:
+                pass
+        payloads.append(
+            (
+                attachment.original_name or Path(attachment.file.name).name,
+                content,
+                attachment.mime_type or "application/octet-stream",
+            )
+        )
+    return payloads
 
 
 def get_auto_followup_settings(organization):
@@ -188,7 +308,7 @@ def duplicate_sequence(*, sequence, created_by):
             is_active=sequence.is_active,
         )
         for step in sequence.steps.order_by("position", "created_at"):
-            FollowupStep.objects.create(
+            copied_step = FollowupStep.objects.create(
                 sequence=copied,
                 position=step.position,
                 step_type=step.step_type,
@@ -209,6 +329,28 @@ def duplicate_sequence(*, sequence, created_by):
                 retry_delay_hours=step.retry_delay_hours,
                 is_active=step.is_active,
             )
+            for attachment in step.attachments.order_by("position", "created_at"):
+                if not attachment.file:
+                    continue
+                try:
+                    attachment.file.open("rb")
+                    copied_content = attachment.file.read()
+                finally:
+                    try:
+                        attachment.file.close()
+                    except Exception:
+                        pass
+                FollowupStepAttachment.objects.create(
+                    step=copied_step,
+                    file=ContentFile(
+                        copied_content,
+                        name=attachment.original_name or Path(attachment.file.name).name,
+                    ),
+                    original_name=attachment.original_name,
+                    mime_type=attachment.mime_type,
+                    size=attachment.size,
+                    position=attachment.position,
+                )
     return copied
 
 
@@ -335,12 +477,14 @@ def add_email_step(
     recurring_every=None,
     recurring_unit="",
     recurring_weekdays=None,
+    attachments=None,
 ):
     title = (title or "").strip() or f"Email {sequence.steps.count() + 1}"
     subject = (subject or "").strip()
     body = (body or "").strip()
     if not subject or not body:
         raise FollowupError("Email subject and content are required.")
+    email_attachments = validate_email_attachments(attachments)
     _validate_schedule(
         schedule_type=schedule_type,
         delay_value=delay_value,
@@ -351,22 +495,29 @@ def add_email_step(
         recurring_unit=recurring_unit,
         recurring_weekdays=recurring_weekdays,
     )
-    return FollowupStep.objects.create(
-        sequence=sequence,
-        position=_next_position(sequence),
-        step_type=FollowupStep.StepType.EMAIL,
-        title=title,
-        email_subject=subject,
-        email_body=body,
-        schedule_type=schedule_type,
-        delay_value=delay_value,
-        delay_unit=delay_unit,
-        specific_time=specific_time,
-        specific_weekday=specific_weekday,
-        recurring_every=recurring_every,
-        recurring_unit=recurring_unit,
-        recurring_weekdays=list(recurring_weekdays or []),
-    )
+    with transaction.atomic():
+        step = FollowupStep.objects.create(
+            sequence=sequence,
+            position=_next_position(sequence),
+            step_type=FollowupStep.StepType.EMAIL,
+            title=title,
+            email_subject=subject,
+            email_body=body,
+            schedule_type=schedule_type,
+            delay_value=delay_value,
+            delay_unit=delay_unit,
+            specific_time=specific_time,
+            specific_weekday=specific_weekday,
+            recurring_every=recurring_every,
+            recurring_unit=recurring_unit,
+            recurring_weekdays=list(recurring_weekdays or []),
+        )
+        if email_attachments:
+            replace_email_step_attachments(
+                step=step,
+                attachments=email_attachments,
+            )
+        return step
 
 
 def add_reminder_step(
@@ -1167,12 +1318,16 @@ def _send_email_step(state, step, execution):
         lead,
         user=state.sequence.created_by,
     )
-    send_organization_email(
-        organization=state.organization,
-        to=lead.email,
-        subject=subject,
-        text_body=body,
-    )
+    email_kwargs = {
+        "organization": state.organization,
+        "to": lead.email,
+        "subject": subject,
+        "text_body": body,
+    }
+    attachments = _email_attachment_payloads(step)
+    if attachments:
+        email_kwargs["attachments"] = attachments
+    send_organization_email(**email_kwargs)
     now = timezone.now()
     execution.status = FollowupExecution.Status.SENT
     execution.finished_at = now

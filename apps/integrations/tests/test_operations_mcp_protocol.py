@@ -41,6 +41,39 @@ class TestOperationsMCPProtocol(OperationsMCPBase):
             ).exists()
         )
 
+    def test_large_authenticated_mcp_request_is_allowed_but_large_public_request_is_not(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        payload = {
+            "jsonrpc": "2.0",
+            "id": "large-discover",
+            "method": "server/discover",
+            "params": {"padding": "x" * (2 * 1024 * 1024)},
+        }
+        encoded = json.dumps(payload)
+
+        authenticated = self.client.post(
+            "/operations/mcp/",
+            data=encoded,
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + bearer,
+        )
+        self.assertEqual(authenticated.status_code, 200)
+        self.assertIn(
+            "supportedVersions",
+            authenticated.json()["result"],
+        )
+
+        unauthenticated = self.client.post(
+            "/operations/mcp/",
+            data=encoded,
+            content_type="application/json",
+        )
+        self.assertEqual(unauthenticated.status_code, 401)
+        self.assertIn("WWW-Authenticate", unauthenticated)
+
     def test_unauthenticated_tool_call_returns_oauth_401_challenge(self):
         response = self.client.post(
             "/operations/mcp/",

@@ -78,6 +78,11 @@ from apps.integrations.operations_tools import (
     ToolExecution,
     execute_operations_tool,
 )
+from apps.integrations.operations.request_body import (
+    OperationsMCPBodyTooLarge,
+    OperationsMCPLargeBodyAuthRequired,
+    read_operations_mcp_body,
+)
 from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
 from apps.integrations.operations.setup_protocol import (
     SETUP_LIBRARY_TOOL_NAMES,
@@ -1095,13 +1100,27 @@ def _setup_protocol_response(request, *, request_id, method, params, modern):
 @ratelimit(limit=240, window=60)
 @require_POST
 def operations_mcp(request):
-    if len(request.body) > 1024 * 1024:
+    try:
+        raw_body = read_operations_mcp_body(request)
+    except OperationsMCPLargeBodyAuthRequired as exc:
+        challenge = _authorization_challenge(
+            request,
+            description=exc.description,
+        )
+        response = JsonResponse(
+            _jsonrpc_error(None, exc.code, str(exc)),
+            status=exc.status_code,
+        )
+        response["WWW-Authenticate"] = challenge
+        response["Cache-Control"] = "no-store"
+        return response
+    except OperationsMCPBodyTooLarge as exc:
         return JsonResponse(
-            _jsonrpc_error(None, -32600, "Request body is too large."),
-            status=413,
+            _jsonrpc_error(None, exc.code, str(exc)),
+            status=exc.status_code,
         )
     try:
-        payload = json.loads(request.body.decode("utf-8") or "{}")
+        payload = json.loads(raw_body.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
         return JsonResponse(
             _jsonrpc_error(None, -32700, "Parse error."),

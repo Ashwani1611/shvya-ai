@@ -487,6 +487,21 @@ OWN_TOOL_DEFINITIONS = [
                         "body": {"type": "string"},
                         "text": {"type": "string"},
                         "retry_count": {"type": "integer", "minimum": 0, "maximum": 5},
+                        "attachments": {
+                            "type": "array",
+                            "maxItems": 5,
+                            "description": "Email-only attachments. Combined decoded size may be up to 18 MiB.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string", "maxLength": 255},
+                                    "mime_type": {"type": "string", "maxLength": 120},
+                                    "content_base64": {"type": "string"},
+                                },
+                                "required": ["name", "content_base64"],
+                                "additionalProperties": False,
+                            },
+                        },
                         "schedule": {"type": "object"},
                     },
                     "required": ["type"],
@@ -662,13 +677,30 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "submit_whatsapp_template",
         "Submit WhatsApp template to Meta",
-        "Dry-run or submit an existing standard text/CTA WhatsApp template draft to the correct connected Meta WABA. Meta validation and approval remain authoritative and returned status/errors are preserved.",
+        "Dry-run or submit an existing WhatsApp template draft to the correct connected Meta WABA. Standard media templates are supported when a Meta header sample is already stored. Meta validation and approval remain authoritative.",
         _write_properties(
             {
                 "template_id": {"type": "string", "format": "uuid"},
             }
         ),
         ["template_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "submit_whatsapp_templates",
+        "Submit WhatsApp templates to Meta",
+        "Dry-run or submit up to 50 organization WhatsApp template drafts to their correct connected Meta WABAs. Returns a per-template submitted, no-change, blocked, or failed result; Meta approval remains authoritative.",
+        _write_properties(
+            {
+                "template_ids": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": {"type": "string", "format": "uuid"},
+                },
+            }
+        ),
+        ["template_ids", "reason"],
         read_only=False,
     ),
     _tool(
@@ -867,7 +899,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "add_hosted_whatsapp_step",
         "Add Hosted WhatsApp Cadence step",
-        "Dry-run or add a free-form Hosted WhatsApp message step using SHVYA's existing Hosted automation service. Optional base64 media is validated and stored through the canonical attachment rules.",
+        "Dry-run or add a free-form Hosted WhatsApp message step using SHVYA's existing Hosted automation service. Optional base64 media is validated and stored through the canonical attachment rules up to the 50 MiB Hosted limit.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -897,7 +929,38 @@ OWN_TOOL_DEFINITIONS = [
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
                 "step_id": {"type": "string", "format": "uuid"},
-                "data": {"type": "object"},
+                "data": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string", "maxLength": 255},
+                        "body": {"type": "string"},
+                        "subject": {"type": "string", "maxLength": 255},
+                        "text": {"type": "string"},
+                        "template_id": {"type": "string", "format": "uuid"},
+                        "is_active": {"type": "boolean"},
+                        "schedule": {"type": "object"},
+                        "attachment_name": {"type": "string", "maxLength": 255},
+                        "attachment_mime_type": {"type": "string", "maxLength": 120},
+                        "attachment_base64": {"type": "string"},
+                        "remove_attachment": {"type": "boolean"},
+                        "attachments": {
+                            "type": "array",
+                            "maxItems": 5,
+                            "description": "Email-only replacement attachments. Combined decoded size may be up to 18 MiB.",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string", "maxLength": 255},
+                                    "mime_type": {"type": "string", "maxLength": 120},
+                                    "content_base64": {"type": "string"},
+                                },
+                                "required": ["name", "content_base64"],
+                                "additionalProperties": False,
+                            },
+                        },
+                        "remove_attachments": {"type": "boolean"},
+                    },
+                },
             }
         ),
         ["cadence_id", "step_id", "data", "reason"],
@@ -1273,6 +1336,7 @@ TOOL_CAPABILITIES = {
     "get_whatsapp_template_status": CAP_ORGANIZATION_READ,
     "create_whatsapp_template": CAP_MESSAGING_CONFIG_WRITE,
     "submit_whatsapp_template": CAP_MESSAGING_CONFIG_WRITE,
+    "submit_whatsapp_templates": CAP_MESSAGING_CONFIG_WRITE,
     "validate_whatsapp_routing": CAP_ORGANIZATION_READ,
     "bind_whatsapp_account_to_pipeline": CAP_MESSAGING_CONFIG_WRITE,
     "begin_whatsapp_connection": CAP_MESSAGING_CONFIG_WRITE,
