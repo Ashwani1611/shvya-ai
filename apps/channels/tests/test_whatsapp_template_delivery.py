@@ -54,6 +54,11 @@ class WhatsAppTemplateDeliveryTests(TestCase):
             category=WhatsAppTemplate.Category.UTILITY,
             status=WhatsAppTemplate.Status.APPROVED,
             body="Hi {{lead_first_name}}, welcome to {{org_name}}",
+            footer="Powered by SHVYA",
+            buttons=[
+                {"type": "visit_website", "text": "View plans", "url": "https://example.com/plans"},
+                {"type": "text_back", "text": "Talk to sales"},
+            ],
             meta_template_id="meta-template-1",
         )
         WhatsAppTemplateMetadata.objects.create(
@@ -93,6 +98,68 @@ class WhatsAppTemplateDeliveryTests(TestCase):
             ],
         )
         self.assertEqual(message.body, "Hi Jane, welcome to Template Delivery Org")
+        self.assertEqual(
+            message.media_payload["template_display"],
+            {
+                "name": "approved_welcome",
+                "category": "utility",
+                "format": "standard",
+                "body": "Hi Jane, welcome to Template Delivery Org",
+                "header_text": "",
+                "footer": "Powered by SHVYA",
+                "attachment_type": "none",
+                "buttons": [
+                    {
+                        "type": "visit_website",
+                        "text": "View plans",
+                        "detail": "https://example.com/plans",
+                    },
+                    {"type": "text_back", "text": "Talk to sales", "detail": ""},
+                ],
+                "cards": [],
+            },
+        )
+
+    def test_snapshot_falls_back_to_meta_synced_components(self):
+        self.template.footer = ""
+        self.template.buttons = []
+        self.template.save(update_fields=["footer", "buttons", "updated_at"])
+        state = self.template.meta_state
+        state.components = [
+            {"type": "HEADER", "format": "TEXT", "text": "Important update"},
+            {"type": "BODY", "text": "Hi {{1}}, welcome to {{2}}"},
+            {"type": "FOOTER", "text": "Synced footer"},
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {"type": "URL", "text": "Open portal", "url": "https://example.com/portal"},
+                    {"type": "QUICK_REPLY", "text": "Need help"},
+                ],
+            },
+        ]
+        state.save(update_fields=["components", "updated_at"])
+
+        message = queue_template_message(
+            template=self.template,
+            lead=self.lead,
+            user=self.user,
+        )
+        snapshot = message.media_payload["template_display"]
+
+        self.assertEqual(snapshot["header_text"], "Important update")
+        self.assertEqual(snapshot["attachment_type"], "text")
+        self.assertEqual(snapshot["footer"], "Synced footer")
+        self.assertEqual(
+            snapshot["buttons"],
+            [
+                {
+                    "type": "visit_website",
+                    "text": "Open portal",
+                    "detail": "https://example.com/portal",
+                },
+                {"type": "text_back", "text": "Need help", "detail": ""},
+            ],
+        )
 
     @patch("services.channels.whatsapp_service.WhatsAppClient.send_template_message")
     def test_worker_transport_calls_meta_template_api(self, send_template):
@@ -140,6 +207,76 @@ class WhatsAppTemplateDeliveryTests(TestCase):
         self.assertEqual(message.media_payload["transport"], "template")
         self.assertEqual(message.media_payload["template_name"], self.template.name)
         delay.assert_called_once_with(str(message.id))
+
+    def test_expired_chat_shows_policy_banner_and_complete_template(self):
+        queue_template_message(
+            template=self.template,
+            lead=self.lead,
+            user=self.user,
+        )
+
+        response = self.client.get(
+            reverse("whatsapp-chat-detail", args=[self.lead.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "This chat is marked as expired")
+        self.assertContains(response, "only template messages can be sent")
+        self.assertContains(response, 'data-open-contact-tab="templates"')
+        self.assertContains(response, 'data-template-message="approved_welcome"')
+        self.assertContains(response, "Hi Jane, welcome to Template Delivery Org")
+        self.assertContains(response, "Powered by SHVYA")
+        self.assertContains(response, "View plans")
+        self.assertContains(response, "Talk to sales")
+        self.assertNotContains(response, 'id="composer-form"')
+
+    def test_historical_template_message_without_snapshot_backfills_full_display(self):
+        WhatsAppMessage.objects.create(
+            organization=self.org,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            from_number=self.account.display_phone_number or self.account.phone_number_id,
+            to_number=self.lead.phone,
+            body="Hi Jane, welcome to Template Delivery Org",
+            status=WhatsAppMessage.Status.SENT,
+            media_payload={
+                "transport": "template",
+                "template_id": str(self.template.id),
+                "template_name": self.template.name,
+            },
+        )
+
+        response = self.client.get(
+            reverse("whatsapp-chat-detail", args=[self.lead.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-template-message="approved_welcome"')
+        self.assertContains(response, "Powered by SHVYA")
+        self.assertContains(response, "View plans")
+        self.assertContains(response, "Talk to sales")
+
+    def test_recent_customer_message_keeps_free_form_composer_open(self):
+        WhatsAppMessage.objects.create(
+            organization=self.org,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            from_number=self.lead.phone,
+            to_number=self.account.display_phone_number or self.account.phone_number_id,
+            body="Hello",
+            status=WhatsAppMessage.Status.RECEIVED,
+            is_read=False,
+        )
+
+        response = self.client.get(
+            reverse("whatsapp-chat-detail", args=[self.lead.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "This chat is marked as expired")
+        self.assertContains(response, 'id="composer-form"')
 
     def test_media_header_template_is_rejected_before_queue(self):
         self.template.attachment_type = WhatsAppTemplate.AttachmentType.IMAGE

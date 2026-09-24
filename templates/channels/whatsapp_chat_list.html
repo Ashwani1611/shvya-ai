@@ -35,6 +35,17 @@
     .wa-scrollbar::-webkit-scrollbar-thumb { background: #b6b9b7; border-radius: 999px; }
 
     .wa-bubble { box-shadow: 0 1px 1px rgba(0,0,0,.08); }
+    .wa-template-label { color:#667781; font-size:10px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+    .wa-template-header { margin:-.5rem -.75rem .6rem; padding:.75rem; border-radius:.75rem .75rem .35rem .35rem; background:rgba(255,255,255,.48); color:#54656f; }
+    .wa-template-footer { margin-top:.45rem; color:#667781; font-size:11px; line-height:1.35; }
+    .wa-template-actions { margin:.6rem -.75rem -.5rem; border-top:1px solid rgba(11,20,26,.09); }
+    .wa-template-action { display:flex; min-height:36px; align-items:center; justify-content:center; gap:.4rem; padding:.45rem .75rem; border-top:1px solid rgba(11,20,26,.07); color:#027eb5; font-size:12px; font-weight:600; text-align:center; }
+    .wa-template-actions .wa-template-action:first-child { border-top:0; }
+    .wa-template-action small { display:block; max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:#667781; font-size:9px; font-weight:500; }
+    .wa-template-carousel { display:flex; max-width:520px; gap:.5rem; overflow-x:auto; padding-top:.55rem; }
+    .wa-template-card { min-width:220px; border:1px solid rgba(11,20,26,.08); border-radius:10px; background:rgba(255,255,255,.46); padding:.65rem; }
+    .wa-expired-notice { display:flex; align-items:center; justify-content:space-between; gap:1rem; }
+    @media (max-width: 767px) { .wa-expired-notice { align-items:flex-start; flex-direction:column; } }
 
 </style>
 
@@ -231,7 +242,28 @@
 
                 <div class="wa-bubble min-w-0 max-w-[78%] rounded-xl px-3 py-2 text-sm sm:max-w-[70%] {% if message.direction == 'outbound' %}{% if message.status == 'failed' %}bg-[#fff1f0]{% else %}bg-[#d9fdd3]{% endif %}{% else %}bg-white{% endif %}">
 
-                    {% if message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
+                    {% if message.template_display %}
+                    <div class="min-w-0" data-template-message="{{ message.template_display.name|default:'template' }}">
+                        <div class="wa-template-label mb-1.5"><i class="ti ti-template mr-1"></i>{{ message.template_display.name|default:"WhatsApp template" }}</div>
+                        {% if message.template_display.header_text %}
+                        <div class="wa-template-header whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ message.template_display.header_text }}</div>
+                        {% elif message.template_display.attachment_type and message.template_display.attachment_type != 'none' %}
+                        <div class="wa-template-header"><i class="ti ti-photo mr-1"></i>{{ message.template_display.attachment_type|title }} header</div>
+                        {% endif %}
+                        {% if message.template_display.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.template_display.body }}</p>{% elif message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% endif %}
+                        {% if message.template_display.footer %}<p class="wa-template-footer whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ message.template_display.footer }}</p>{% endif %}
+                        {% if message.template_display.cards %}
+                        <div class="wa-template-carousel wa-scrollbar">
+                            {% for card in message.template_display.cards %}<div class="wa-template-card">
+                                {% if card.media_type %}<div class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-gray-500"><i class="ti ti-photo mr-1"></i>{{ card.media_type }}{% if card.media_name %} · {{ card.media_name }}{% endif %}</div>{% endif %}
+                                {% if card.body %}<p class="whitespace-pre-wrap break-words text-xs leading-relaxed text-gray-800 [overflow-wrap:anywhere]">{{ card.body }}</p>{% endif %}
+                                {% if card.buttons %}<div class="mt-2 border-t border-black/5">{% for button in card.buttons %}<div class="wa-template-action"><i class="ti {% if button.type == 'visit_website' %}ti-external-link{% elif button.type == 'call_phone' %}ti-phone{% elif button.type == 'copy_offer' %}ti-copy{% else %}ti-message-circle{% endif %}"></i><span>{{ button.text }}{% if button.detail %}<small>{{ button.detail }}</small>{% endif %}</span></div>{% endfor %}</div>{% endif %}
+                            </div>{% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if message.template_display.buttons %}<div class="wa-template-actions">{% for button in message.template_display.buttons %}<div class="wa-template-action"><i class="ti {% if button.type == 'visit_website' %}ti-external-link{% elif button.type == 'call_phone' %}ti-phone{% elif button.type == 'copy_offer' %}ti-copy{% else %}ti-message-circle{% endif %}"></i><span>{{ button.text }}{% if button.detail %}<small>{{ button.detail }}</small>{% endif %}</span></div>{% endfor %}</div>{% endif %}
+                    </div>
+                    {% elif message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
 
                     <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-500">
 
@@ -297,17 +329,27 @@
 
             <div id="send-error" class="mb-2 hidden max-w-full break-words rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 [overflow-wrap:anywhere]"></div>
 
-            {% if active_lead %}<form id="composer-form" action="{% url 'whatsapp-send-message' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}" data-lead-id="{{ active_lead.id }}" class="flex items-center gap-2">
+            {% if active_lead %}
+                {% if conversation_window_open %}<form id="composer-form" action="{% url 'whatsapp-send-message' active_lead.id %}{% if selected_account %}?account={{ selected_account.id }}{% endif %}" data-lead-id="{{ active_lead.id }}" class="flex items-center gap-2">
 
-                {% csrf_token %}
+                    {% csrf_token %}
 
-                <textarea id="message-body" name="body" rows="1" autocomplete="off" placeholder="Type a message"
+                    <textarea id="message-body" name="body" rows="1" autocomplete="off" placeholder="Type a message"
 
-                       class="min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-green-300 focus:ring-2 focus:ring-green-100"></textarea>
+                           class="min-w-0 flex-1 resize-none rounded-2xl border border-transparent bg-white px-4 py-3 text-sm shadow-sm outline-none transition focus:border-green-300 focus:ring-2 focus:ring-green-100"></textarea>
 
-                <button class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white shadow-sm transition hover:bg-[#20bd5a] focus:outline-none focus:ring-2 focus:ring-green-200" type="submit" title="Send message"><i class="ti ti-send"></i></button>
+                    <button class="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white shadow-sm transition hover:bg-[#20bd5a] focus:outline-none focus:ring-2 focus:ring-green-200" type="submit" title="Send message"><i class="ti ti-send"></i></button>
 
-            </form>{% else %}<p class="text-sm text-gray-500">Create a lead in the contact panel to reply.</p>{% endif %}
+                </form>{% else %}
+                <div class="wa-expired-notice rounded-xl border border-[#dfe3e5] bg-white px-4 py-3 shadow-sm" data-whatsapp-window-expired>
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold text-[#1d1d1f]">This chat is marked as expired</p>
+                        <p class="mt-1 text-xs leading-5 text-[#667781]">Chats expire 24 hours after the last message received from the customer. After this period, only template messages can be sent as per WhatsApp's policy.</p>
+                    </div>
+                    <button type="button" data-open-contact-tab="templates" class="inline-flex shrink-0 items-center justify-center rounded-lg bg-[#00a884] px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-[#008f73]"><i class="ti ti-template mr-1.5"></i>Send template</button>
+                </div>
+                {% endif %}
+            {% else %}<p class="text-sm text-gray-500">Create a lead in the contact panel to reply.</p>{% endif %}
 
         </div>
 
