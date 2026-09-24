@@ -131,8 +131,9 @@ def _canonicalize_placeholders(text, *, organization, field, allow_placeholders)
 def _plain_text_markup(text):
     """Convert common HTML/Markdown authoring into literal plain text."""
 
+    text = html.unescape(text)
     text = HTML_BREAK_RE.sub("\n", text)
-    text = html.unescape(strip_tags(text))
+    text = strip_tags(text)
     text = MARKDOWN_IMAGE_RE.sub(
         lambda match: (
             f"{match.group(1).strip()} ({match.group(2).strip()})"
