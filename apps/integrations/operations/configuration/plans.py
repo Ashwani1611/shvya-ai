@@ -605,13 +605,12 @@ def _capture_inverse(*, organization, tool, arguments):
                 "data": {
                     "name": obj.name,
                     "description": obj.description,
-                    "provider": (
-                        "api"
-                        if obj.whatsapp_account.connection_type
-                        == WhatsAppAccount.ConnectionType.API
-                        else "hosted"
+                    "provider": obj.provider,
+                    "whatsapp_account_id": (
+                        str(obj.whatsapp_account_id)
+                        if obj.whatsapp_account_id
+                        else None
                     ),
-                    "whatsapp_account_id": str(obj.whatsapp_account_id),
                 },
             },
         }
