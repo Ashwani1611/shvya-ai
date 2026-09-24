@@ -49,6 +49,92 @@ def _body_components(*, template, lead, user=None):
     return [{"type": "body", "parameters": parameters}]
 
 
+def _template_button_snapshot(button):
+    """Return a safe, durable UI snapshot for one Meta template button."""
+    if not isinstance(button, dict):
+        return None
+
+    kind = str(button.get("type") or "").strip()
+    text = str(button.get("text") or "").strip()
+    detail = ""
+    if kind == "visit_website":
+        text = text or "Visit website"
+        detail = str(button.get("url") or "").strip()
+    elif kind == "call_phone":
+        text = text or "Call"
+        detail = str(button.get("phone_number") or "").strip()
+    elif kind == "copy_offer":
+        text = text or "Copy code"
+        detail = str(button.get("coupon_code") or "").strip()
+    elif kind == "text_back":
+        text = text or "Quick reply"
+    else:
+        text = text or kind.replace("_", " ").title()
+
+    if not text and not detail:
+        return None
+    return {
+        "type": kind,
+        "text": text[:80],
+        "detail": detail[:500],
+    }
+
+
+def template_display_snapshot(*, template, rendered_body, state=None):
+    """Freeze the complete template presentation used by the Chats inbox.
+
+    The snapshot lives on the WhatsAppMessage so later template edits/deletes do
+    not make a previously sent message lose its footer, buttons, or carousel
+    presentation. It contains display-only data and no credentials or media
+    bytes.
+    """
+    buttons = []
+    for item in template.buttons or []:
+        snapshot = _template_button_snapshot(item)
+        if snapshot:
+            buttons.append(snapshot)
+
+    cards = []
+    metadata = state
+    if metadata is None:
+        try:
+            metadata = template.meta_state
+        except AttributeError:
+            metadata = None
+
+    # Avoid creating metadata from a read path. Carousel state is optional and
+    # only used when it already exists.
+    if template.template_format == WhatsAppTemplate.Format.CAROUSEL and metadata is not None:
+        config = metadata.carousel_config if isinstance(metadata.carousel_config, dict) else {}
+        for raw_card in (config.get("cards") or [])[:10]:
+            if not isinstance(raw_card, dict):
+                continue
+            card_buttons = []
+            for item in (raw_card.get("buttons") or [])[:2]:
+                snapshot = _template_button_snapshot(item)
+                if snapshot:
+                    card_buttons.append(snapshot)
+            cards.append(
+                {
+                    "body": str(raw_card.get("body") or "")[:1024],
+                    "media_type": str(raw_card.get("media_type") or "")[:20],
+                    "media_name": str(raw_card.get("media_name") or "")[:255],
+                    "buttons": card_buttons,
+                }
+            )
+
+    return {
+        "name": str(template.name or "")[:150],
+        "category": str(template.category or "")[:20],
+        "format": str(template.template_format or "")[:20],
+        "body": str(rendered_body or "")[:4096],
+        "footer": str(template.footer or "")[:60],
+        "attachment_type": str(template.attachment_type or "none")[:20],
+        "buttons": buttons,
+        "cards": cards,
+    }
+
+
 def queue_template_message(*, template, lead, user=None):
     """Create a queued message that the worker will send as a real Meta template."""
     if template.organization_id != lead.organization_id:
@@ -91,6 +177,11 @@ def queue_template_message(*, template, lead, user=None):
             "template_name": template.name,
             "language_code": state.language or "en_US",
             "components": components,
+            "template_display": template_display_snapshot(
+                template=template,
+                rendered_body=body,
+                state=state,
+            ),
         },
     )
 
