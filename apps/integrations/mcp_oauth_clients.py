@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
+import json
+import socket
 from urllib.parse import unquote, urlparse
 
 import requests
@@ -10,10 +13,16 @@ import requests
 MAX_CIMD_BYTES = 32 * 1024
 CIMD_TIMEOUT = (2.0, 5.0)
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "::1"}
+SHVYA_SUPPORTED_GRANT_TYPES = (
+    "authorization_code",
+    "refresh_token",
+)
 
 
 class MCPClientMetadataError(ValueError):
-    pass
+    def __init__(self, message, *, code="CIMD_INVALID"):
+        super().__init__(message)
+        self.code = code
 
 
 def _web_provider_host_allowed(host: str) -> bool:
@@ -76,12 +85,18 @@ def _is_loopback_http_redirect(uri: str) -> bool:
     if parsed is None:
         return False
     host = (parsed.hostname or "").lower()
+    port = parsed.port
+    path = unquote(parsed.path or "")
+    segments = [segment for segment in path.split("/") if segment]
     return bool(
         parsed.scheme == "http"
         and host in LOOPBACK_HOSTS
+        and (port is None or 1 <= port <= 65535)
         and parsed.username is None
         and parsed.password is None
         and not parsed.fragment
+        and all(segment not in {".", ".."} for segment in segments)
+        and "\\" not in path
     )
 
 
@@ -93,6 +108,8 @@ def is_allowed_external_ai_redirect(uri: str) -> bool:
         return False
     host = (parsed.hostname or "").lower()
     port = parsed.port
+    path = unquote(parsed.path or "")
+    segments = [segment for segment in path.split("/") if segment]
 
     if (
         parsed.scheme == "http"
@@ -103,6 +120,8 @@ def is_allowed_external_ai_redirect(uri: str) -> bool:
         and not parsed.fragment
         and parsed.username is None
         and parsed.password is None
+        and all(segment not in {".", ".."} for segment in segments)
+        and "\\" not in path
     ):
         return True
 
@@ -143,6 +162,8 @@ def is_allowed_operations_redirect(uri: str) -> bool:
 
     host = (parsed.hostname or "").lower()
     port = parsed.port
+    path = unquote(parsed.path or "")
+    segments = [segment for segment in path.split("/") if segment]
     if _is_loopback_http_redirect(uri):
         return True
 
@@ -153,6 +174,8 @@ def is_allowed_operations_redirect(uri: str) -> bool:
         and parsed.username is None
         and parsed.password is None
         and not parsed.fragment
+        and all(segment not in {".", ".."} for segment in segments)
+        and "\\" not in path
     )
 
 
@@ -281,6 +304,58 @@ def is_allowed_operations_cimd_url(client_id: str) -> bool:
     )
 
 
+def _resolved_public_addresses(host: str, port: int):
+    """Resolve a CIMD publisher and reject every non-public destination.
+
+    Operations CIMD already uses a narrow publisher allowlist.  Resolution is
+    checked as a second boundary so a trusted-looking hostname cannot be used
+    for DNS rebinding to loopback, link-local, private, reserved, or cloud
+    metadata address space.
+    """
+
+    try:
+        parsed_ip = ipaddress.ip_address(host)
+    except ValueError:
+        parsed_ip = None
+    if parsed_ip is not None:
+        addresses = {parsed_ip}
+    else:
+        try:
+            addresses = {
+                ipaddress.ip_address(item[4][0])
+                for item in socket.getaddrinfo(
+                    host,
+                    port,
+                    type=socket.SOCK_STREAM,
+                )
+            }
+        except (OSError, ValueError) as exc:
+            raise MCPClientMetadataError(
+                "Client ID Metadata Document host could not be resolved safely.",
+                code="CIMD_FETCH_FAILED",
+            ) from exc
+
+    if not addresses or any(not address.is_global for address in addresses):
+        raise MCPClientMetadataError(
+            "Client ID Metadata Document host does not resolve to a public address.",
+            code="CIMD_INVALID",
+        )
+    return addresses
+
+
+def _validated_string_list(value, *, field, default=None):
+    value = default if value is None else value
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(item, str) or not item.strip() for item in value)
+    ):
+        raise MCPClientMetadataError(
+            f"Client ID Metadata Document requires a valid {field} list."
+        )
+    return list(dict.fromkeys(item.strip() for item in value))
+
+
 def _fetch_cimd_metadata(
     client_id: str,
     *,
@@ -297,34 +372,67 @@ def _fetch_cimd_metadata(
             "Client ID Metadata Document URL is not an approved External AI HTTPS URL."
         )
 
+    parsed_client_id = _safe_parsed_uri(client_id)
+    _resolved_public_addresses(
+        parsed_client_id.hostname,
+        parsed_client_id.port or 443,
+    )
+
+    response = None
     try:
         response = requests.get(
             client_id,
             headers={"Accept": "application/json"},
             timeout=CIMD_TIMEOUT,
             allow_redirects=False,
+            stream=True,
         )
         if response.status_code != 200:
             raise MCPClientMetadataError(
-                "Client ID Metadata Document could not be loaded."
+                "Client ID Metadata Document could not be loaded.",
+                code="CIMD_FETCH_FAILED",
+            )
+        content_type = str(response.headers.get("Content-Type") or "").lower()
+        if content_type and "json" not in content_type:
+            raise MCPClientMetadataError(
+                "Client ID Metadata Document must use a JSON content type."
             )
         declared_length = response.headers.get("Content-Length")
         if declared_length and int(declared_length) > MAX_CIMD_BYTES:
             raise MCPClientMetadataError(
                 "Client ID Metadata Document is too large."
             )
-        raw = response.content
+        if hasattr(response, "iter_content"):
+            chunks = []
+            total = 0
+            for chunk in response.iter_content(chunk_size=4096):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > MAX_CIMD_BYTES:
+                    raise MCPClientMetadataError(
+                        "Client ID Metadata Document is too large."
+                    )
+                chunks.append(chunk)
+            raw = b"".join(chunks)
+        else:
+            raw = response.content
         if len(raw) > MAX_CIMD_BYTES:
             raise MCPClientMetadataError(
                 "Client ID Metadata Document is too large."
             )
-        data = response.json()
+        data = json.loads(raw.decode("utf-8"))
     except MCPClientMetadataError:
         raise
-    except (requests.RequestException, ValueError, TypeError) as exc:
+    except (requests.RequestException, UnicodeDecodeError, ValueError, TypeError) as exc:
         raise MCPClientMetadataError(
-            "Client ID Metadata Document could not be validated."
+            "Client ID Metadata Document could not be validated.",
+            code="CIMD_FETCH_FAILED",
         ) from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
 
     if not isinstance(data, dict):
         raise MCPClientMetadataError(
@@ -366,22 +474,30 @@ def _fetch_cimd_metadata(
             "Client ID Metadata Document contains an unapproved redirect URI."
         )
 
-    grant_types = list(
-        data.get("grant_types")
-        or ["authorization_code", "refresh_token"]
+    declared_grant_types = _validated_string_list(
+        data.get("grant_types"),
+        field="grant_types",
+        default=list(SHVYA_SUPPORTED_GRANT_TYPES),
     )
-    response_types = list(
-        data.get("response_types")
-        or ["code"]
+    response_types = _validated_string_list(
+        data.get("response_types"),
+        field="response_types",
+        default=["code"],
     )
-    if not set(grant_types) <= {"authorization_code", "refresh_token"}:
+    if "authorization_code" not in declared_grant_types:
         raise MCPClientMetadataError(
-            "Client ID Metadata Document requests an unsupported grant type."
+            "Client ID Metadata Document must support authorization_code.",
+            code="AUTHORIZATION_CODE_UNSUPPORTED",
         )
-    if "authorization_code" not in grant_types:
-        raise MCPClientMetadataError(
-            "Client ID Metadata Document must support authorization_code."
-        )
+    # CIMD describes all grants a client knows how to use.  SHVYA negotiates
+    # only the safe overlap instead of rejecting an otherwise compatible
+    # client that also advertises unrelated grants (for example Claude's JWT
+    # bearer capability).
+    grant_types = [
+        grant_type
+        for grant_type in SHVYA_SUPPORTED_GRANT_TYPES
+        if grant_type in declared_grant_types
+    ]
     if set(response_types) != {"code"}:
         raise MCPClientMetadataError(
             "Client ID Metadata Document must use response_type=code."

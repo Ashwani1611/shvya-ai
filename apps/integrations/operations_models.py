@@ -136,6 +136,16 @@ class OperationsOAuthAuthorizationCode(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["client", "used_at", "expires_at"],
+                name="ops_code_client_exp_idx",
+            ),
+            models.Index(
+                fields=["actor", "used_at", "expires_at"],
+                name="ops_code_actor_exp_idx",
+            ),
+        ]
 
 
 class OperationsOAuthToken(models.Model):
@@ -191,7 +201,19 @@ class OperationsOAuthToken(models.Model):
             models.Index(
                 fields=["actor", "revoked_at", "expires_at"],
                 name="ops_token_actor_access_idx",
-            )
+            ),
+            models.Index(
+                fields=["role", "revoked_at", "refresh_expires_at"],
+                name="ops_token_role_grant_idx",
+            ),
+            models.Index(
+                fields=["organization", "role", "revoked_at"],
+                name="ops_token_org_role_idx",
+            ),
+            models.Index(
+                fields=["client", "revoked_at", "refresh_expires_at"],
+                name="ops_token_client_exp_idx",
+            ),
         ]
 
 
@@ -225,7 +247,11 @@ class OperationsSupportSession(models.Model):
             models.Index(
                 fields=["organization", "ended_at", "-last_seen_at"],
                 name="ops_support_org_active_idx",
-            )
+            ),
+            models.Index(
+                fields=["token", "ended_at", "-last_seen_at"],
+                name="ops_support_token_idx",
+            ),
         ]
 
 

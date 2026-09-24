@@ -28,6 +28,7 @@ from apps.integrations.mcp_schema import (
 from apps.integrations.models import (
     OperationsAuditEvent,
     OperationsOAuthAuthorizationCode,
+    OperationsOAuthClient,
     OperationsSupportSession,
 )
 from apps.integrations.operations_agent_prompt import OPERATIONS_AGENT_INSTRUCTIONS
@@ -49,6 +50,16 @@ from apps.integrations.operations_auth import (
     revoke_token,
     validate_authorization_request,
 )
+from apps.integrations.operations_endpoints import (
+    operations_authorization_url,
+    operations_issuer,
+    operations_public_url,
+    operations_registration_url,
+    operations_resource,
+    operations_resource_metadata_url,
+    operations_revocation_url,
+    operations_token_url,
+)
 from apps.integrations.operations_policy import (
     CAPABILITY_LABELS,
     CAP_ORGANIZATION_READ,
@@ -64,6 +75,7 @@ from apps.integrations.operations_tools import (
     OperationsPermissionError,
     OperationsSuperadminRequired,
     OperationsToolError,
+    ToolExecution,
     execute_operations_tool,
 )
 from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
@@ -91,6 +103,10 @@ from apps.integrations.operations.tool_catalog import (
 
 MODERN_PROTOCOL_VERSION = "2026-07-28"
 LEGACY_PROTOCOL_VERSION = "2025-11-25"
+SUPPORTED_PROTOCOL_VERSIONS = (
+    MODERN_PROTOCOL_VERSION,
+    LEGACY_PROTOCOL_VERSION,
+)
 SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
 logger = logging.getLogger(__name__)
 OAUTH_MAX_BODY_BYTES = 32 * 1024
@@ -140,17 +156,15 @@ def _oauth_too_large_response():
 
 
 def _issuer(request):
-    return request.build_absolute_uri("/operations/").rstrip("/")
+    return operations_issuer()
 
 
 def _resource(request):
-    return request.build_absolute_uri(reverse("shvya-operations-mcp"))
+    return operations_resource()
 
 
 def _resource_metadata_url(request):
-    return request.build_absolute_uri(
-        reverse("shvya-operations-oauth-resource-metadata-rfc9728")
-    )
+    return operations_resource_metadata_url()
 
 
 def _server_meta():
@@ -260,7 +274,7 @@ def operations_oauth_resource_metadata(request):
                 OFFLINE_SCOPE,
             ],
             "bearer_methods_supported": ["header"],
-            "resource_documentation": request.build_absolute_uri(
+            "resource_documentation": operations_public_url(
                 reverse("crm-connect-hub-shvya-api")
             ),
         }
@@ -272,18 +286,10 @@ def operations_oauth_server_metadata(request):
     return JsonResponse(
         {
             "issuer": _issuer(request),
-            "authorization_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-authorize")
-            ),
-            "token_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-token")
-            ),
-            "registration_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-register")
-            ),
-            "revocation_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-revoke")
-            ),
+            "authorization_endpoint": operations_authorization_url(),
+            "token_endpoint": operations_token_url(),
+            "registration_endpoint": operations_registration_url(),
+            "revocation_endpoint": operations_revocation_url(),
             "revocation_endpoint_auth_methods_supported": ["none"],
             "response_types_supported": ["code"],
             "grant_types_supported": ["authorization_code", "refresh_token"],
@@ -309,13 +315,19 @@ def operations_oauth_register(request):
     try:
         payload = json.loads(request.body.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
-        return JsonResponse({"error": "invalid_client_metadata"}, status=400)
-
-    if payload.get("token_endpoint_auth_method", "none") != "none":
         return JsonResponse(
             {
                 "error": "invalid_client_metadata",
-                "error_description": "SHVYA Operations supports public PKCE clients only.",
+                "shvya_error_code": "INVALID_CLIENT_METADATA",
+            },
+            status=400,
+        )
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {
+                "error": "invalid_client_metadata",
+                "error_description": "OAuth client metadata must be a JSON object.",
+                "shvya_error_code": "INVALID_CLIENT_METADATA",
             },
             status=400,
         )
@@ -326,12 +338,21 @@ def operations_oauth_register(request):
             grant_types=payload.get("grant_types"),
             response_types=payload.get("response_types"),
             application_type=payload.get("application_type") or "web",
+            token_endpoint_auth_method=payload.get(
+                "token_endpoint_auth_method",
+                "none",
+            ),
         )
     except OperationsAuthError as exc:
         return JsonResponse(
             {
                 "error": "invalid_client_metadata",
                 "error_description": sanitize_text(exc, limit=240),
+                "shvya_error_code": getattr(
+                    exc,
+                    "code",
+                    "INVALID_CLIENT_METADATA",
+                ),
             },
             status=400,
         )
@@ -419,12 +440,25 @@ def _authorization_fields(request):
     }
 
 
+def _authorization_error_context(exc, *, fallback_stage):
+    return {
+        "authorization_error": sanitize_text(exc, limit=240),
+        "authorization_error_code": str(
+            getattr(exc, "code", "OAUTH_REQUEST_INVALID")
+        )[:80],
+        "authorization_error_stage": str(
+            getattr(exc, "stage", fallback_stage)
+        )[:80].replace("_", " ").title(),
+    }
+
+
 @ratelimit(limit=30, window=60)
 @require_http_methods(["GET", "POST"])
 def operations_oauth_authorize(request):
     if request.method == "POST" and _oauth_request_too_large(request):
         return _oauth_too_large_response()
     fields = _authorization_fields(request)
+    client = None
     try:
         if len(fields["state"]) > OAUTH_MAX_STATE_LENGTH:
             raise OperationsAuthError(
@@ -437,19 +471,36 @@ def operations_oauth_authorize(request):
             code_challenge=fields["code_challenge"],
             code_challenge_method=fields["code_challenge_method"],
             scope=fields["scope"],
+            refresh_remote_metadata=request.method == "GET",
         )
         if fields["resource"] != _resource(request):
             raise OperationsAuthError(
-                "OAuth resource does not match the SHVYA Operations MCP endpoint."
+                "OAuth resource does not match the SHVYA Operations MCP endpoint.",
+                code="RESOURCE_MISMATCH",
+                stage="resource_validation",
             )
     except OperationsAuthError as exc:
+        if client is None and fields["client_id"]:
+            client = (
+                OperationsOAuthClient.objects.only("client_name")
+                .filter(client_id=fields["client_id"])
+                .first()
+            )
+        error_context = _authorization_error_context(
+            exc,
+            fallback_stage="authorization_request",
+        )
         return render(
             request,
             "integrations/operations_authorize.html",
             {
-                "authorization_error": sanitize_text(exc, limit=240),
+                **error_context,
                 "fields": fields,
-                "client_name": "External AI",
+                "client_name": (
+                    client.client_name
+                    if client is not None
+                    else "External AI"
+                ),
                 "identities": {},
             },
             status=400,
@@ -531,8 +582,16 @@ def operations_oauth_authorize(request):
     role = str(request.POST.get("actor_mode") or "").strip()
     actor = identities.get(role)
     if actor is None:
-        context["authorization_error"] = (
-            "The selected SHVYA role is not currently authenticated or is not enabled for Operations MCP."
+        actor_error = OperationsAuthError(
+            "The selected SHVYA role is not currently authenticated or is not enabled for Operations MCP.",
+            code="ACTOR_NOT_AUTHENTICATED",
+            stage="consent",
+        )
+        context.update(
+            _authorization_error_context(
+                actor_error,
+                fallback_stage="consent",
+            )
         )
         return render(
             request,
@@ -574,7 +633,12 @@ def operations_oauth_authorize(request):
                 reason="External AI Operations OAuth authorization granted.",
             )
     except OperationsAuthError as exc:
-        context["authorization_error"] = sanitize_text(exc, limit=240)
+        context.update(
+            _authorization_error_context(
+                exc,
+                fallback_stage="authorization_code_issue",
+            )
+        )
         return render(
             request,
             "integrations/operations_authorize.html",
@@ -621,6 +685,7 @@ def operations_oauth_token(request):
                     {
                         "error": "unsupported_grant_type",
                         "error_description": "Use authorization_code or refresh_token.",
+                        "shvya_error_code": "AUTHORIZATION_CODE_UNSUPPORTED",
                     },
                     status=400,
                 )
@@ -658,6 +723,11 @@ def operations_oauth_token(request):
             {
                 "error": "invalid_grant",
                 "error_description": sanitize_text(exc, limit=240),
+                "shvya_error_code": (
+                    "TOKEN_EXCHANGE_FAILED"
+                    if getattr(exc, "code", "") == "OAUTH_REQUEST_INVALID"
+                    else getattr(exc, "code", "TOKEN_EXCHANGE_FAILED")
+                ),
             },
             status=400,
         )
@@ -1047,10 +1117,17 @@ def operations_mcp(request):
             status=400,
         )
 
+    is_notification = "id" not in payload
     request_id = payload.get("id")
     method = str(payload.get("method") or "")
     params = payload.get("params") if isinstance(payload.get("params"), dict) else {}
     modern = _modern_request(request, payload)
+    # JSON-RPC notifications never receive a result or error envelope.  Only
+    # lifecycle notification names are expected; notification-shaped tool
+    # calls are ignored so no mutation can execute without a request ID and a
+    # response/audit receipt.
+    if is_notification:
+        return HttpResponse(status=202)
     try:
         if modern:
             _validate_modern_headers(request, method=method, params=params)
@@ -1070,7 +1147,7 @@ def operations_mcp(request):
             _jsonrpc_result(
                 request_id,
                 {
-                    "supportedVersions": [MODERN_PROTOCOL_VERSION],
+                    "supportedVersions": list(SUPPORTED_PROTOCOL_VERSIONS),
                     "capabilities": {"tools": {}, "prompts": {}, "resources": {}},
                     "instructions": OPERATIONS_AGENT_INSTRUCTIONS,
                     "ttlMs": 300000,
@@ -1125,9 +1202,38 @@ def operations_mcp(request):
         tools = _tools_for_identity(identity) if identity is not None else TOOL_DEFINITIONS
         result = {"tools": tools}
         if identity is not None:
+            organization = (
+                identity.active_organization
+                if identity.role == ROLE_SUPERADMIN
+                else identity.organization
+            )
+            audit = _record_audit(
+                identity=identity,
+                tool_name="tools/list",
+                arguments={},
+                execution=ToolExecution(
+                    data={},
+                    capability="",
+                    target_type=(
+                        "organization"
+                        if organization is not None
+                        else "platform"
+                    ),
+                    target_id=(
+                        str(organization.id)
+                        if organization is not None
+                        else ""
+                    ),
+                    audit_summary={
+                        "tool_count": len(tools),
+                    },
+                ),
+                outcome=OperationsAuditEvent.Outcome.SUCCESS,
+            )
             result["_meta"] = {
                 "shvya/role": identity.role,
                 "shvya/effective_tool_count": len(tools),
+                "shvya/audit_event_id": str(audit.id),
             }
         if modern:
             result.update(

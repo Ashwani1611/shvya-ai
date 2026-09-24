@@ -57,6 +57,17 @@ ALLOWED_HOSTS = config(
     default="localhost,127.0.0.1",
 ).split(",")
 
+# The Operations MCP is one global production resource.  Runtime OAuth
+# metadata must never derive its issuer/audience from Host or proxy headers.
+# Local/test settings may override this explicitly; production validates the
+# canonical value again in config.settings.prod.
+OPERATIONS_PUBLIC_ORIGIN = str(
+    config(
+        "OPERATIONS_PUBLIC_ORIGIN",
+        default="https://dashboard.shvya-ai.com",
+    )
+).strip().rstrip("/")
+
 
 # ---------------------------------------------------------------------------
 # OpenAI

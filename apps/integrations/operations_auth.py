@@ -61,7 +61,16 @@ User = get_user_model()
 
 
 class OperationsAuthError(ValueError):
-    pass
+    def __init__(
+        self,
+        message,
+        *,
+        code="OAUTH_REQUEST_INVALID",
+        stage="authorization_request",
+    ):
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
 
 
 @dataclass(frozen=True)
@@ -95,7 +104,14 @@ def register_client(
     grant_types=None,
     response_types=None,
     application_type="web",
+    token_endpoint_auth_method="none",
 ):
+    if not isinstance(redirect_uris, list):
+        raise OperationsAuthError(
+            "redirect_uris must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     raw_redirects = [
         str(item or "").strip()
         for item in (redirect_uris or [])
@@ -103,30 +119,89 @@ def register_client(
     ]
     redirect_uris = list(dict.fromkeys(raw_redirects))
     if not redirect_uris:
-        raise OperationsAuthError("At least one redirect URI is required.")
+        raise OperationsAuthError(
+            "At least one redirect URI is required.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="dynamic_client_registration",
+        )
     if len(redirect_uris) > 8:
         raise OperationsAuthError("At most 8 redirect URIs may be registered.")
     if any(len(uri) > 2048 for uri in redirect_uris):
         raise OperationsAuthError("OAuth redirect URI is too long.")
     if any(not _allowed_redirect(uri) for uri in redirect_uris):
         raise OperationsAuthError(
-            "Operations MCP accepts secure HTTPS callbacks and RFC 8252 loopback callbacks for public PKCE clients."
+            "Operations MCP accepts secure HTTPS callbacks and RFC 8252 loopback callbacks for public PKCE clients.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="dynamic_client_registration",
         )
 
-    grant_types = list(grant_types or ["authorization_code", "refresh_token"])
-    response_types = list(response_types or ["code"])
+    client_name = str(client_name or "").strip()
+    if not client_name or len(client_name) > 200:
+        raise OperationsAuthError(
+            "client_name must contain 1-200 characters.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if grant_types is not None and not isinstance(grant_types, list):
+        raise OperationsAuthError(
+            "grant_types must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if response_types is not None and not isinstance(response_types, list):
+        raise OperationsAuthError(
+            "response_types must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    grant_types = list(dict.fromkeys(grant_types or ["authorization_code", "refresh_token"]))
+    response_types = list(dict.fromkeys(response_types or ["code"]))
+    if any(not isinstance(item, str) or not item for item in grant_types):
+        raise OperationsAuthError(
+            "grant_types contains an invalid value.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if any(not isinstance(item, str) or not item for item in response_types):
+        raise OperationsAuthError(
+            "response_types contains an invalid value.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if not set(grant_types) <= {"authorization_code", "refresh_token"}:
-        raise OperationsAuthError("Unsupported OAuth grant type.")
+        raise OperationsAuthError(
+            "Unsupported OAuth grant type.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if "authorization_code" not in grant_types:
-        raise OperationsAuthError("authorization_code grant is required.")
+        raise OperationsAuthError(
+            "authorization_code grant is required.",
+            code="AUTHORIZATION_CODE_UNSUPPORTED",
+            stage="dynamic_client_registration",
+        )
     if set(response_types) != {"code"}:
-        raise OperationsAuthError("Only response_type=code is supported.")
+        raise OperationsAuthError(
+            "Only response_type=code is supported.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if str(application_type or "web") not in {"web", "native"}:
-        raise OperationsAuthError("Unsupported OAuth application_type.")
+        raise OperationsAuthError(
+            "Unsupported OAuth application_type.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if token_endpoint_auth_method != "none":
+        raise OperationsAuthError(
+            "SHVYA Operations supports public PKCE clients only.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
 
     return OperationsOAuthClient.objects.create(
         client_id="shvya_ops_" + secrets.token_urlsafe(24),
-        client_name=str(client_name or "External AI").strip()[:200],
+        client_name=client_name,
         application_type=str(application_type or "web"),
         redirect_uris=redirect_uris,
         grant_types=grant_types,
@@ -134,13 +209,21 @@ def register_client(
     )
 
 
-def _resolve_oauth_client(client_id: str):
+def _resolve_oauth_client(
+    client_id: str,
+    *,
+    refresh_remote_metadata=True,
+):
     client_id = str(client_id or "").strip()
     client = OperationsOAuthClient.objects.filter(
         client_id=client_id,
     ).first()
     if client is not None and not client.is_active:
-        raise OperationsAuthError("OAuth client is inactive.")
+        raise OperationsAuthError(
+            "OAuth client is inactive.",
+            code="CIMD_INVALID",
+            stage="client_validation",
+        )
 
     if client_id == CLAUDE_BROWSER_CLIENT_ID:
         canonical_redirects = list(CLAUDE_BROWSER_REDIRECT_URIS)
@@ -173,10 +256,22 @@ def _resolve_oauth_client(client_id: str):
         return client
 
     if is_allowed_operations_cimd_url(client_id):
-        try:
-            metadata = fetch_cimd_metadata(client_id)
-        except MCPClientMetadataError as exc:
-            raise OperationsAuthError(str(exc)) from exc
+        metadata = None
+        if client is None or refresh_remote_metadata:
+            try:
+                metadata = fetch_cimd_metadata(client_id)
+            except MCPClientMetadataError as exc:
+                raise OperationsAuthError(
+                    str(exc),
+                    code=getattr(exc, "code", "CIMD_INVALID"),
+                    stage="client_metadata_fetch",
+                ) from exc
+        # A consent POST may safely use the exact metadata persisted during
+        # its successful GET.  This avoids a second outbound fetch becoming a
+        # transient post-consent failure while preserving fresh validation on
+        # each new authorization GET.
+        if metadata is None:
+            return client
         if client is None:
             client = OperationsOAuthClient.objects.create(
                 client_id=client_id,
@@ -204,7 +299,11 @@ def _resolve_oauth_client(client_id: str):
         return client
 
     if client is None:
-        raise OperationsAuthError("Unknown OAuth client.")
+        raise OperationsAuthError(
+            "Unknown OAuth client.",
+            code="CIMD_INVALID",
+            stage="client_validation",
+        )
     return client
 
 
@@ -216,28 +315,50 @@ def validate_authorization_request(
     code_challenge,
     code_challenge_method,
     scope,
+    refresh_remote_metadata=True,
 ):
-    client = _resolve_oauth_client(client_id)
+    client = _resolve_oauth_client(
+        client_id,
+        refresh_remote_metadata=refresh_remote_metadata,
+    )
     if not operations_redirect_uri_matches_registered(
         client.redirect_uris,
         redirect_uri,
     ):
-        raise OperationsAuthError("OAuth redirect URI is not registered.")
+        raise OperationsAuthError(
+            "OAuth redirect URI is not registered.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="redirect_validation",
+        )
     if response_type != "code":
-        raise OperationsAuthError("Only response_type=code is supported.")
+        raise OperationsAuthError(
+            "Only response_type=code is supported.",
+            code="AUTHORIZATION_CODE_UNSUPPORTED",
+            stage="authorization_request",
+        )
     if (
         code_challenge_method != "S256"
         or not _PKCE_CHALLENGE_RE.fullmatch(str(code_challenge or ""))
     ):
         raise OperationsAuthError(
-            "PKCE S256 with a valid 43–128 character challenge is required."
+            "PKCE S256 with a valid 43–128 character challenge is required.",
+            code="PKCE_INVALID",
+            stage="pkce_validation",
         )
 
     scopes = set(str(scope or "").split())
     if OPERATIONS_READ_SCOPE not in scopes:
-        raise OperationsAuthError("operations.read scope is required.")
+        raise OperationsAuthError(
+            "operations.read scope is required.",
+            code="INVALID_SCOPE",
+            stage="scope_validation",
+        )
     if not scopes <= SUPPORTED_SCOPES:
-        raise OperationsAuthError("Unsupported OAuth scope requested.")
+        raise OperationsAuthError(
+            "Unsupported OAuth scope requested.",
+            code="INVALID_SCOPE",
+            stage="scope_validation",
+        )
     return client
 
 
@@ -292,7 +413,11 @@ def issue_authorization_code(
 ):
     if role == ROLE_SUPERADMIN:
         if not actor.is_active or not actor.is_superuser:
-            raise OperationsAuthError("Superadmin authorization is no longer valid.")
+            raise OperationsAuthError(
+                "Superadmin authorization is no longer valid.",
+                code="ACTOR_NOT_AUTHENTICATED",
+                stage="consent",
+            )
         organization = None
     elif role == ROLE_ORGANIZATION_ADMIN:
         if (
@@ -302,15 +427,25 @@ def issue_authorization_code(
             or actor.organization_id is None
             or not organization_is_active(actor.organization)
         ):
-            raise OperationsAuthError("Organization admin authorization is no longer valid.")
+            raise OperationsAuthError(
+                "Organization admin authorization is no longer valid.",
+                code="ACTOR_NOT_AUTHENTICATED",
+                stage="consent",
+            )
         policy = policy_for(actor.organization)
         if not policy.organization_admin_enabled:
             raise OperationsAuthError(
-                "External AI Operations access is disabled by SHVYA Superadmin."
+                "External AI Operations access is disabled by SHVYA Superadmin.",
+                code="ORG_POLICY_DISABLED",
+                stage="organization_policy",
             )
         organization = actor.organization
     else:
-        raise OperationsAuthError("Unsupported SHVYA Operations role.")
+        raise OperationsAuthError(
+            "Unsupported SHVYA Operations role.",
+            code="ACTOR_NOT_AUTHENTICATED",
+            stage="consent",
+        )
 
     requested = set(str(scope or "").split())
     if OPERATIONS_WRITE_SCOPE in requested:

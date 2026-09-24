@@ -8,6 +8,12 @@ from .base import *  # noqa
 
 APP_ENV = "production"
 
+if OPERATIONS_PUBLIC_ORIGIN != "https://dashboard.shvya-ai.com":
+    raise ImproperlyConfigured(
+        "OPERATIONS_PUBLIC_ORIGIN must be https://dashboard.shvya-ai.com "
+        "for production Operations MCP/OAuth metadata."
+    )
+
 # ---------------------------------------------------------------------------
 # Private AWS S3 media storage
 #
