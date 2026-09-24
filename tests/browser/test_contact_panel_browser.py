@@ -42,6 +42,15 @@ def panel_html(identifier=A):
         "pipelines": [NS(id=A, name="Sales"), NS(id=B, name="Support")],
         "lead_stages": [NS(id=A, name="New lead")],
         "categories": [NS(id=A, name="Greetings", replies=NS(all=lambda: replies))],
+        "linked_account": NS(id=A),
+        "lead_templates": [
+            NS(
+                id=A,
+                name="approved_welcome",
+                status="approved",
+                get_status_display="Approved",
+            )
+        ],
         "csrf_token": "test-token",
     }
     with patch(
@@ -81,7 +90,7 @@ def inbox(browser):
                 f'<a href="/dashboard/whatsapp/chats/{key}/">Lead {n}</a>'
                 for n, key in enumerate((A, B, C), 1)
             )
-            + '''</aside><main><h2>Conversation</h2><div id="thread" class="wa-chat-surface">Latest customer message</div><form id="composer-form" data-lead-id="'''
+            + '''</aside><main><h2>Conversation</h2><div id="thread" class="wa-chat-surface">Latest customer message</div><div data-whatsapp-window-expired><button type="button" data-open-contact-tab="templates">Send template</button></div><form id="composer-form" data-lead-id="'''
             + identifier
             + """" action="/send/"><input name="csrfmiddlewaretoken" type="hidden" value="test-token"><textarea id="message-body"></textarea><button type="submit">Send</button></form></main><aside class="contact-sidebar" data-contact-host data-sidebar-url="/panel/"""
             + identifier
@@ -122,6 +131,40 @@ def test_touchpoints_insert_reply_and_keep_existing_draft(inbox):
         "My draft\nHello! How can we help?"
     )
     assert not posts
+
+
+def test_expired_send_template_waits_for_sidebar_and_opens_template_picker(inbox):
+    page, posts, _ = inbox
+    page.evaluate(
+        """() => {
+          const host = document.querySelector('[data-contact-host]');
+          const originalFetch = window.fetch;
+          window.fetch = async (url, options) => {
+            if (String(url).includes('/panel/')) {
+              await new Promise(resolve => setTimeout(resolve, 300));
+            }
+            return originalFetch(url, options);
+          };
+          delete host.dataset.loadedUrl;
+          host.innerHTML = '<p class="contact-empty">Loading contact…</p>';
+          void window.ShvyaContact.load(host, true);
+        }"""
+    )
+
+    page.locator(
+        '[data-whatsapp-window-expired] [data-open-contact-tab="templates"]'
+    ).click()
+
+    expect(page.locator('[data-contact-panel="templates"]')).to_be_visible()
+    expect(page.get_by_role("tab", name="Templates")).to_have_attribute(
+        "aria-selected", "true"
+    )
+    expect(page.get_by_placeholder("Search templates")).to_be_focused()
+    expect(page.locator('[data-template-name="approved_welcome"]')).to_be_visible()
+
+    page.locator('[data-send-template] button[type="submit"]').click()
+    expect(page.locator("[data-contact-feedback]")).to_contain_text("Template queued")
+    assert any("/dashboard/whatsapp/send-template/" in path for path, _ in posts)
 
 
 def test_autosave_survives_navigation_and_never_targets_next_lead(inbox):
