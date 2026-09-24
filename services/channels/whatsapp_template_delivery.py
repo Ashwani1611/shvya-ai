@@ -125,13 +125,41 @@ def _meta_button_snapshot(button):
     return {"type": kind, "text": text[:80], "detail": detail[:500]}
 
 
+def _component(components, kind):
+    kind = str(kind or "").upper()
+    for item in components or []:
+        if isinstance(item, dict) and str(item.get("type") or "").upper() == kind:
+            return item
+    return {}
+
+
+def _button_snapshot_from_meta(button):
+    if not isinstance(button, dict):
+        return None
+    kind = str(button.get("type") or "").upper()
+    mapped = {
+        "URL": "visit_website",
+        "PHONE_NUMBER": "call_phone",
+        "COPY_CODE": "copy_offer",
+        "QUICK_REPLY": "text_back",
+    }.get(kind, kind.lower())
+    normalized = {
+        "type": mapped,
+        "text": button.get("text") or ("Copy code" if kind == "COPY_CODE" else ""),
+        "url": button.get("url") or "",
+        "phone_number": button.get("phone_number") or "",
+        "coupon_code": button.get("example") or "",
+    }
+    return _template_button_snapshot(normalized)
+
+
 def template_display_snapshot(*, template, rendered_body, state=None):
     """Freeze the complete template presentation used by the Chats inbox.
 
-    The snapshot lives on the WhatsAppMessage so later template edits/deletes do
-    not make a previously sent message lose its footer, buttons, or carousel
-    presentation. It contains display-only data and no credentials or media
-    bytes.
+    Prefer canonical template fields, but fall back to Meta-synced components
+    because templates imported from Meta may keep buttons/header/footer only in
+    WhatsAppTemplateMetadata.components. The snapshot lives on the message so a
+    later template edit/delete cannot make an already-sent chat card incomplete.
     """
     metadata = state
     if metadata is None:
@@ -139,40 +167,38 @@ def template_display_snapshot(*, template, rendered_body, state=None):
             metadata = template.meta_state
         except AttributeError:
             metadata = None
-    components = (
-        metadata.components
-        if metadata is not None and isinstance(metadata.components, list)
-        else []
-    )
+    components = metadata.components if metadata is not None and isinstance(metadata.components, list) else []
+
+    body = str(rendered_body or template.body or "")[:4096]
+    footer = str(template.footer or "")[:60]
+    if not footer:
+        footer = str(_component(components, "FOOTER").get("text") or "")[:60]
 
     buttons = []
-    for item in template.buttons or []:
-        snapshot = _template_button_snapshot(item)
-        if snapshot:
-            buttons.append(snapshot)
-    if not buttons:
-        meta_buttons = _meta_component(components, "BUTTONS").get("buttons") or []
-        for item in meta_buttons:
-            snapshot = _meta_button_snapshot(item)
+    source_buttons = template.buttons or []
+    if source_buttons:
+        for item in source_buttons:
+            snapshot = _template_button_snapshot(item)
+            if snapshot:
+                buttons.append(snapshot)
+    else:
+        for item in (_component(components, "BUTTONS").get("buttons") or [])[:10]:
+            snapshot = _button_snapshot_from_meta(item)
             if snapshot:
                 buttons.append(snapshot)
 
-    footer = str(template.footer or "").strip()
-    if not footer:
-        footer = str(_meta_component(components, "FOOTER").get("text") or "").strip()
-
-    header = _meta_component(components, "HEADER")
-    header_text = str(header.get("text") or "").strip()
-    attachment_type = str(template.attachment_type or "none").strip().lower() or "none"
-    if attachment_type == "none":
-        remote_header_format = str(header.get("format") or "").strip().lower()
-        if remote_header_format:
-            attachment_type = remote_header_format
+    attachment_type = str(template.attachment_type or "none")[:20]
+    header = _component(components, "HEADER")
+    if attachment_type == WhatsAppTemplate.AttachmentType.NONE and header:
+        remote_format = str(header.get("format") or "").strip().lower()
+        if remote_format in {
+            WhatsAppTemplate.AttachmentType.IMAGE,
+            WhatsAppTemplate.AttachmentType.VIDEO,
+            WhatsAppTemplate.AttachmentType.DOCUMENT,
+        }:
+            attachment_type = remote_format
 
     cards = []
-
-    # Avoid creating metadata from a read path. Carousel state is optional and
-    # only used when it already exists.
     if template.template_format == WhatsAppTemplate.Format.CAROUSEL and metadata is not None:
         config = metadata.carousel_config if isinstance(metadata.carousel_config, dict) else {}
         for raw_card in (config.get("cards") or [])[:10]:
@@ -196,10 +222,9 @@ def template_display_snapshot(*, template, rendered_body, state=None):
         "name": str(template.name or "")[:150],
         "category": str(template.category or "")[:20],
         "format": str(template.template_format or "")[:20],
-        "body": str(rendered_body or "")[:4096],
-        "header_text": header_text[:1024],
-        "footer": footer[:60],
-        "attachment_type": attachment_type[:20],
+        "body": body,
+        "footer": footer,
+        "attachment_type": attachment_type,
         "buttons": buttons,
         "cards": cards,
     }
