@@ -23,6 +23,13 @@ CONTROLLED RESPONSE COMPOSITION
   reports and requested handoffs never mean SHVYA performed or confirmed them.
 - Answer the customer's actual question before the one permitted next question.
   Preserve every configured option in order. Do not repeat answered questions.
+- Use only allowed_languages when configured. Apply the Playbook's conditional
+  language rules within that list; these rules take precedence over the suggested
+  language. Otherwise mirror a supported customer language, or use the first
+  configured language. With no configured list, mirror the customer.
+- In conversation mode, respond to the current enquiry using approved facts and
+  Playbook FAQ. Do not repeat the qualification completion acknowledgment or
+  restart qualification. Use recent messages to continue the actual discussion.
 - Use the organization's tone/language; follow the customer's supported language.
   Be concise and natural. Do not repeat a greeting when already_greeted is true.
   Acknowledge the actual content, not a generic repeated 'got it'. Use the first
@@ -50,6 +57,7 @@ class ResponsePlan:
     organization_instructions: str
     already_greeted: bool
     first_name: str
+    allowed_languages: tuple[str, ...] = ()
     objection_strategy: tuple[dict[str, Any], ...] = ()
     forbidden_claims: tuple[str, ...] = ()
     unknown_information: bool = False
@@ -108,6 +116,12 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     if grounding.get("verified"):
         facts = [deepcopy(item) for item in grounding.get("evidence", [])[:8]
                  if isinstance(item, dict)]
+    # About is approved public business context, including on ordinary later-stage
+    # turns whose intent was not classified as a product question. It must never
+    # stand in for missing evidence on pricing, policies or internal CRM data.
+    if not grounding.get("sensitive") and str(org.get("about") or "").strip():
+        facts.append({"source_id": f"organization:{organization_id}:about",
+                      "source_type": "organization_about", "content": str(org["about"])[:4000]})
     profile = org.get("ai_profile") or {}
     communication = profile.get("communication") or {}
     messages = (payload.get("recent_conversation") or {}).get("messages") or []
@@ -116,8 +130,16 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     objections = ObjectionEngine().detect(text=latest, settings=settings, intent_decision=intent_decision)
     strategies = tuple({"category": item.category, "strategy": item.strategy,
                         "escalation_requested": item.escalate} for item in objections)
-    languages = communication.get("languages") or []
+    from apps.ai_engagement.services.organization_profile import _languages
+    languages = communication.get("languages") or _languages(str(org.get("bot_languages") or ""))
+    instructions = str(communication.get("custom_instructions") or org.get("ai_playbook") or "")
+    # Profile compaction deliberately moves these fields to organization. Never
+    # interpret their absence from the compact profile as no language policy.
     observed_language = getattr(intent_decision, "language", None)
+    allowed = {str(item).casefold(): str(item) for item in languages}
+    selected_language = allowed.get(str(observed_language or "").casefold())
+    if not selected_language:
+        selected_language = str(languages[0]) if languages else str(observed_language or "follow_customer_language")
     return ResponsePlan(
         organization_id=str(organization_id), lead_id=str(lead_id),
         phase="FINAL_COMPOSITION" if final_composition else "DRAFT_UNDERSTANDING",
@@ -126,8 +148,9 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         customer_intent=intent_decision.as_dict() if intent_decision is not None else {},
         next_question=next_item if isinstance(next_item, dict) else None,
         tone=str(settings_section(settings, "ai_response").get("tone") or "")[:500],
-        language=str(observed_language or ", ".join(str(item) for item in languages) or "follow_customer_language")[:150],
-        organization_instructions=str(communication.get("custom_instructions") or "")[:10000],
+        language=selected_language[:150],
+        organization_instructions=instructions[:10000],
+        allowed_languages=tuple(str(item) for item in languages),
         already_greeted=any(isinstance(item, dict) and item.get("direction") == "outbound" for item in messages),
         first_name=str(lead.get("name") or "").strip().split(" ")[0][:80],
         objection_strategy=strategies, forbidden_claims=configured_forbidden_claims(settings),

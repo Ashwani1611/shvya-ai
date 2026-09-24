@@ -48,9 +48,15 @@ multiple new qualification questions, and claims of unperformed CRM actions.
 Reject any question whose requirement is answered, skipped, not applicable, or
 not the backend-selected next pending requirement after supported answer updates.
 Reject answer updates whose normalized values are not supported by the newest inbound evidence.
+When a file is selected, require an eligible file candidate and verify its
+share_instruction conditions against the actual conversation and current stage.
+A candidate appearing in the input does not itself authorize sending it.
 Reject unsupported booking confirmations, callbacks, handoffs, payment or stage
 transitions. A user claim is not operational confirmation. Preserve configured
 options in order. Check every question in the customer message is addressed.
+Reject replies outside configured Bot Languages or contrary to an applicable
+Playbook language condition. Internal Notes and operational rules must not appear
+in customer-facing copy.
 Return JSON {"approved": true/false, "reason": "brief reason code"}.
 """.strip()
 
@@ -183,6 +189,9 @@ def check_grounding(state):
         "ai_playbook": (context.organization or {}).get("ai_playbook", ""),
         "bot_languages": (context.organization or {}).get("bot_languages", ""),
         "knowledge": context.knowledge or [],
+        "selected_file_document_id": decision.file_document_id,
+        "file_candidates": (context.organization or {}).get("_file_candidates", []),
+        "current_stage": getattr(context, "stage", {}),
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),
         "backend_state": state.get("qualification_state", {}),

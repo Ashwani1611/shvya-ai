@@ -780,7 +780,7 @@ def install_canonical_ai_architecture() -> None:
         attrs = attrs if isinstance(attrs, dict) else {}
         runtime = attrs.get(STATE_KEY)
         runtime = runtime if isinstance(runtime, dict) else {}
-        shared_ids: set[int] = set()
+        shared_ids: set[int] = {int(item) for item in lead_data.get("shared_document_ids", []) if str(item).isdigit()}
         for item in runtime.get(_SHARED_FILES_KEY) or []:
             if not isinstance(item, dict):
                 continue

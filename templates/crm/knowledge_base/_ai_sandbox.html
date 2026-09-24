@@ -108,6 +108,20 @@
             </div>
 
 
+            <div class="px-4 pt-3">
+                <label for="playground-start-stage" class="text-xs text-gray-600">Start test in stage</label>
+                <select id="playground-start-stage" class="w-full mt-1 rounded-lg border border-gray-200 p-2 text-sm">
+                    <option value="">New Lead (default pipeline)</option>
+                    {% for pipeline in sandbox_pipelines %}
+                    <optgroup label="{{ pipeline.name }}">
+                        {% for stage in pipeline.stages.all %}{% if stage.is_active %}
+                        <option value="{{ stage.id }}">{{ stage.name }}</option>
+                        {% endif %}{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+                <p id="playground-current-stage" class="mt-2 text-xs text-gray-600" aria-live="polite">Choose a starting stage, then send a message.</p>
+            </div>
             <div class="p-4 flex-1 min-h-0">
 
                 <div
@@ -135,69 +149,7 @@
                         "
                     >
 
-                        <div class="flex justify-start">
-
-                            <div
-                                class="
-                                    max-w-[85%]
-                                    rounded-2xl
-                                    rounded-tl-md
-                                    bg-white
-                                    border
-                                    border-gray-200
-                                    px-3
-                                    py-2.5
-                                    text-sm
-                                    text-gray-700
-                                "
-                            >
-                                Hello! How can I help?
-                            </div>
-
-                        </div>
-
-
-                        <div class="flex justify-end">
-
-                            <div
-                                class="
-                                    max-w-[85%]
-                                    rounded-2xl
-                                    rounded-tr-md
-                                    bg-blue-600
-                                    px-3
-                                    py-2.5
-                                    text-sm
-                                    text-white
-                                "
-                            >
-                                What do you offer?
-                            </div>
-
-                        </div>
-
-
-                        <div class="flex justify-start">
-
-                            <div
-                                class="
-                                    max-w-[85%]
-                                    rounded-2xl
-                                    rounded-tl-md
-                                    bg-white
-                                    border
-                                    border-gray-200
-                                    px-3
-                                    py-2.5
-                                    text-sm
-                                    text-gray-700
-                                "
-                            >
-                                We offer products and services based on
-                                your organization's configuration.
-                            </div>
-
-                        </div>
+                        <p class="text-sm text-gray-500">Send a message to test your saved AI Brain. Stage changes and shared files will appear here.</p>
 
                     </div>
 

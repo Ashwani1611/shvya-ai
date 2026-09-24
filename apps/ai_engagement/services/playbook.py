@@ -18,8 +18,10 @@ SECTION_TITLES = {
     "stage_shifting": "Stage shifting logic",
     "attribute_mapped": "Attribute mapping logic",
     "reminders": "Reminder creation logic",
+    "faq": "FAQ",
 }
 SECTION_ALIASES = {
+    "faq": {"faq", "faqs", "frequently asked questions", "frequently asked questions and answers"},
     "rules": {"rules", "rule", "engagement instructions"},
     "welcome_message": {"welcome message", "greeting", "greeting message"},
     "qualification_questions": {"qualification questions", "qualification requirements", "questions"},
