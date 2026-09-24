@@ -89,7 +89,7 @@ An OAuth write scope does not bypass capability policy. Authenticated `tools/lis
 
 ## Current staging tool surface
 
-The staging implementation defines **70 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
+The staging implementation defines **74 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
 
 ### Context and inspection
 
@@ -123,6 +123,10 @@ The staging implementation defines **70 Operations-native tools** in addition to
 - `upsert_attribute_configuration`
 - `update_messaging_automation_settings`
 - `list_whatsapp_accounts`
+- `list_whatsapp_templates`
+- `get_whatsapp_template_status`
+- `create_whatsapp_template`
+- `submit_whatsapp_template`
 - `validate_whatsapp_routing`
 - `bind_whatsapp_account_to_pipeline`
 - `begin_whatsapp_connection`
@@ -222,6 +226,7 @@ Bounded mutation surfaces include:
 
 - qualification configuration read/validate/upsert and completion-target controls
 - Hosted/API WhatsApp discovery, connection start, pipeline binding and routing validation
+- Meta WhatsApp template discovery, draft creation and submission through the selected connected WABA; Meta validation/approval remains authoritative
 - saved Touchpoint and FAQ create/update/archive lifecycle
 - knowledge source/document create, upload, publish and archive lifecycle
 - Workflow schema discovery/validation plus Workflow/Cadence simulation
