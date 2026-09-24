@@ -28,7 +28,7 @@ def faq_pairs(raw):
             question, answer, in_answer = q.group(1).strip(), [], False
         elif a and question:
             answer, in_answer = [a.group(1).strip()], True
-        elif re.match(r'^\s*(?:notes?|rules?|instructions?)\s*:', line, re.I):
+        elif re.match(r'^\s*(?:[-*]\s*)?(?:\*\*)?(?:internal\s+)?(?:notes?|rules?|instructions?)\s*(?:\*\*)?\s*:', line, re.I):
             in_answer = False
         elif in_answer:
             answer.append(line)

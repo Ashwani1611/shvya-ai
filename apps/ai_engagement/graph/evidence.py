@@ -194,7 +194,7 @@ def check_grounding(state):
         "recent_conversation": [
             {"direction": item.get("direction"), "status": item.get("status"),
              "body": str(item.get("body") or "")[:1000]}
-            for item in (context.conversation or {}).get("messages", [])[-24:]
+            for item in (getattr(context, "conversation", {}) or {}).get("messages", [])[-24:]
             if isinstance(item, dict)
         ],
         "selected_file_document_id": decision.file_document_id,

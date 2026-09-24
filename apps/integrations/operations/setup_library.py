@@ -209,11 +209,11 @@ def _check_playbook_values(variables: dict, used: set[str]) -> None:
 
 def _validate_rendered_playbook(text: str) -> dict:
     from apps.ai_engagement.services.conditional_qualification_runtime import _decorate_compiled
-    from apps.ai_engagement.services.playbook import SECTION_TITLES, parse_playbook, validate_playbook
+    from apps.ai_engagement.services.playbook import REQUIRED_SECTION_TITLES, parse_playbook, validate_playbook
     from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
 
     headings = re.findall(r"^##\s+(.+?)\s*$", text, re.M)
-    if headings != list(SECTION_TITLES.values()):
+    if [title for title in headings if title != "FAQ"] != list(REQUIRED_SECTION_TITLES.values()):
         raise ValueError("Rendered Playbook must have the eight canonical sections in order.")
     try:
         validate_playbook(text)
@@ -231,7 +231,7 @@ def _validate_rendered_playbook(text: str) -> dict:
     except ValueError as exc:
         # Parser diagnostics can include submitted text; keep the API error safe.
         raise ValueError("Rendered Playbook failed canonical qualification validation.") from exc
-    if not all(sections.values()) or not questions:
+    if not all(sections.get(key) for key in REQUIRED_SECTION_TITLES) or not questions:
         raise ValueError("Rendered Playbook needs content in every canonical section and valid questions.")
     if len(questions) != text.count("<question_content>"):
         raise ValueError("Each customer question block must compile to exactly one question.")

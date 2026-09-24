@@ -190,7 +190,8 @@ class ResponseCompositionTests(SimpleTestCase):
         plan = build_response_plan(payload=self.payload(), organization_id="org-a", lead_id="lead-a",
             intent_decision=IntentDecision(primary_intent=Intent.PRICING_QUESTION, language="hinglish"), final_composition=True)
         self.assertEqual(plan.phase, "FINAL_COMPOSITION")
-        self.assertEqual(plan.language, "hinglish")
+        self.assertEqual(plan.language, "English")
+        self.assertEqual(plan.allowed_languages, ("English", "Hindi"))
         self.assertTrue(plan.already_greeted)
         self.assertEqual(plan.next_question, self.payload()["next_requirement"])
         self.assertEqual(plan.action_authority, "canonical_backend_only")

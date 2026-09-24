@@ -311,7 +311,8 @@ def _generate(state: EngagementGraphState) -> dict:
         candidates = FileSharingService().build_file_candidates(
             organization=state["organization"], context=context,
         ) if (context.pipeline or {}).get("id") else []
-    context = replace(context, organization={**context.organization, "_file_candidates": candidates})
+    if candidates:
+        context = replace(context, organization={**context.organization, "_file_candidates": candidates})
 
     decision = state["legacy_engage"](
         state["service"],
