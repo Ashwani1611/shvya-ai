@@ -216,6 +216,19 @@
                         <div class="text-[11px] font-semibold text-gray-700">{{ request.user.get_full_name|default:request.user.email }}</div>
                         <div class="mt-0.5 text-[9px] text-gray-400">Administrator</div>
                     </div>
+                    <form method="post" action="{% url 'superadmin-logout' %}">
+                        {% csrf_token %}
+                        <button
+                            type="submit"
+                            class="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-[11px] font-semibold text-gray-700 shadow-sm transition hover:bg-gray-50 hover:text-gray-950"
+                            title="Log out of Superadmin"
+                        >
+                            <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="M10 5H6.5A2.5 2.5 0 0 0 4 7.5v9A2.5 2.5 0 0 0 6.5 19H10M14 8l4 4-4 4M18 12H9" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                            <span>Logout</span>
+                        </button>
+                    </form>
                 </div>
             </header>
 

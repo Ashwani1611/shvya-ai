@@ -187,6 +187,15 @@ class User(
         return self.email
 
 
+class SuperadminAccount(User):
+    """Admin proxy used to manage SHVYA platform superadmins separately."""
+
+    class Meta:
+        proxy = True
+        verbose_name = "Account Information"
+        verbose_name_plural = "Account Information"
+
+
 class OneTimeLoginToken(models.Model):
 
     id = models.UUIDField(
