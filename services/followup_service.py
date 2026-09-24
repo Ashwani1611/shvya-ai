@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
@@ -96,14 +97,8 @@ def replace_email_step_attachments(*, step, attachments):
         raise FollowupError("Attachments can be stored only on email Cadence steps.")
     files = validate_email_attachments(attachments)
     existing = list(step.attachments.all())
+    old_files = [old.file for old in existing if old.file]
     step.attachments.all().delete()
-    for old in existing:
-        try:
-            if old.file:
-                old.file.delete(save=False)
-        except Exception:
-            # Storage cleanup must not make the Cadence state inconsistent.
-            pass
     for position, upload in enumerate(files, start=1):
         mime_type = (
             getattr(upload, "content_type", "")
@@ -118,6 +113,16 @@ def replace_email_step_attachments(*, step, attachments):
             size=int(getattr(upload, "size", 0) or 0),
             position=position,
         )
+
+    def _cleanup_old_files():
+        for old_file in old_files:
+            try:
+                old_file.delete(save=False)
+            except Exception:
+                pass
+
+    if old_files:
+        transaction.on_commit(_cleanup_old_files)
     return list(step.attachments.order_by("position", "created_at"))
 
 
@@ -315,9 +320,22 @@ def duplicate_sequence(*, sequence, created_by):
                 is_active=step.is_active,
             )
             for attachment in step.attachments.order_by("position", "created_at"):
+                if not attachment.file:
+                    continue
+                try:
+                    attachment.file.open("rb")
+                    copied_content = attachment.file.read()
+                finally:
+                    try:
+                        attachment.file.close()
+                    except Exception:
+                        pass
                 FollowupStepAttachment.objects.create(
                     step=copied_step,
-                    file=attachment.file.name,
+                    file=ContentFile(
+                        copied_content,
+                        name=attachment.original_name or Path(attachment.file.name).name,
+                    ),
                     original_name=attachment.original_name,
                     mime_type=attachment.mime_type,
                     size=attachment.size,
