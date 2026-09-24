@@ -232,10 +232,9 @@ def create_sequence(
         if whatsapp_account.status != WhatsAppAccount.Status.CONNECTED or not whatsapp_account.is_active:
             raise FollowupError("Select an active connected WhatsApp API number.")
     else:
-        # Hosted sequences are authoring objects. A QR/session connection is
-        # required only when a sequence is assigned/sent, not while it is
-        # being created. Keep an active Hosted account as the provider marker
-        # but allow pending/failed/disconnected connection states here.
+        # Hosted cadences are authoring objects. A sender is optional until the
+        # cadence is assigned to a lead; assignment resolves the connected
+        # Hosted/Coexistence sender linked to that lead's pipeline.
         if whatsapp_account is not None:
             if whatsapp_account.organization_id != organization.id:
                 raise FollowupError("Hosted Account belongs to another organization.")
@@ -246,21 +245,6 @@ def create_sequence(
                 raise FollowupError("Choose a Hosted/Coexistence WhatsApp number.")
             if not whatsapp_account.is_active:
                 raise FollowupError("Select an active Hosted WhatsApp account.")
-        else:
-            whatsapp_account = (
-                WhatsAppAccount.objects.filter(
-                    organization=organization,
-                    connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                    is_active=True,
-                )
-                .defer("access_token")
-                .order_by("business_name", "display_phone_number")
-                .first()
-            )
-            if not whatsapp_account:
-                raise FollowupError(
-                    "Add at least one Hosted WhatsApp account before creating a WhatsApp sequence."
-                )
     if FollowupSequence.objects.filter(organization=organization, name__iexact=name).exists():
         raise FollowupError("A sequence with this name already exists.")
     return FollowupSequence.objects.create(
@@ -268,6 +252,7 @@ def create_sequence(
         created_by=created_by,
         name=name,
         description=description,
+        provider=provider,
         whatsapp_account=whatsapp_account,
     )
 
@@ -304,6 +289,7 @@ def duplicate_sequence(*, sequence, created_by):
             created_by=created_by,
             name=name,
             description=sequence.description,
+            provider=sequence.provider,
             whatsapp_account=sequence.whatsapp_account,
             is_active=sequence.is_active,
         )
@@ -847,8 +833,8 @@ def resolve_linked_whatsapp_account(*, lead, connection_type):
 def available_sequences_for_lead(*, lead):
     """Use the assignment rules for every sequence picker."""
     candidates = FollowupSequence.objects.filter(
-        organization=lead.organization, is_active=True,
-        whatsapp_account__organization=lead.organization,
+        organization=lead.organization,
+        is_active=True,
     ).select_related("whatsapp_account").order_by("name")
     sequences = []
     for sequence in candidates:
@@ -862,9 +848,11 @@ def available_sequences_for_lead(*, lead):
 
 def _validate_lead_sender(lead, sequence):
     account = sequence.whatsapp_account
-    if account.organization_id != lead.organization_id:
+    is_hosted_sequence = sequence.provider == FollowupSequence.Provider.HOSTED
+    if account is not None and account.organization_id != lead.organization_id:
         raise FollowupError("The sequence WhatsApp sender belongs to another organization.")
-    is_hosted_sequence = account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+    if not is_hosted_sequence and account is None:
+        raise FollowupError("This WhatsApp API cadence has no sender configured.")
     expected_type = (
         WhatsAppAccount.ConnectionType.coexisted
         if is_hosted_sequence
@@ -1386,7 +1374,7 @@ def process_due_state(state_id):
     )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
-    if state.sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
+    if state.sequence.provider != FollowupSequence.Provider.API:
         return False
     if not state.lead.auto_followup_enabled or not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
@@ -1432,7 +1420,7 @@ def dispatch_one_due_state():
                 status=LeadSequenceState.Status.ACTIVE,
                 lead_auto_followup_enabled=True, lead__auto_followup_enabled=True,
                 sequence__is_active=True,
-                sequence__whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
+                sequence__provider=FollowupSequence.Provider.API,
                 upcoming_send_at__isnull=False,
                 upcoming_send_at__lte=now,
             )
