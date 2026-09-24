@@ -452,7 +452,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_cadence_configuration",
         "Configure Cadence",
-        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
+        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Names and descriptions are normalized to plain text; customer-facing step copy may use only placeholders returned by get_content_authoring_policy. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -649,7 +649,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "create_whatsapp_template",
         "Create WhatsApp template",
-        "Dry-run or create a standard WhatsApp template draft for a connected Meta WABA using SHVYA's canonical template validation. This does not bypass Meta approval; call submit_whatsapp_template after creation.",
+        "Dry-run or create a standard WhatsApp template draft for a connected Meta WABA using SHVYA's canonical template validation. Template copy is normalized to plain text and body placeholders must come from get_content_authoring_policy. This does not bypass Meta approval; call submit_whatsapp_template after creation.",
         _write_properties(
             {
                 "whatsapp_account_id": {"type": "string", "format": "uuid"},
@@ -776,7 +776,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_touchpoint",
         "Configure Touchpoint",
-        "Dry-run or create/update one organization saved reply. Existing category records are reused where possible.",
+        "Dry-run or create/update one organization saved reply. Reply copy is normalized to plain text and may use only placeholders returned by get_content_authoring_policy. Existing category records are reused where possible.",
         _write_properties(
             {
                 "touchpoint_id": {"type": "string", "format": "uuid"},
