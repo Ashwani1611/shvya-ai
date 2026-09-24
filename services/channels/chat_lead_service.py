@@ -60,11 +60,17 @@ def _queue_created_lead_engagement(*, organization_id, account_id, lead_id, sour
         return
 
     if account.connection_type == "hosted":
-        # Hosted automation owns exact-message permission checks, history
-        # suppression, debounce and source-message idempotency.
+        # Ordinary Hosted history sync must never auto-engage. This path is
+        # different: an authenticated user explicitly clicked Create Lead for
+        # this exact conversation, so activate one source-bound AI turn while
+        # preserving the existing permission, routing, debounce and idempotency
+        # checks downstream.
         from apps.hosted_automation.signals import _queue_hosted_ai_from_persisted_message
 
-        _queue_hosted_ai_from_persisted_message(source_message_id)
+        _queue_hosted_ai_from_persisted_message(
+            source_message_id,
+            allow_history=True,
+        )
         return
 
     from services.channels.hosted_whatsapp_service import get_session_settings
@@ -76,7 +82,10 @@ def _queue_created_lead_engagement(*, organization_id, account_id, lead_id, sour
     # protection. Keep the existing lead-only task contract.
     from services.channels.whatsapp_service import _queue_whatsapp_engagement
 
-    _queue_whatsapp_engagement(lead_id=str(lead_id))
+    _queue_whatsapp_engagement(
+        lead_id=str(lead_id),
+        source_message_id=source_message_id,
+    )
 
 
 @transaction.atomic
