@@ -42,7 +42,7 @@ def touchpoints(request):
                             field="Touchpoint category",
                             allow_placeholders=False,
                             required=True,
-                            max_length=120,
+                            max_length=100,
                         )
                         category.full_clean()
                         category.save()
