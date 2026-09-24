@@ -88,6 +88,19 @@ class FollowupSequence(models.Model):
             )
         ]
 
+    def save(self, *args, **kwargs):
+        # Legacy callers historically encoded the provider only through the
+        # bound account. Preserve those direct-create paths while allowing a
+        # Hosted cadence to be authored with no account at all.
+        if (
+            self._state.adding
+            and self.whatsapp_account_id
+            and self.provider == self.Provider.API
+            and getattr(self.whatsapp_account, "connection_type", None) == "hosted"
+        ):
+            self.provider = self.Provider.HOSTED
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return self.name
 
