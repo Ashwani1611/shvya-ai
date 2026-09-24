@@ -112,6 +112,10 @@ def create_sequence(
         if whatsapp_account.status != WhatsAppAccount.Status.CONNECTED or not whatsapp_account.is_active:
             raise FollowupError("Select an active connected WhatsApp API number.")
     else:
+        # Hosted sequences are authoring objects. A QR/session connection is
+        # required only when a sequence is assigned/sent, not while it is
+        # being created. Keep an active Hosted account as the provider marker
+        # but allow pending/failed/disconnected connection states here.
         if whatsapp_account is not None:
             if whatsapp_account.organization_id != organization.id:
                 raise FollowupError("Hosted Account belongs to another organization.")
@@ -120,17 +124,13 @@ def create_sequence(
                 != WhatsAppAccount.ConnectionType.coexisted
             ):
                 raise FollowupError("Choose a Hosted/Coexistence WhatsApp number.")
-            if (
-                whatsapp_account.status != WhatsAppAccount.Status.CONNECTED
-                or not whatsapp_account.is_active
-            ):
-                raise FollowupError("Select an active connected Hosted WhatsApp number.")
+            if not whatsapp_account.is_active:
+                raise FollowupError("Select an active Hosted WhatsApp account.")
         else:
             whatsapp_account = (
                 WhatsAppAccount.objects.filter(
                     organization=organization,
                     connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                    status=WhatsAppAccount.Status.CONNECTED,
                     is_active=True,
                 )
                 .defer("access_token")
@@ -139,7 +139,7 @@ def create_sequence(
             )
             if not whatsapp_account:
                 raise FollowupError(
-                    "Connect at least one Hosted WhatsApp number before creating a WhatsApp sequence."
+                    "Add at least one Hosted WhatsApp account before creating a WhatsApp sequence."
                 )
     if FollowupSequence.objects.filter(organization=organization, name__iexact=name).exists():
         raise FollowupError("A sequence with this name already exists.")
