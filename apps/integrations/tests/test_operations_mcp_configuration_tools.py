@@ -350,6 +350,44 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         faq_row.refresh_from_db()
         self.assertFalse(faq_row.is_active)
 
+    def test_hosted_cadence_can_be_authored_without_any_active_hosted_account(self):
+        self.account.is_active = False
+        self.account.save(update_fields=["is_active", "updated_at"])
+
+        created = self._call(
+            "upsert_cadence_configuration",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Author Hosted cadence before connecting its sender.",
+                "data": {
+                    "name": "Unbound Hosted Cadence",
+                    "description": "Prepared before WhatsApp connection.",
+                    "provider": "hosted",
+                },
+            },
+        )["cadence"]
+
+        sequence = FollowupSequence.objects.get(pk=created["id"])
+        self.assertEqual(sequence.provider, FollowupSequence.Provider.HOSTED)
+        self.assertIsNone(sequence.whatsapp_account_id)
+
+        step = self._call(
+            "add_hosted_whatsapp_step",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Author plain-text Hosted follow-up before sender connection.",
+                "cadence_id": str(sequence.id),
+                "data": {
+                    "title": "Welcome follow-up",
+                    "body": "Hi {{lead_first_name}}, thanks for contacting us.",
+                    "schedule": {"type": "immediate"},
+                },
+            },
+        )["step"]
+        self.assertEqual(step["body"], "Hi {{lead_first_name}}, thanks for contacting us.")
+
     def test_hosted_free_form_cadence_step_can_be_created_updated_and_simulated(self):
         created = self._call(
             "add_hosted_whatsapp_step",
