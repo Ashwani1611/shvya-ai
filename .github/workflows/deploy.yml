@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: production-deploy
@@ -25,6 +26,45 @@ jobs:
     environment: production
 
     steps:
+      - name: Require Security success for deployment SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            state="$(gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/security.yml/runs" \
+              -f head_sha="${DEPLOY_SHA}" \
+              -f event=push \
+              -f branch=main \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.head_sha == env.DEPLOY_SHA and .head_branch == "main" and .event == "push")] | sort_by(.run_number) | last | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end')"
+
+            case "${state}" in
+              completed:success)
+                echo "Security workflow passed for ${DEPLOY_SHA}."
+                exit 0
+                ;;
+              completed:*)
+                echo "Security workflow did not pass for ${DEPLOY_SHA}: ${state}"
+                exit 1
+                ;;
+              missing|queued:*|in_progress:*|requested:*|waiting:*|pending:*)
+                echo "Waiting for Security workflow for ${DEPLOY_SHA}: ${state}"
+                sleep 15
+                ;;
+              *)
+                echo "Unexpected Security workflow state for ${DEPLOY_SHA}: ${state}"
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "Security workflow did not complete successfully for ${DEPLOY_SHA}."
+          exit 1
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
         with:
@@ -118,9 +158,22 @@ jobs:
               echo "Generated missing ${key} in production .env."
             }
 
+            require_env_secret() {
+              key="$1"
+              current="$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')"
+
+              case "$current" in
+                ""|'\"\"'|"''"|change-me-*)
+                  echo "Required production secret ${key} is missing or still a placeholder."
+                  echo "Refusing deployment instead of replacing an existing encryption root."
+                  exit 1
+                  ;;
+              esac
+            }
+
             echo "Ensuring production security secrets exist..."
             ensure_env_secret JWT_SECRET
-            ensure_env_secret CREDENTIAL_ENCRYPTION_KEY
+            require_env_secret CREDENTIAL_ENCRYPTION_KEY
             ensure_env_secret WHATSAPP_WEB_GATEWAY_TOKEN
             ensure_env_secret WHATSAPP_WEB_CALLBACK_TOKEN
             chmod 600 .env
