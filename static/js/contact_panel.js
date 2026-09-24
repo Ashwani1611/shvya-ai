@@ -58,26 +58,44 @@
     return ![...states.values()].some(s=>s.failed||s.dirty.size);
   }
   async function load(host, force=false) {
-    if(!host || !host.dataset.sidebarUrl)return;
+    if(!host || !host.dataset.sidebarUrl)return false;
     const url=host.dataset.sidebarUrl;
-    if(host.dataset.loadedUrl===url&&!force)return;
-    host._panelRequest?.abort(); const request=new AbortController();host._panelRequest=request;
+    if(host.dataset.loadedUrl===url&&!force){
+      if(host._panelLoadPromise)return host._panelLoadPromise;
+      return true;
+    }
+    host._panelRequest?.abort();
+    const request=new AbortController();
+    host._panelRequest=request;
     host.dataset.loadedUrl=url;
     if(!force)host.innerHTML='<p class="contact-empty" role="status">Loading contact…</p>';
     panelChrome(host);
-    try{
-      const response=await fetch(url,{credentials:'same-origin',signal:request.signal});
-      if(!response.ok||!response.headers.get('content-type')?.includes('text/html')||(response.redirected&&!new URL(response.url).pathname.endsWith('/contact-panel/')))throw new Error('Could not load contact details.');
-      const html=await response.text();
-      if(!host.isConnected||host.dataset.sidebarUrl!==url)return;
-      const selected=host.querySelector('[data-contact-panel]:not([hidden])')?.dataset.contactPanel;
-      host.innerHTML=html;
-      host.querySelector('[data-create-chat-lead]')?.setAttribute('action',url);
-      panelChrome(host);
-      host.querySelector('[data-note-editor]')?.removeAttribute('onsubmit');
-      if(window.htmx)window.htmx.process(host);
-      if(selected)select(host,selected);
-    }catch(error){if(error.name!=='AbortError'&&host.dataset.sidebarUrl===url){delete host.dataset.loadedUrl;host.innerHTML='<p class="contact-empty" role="alert">Could not load contact details.</p><button type="button" class="contact-primary" data-panel-retry>Retry</button>';panelChrome(host);}}
+    const job=(async()=>{
+      try{
+        const response=await fetch(url,{credentials:'same-origin',signal:request.signal});
+        if(!response.ok||!response.headers.get('content-type')?.includes('text/html')||(response.redirected&&!new URL(response.url).pathname.endsWith('/contact-panel/')))throw new Error('Could not load contact details.');
+        const html=await response.text();
+        if(!host.isConnected||host.dataset.sidebarUrl!==url)return false;
+        const selected=host.querySelector('[data-contact-panel]:not([hidden])')?.dataset.contactPanel;
+        host.innerHTML=html;
+        host.querySelector('[data-create-chat-lead]')?.setAttribute('action',url);
+        panelChrome(host);
+        host.querySelector('[data-note-editor]')?.removeAttribute('onsubmit');
+        if(window.htmx)window.htmx.process(host);
+        if(selected)select(host,selected);
+        return true;
+      }catch(error){
+        if(error.name!=='AbortError'&&host.dataset.sidebarUrl===url){
+          delete host.dataset.loadedUrl;
+          host.innerHTML='<p class="contact-empty" role="alert">Could not load contact details.</p><button type="button" class="contact-primary" data-panel-retry>Retry</button>';
+          panelChrome(host);
+        }
+        return false;
+      }
+    })();
+    host._panelLoadPromise=job;
+    try{return await job;}
+    finally{if(host._panelLoadPromise===job)host._panelLoadPromise=null;}
   }
   function select(host,name){
     host.querySelectorAll('[data-contact-panel]').forEach(p=>p.hidden=p.dataset.contactPanel!==name);
@@ -102,7 +120,23 @@
   function filterReplies(host){const q=host.querySelector('[data-reply-search]').value.toLowerCase();const c=host.querySelector('[data-reply-category]').value;host.querySelectorAll('[data-reply]').forEach(r=>r.hidden=(c&&r.dataset.category!==c)||!r.textContent.toLowerCase().includes(q));}
   document.addEventListener('click',async e=>{
     const opener=e.target.closest('[data-open-contact-tab]');
-    if(opener){const host=document.querySelector('[data-contact-host]');if(!host)return;collapsed=false;try{sessionStorage.setItem('shvya-contact-collapsed','false');}catch(_){}panelChrome(host);await load(host);select(host,opener.dataset.openContactTab||'personal');host.querySelector('[data-template-search]')?.focus({preventScroll:true});return;}
+    if(opener){
+      const host=document.querySelector('[data-contact-host]');
+      if(!host)return;
+      const target=opener.dataset.openContactTab||'personal';
+      collapsed=false;
+      try{sessionStorage.setItem('shvya-contact-collapsed','false');}catch(_){}
+      panelChrome(host);
+      await load(host);
+      if(!host.querySelector('[data-contact-panel="'+target+'"]')){
+        await load(host,true);
+      }
+      if(!host.querySelector('[data-contact-panel="'+target+'"]'))return;
+      select(host,target);
+      host.querySelector('.contact-scroll')?.scrollTo({top:0,behavior:'smooth'});
+      if(target==='templates')host.querySelector('[data-template-search]')?.focus({preventScroll:true});
+      return;
+    }
     const host=e.target.closest('[data-contact-host]');if(!host)return;
     if(e.target.closest('[data-contact-collapse]')){collapsed=!collapsed;try{sessionStorage.setItem('shvya-contact-collapsed',String(collapsed));}catch(_){}panelChrome(host);return;}
     const followup=e.target.closest('[data-followup-url]');
