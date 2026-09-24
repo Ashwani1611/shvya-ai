@@ -54,6 +54,53 @@ class WhatsAppTemplateServiceTests(TestCase):
             {"1": "lead_first_name", "2": "org_name"},
         )
 
+    def test_create_template_normalizes_plain_text_and_legacy_placeholder(self):
+        template = create_template(
+            organization=self.org,
+            account=self.account,
+            created_by=self.user,
+            name="plain_welcome",
+            body="<b>Hello</b> **{lead_first_name}** [Open](https://example.com)",
+            footer="<i>Thank you</i>",
+            buttons=[
+                {
+                    "type": "text_back",
+                    "text": "**Reply**",
+                }
+            ],
+        )
+        self.assertEqual(
+            template.body,
+            "Hello {{lead_first_name}} Open (https://example.com)",
+        )
+        self.assertEqual(template.footer, "Thank you")
+        self.assertEqual(template.buttons[0]["text"], "Reply")
+        self.assertEqual(
+            template.meta_state.placeholder_mapping,
+            {"1": "lead_first_name"},
+        )
+
+    def test_create_template_rejects_unsupported_placeholder(self):
+        with self.assertRaisesRegex(TemplateError, "unsupported placeholder"):
+            create_template(
+                organization=self.org,
+                account=self.account,
+                created_by=self.user,
+                name="invalid_placeholder",
+                body="Hello {{made_up_field}}",
+            )
+
+    def test_template_footer_rejects_placeholder(self):
+        with self.assertRaisesRegex(TemplateError, "does not support placeholders"):
+            create_template(
+                organization=self.org,
+                account=self.account,
+                created_by=self.user,
+                name="invalid_footer",
+                body="Hello",
+                footer="{{lead_name}}",
+            )
+
     def test_custom_crm_attribute_becomes_placeholder_automatically(self):
         AttributeDefinition.objects.create(
             organization=self.org,
