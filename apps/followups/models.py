@@ -184,6 +184,37 @@ class FollowupStep(models.Model):
         return f"{self.sequence.name} · {self.position} · {self.get_step_type_display()}"
 
 
+class FollowupStepAttachment(models.Model):
+    """File attached to an email Cadence step."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    step = models.ForeignKey(
+        FollowupStep,
+        on_delete=models.CASCADE,
+        related_name="attachments",
+    )
+    file = models.FileField(
+        upload_to="followups/email/%Y/%m/%d/",
+    )
+    original_name = models.CharField(max_length=255)
+    mime_type = models.CharField(max_length=120, blank=True)
+    size = models.PositiveBigIntegerField(default=0)
+    position = models.PositiveSmallIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["position", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["step", "position"],
+                name="fu_step_attachment_position_uniq",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.step} · {self.original_name}"
+
+
 class LeadSequenceState(models.Model):
     """
     First-class lead-to-sequence progress.
