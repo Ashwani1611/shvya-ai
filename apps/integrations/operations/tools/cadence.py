@@ -12,7 +12,7 @@ from django.db import transaction
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.followups.models import FollowupExecution, FollowupSequence, FollowupStep
 from apps.hosted_automation.models import HostedFollowupStepConfig
-from apps.integrations.operations.constants import MAX_MCP_KNOWLEDGE_UPLOAD_BYTES
+from apps.integrations.operations.constants import MAX_MCP_CADENCE_ATTACHMENT_BYTES
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import CAP_CADENCE_CONFIG_WRITE, approval_required
 from services.channels.hosted_automation_service import (
@@ -65,8 +65,8 @@ def _attachment_from_data(data):
         raw = base64.b64decode(encoded, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise OperationsToolError("attachment_base64 is invalid.") from exc
-    if not raw or len(raw) > MAX_MCP_KNOWLEDGE_UPLOAD_BYTES:
-        raise OperationsToolError("MCP attachment must be between 1 byte and 512 KiB.")
+    if not raw or len(raw) > MAX_MCP_CADENCE_ATTACHMENT_BYTES:
+        raise OperationsToolError("MCP attachment must be between 1 byte and 50 MiB.")
     upload = ContentFile(raw, name=filename)
     upload.content_type = str(data.get("attachment_mime_type") or "")
     return upload
