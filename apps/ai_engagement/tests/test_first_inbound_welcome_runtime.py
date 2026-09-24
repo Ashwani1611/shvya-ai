@@ -85,6 +85,29 @@ class FirstInboundWelcomeRuntimeTests(SimpleTestCase):
         )
         self.assertEqual(result.message, original.message)
 
+    def test_later_authored_reply_resolves_first_name_without_adding_greeting(self):
+        original = self._decision("Thanks, {{lead_first_name}}. What is your goal?")
+        result = apply_first_inbound_welcome(
+            decision=original,
+            organization=SimpleNamespace(name="SHVYA AI"),
+            lead=SimpleNamespace(name="  Gaurav   Sharma  "),
+            first_turn=False,
+        )
+        self.assertEqual(result.message, "Thanks, Gaurav. What is your goal?")
+        self.assertEqual(result.next_requirement_id, original.next_requirement_id)
+        self.assertEqual(result.crm_actions, original.crm_actions)
+
+    def test_first_name_token_uses_safe_fallback_for_unknown_or_phone_names(self):
+        for name in ("", "WhatsApp Lead", "Unknown", "+91 98765 43210", "lead@example.test"):
+            with self.subTest(name=name):
+                result = apply_first_inbound_welcome(
+                    decision=self._decision("Thanks, {{lead_first_name}}."),
+                    organization=SimpleNamespace(name="SHVYA AI"),
+                    lead=SimpleNamespace(name=name),
+                    first_turn=False,
+                )
+                self.assertEqual(result.message, "Thanks, there.")
+
 
     @patch("apps.ai_engagement.models.OrgInfo.objects.filter")
     def test_synthetic_organization_pk_never_queries_tenant_configuration(self, query):
@@ -113,3 +136,47 @@ class FirstInboundWelcomeRuntimeTests(SimpleTestCase):
         )
         query.assert_called_once_with(organization_id=organization.pk)
         self.assertEqual(result.message, "Welcome to our studio!\n\nWhat is your goal?")
+
+    @patch("apps.ai_engagement.models.OrgInfo.objects.filter")
+    def test_authored_welcome_resolves_name_and_does_not_duplicate_existing_welcome(self, query):
+        from apps.organizations.models import Organization
+
+        organization = Organization(name="Example")
+        organization._state.adding = False
+        query.return_value.only.return_value.first.return_value = SimpleNamespace(
+            ai_playbook="##Welcome Message\nHello {{lead_first_name}}, welcome to our studio!",
+        )
+        expected = "Hello Alex, welcome to our studio!\n\nWhat is your goal?"
+        for message in (
+            "What is your goal?",
+            "Hello {{lead_first_name}}, welcome to our studio!\n\nWhat is your goal?",
+            expected,
+        ):
+            with self.subTest(message=message):
+                result = apply_first_inbound_welcome(
+                    decision=self._decision(message),
+                    organization=organization,
+                    lead=SimpleNamespace(name="Alex Smith"),
+                    first_turn=True,
+                )
+                self.assertEqual(result.message, expected)
+
+    @patch("apps.ai_engagement.models.OrgInfo.objects.filter")
+    def test_authored_welcome_uses_safe_fallback_when_name_is_missing(self, query):
+        from apps.organizations.models import Organization
+
+        organization = Organization(name="Example")
+        organization._state.adding = False
+        query.return_value.only.return_value.first.return_value = SimpleNamespace(
+            ai_playbook="##Welcome Message\nHello {{lead_first_name}}, welcome to our studio!",
+        )
+        result = apply_first_inbound_welcome(
+            decision=self._decision("What is your goal?"),
+            organization=organization,
+            lead=SimpleNamespace(name="Unknown"),
+            first_turn=True,
+        )
+        self.assertEqual(
+            result.message,
+            "Hello there, welcome to our studio!\n\nWhat is your goal?",
+        )

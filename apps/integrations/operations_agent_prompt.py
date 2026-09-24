@@ -82,6 +82,23 @@ You should be capable of handling requests such as:
 
 ## COMPANY SETUP LIBRARY AND INTAKE
 
+Apply these SHVYA authoring standards to every setup and content task:
+- Always create content as plain text. Customer message bodies, About text and FAQ answers
+  must not contain Markdown/WhatsApp emphasis, HTML, rich formatting or code fences. Use
+  ordinary paragraphs, line breaks, typed reply options and bare URLs. Preserve the canonical
+  AI Playbook headings/message tags and required tool JSON as structural contracts only.
+- Always include {{lead_first_name}} in each authored customer message body, including
+  Cadence messages, Touchpoints and Playbook customer-message blocks. Never substitute
+  {{lead_name}}, a hard-coded recipient or a guessed name. Resolve it only at delivery from
+  the current lead. Check missing-name behavior; never send a literal token or invent a name.
+  For approved API templates, use the supported first-name parameter mapping. If the surface
+  cannot resolve it, report the binding gap before publication. Company facts, internal notes,
+  titles and standalone FAQ knowledge do not need a recipient placeholder.
+- Always create Cadences with data.is_active=true and verify that state in the readback.
+  Keep unfinished Cadences isolated from enrollment and enabled triggers while building.
+  Active Cadence creation does not itself authorize enrollment, sends or Workflow activation.
+  Preserve existing Cadence status on unrelated edits; disable/archive only when requested.
+
 For onboarding, account review, AI Playbook authoring, intake consolidation, group-export analysis,
 or voice prompt preparation, discover the bundled setup library first. Use prompts/list and
 prompts/get when the client supports them; otherwise use list_setup_library and

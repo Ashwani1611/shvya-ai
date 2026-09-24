@@ -127,13 +127,6 @@ def install_ai_runtime() -> None:
     )
     install_task_execution_failsoft()
 
-    # The first customer-facing WhatsApp reply greets once before presenting
-    # the backend-selected first qualification requirement.
-    from apps.ai_engagement.services.first_inbound_welcome_runtime import (
-        install_first_inbound_welcome_runtime,
-    )
-    install_first_inbound_welcome_runtime()
-
     # Last-mile customer-chat cleanup remains language-only and may not own
     # qualification state, mappings, or stage transitions.
     from apps.ai_engagement.services.natural_conversation_runtime import (
@@ -199,6 +192,15 @@ def install_ai_runtime() -> None:
         install_phase5_6_safety_fixes,
     )
     install_phase5_6_safety_fixes()
+
+    # Personalize the final authored reply after qualification and evidence
+    # finalizers have appended their configured copy. The first customer-facing
+    # WhatsApp reply also greets once before its selected requirement. Trace the
+    # resolved customer message rather than an unresolved first-name token.
+    from apps.ai_engagement.services.first_inbound_welcome_runtime import (
+        install_first_inbound_welcome_runtime,
+    )
+    install_first_inbound_welcome_runtime()
 
     # LangGraph captures node callables when compiled. Rebind the existing
     # canonical graph after the Phase 5/6 grounding guard is installed so an

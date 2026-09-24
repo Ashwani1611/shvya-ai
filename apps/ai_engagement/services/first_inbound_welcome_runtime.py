@@ -73,13 +73,22 @@ def _is_first_inbound_turn(lead) -> bool:
 
 
 def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None):
-    """Prepend one welcome while preserving the generated/backend-selected reply."""
+    """Resolve first-name copy and prepend a welcome only on the first turn."""
     if not getattr(decision, "should_engage", False):
         return decision
 
     message = str(getattr(decision, "message", "") or "").strip()
     if not message:
         return decision
+
+    # Authored question/acknowledgment blocks can also reach this final reply
+    # boundary verbatim. Resolve the supported token on every outgoing turn,
+    # before the first-turn guard, using the same safe name as our greeting.
+    first_name = _lead_first_name(getattr(lead, "name", ""))
+    personalized = message.replace("{{lead_first_name}}", first_name or "there")
+    if personalized != message:
+        message = personalized
+        decision = replace(decision, message=message)
 
     if first_turn is None:
         first_turn = _is_first_inbound_turn(lead)
@@ -96,6 +105,7 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
     if isinstance(organization, Organization) and not organization._state.adding:
         info = OrgInfo.objects.filter(organization_id=organization.pk).only("ai_playbook").first()
     authored = parse_playbook(info.ai_playbook if info else "")["welcome_message"]
+    authored = authored.replace("{{lead_first_name}}", first_name or "there")
     if authored:
         if authored in message:
             return decision
@@ -107,8 +117,6 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
         return decision
 
     organization_name = " ".join(str(getattr(organization, "name", "") or "").strip().split())
-    first_name = _lead_first_name(getattr(lead, "name", ""))
-
     if first_name and organization_name:
         greeting = f"Hi {first_name}! Thanks for reaching out to {organization_name}."
     elif first_name:

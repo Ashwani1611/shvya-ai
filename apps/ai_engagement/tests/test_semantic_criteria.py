@@ -1,7 +1,7 @@
 """Only current, source-bound semantic evidence may authorize qualification."""
 from copy import deepcopy
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from django.core import signing
 import pytest
@@ -15,6 +15,30 @@ from apps.ai_engagement.services.semantic_criteria import (
     validate_evaluations,
     verified_semantic_criteria_for_lead,
 )
+
+
+@pytest.mark.parametrize("body,expected", [
+    ("Thank you, Asha, for sharing your requirements. Our team can clarify next steps.", "sent-ack"),
+    ("Thank you, there, for sharing your requirements. Our team can clarify next steps.", "sent-ack"),
+    ("Thank you, Asha, for your enquiry.", None),
+    ("Our team can clarify next steps.", None),
+])
+def test_personalized_acknowledgment_requires_sent_copy_with_all_fixed_parts(body, expected):
+    from apps.ai_engagement.services.semantic_criteria import _acknowledgment_message_id
+
+    messages = Mock()
+    messages.filter.return_value.order_by.return_value.values.return_value = [{"id": "sent-ack", "body": body}]
+    lead = SimpleNamespace(organization_id="org-a", whatsapp_messages=messages)
+    playbook = (
+        "## Acknowledgment Message\n<acknowledgement_message>"
+        "Thank you, {{lead_first_name}}, for sharing your requirements. Our team can clarify next steps."
+        "</acknowledgement_message>"
+    )
+
+    assert _acknowledgment_message_id(lead, playbook) == expected
+    messages.filter.assert_called_once_with(
+        organization_id="org-a", direction="outbound", status__in=["sent", "delivered", "read"],
+    )
 
 
 def snapshot():
