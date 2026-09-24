@@ -203,6 +203,140 @@ class HostedQueueSourceOfTruthTests(TestCase):
         session.save()
         self.client.cookies["shvya_crm_sessionid"] = session.session_key
 
+    def _ai_job(self, *, status=HostedAutomationJob.Status.QUEUED, started_at=None):
+        inbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.INBOUND,
+            external_id=f"recovery-{HostedAutomationJob.objects.count()}",
+            from_number=self.lead.phone,
+            to_number=self.account.display_phone_number,
+            body="Please send details",
+            status=WhatsAppMessage.Status.RECEIVED,
+            raw_payload={},
+        )
+        return HostedAutomationJob.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            source_message=inbound,
+            status=status,
+            started_at=started_at,
+            available_at=timezone.now() - timedelta(seconds=1),
+        )
+
+    def test_dispatcher_keeps_job_queued_until_processing_task_claims_it(self):
+        from services.channels.hosted_automation_service import (
+            dispatch_one_hosted_ai_job,
+        )
+
+        job = self._ai_job()
+        with (
+            patch(
+                "services.channels.hosted_automation_service.hosted_ai_block_reason",
+                return_value="",
+            ),
+            patch(
+                "services.channels.hosted_automation_service.automation_pause_until",
+                return_value=None,
+            ),
+            patch(
+                "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task.delay"
+            ) as publish,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            result = dispatch_one_hosted_ai_job()
+
+        job.refresh_from_db()
+        self.assertEqual(result["status"], "dispatched")
+        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+        self.assertIsNone(job.started_at)
+        self.assertGreater(job.available_at, timezone.now())
+        publish.assert_called_once_with(str(job.id))
+
+    def test_stale_processing_job_returns_to_queue_and_is_dispatched(self):
+        from services.channels.hosted_automation_service import (
+            HOSTED_AI_PROCESSING_STALE_SECONDS,
+            dispatch_one_hosted_ai_job,
+        )
+
+        job = self._ai_job(
+            status=HostedAutomationJob.Status.PROCESSING,
+            started_at=timezone.now()
+            - timedelta(seconds=HOSTED_AI_PROCESSING_STALE_SECONDS + 5),
+        )
+        with (
+            patch(
+                "services.channels.hosted_automation_service.hosted_ai_block_reason",
+                return_value="",
+            ),
+            patch(
+                "services.channels.hosted_automation_service.automation_pause_until",
+                return_value=None,
+            ),
+            patch(
+                "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task.delay"
+            ) as publish,
+            self.captureOnCommitCallbacks(execute=True),
+        ):
+            result = dispatch_one_hosted_ai_job()
+
+        job.refresh_from_db()
+        self.assertEqual(result["status"], "dispatched")
+        self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
+        self.assertIsNone(job.started_at)
+        self.assertEqual((job.result or {}).get("recovery_reason"), "stale_processing_lease")
+        self.assertEqual((job.result or {}).get("recovery_count"), 1)
+        publish.assert_called_once_with(str(job.id))
+
+    def test_processing_task_resumes_orphaned_generated_message_without_regeneration(self):
+        from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
+
+        job = self._ai_job()
+        outbound = WhatsAppMessage.objects.create(
+            organization=self.organization,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            from_number=self.account.display_phone_number,
+            to_number=self.lead.phone,
+            body="Recovered AI reply",
+            status=WhatsAppMessage.Status.QUEUED,
+            raw_payload={
+                "shvya_ai": {
+                    "source_inbound_message_id": str(job.source_message_id),
+                    "provider": "hosted",
+                }
+            },
+        )
+
+        with (
+            patch(
+                "apps.hosted_automation.tasks.hosted_ai_block_reason",
+                return_value="",
+            ),
+            patch(
+                "apps.hosted_automation.tasks.hosted_health_pause_until",
+                return_value=None,
+            ),
+            patch(
+                "apps.hosted_automation.execution.execute_hosted_ai_engagement"
+            ) as generate,
+            patch(
+                "services.channels.hosted_whatsapp_transport.send_hosted_message"
+            ) as send,
+        ):
+            result = process_hosted_ai_engagement_job_task.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(job.status, HostedAutomationJob.Status.COMPLETED)
+        self.assertEqual((job.result or {}).get("message_id"), str(outbound.id))
+        self.assertTrue((job.result or {}).get("recovered_generated_message"))
+        self.assertEqual((result.get("delivery") or {}).get("status"), "sent")
+        generate.assert_not_called()
+        send.assert_called_once()
+
     def test_queue_uses_real_jobs_and_next_sequence_execution_time(self):
         now = timezone.now()
         inbound = WhatsAppMessage.objects.create(
