@@ -282,16 +282,16 @@ def upsert_cadence_configuration(*, identity, arguments):
     if sequence is None:
         account_id = data.get("whatsapp_account_id")
         if account_id:
-            account = (
-                WhatsAppAccount.objects.filter(
-                    pk=_uuid(account_id, field="whatsapp_account_id"),
-                    organization=organization,
-                    is_active=True,
+            account_query = WhatsAppAccount.objects.filter(
+                pk=_uuid(account_id, field="whatsapp_account_id"),
+                organization=organization,
+                is_active=True,
+            )
+            if provider == "api":
+                account_query = account_query.filter(
                     status=WhatsAppAccount.Status.CONNECTED,
                 )
-                .defer("access_token")
-                .first()
-            )
+            account = account_query.defer("access_token").first()
         if provider == "api" and account is None:
             raise OperationsToolError("An active connected WhatsApp API account is required.")
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
@@ -310,7 +310,6 @@ def upsert_cadence_configuration(*, identity, arguments):
                     WhatsAppAccount.objects.filter(
                         organization=organization,
                         connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                        status=WhatsAppAccount.Status.CONNECTED,
                         is_active=True,
                     )
                     .defer("access_token")
@@ -322,7 +321,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 )
             if account is None:
                 raise OperationsToolError(
-                    "Connect at least one Hosted/Coexistence WhatsApp number before creating this Cadence."
+                    "Add at least one Hosted/Coexistence WhatsApp account before creating this Cadence."
                 )
 
     cadence_before = (
@@ -453,7 +452,6 @@ def upsert_cadence_configuration(*, identity, arguments):
                             ),
                             organization=organization,
                             connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                            status=WhatsAppAccount.Status.CONNECTED,
                             is_active=True,
                         )
                         .defer("access_token")
@@ -466,7 +464,6 @@ def upsert_cadence_configuration(*, identity, arguments):
                             WhatsAppAccount.objects.filter(
                                 organization=organization,
                                 connection_type=WhatsAppAccount.ConnectionType.coexisted,
-                                status=WhatsAppAccount.Status.CONNECTED,
                                 is_active=True,
                             )
                             .defer("access_token")
@@ -478,7 +475,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                         )
                     if account is None:
                         raise OperationsApprovalRequired(
-                            "No active Hosted/Coexistence sender is available. "
+                            "No active Hosted/Coexistence account is available. "
                             "Run a fresh dry-run."
                         )
 
