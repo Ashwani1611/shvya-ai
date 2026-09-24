@@ -76,6 +76,48 @@ class PipelineSenderRoutingTests(TestCase):
         self.assertEqual(sequence.whatsapp_account_id, hosted_account.id)
         self.assertEqual(state.sequence, sequence)
 
+    def test_hosted_sequence_can_be_authored_while_qr_is_pending(self):
+        hosted_account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            business_name="Hosted Pending Sender",
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            display_phone_number="+918777777777",
+            phone_number_id="+918777777777",
+            status=WhatsAppAccount.Status.PENDING,
+            is_active=True,
+        )
+
+        sequence = create_sequence(
+            organization=self.organization,
+            created_by=self.user,
+            name="Pending Hosted Sequence",
+            description="",
+            provider="hosted",
+        )
+
+        self.assertEqual(sequence.whatsapp_account_id, hosted_account.id)
+
+        lead = self._lead_for("+918777777777", "Pending Hosted Pipeline")
+        with self.assertRaisesMessage(
+            FollowupError,
+            "linked WhatsApp number is not connected",
+        ):
+            assign_sequence(
+                lead=lead,
+                sequence=sequence,
+                actor=self.user,
+            )
+
+        hosted_account.status = WhatsAppAccount.Status.CONNECTED
+        hosted_account.save(update_fields=["status", "updated_at"])
+
+        state = assign_sequence(
+            lead=lead,
+            sequence=sequence,
+            actor=self.user,
+        )
+        self.assertEqual(state.sequence, sequence)
+
     def test_api_sequence_rejects_a_different_linked_api_number(self):
         WhatsAppAccount.objects.create(
             organization=self.organization,
