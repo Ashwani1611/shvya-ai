@@ -53,7 +53,11 @@ from apps.integrations.operations.tools.whatsapp import (
     _routing_snapshot,
     begin_whatsapp_connection,
     bind_whatsapp_account_to_pipeline,
+    create_whatsapp_template,
+    get_whatsapp_template_status,
     list_whatsapp_accounts,
+    list_whatsapp_templates,
+    submit_whatsapp_template,
     validate_whatsapp_routing,
 )
 from apps.integrations.operations.tools.workflows import (
