@@ -11,6 +11,7 @@ from .prod import *  # noqa: F401,F403
 
 APP_ENV = "staging"
 DEBUG = False
+OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"
 
 ALLOWED_HOSTS = [
     host.strip()

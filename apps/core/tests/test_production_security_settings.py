@@ -24,6 +24,7 @@ print(json.dumps({{
     "hsts_subdomains": settings.SECURE_HSTS_INCLUDE_SUBDOMAINS,
     "hsts_preload": settings.SECURE_HSTS_PRELOAD,
     "cors_allow_all": settings.CORS_ALLOW_ALL_ORIGINS,
+    "operations_public_base_url": settings.OPERATIONS_PUBLIC_BASE_URL,
 }}))
 """
         env = os.environ.copy()
@@ -61,3 +62,11 @@ print(json.dumps({{
                 self.assertTrue(values["hsts_subdomains"])
                 self.assertTrue(values["hsts_preload"])
                 self.assertFalse(values["cors_allow_all"])
+                expected_operations_origin = {
+                    "config.settings.prod": "https://dashboard.shvya-ai.com",
+                    "config.settings.staging": "https://staging.shvya-ai.com",
+                }[module_name]
+                self.assertEqual(
+                    values["operations_public_base_url"],
+                    expected_operations_origin,
+                )

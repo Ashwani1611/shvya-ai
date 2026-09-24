@@ -1,6 +1,8 @@
 # ruff: noqa: F403,F405
 """Domain-focused coverage split from the historical Operations MCP suite."""
 
+from django.test import override_settings
+
 from apps.integrations.tests.operations_mcp_test_base import *
 
 
@@ -151,6 +153,77 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
             self.assertTrue(
                 capabilities[capability]["approval_required"]
             )
+
+    @override_settings(
+        OPERATIONS_PUBLIC_BASE_URL="https://dashboard.shvya-ai.com",
+        ALLOWED_HOSTS=["testserver", "staging.shvya-ai.com"],
+    )
+    def test_oauth_discovery_and_challenge_ignore_request_host(self):
+        forwarded_staging = {
+            "HTTP_HOST": "staging.shvya-ai.com",
+            "HTTP_X_FORWARDED_PROTO": "https",
+        }
+
+        resource_response = self.client.get(
+            "/.well-known/oauth-protected-resource/operations/mcp/",
+            **forwarded_staging,
+        )
+        self.assertEqual(resource_response.status_code, 200)
+        resource = resource_response.json()
+        self.assertEqual(
+            resource["resource"],
+            "https://dashboard.shvya-ai.com/operations/mcp/",
+        )
+        self.assertEqual(
+            resource["authorization_servers"],
+            ["https://dashboard.shvya-ai.com/operations"],
+        )
+
+        server_response = self.client.get(
+            "/.well-known/oauth-authorization-server/operations",
+            **forwarded_staging,
+        )
+        self.assertEqual(server_response.status_code, 200)
+        server = server_response.json()
+        self.assertEqual(
+            server["issuer"],
+            "https://dashboard.shvya-ai.com/operations",
+        )
+        for key, path in (
+            ("authorization_endpoint", "/operations/oauth/authorize"),
+            ("token_endpoint", "/operations/oauth/token"),
+            ("registration_endpoint", "/operations/oauth/register"),
+            ("revocation_endpoint", "/operations/oauth/revoke"),
+        ):
+            self.assertEqual(
+                server[key],
+                "https://dashboard.shvya-ai.com" + path,
+            )
+
+        challenge_response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": "auth-origin",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "get_operations_context",
+                        "arguments": {},
+                    },
+                }
+            ),
+            content_type="application/json",
+            **forwarded_staging,
+        )
+        self.assertEqual(challenge_response.status_code, 401)
+        challenge = challenge_response["WWW-Authenticate"]
+        self.assertIn(
+            'resource_metadata="https://dashboard.shvya-ai.com'
+            '/.well-known/oauth-protected-resource/operations/mcp/"',
+            challenge,
+        )
+        self.assertNotIn("staging.shvya-ai.com", challenge)
 
     def test_standard_operations_resource_metadata_discovery(self):
         for path in (

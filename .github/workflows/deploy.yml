@@ -362,6 +362,24 @@ jobs:
               exit 1
             fi
 
+            echo "Verifying production Django environment identity..."
+            if ! docker compose exec -T web python -c "from django.conf import settings; assert settings.APP_ENV == 'production', settings.APP_ENV; assert settings.OPERATIONS_PUBLIC_BASE_URL == 'https://dashboard.shvya-ai.com', settings.OPERATIONS_PUBLIC_BASE_URL"; then
+              echo "Production web container is not using the canonical production settings."
+              docker compose logs --tail=100 web
+              exit 1
+            fi
+
+            echo "Verifying public Operations OAuth metadata..."
+            if ! oauth_metadata="$(curl --fail --silent --show-error --max-time 5 https://dashboard.shvya-ai.com/.well-known/oauth-authorization-server/operations)"; then
+              echo "Could not fetch production Operations OAuth metadata."
+              exit 1
+            fi
+            if ! printf '%s' "$oauth_metadata" | python3 -c "import json,sys; data=json.load(sys.stdin); base='https://dashboard.shvya-ai.com'; assert data.get('issuer') == base + '/operations'; assert data.get('authorization_endpoint') == base + '/operations/oauth/authorize'; assert data.get('token_endpoint') == base + '/operations/oauth/token'; assert data.get('registration_endpoint') == base + '/operations/oauth/register'; assert data.get('revocation_endpoint') == base + '/operations/oauth/revoke'"; then
+              echo "Production Operations OAuth metadata is not pinned to dashboard.shvya-ai.com."
+              printf '%s\n' "$oauth_metadata"
+              exit 1
+            fi
+
             echo "Current service status:"
             docker compose ps
 

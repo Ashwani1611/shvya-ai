@@ -48,3 +48,11 @@ def test_pgbouncer_uses_postgresql_scram_authentication(filename):
     block = _pgbouncer_service_block(ROOT / filename)
 
     assert "AUTH_TYPE: scram-sha-256" in block
+
+
+def test_production_compose_cannot_boot_with_staging_django_settings():
+    content = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
+
+    assert content.count("APP_ENV: production") == 9
+    assert content.count("DJANGO_SETTINGS_MODULE: config.settings.prod") == 9
+    assert "DJANGO_SETTINGS_MODULE: config.settings.staging" not in content

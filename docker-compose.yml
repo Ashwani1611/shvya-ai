@@ -82,6 +82,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -143,6 +145,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -179,6 +183,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -222,6 +228,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -265,6 +273,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -302,6 +312,8 @@ services:
     scale: ${CELERY_CAMPAIGN_REPLICAS:-1}
     env_file: [.env]
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -325,6 +337,8 @@ services:
     scale: ${CELERY_INGESTION_REPLICAS:-1}
     env_file: [.env]
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -348,6 +362,8 @@ services:
     scale: ${CELERY_AUTOMATION_REPLICAS:-1}
     env_file: [.env]
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
@@ -369,6 +385,8 @@ services:
       - .env
 
     environment:
+      APP_ENV: production
+      DJANGO_SETTINGS_MODULE: config.settings.prod
       DB_HOST: pgbouncer
       DB_PORT: "5432"
       DB_USE_PGBOUNCER: "True"
