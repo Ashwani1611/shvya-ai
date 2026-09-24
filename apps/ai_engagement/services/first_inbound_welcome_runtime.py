@@ -1,4 +1,4 @@
-"""Deterministic first-inbound greeting for WhatsApp AI conversations.
+"""Deterministic greeting and first-name rendering for WhatsApp AI conversations.
 
 The engagement model already receives the backend-selected qualification
 requirement.  This layer only guarantees that the very first customer-facing
@@ -14,6 +14,7 @@ import re
 
 
 _INSTALLED = False
+_PERSONALIZATION_INSTALLED = False
 _GENERIC_LEAD_NAMES = {
     "lead",
     "whatsapp lead",
@@ -72,11 +73,25 @@ def _is_first_inbound_turn(lead) -> bool:
         return False
 
 
-def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None):
-    """Prepend one welcome while preserving the generated/backend-selected reply."""
+def personalize_first_name_reply(*, decision, lead):
+    """Resolve the exact supported token without changing reply eligibility/actions."""
     if not getattr(decision, "should_engage", False):
         return decision
+    message = str(getattr(decision, "message", "") or "")
+    if "{{lead_first_name}}" not in message:
+        return decision
+    first_name = _lead_first_name(getattr(lead, "name", ""))
+    return replace(
+        decision,
+        message=message.replace("{{lead_first_name}}", first_name or "there"),
+    )
 
+
+def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None):
+    """Resolve first-name copy and prepend a welcome only on the first turn."""
+    if not getattr(decision, "should_engage", False):
+        return decision
+    decision = personalize_first_name_reply(decision=decision, lead=lead)
     message = str(getattr(decision, "message", "") or "").strip()
     if not message:
         return decision
@@ -96,6 +111,8 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
     if isinstance(organization, Organization) and not organization._state.adding:
         info = OrgInfo.objects.filter(organization_id=organization.pk).only("ai_playbook").first()
     authored = parse_playbook(info.ai_playbook if info else "")["welcome_message"]
+    first_name = _lead_first_name(getattr(lead, "name", ""))
+    authored = authored.replace("{{lead_first_name}}", first_name or "there")
     if authored:
         if authored in message:
             return decision
@@ -107,8 +124,6 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
         return decision
 
     organization_name = " ".join(str(getattr(organization, "name", "") or "").strip().split())
-    first_name = _lead_first_name(getattr(lead, "name", ""))
-
     if first_name and organization_name:
         greeting = f"Hi {first_name}! Thanks for reaching out to {organization_name}."
     elif first_name:
@@ -122,7 +137,7 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
 
 
 def install_first_inbound_welcome_runtime() -> None:
-    """Wrap the final EngagementService implementation once at app startup."""
+    """Install the first-turn greeting before customer-message finalization."""
     global _INSTALLED
     if _INSTALLED:
         return
@@ -148,3 +163,28 @@ def install_first_inbound_welcome_runtime() -> None:
 
     EngagementService.engage = engage
     _INSTALLED = True
+
+
+def install_first_name_personalization_runtime() -> None:
+    """Render final authored copy after validators, without adding a greeting."""
+    global _PERSONALIZATION_INSTALLED
+    if _PERSONALIZATION_INSTALLED:
+        return
+
+    from apps.ai_engagement.services.engagement import EngagementService
+
+    original_engage = EngagementService.engage
+
+    @wraps(original_engage)
+    def engage(self, *, organization, lead, knowledge_query=None, context=None):
+        decision = original_engage(
+            self,
+            organization=organization,
+            lead=lead,
+            knowledge_query=knowledge_query,
+            context=context,
+        )
+        return personalize_first_name_reply(decision=decision, lead=lead)
+
+    EngagementService.engage = engage
+    _PERSONALIZATION_INSTALLED = True

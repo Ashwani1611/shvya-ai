@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import inspect
 import re
+from dataclasses import replace
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.test import SimpleTestCase
@@ -11,6 +13,102 @@ from services.channels import hosted_automation_service, whatsapp_service
 
 
 class RuntimeCleanupContractTests(SimpleTestCase):
+    def test_bootstrap_preserves_question_guard_and_personalizes_final_copy_before_trace(self):
+        from apps.ai_engagement.graph import workflow
+        from apps.ai_engagement.services import first_inbound_welcome_runtime
+        from apps.ai_engagement.services.engagement import EngagementDecision, EngagementService
+        from apps.ai_engagement.services.qualification_execution.finalization import _finalize
+        from apps.organizations.models import Organization
+
+        initial = EngagementDecision(
+            should_engage=True,
+            message="Generated reply.",
+            file_document_id=None,
+            crm_actions=[],
+            reason="QUALIFICATION_NEXT",
+            model="test",
+        )
+        organization = Organization(name="SHVYA AI")
+        organization._state.adding = False
+        traced_messages = []
+
+        def install_finalizer():
+            previous = EngagementService.engage
+
+            def finalized(self, **kwargs):
+                return _finalize(
+                    previous(self, **kwargs),
+                    {"response_plan": {
+                        "response_type": "qualification_start",
+                        "next_requirement": {
+                            "id": "q1",
+                            "rendered": "{{lead_first_name}}, what is your goal?",
+                        },
+                    }},
+                )
+
+            EngagementService.engage = finalized
+
+        def install_evidence_fallback():
+            previous = EngagementService.engage
+
+            def grounded(self, **kwargs):
+                decision = previous(self, **kwargs)
+                return replace(
+                    decision,
+                    message="Thanks, {{lead_first_name}}.\n\n" + decision.message,
+                )
+
+            EngagementService.engage = grounded
+
+        def install_trace():
+            previous = EngagementService.engage
+
+            def traced(self, **kwargs):
+                decision = previous(self, **kwargs)
+                traced_messages.append(decision.message)
+                return decision
+
+            EngagementService.engage = traced
+
+        # Exercise real startup ordering with deterministic backend collaborators;
+        # the other installers are already initialized by Django and are no-ops.
+        with (
+            patch.object(runtime_bootstrap, "_INSTALLED", False),
+            patch.object(first_inbound_welcome_runtime, "_INSTALLED", False),
+            patch.object(first_inbound_welcome_runtime, "_PERSONALIZATION_INSTALLED", False),
+            patch.object(first_inbound_welcome_runtime, "_is_first_inbound_turn", return_value=True),
+            patch.object(EngagementService, "engage", lambda self, **kwargs: initial),
+            patch("apps.ai_engagement.models.OrgInfo.objects.filter") as info_query,
+            patch(
+                "apps.ai_engagement.services.canonical_architecture.install_canonical_ai_architecture",
+                side_effect=install_finalizer,
+            ),
+            patch(
+                "apps.ai_engagement.services.phase5_6_runtime.install_phase5_6_safety_fixes",
+                side_effect=install_evidence_fallback,
+            ),
+            patch(
+                "apps.ai_engagement.services.ai_trace_runtime.install_ai_trace_runtime",
+                side_effect=install_trace,
+            ),
+            patch.object(workflow, "build_engagement_graph", return_value=workflow.ENGAGEMENT_GRAPH),
+        ):
+            info_query.return_value.only.return_value.first.return_value = SimpleNamespace(
+                ai_playbook="## Welcome Message\nHi {{lead_first_name}}! How can I help?",
+            )
+            runtime_bootstrap.install_ai_runtime()
+            result = EngagementService.engage(
+                object(),
+                organization=organization,
+                lead=SimpleNamespace(name="Alex Smith"),
+            )
+
+        expected = "Thanks, Alex.\n\nHi Alex!\n\nAlex, what is your goal?"
+        self.assertEqual(result.message, expected)
+        self.assertEqual(traced_messages, [expected])
+        self.assertEqual(result.next_requirement_id, "q1")
+
     def test_bootstrap_has_no_removed_compatibility_or_channel_hooks(self):
         source = inspect.getsource(runtime_bootstrap.install_ai_runtime)
         for legacy in (
@@ -72,6 +170,7 @@ class RuntimeCleanupContractTests(SimpleTestCase):
                 "install_post_state_finalization_guard",
                 "install_task_execution_failsoft",
                 "install_first_inbound_welcome_runtime",
+                "install_first_name_personalization_runtime",
                 "install_customer_chat_regressions",
                 "install_canonical_ai_architecture",
                 "install_qualification_execution_contract",
