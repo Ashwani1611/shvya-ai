@@ -1,5 +1,6 @@
 """Stable registry for domain-oriented Operations MCP tools."""
 
+from apps.integrations.operations.tools.content import get_content_authoring_policy
 from apps.integrations.operations.tools.cadence import (
     add_hosted_whatsapp_step,
     delete_cadence_step,
@@ -60,6 +61,7 @@ from apps.integrations.operations.tools.workflows import (
 
 
 EXTENDED_HANDLERS = {
+    "get_content_authoring_policy": get_content_authoring_policy,
     "list_setup_library": list_setup_library,
     "get_setup_library_resource": get_setup_library_resource,
     "get_setup_variable_schema": get_setup_variable_schema,
