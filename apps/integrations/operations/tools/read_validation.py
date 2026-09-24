@@ -388,10 +388,29 @@ def _workflow_reference_index(organization):
         "stage_pairs": stage_pairs,
         "sequence_ids": {
             str(item)
-            for item in FollowupSequence.objects.filter(
-                organization=organization,
-                is_active=True,
-            ).values_list("id", flat=True)
+            for item in (
+                FollowupSequence.objects.filter(
+                    organization=organization,
+                    is_active=True,
+                )
+                .filter(
+                    Q(
+                        provider=FollowupSequence.Provider.HOSTED,
+                        whatsapp_account__isnull=True,
+                    )
+                    | Q(
+                        provider=FollowupSequence.Provider.HOSTED,
+                        whatsapp_account__organization=organization,
+                        whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                    )
+                    | Q(
+                        provider=FollowupSequence.Provider.API,
+                        whatsapp_account__organization=organization,
+                        whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
+                    )
+                )
+                .values_list("id", flat=True)
+            )
         },
         "account_ids": {
             str(item)
