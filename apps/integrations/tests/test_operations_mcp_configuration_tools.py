@@ -388,6 +388,39 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         )["step"]
         self.assertEqual(step["body"], "Hi {{lead_first_name}}, thanks for contacting us.")
 
+        simulated = self._call(
+            "simulate_cadence",
+            {"cadence_id": str(sequence.id)},
+        )
+        self.assertTrue(simulated["simulation"])
+        self.assertEqual(len(simulated["steps"]), 1)
+
+        workflow = {
+            "name": "Start prepared Hosted cadence",
+            "enabled": True,
+            "trigger_type": "lead_created",
+            "conditions": {
+                "scopes": [
+                    {
+                        "pipeline": str(self.pipeline.id),
+                        "stages": [str(self.new_stage.id)],
+                    }
+                ],
+                "sources": [],
+                "attributes": [],
+            },
+            "action_type": "start_sequence",
+            "action": {
+                "sequence": str(sequence.id),
+                "replace": False,
+            },
+        }
+        validated = self._call(
+            "validate_workflow_configuration",
+            {"data": workflow},
+        )
+        self.assertTrue(validated["valid"])
+
     def test_hosted_free_form_cadence_step_can_be_created_updated_and_simulated(self):
         created = self._call(
             "add_hosted_whatsapp_step",
