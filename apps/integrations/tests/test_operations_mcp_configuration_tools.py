@@ -395,6 +395,24 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertTrue(simulated["simulation"])
         self.assertEqual(len(simulated["steps"]), 1)
 
+        updated = self._call(
+            "upsert_cadence_configuration",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Update authored Hosted cadence before sender connection.",
+                "cadence_id": str(sequence.id),
+                "data": {
+                    "name": sequence.name,
+                    "description": "Updated before WhatsApp connection.",
+                    "provider": "hosted",
+                },
+            },
+        )["cadence"]
+        self.assertEqual(updated["whatsapp_account_id"], None)
+        sequence.refresh_from_db()
+        self.assertEqual(sequence.description, "Updated before WhatsApp connection.")
+
         workflow = {
             "name": "Start prepared Hosted cadence",
             "enabled": True,
