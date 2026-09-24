@@ -426,6 +426,68 @@ class OperationsConfigurationManagementTests(TestCase):
         self.assertEqual(sequence.whatsapp_account_id, second.id)
         self.assertNotEqual(sequence.whatsapp_account_id, first.id)
 
+    def test_portable_export_import_supports_unbound_hosted_cadence(self):
+        FollowupSequence.objects.create(
+            organization=self.organization,
+            created_by=self.admin,
+            name="Prepared Hosted Cadence",
+            description="Author before connecting WhatsApp.",
+            provider=FollowupSequence.Provider.HOSTED,
+            whatsapp_account=None,
+        )
+        exported = self._ok(
+            self.bearer,
+            "export_organization_configuration",
+        )
+        cadence = next(
+            item
+            for item in exported["configuration"]["cadences"]
+            if item["name"] == "Prepared Hosted Cadence"
+        )
+        self.assertEqual(cadence["provider"], "hosted")
+        self.assertIsNone(cadence["account_ref"])
+
+        target = Organization.objects.create(name="Unbound Hosted Import Org")
+        target_admin = User.objects.create_user(
+            email="unbound-import-admin@example.test",
+            organization=target,
+            password=None,
+            name="Unbound Import Admin",
+            role=User.Role.ADMIN,
+        )
+        self._policy(target, target_admin)
+        target_bearer = self._token(
+            organization=target,
+            actor=target_admin,
+            raw="unbound-import-bearer",
+        )
+
+        imported = self._ok(
+            target_bearer,
+            "import_organization_configuration",
+            {
+                "configuration": exported["configuration"],
+                "reason": "Import an authored Hosted cadence before sender connection.",
+            },
+        )
+        applied = self._ok(
+            target_bearer,
+            "apply_configuration_plan",
+            {
+                "plan_id": imported["plan_id"],
+                "approved": True,
+                "approval_event_id": imported["approval_event_id"],
+                "reason": "Apply the reviewed unbound Hosted cadence import.",
+            },
+        )
+        self.assertEqual(applied["status"], "APPLIED")
+        sequence = FollowupSequence.objects.get(
+            organization=target,
+            name="Prepared Hosted Cadence",
+        )
+        self.assertEqual(sequence.provider, FollowupSequence.Provider.HOSTED)
+        self.assertIsNone(sequence.whatsapp_account_id)
+
     def test_portable_export_import_creates_approval_plan_without_credentials(self):
         AttributeDefinition.objects.create(
             organization=self.organization,
