@@ -67,6 +67,8 @@ replaceOnce(
   'last-message key compatibility',
 );
 
+source = require('./media-message-id-patch').patchMediaMessageId(source);
+
 fs.writeFileSync(target, source);
 
 if (!source.includes('window.WWebJS.getMsgKeyId')) {

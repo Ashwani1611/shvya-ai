@@ -245,8 +245,53 @@
         var rich = form.querySelector("[data-rich-editor]");
         var objectUrl = "";
 
+        var previewTimer, previewVersion = 0;
+        var assetUrls = {};
+        async function refreshPreview() {
+            var version = ++previewVersion;
+            var data = new FormData(form);
+            var saved = form.querySelector("[data-saved-logo]");
+            ["logo", "signature"].forEach(function (key) {
+                var upload = form.elements[key + "_file"];
+                var remove = form.elements["remove_" + key];
+                if (assetUrls[key]) URL.revokeObjectURL(assetUrls[key]);
+                assetUrls[key] = "";
+                var url = data.get(key + "_url") || saved.dataset[key === "logo" ? "savedLogo" : "savedSignature"] || "";
+                if (upload.files.length) {
+                    assetUrls[key] = URL.createObjectURL(upload.files[0]);
+                    url = assetUrls[key];
+                }
+                data.set(key + "_url", remove && remove.checked ? "" : url);
+                data.delete(key + "_file");
+            });
+            var status = form.querySelector("[data-preview-status]");
+            try {
+                var response = await fetch(form.dataset.previewUrl, {method: "POST", body: data, credentials: "same-origin"});
+                if (!response.ok) throw new Error("Preview unavailable");
+                var result = await response.json();
+                if (version !== previewVersion) return;
+                form.querySelector("[data-live-preview]").srcdoc = result.html;
+                form.querySelector("[data-email-subject-preview]").textContent = result.email_subject;
+                form.querySelector("[data-email-body-preview]").srcdoc = result.email_html;
+                form.querySelector("[data-whatsapp-preview]").textContent = result.whatsapp_body;
+                status.textContent = /{{[^{}]+}}/.test(result.html + result.email_subject + result.email_body + result.whatsapp_body) ? "Some variables need a real lead or a corrected field name." : "Preview updated with sample values.";
+            } catch (error) {
+                if (version === previewVersion) status.textContent = "Preview could not refresh. Please try editing again.";
+            }
+        }
+        function schedulePreview() {
+            clearTimeout(previewTimer);
+            previewTimer = setTimeout(refreshPreview, 350);
+        }
+        form.addEventListener("input", schedulePreview);
+        form.addEventListener("change", schedulePreview);
+        window.addEventListener("pagehide", function () {
+            Object.values(assetUrls).forEach(function (url) { if (url) URL.revokeObjectURL(url); });
+        });
+
         function syncRichSource() {
             if (source && rich) source.value = rich.innerHTML;
+            schedulePreview();
         }
 
         function updateLogoPreview(url) {
