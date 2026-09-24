@@ -1009,3 +1009,13 @@
     .sy-preview-toolbar { display: none; }
     .sy-paper { width: 100%; margin: 0; box-shadow: none; padding: 30px; }
 }
+
+/* A readable document canvas beside the editor, with reachable save controls. */
+@media (min-width: 1100px) {
+    .sy-template-builder { grid-template-columns: minmax(0, 1fr) minmax(380px, .85fr); }
+    .sy-template-preview-side { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; border-radius: 24px; }
+}
+.sy-template-preview-side .sy-sticky-card { position: static; padding: 18px; }
+.sy-template-preview-side details { margin: 16px 0; }
+.sy-template-preview-side summary { cursor: pointer; font-weight: 600; padding: 10px 0; }
+.sy-template-preview-side [data-preview-status] { color: #6e6e73; font-size: 12px; }

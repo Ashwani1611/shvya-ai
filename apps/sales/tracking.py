@@ -65,14 +65,12 @@ def build_tracked_email_html(*, delivery, body, base_url):
         args=[delivery.tracking_token],
     )
     pixel_url = _absolute(base_url, pixel_path)
-    return (
-        '<div style="font-family:-apple-system,BlinkMacSystemFont,'
-        "'Segoe UI',sans-serif;line-height:1.6;color:#1d1d1f\">"
-        f"{body_html}"
+    from apps.sales.email_design import email_layout
+    return email_layout(delivery.document, body_html + (
         f'<img src="{html.escape(pixel_url, quote=True)}" width="1" height="1" '
         'alt="" style="display:block;width:1px;height:1px;border:0">'
-        "</div>"
-    )
+    ), base_url=base_url)
+
 
 
 @transaction.atomic

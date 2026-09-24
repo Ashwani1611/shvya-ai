@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import re
 import uuid
+from urllib.parse import urljoin
 
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
@@ -11,7 +13,7 @@ from django.utils import timezone
 
 from apps.sales.models import DocumentType, SalesDocument, SalesDocumentDelivery
 
-from .document_services import SalesDeliveryError, _money_text
+from .document_services import SalesDeliveryError, _money_text, merge_values, render_text_template
 
 
 def _mark_document_sent(document, *, actor=None):
@@ -163,6 +165,11 @@ def deliver_email(
     from apps.sales.pdf_service import read_document_pdf
     from apps.sales.tracking import build_tracked_email_html
 
+    public_url = urljoin(str(base_url or "").rstrip("/") + "/", reverse(
+        "shvya-sales-public-document", args=[document.public_token]).lstrip("/"))
+    values = merge_values(document, public_url=public_url)
+    body = render_text_template(body, values, strict=True)
+    subject = render_text_template(subject, values, strict=True)
     delivery, created = _delivery_row(
         document=document,
         channel=SalesDocumentDelivery.Channel.EMAIL,
@@ -287,7 +294,9 @@ def _sales_whatsapp_template_values(*, document, user=None, public_url=""):
         ),
     }
     if lead:
-        values.update(getattr(lead, "attributes", None) or {})
+        for key, value in (getattr(lead, "attributes", None) or {}).items():
+            values.setdefault(key, value)
+    values.update(merge_values(document, public_url=public_url))
     return values
 
 
@@ -337,17 +346,18 @@ def _sales_template_message(
         parameters = []
         for number in ordered_numbers:
             key = mapping[number]
-            value = str(values.get(key, "") or "")
+            if key not in values or values[key] in (None, ""):
+                raise SalesDeliveryError(f"Provide a value for WhatsApp template variable: {key}")
+            value = str(values[key])
             parameters.append({"type": "text", "text": value})
-            rendered_body = rendered_body.replace(
-                "{{" + str(key) + "}}",
-                value,
-            ).replace(
-                "{{" + str(number) + "}}",
-                value,
+            rendered_body = re.sub(
+                r"{{\s*(?:" + re.escape(str(key)) + "|" + re.escape(str(number)) + r")\s*}}",
+                lambda match: value, rendered_body,
             )
         components.append({"type": "body", "parameters": parameters})
 
+    if re.search(r"{{\s*[^{}]+\s*}}", rendered_body):
+        raise SalesDeliveryError("Map every WhatsApp template variable before sending.")
     return (
         rendered_body,
         {
@@ -371,12 +381,15 @@ def deliver_whatsapp(
     scheduled_delivery=None,
     reminder=None,
 ):
-    from urllib.parse import urljoin
 
     from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
     from apps.channels.tasks import send_whatsapp_message_task
     from services.crm.lead_chat import pipeline_chat_account
 
+    public_url = urljoin(str(base_url or "").rstrip("/") + "/", reverse(
+        "shvya-sales-public-document", args=[document.public_token]).lstrip("/"))
+    values = merge_values(document, public_url=public_url)
+    body = render_text_template(body, values, strict=True)
     delivery, created = _delivery_row(
         document=document,
         channel=SalesDocumentDelivery.Channel.WHATSAPP,
@@ -508,7 +521,7 @@ def deliver_whatsapp(
                         "chat_id": document.lead.phone,
                     },
                 )
-        elif requires_template:
+        elif requires_template or whatsapp_template_id:
             if not whatsapp_template_id:
                 raise SalesDeliveryError(
                     "Meta requires an approved document-header WhatsApp template "
@@ -625,7 +638,7 @@ def deliver_whatsapp(
             "delivery_id": str(delivery.id),
             "whatsapp_message_id": str(message.id),
             "pdf_attached": bool(attach_pdf),
-            "template_used": bool(requires_template),
+            "template_used": bool(requires_template or (whatsapp_template_id and account.connection_type == WhatsAppAccount.ConnectionType.API)),
         },
     )
     return delivery
