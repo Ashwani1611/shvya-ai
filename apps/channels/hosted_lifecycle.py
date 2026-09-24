@@ -155,11 +155,17 @@ def delete_hosted_account(*, account):
 
         messages_deleted = clear_hosted_chat_history(account=locked)
 
-        # FollowupSequence.whatsapp_account uses PROTECT. These sequences are
-        # scoped to this exact sender, so remove their execution history first
-        # and then the sequences as part of permanent account deletion.
+        # Hosted cadences are reusable authoring objects. A historical
+        # account binding is only a legacy provider marker, so permanent Hosted
+        # account deletion must detach those cadences rather than delete them.
+        # Any impossible non-Hosted cadence still bound to this Hosted account
+        # is removed so the RESTRICT foreign key cannot block account cleanup.
         from apps.followups.models import FollowupExecution, FollowupSequence
 
+        FollowupSequence.objects.filter(
+            whatsapp_account=locked,
+            provider=FollowupSequence.Provider.HOSTED,
+        ).update(whatsapp_account=None)
         sequence_ids = list(
             FollowupSequence.objects.filter(whatsapp_account=locked).values_list(
                 "id", flat=True
