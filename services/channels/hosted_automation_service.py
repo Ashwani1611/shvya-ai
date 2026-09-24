@@ -63,6 +63,8 @@ MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024
 MEDIA_TOKEN_MAX_AGE_SECONDS = 15 * 60
 
 HOSTED_AI_LOCK = "shvya:hosted-ai:dispatcher"
+HOSTED_AI_DISPATCH_LEASE_SECONDS = 30
+HOSTED_AI_PROCESSING_STALE_SECONDS = 180
 HOSTED_FOLLOWUP_LOCK = "shvya:hosted-followup:dispatcher"
 API_FOLLOWUP_LOCK = "shvya:api-followup:dispatcher"
 
@@ -538,12 +540,73 @@ def _next_ai_time(*, account):
     )
 
 
+def _recover_stale_hosted_ai_jobs(*, now):
+    """Return abandoned PROCESSING jobs to the durable queue.
+
+    PROCESSING is a lease, not a terminal state. If a worker crashes after
+    claiming a job, or the broker loses the processing task, Beat must be able
+    to retry the same source-bound job. Existing source-message and outbound
+    idempotency guards prevent duplicate customer messages.
+    """
+    stale_before = now - timedelta(seconds=HOSTED_AI_PROCESSING_STALE_SECONDS)
+    stale_ids = list(
+        HostedAutomationJob.objects.filter(
+            status=HostedAutomationJob.Status.PROCESSING,
+            started_at__isnull=False,
+            started_at__lte=stale_before,
+            account__connection_type=HOSTED_CONNECTION_TYPE,
+            account__is_active=True,
+            account__status=WhatsAppAccount.Status.CONNECTED,
+        )
+        .order_by("started_at", "created_at")
+        .values_list("id", flat=True)[:20]
+    )
+    recovered = 0
+    for job_id in stale_ids:
+        with transaction.atomic():
+            job = (
+                HostedAutomationJob.objects.select_for_update()
+                .filter(
+                    id=job_id,
+                    status=HostedAutomationJob.Status.PROCESSING,
+                    started_at__lte=stale_before,
+                )
+                .first()
+            )
+            if job is None:
+                continue
+            result = dict(job.result or {})
+            result.pop("_processing_task_id", None)
+            result["recovery_count"] = int(result.get("recovery_count", 0)) + 1
+            result["recovery_reason"] = "stale_processing_lease"
+            job.status = HostedAutomationJob.Status.QUEUED
+            job.available_at = now
+            job.started_at = None
+            job.completed_at = None
+            job.error = ""
+            job.result = result
+            job.save(
+                update_fields=[
+                    "status",
+                    "available_at",
+                    "started_at",
+                    "completed_at",
+                    "error",
+                    "result",
+                    "updated_at",
+                ]
+            )
+            recovered += 1
+    return recovered
+
+
 def dispatch_one_hosted_ai_job():
     """Claim one due AI job. Hosted AI always gets first dispatch priority."""
     if not cache.add(HOSTED_AI_LOCK, "1", timeout=18):
         return {"status": "locked"}
     try:
         now = timezone.now()
+        _recover_stale_hosted_ai_jobs(now=now)
         candidate_ids = list(
             HostedAutomationJob.objects.filter(
                 status=HostedAutomationJob.Status.QUEUED,
@@ -584,9 +647,15 @@ def dispatch_one_hosted_ai_job():
                     job.available_at = pause_until
                     job.save(update_fields=["available_at", "updated_at"])
                     continue
-                job.status = HostedAutomationJob.Status.PROCESSING
-                job.started_at = now
-                job.save(update_fields=["status", "started_at", "updated_at"])
+                # Do not mark PROCESSING until the processing task itself has
+                # actually claimed the durable job. A short DB lease prevents
+                # Beat from publishing duplicates; if broker publication is lost,
+                # the still-QUEUED row becomes due again automatically.
+                lease_until = now + timedelta(seconds=HOSTED_AI_DISPATCH_LEASE_SECONDS)
+                HostedAutomationJob.objects.filter(
+                    pk=job.pk,
+                    status=HostedAutomationJob.Status.QUEUED,
+                ).update(available_at=lease_until)
                 from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
 
                 transaction.on_commit(
