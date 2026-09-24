@@ -187,3 +187,23 @@ def test_security_workflow_runs_for_every_main_and_staging_push():
 
     assert "branches: [main, staging]" in push_block
     assert "paths:" not in push_block
+
+
+def test_production_deploy_verifies_runtime_environment_and_oauth_origin():
+    script = _script("deploy.yml")
+    public_check = script.index("Verifying the public HTTPS endpoint...")
+    runtime_check = script.index("Verifying production Django environment identity...")
+    oauth_check = script.index("Verifying public Operations OAuth metadata...")
+    record = script.index('mv "${STATE_FILE}.tmp" "$STATE_FILE"')
+
+    assert "settings.APP_ENV == 'production'" in script
+    assert (
+        "settings.OPERATIONS_PUBLIC_BASE_URL == "
+        "'https://dashboard.shvya-ai.com'"
+    ) in script
+    assert (
+        "https://dashboard.shvya-ai.com/"
+        ".well-known/oauth-authorization-server/operations"
+    ) in script
+    assert "data.get('issuer') == base + '/operations'" in script
+    assert public_check < runtime_check < oauth_check < record
