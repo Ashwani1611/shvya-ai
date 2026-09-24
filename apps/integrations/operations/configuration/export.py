@@ -90,8 +90,7 @@ def _step_export(step):
     hosted = None
     if (
         step.step_type == FollowupStep.StepType.WHATSAPP
-        and step.sequence.whatsapp_account.connection_type
-        == WhatsAppAccount.ConnectionType.coexisted
+        and step.sequence.provider == FollowupSequence.Provider.HOSTED
     ):
         hosted = HostedFollowupStepConfig.objects.filter(step=step).first()
     return {
