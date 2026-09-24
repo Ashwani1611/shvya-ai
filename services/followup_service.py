@@ -58,6 +58,16 @@ ALLOWED_EMAIL_ATTACHMENT_EXTENSIONS = {
     ".png",
     ".gif",
     ".webp",
+    ".mp3",
+    ".m4a",
+    ".aac",
+    ".wav",
+    ".ogg",
+    ".opus",
+    ".mp4",
+    ".mov",
+    ".webm",
+    ".3gp",
     ".zip",
 }
 
