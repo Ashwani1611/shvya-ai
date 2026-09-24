@@ -57,7 +57,18 @@ def contact_panel(request, lead_id):
     sequences = [
         s
         for s in available_sequences_for_lead(lead=lead)
-        if account and s.whatsapp_account_id == account.id
+        if account
+        and (
+            (
+                channel == "hosted"
+                and s.provider == FollowupSequence.Provider.HOSTED
+            )
+            or (
+                channel == "whatsapp"
+                and s.provider == FollowupSequence.Provider.API
+                and s.whatsapp_account_id == account.id
+            )
+        )
     ]
     response = render(
         request,
@@ -124,13 +135,21 @@ def start_checking_in(request, lead_id):
         sequence_id = UUID(request.POST.get("sequence", ""))
     except (ValueError, TypeError):
         return JsonResponse({"error": "Choose a valid sequence."}, status=400)
-    sequence = get_object_or_404(
-        FollowupSequence,
+    sequence_query = FollowupSequence.objects.filter(
         pk=sequence_id,
         organization=lead.organization,
-        whatsapp_account=account,
         is_active=True,
     )
+    if request.POST.get("channel") == "hosted":
+        sequence_query = sequence_query.filter(
+            provider=FollowupSequence.Provider.HOSTED,
+        )
+    else:
+        sequence_query = sequence_query.filter(
+            provider=FollowupSequence.Provider.API,
+            whatsapp_account=account,
+        )
+    sequence = get_object_or_404(sequence_query)
     if not sequence.steps.filter(is_active=True).exists():
         return JsonResponse(
             {"error": "Add an active step to this sequence first."}, status=400
