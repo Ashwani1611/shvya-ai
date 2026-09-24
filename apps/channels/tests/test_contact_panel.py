@@ -120,6 +120,53 @@ class ContactPanelTests(TestCase):
         )
         self.assertFalse(TouchpointReply.objects.filter(pk=reply.pk).exists())
 
+    def test_touchpoint_content_is_plain_text_and_personalized_for_active_lead(self):
+        category = TouchpointCategory.objects.create(
+            organization=self.org,
+            name="Greetings",
+        )
+        response = self.client.post(
+            self.manage,
+            {
+                "action": "save_reply",
+                "category_id": category.pk,
+                "title": "**Welcome**",
+                "body": "<b>Hi</b> **{lead_first_name}**, _welcome_ to [SHVYA](https://shvya-ai.com).",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        reply = category.replies.get()
+        self.assertEqual(reply.title, "Welcome")
+        self.assertEqual(
+            reply.body,
+            "Hi {{lead_first_name}}, welcome to SHVYA (https://shvya-ai.com).",
+        )
+
+        panel = self.client.get(self.panel)
+        self.assertContains(
+            panel,
+            "Hi Customer, welcome to SHVYA (https://shvya-ai.com).",
+        )
+        self.assertNotContains(panel, "{{lead_first_name}}")
+
+    def test_touchpoint_rejects_unsupported_placeholder(self):
+        category = TouchpointCategory.objects.create(
+            organization=self.org,
+            name="Greetings",
+        )
+        response = self.client.post(
+            self.manage,
+            {
+                "action": "save_reply",
+                "category_id": category.pk,
+                "title": "Welcome",
+                "body": "Hi {{unknown_customer_field}}",
+            },
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("unsupported placeholder", response.json()["error"])
+        self.assertFalse(category.replies.exists())
+
     def test_cross_tenant_replies_and_categories_cannot_be_read_or_mutated(self):
         category = TouchpointCategory.objects.create(
             organization=self.other, name="Private category"
