@@ -25,18 +25,16 @@ def test_qualification_service_uses_canonical_prompt():
 
 
 def test_bump_up_task_uses_canonical_prompt_module():
-    source = (Path(__file__).resolve().parents[1] / "tasks.py").read_text()
-    dispatch_source = source.split(
-        '@shared_task(name="ai.dispatch_bump_ups")', 1
-    )[1].split(
-        "# ============================================================\n# INTERNAL CONVERSATION SUMMARY",
-        1,
-    )[0]
-
-    assert "BUMP_UP_MESSAGE_INSTRUCTIONS" in dispatch_source
+    source = (
+        Path(__file__).resolve().parents[1]
+        / "task_handlers"
+        / "bumpups.py"
+    ).read_text()
+    assert '@shared_task(name="ai.dispatch_bump_ups")' in source
+    assert "BUMP_UP_MESSAGE_INSTRUCTIONS" in source
     assert (
         "This is a scheduled bump-up. The lead has not replied for at least one hour."
-        not in dispatch_source
+        not in source
     )
     assert BUMP_UP_MESSAGE_INSTRUCTIONS.startswith(
         "This is a scheduled bump-up. The lead has not replied for at least one hour."

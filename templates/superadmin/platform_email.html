@@ -1,0 +1,22 @@
+{% extends "superadmin/base.html" %}
+{% block content %}
+<section class="max-w-3xl mx-auto bg-white border rounded-2xl p-8">
+<h1 class="text-2xl font-semibold">Email integration</h1>
+<p class="text-gray-500 mt-2">Connect the SHVYA sender used for Free Trial verification emails. Each email goes to the address entered during signup. Verification activates the organisation and Agent.</p>
+<div class="my-5 p-4 bg-gray-50 rounded-xl">
+<strong>{% if configuration.is_enabled %}Connected{% elif configuration.last_error %}Connection failed{% else %}Not connected{% endif %}</strong>
+{% if configuration.last_tested_at %}<p>Last connection test: {{ configuration.last_tested_at }}</p>{% endif %}
+{% if configuration.last_error %}<p>Error: {{ configuration.last_error }}</p>{% endif %}
+</div>
+<p class="mb-5 text-sm text-gray-600">For Gmail, use smtp.gmail.com, port 587 and STARTTLS. Enter your Gmail address as the sender and SMTP username, and use a Gmail App Password. Your Superadmin login password is separate.</p>
+<form method="post" autocomplete="off">{% csrf_token %}
+{{ form.non_field_errors }}
+<div class="grid gap-5 md:grid-cols-2">
+{% for field in form %}<div><label class="block font-medium mb-2" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{{ field.errors }}</div>{% endfor %}
+</div>
+<p class="text-sm text-gray-500 my-4">Saved passwords are encrypted and never displayed. Leave the password blank to keep the saved value. Changed settings must pass a connection test before use.</p>
+<div class="flex flex-wrap gap-3"><button name="action" value="connect" class="px-5 py-3 bg-indigo-600 text-white rounded-xl">Save &amp; connect</button><button name="action" value="save" class="px-5 py-3 border rounded-xl">Save settings</button></div>
+</form>
+{% if configuration %}<form method="post" class="mt-5">{% csrf_token %}<button name="action" value="disconnect" class="text-red-600">Disconnect sender</button></form>{% endif %}
+</section>
+{% endblock %}

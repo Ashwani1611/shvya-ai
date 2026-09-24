@@ -8,6 +8,9 @@ from apps.crm.models import Lead, Pipeline
 from apps.hosted_automation.models import HostedAutomationJob
 from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
 from apps.organizations.models import Organization
+from services.channels.hosted_automation_service import (
+    EXPLICIT_LEAD_CREATION_AI_ACTIVATION,
+)
 
 
 class HostedSourceHistoryGuardTests(TestCase):
@@ -71,6 +74,32 @@ class HostedSourceHistoryGuardTests(TestCase):
         self.assertEqual(job.result["reason"], "source_message_is_history")
         self.assertIsNotNone(job.completed_at)
         block_reason.assert_not_called()
+
+    @patch(
+        "apps.hosted_automation.tasks.hosted_ai_block_reason",
+        return_value="downstream_test_block",
+    )
+    def test_explicit_lead_creation_history_continues_to_normal_execution(
+        self, block_reason
+    ):
+        job = self._job(external_id="explicit-history-source", is_history=True)
+        job.result = {"activation": EXPLICIT_LEAD_CREATION_AI_ACTIVATION}
+        job.save(update_fields=["result", "updated_at"])
+
+        result = process_hosted_ai_engagement_job_task.run(str(job.id))
+
+        job.refresh_from_db()
+        self.assertEqual(
+            result,
+            {"status": "skipped", "reason": "downstream_test_block"},
+        )
+        self.assertEqual(job.status, HostedAutomationJob.Status.SKIPPED)
+        self.assertEqual(job.result["reason"], "downstream_test_block")
+        self.assertEqual(
+            job.result["activation"],
+            EXPLICIT_LEAD_CREATION_AI_ACTIVATION,
+        )
+        block_reason.assert_called_once_with(account=self.account, lead=self.lead)
 
     @patch(
         "apps.hosted_automation.tasks.hosted_ai_block_reason",
