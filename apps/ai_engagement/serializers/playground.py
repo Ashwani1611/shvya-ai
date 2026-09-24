@@ -14,6 +14,8 @@ class PlaygroundRequestSerializer(
         trim_whitespace=True,
     )
 
+    stage_id = serializers.UUIDField(required=False, allow_null=True)
+
     history = serializers.ListField(
         child=serializers.DictField(),
         required=False,
@@ -52,3 +54,6 @@ class PlaygroundResponseSerializer(
     should_engage = serializers.BooleanField()
     knowledge = serializers.ListField()
     model = serializers.CharField()
+    stage = serializers.DictField(required=False)
+    events = serializers.ListField(required=False)
+    files = serializers.ListField(required=False)

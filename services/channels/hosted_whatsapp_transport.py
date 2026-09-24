@@ -88,14 +88,25 @@ def send_hosted_message(*, message, defer_on_pause=True):
 
     media_url = None
     filename = None
+    document = None
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
         media_payload = message.media_payload or {}
-        if media_payload.get("source") != "url" or not media_payload.get("url"):
-            raise WhatsAppSendError(
-                "Hosted WhatsApp media requires a URL-backed media source."
-            )
-        media_url = media_payload["url"]
-        filename = media_payload.get("filename")
+        if media_payload.get("source") == "document":
+            from apps.ai_engagement.models import Document
+            document_id = media_payload.get("document_id")
+            if isinstance(document_id, bool) or not isinstance(document_id, int) or document_id <= 0:
+                raise WhatsAppSendError("Invalid guided document ID.")
+            document = Document.objects.filter(pk=document_id, organization_id=message.organization_id,
+                is_active=True, processing_status=Document.ProcessingStatus.COMPLETED).exclude(file="").first()
+            if document is None:
+                raise WhatsAppSendError("The selected organization document is no longer available.")
+            if raw_payload.get("shvya_ai") and not str(document.share_instruction or "").strip():
+                raise WhatsAppSendError("The selected file is no longer configured for AI-guided sharing.")
+        elif media_payload.get("source") == "url" and media_payload.get("url"):
+            media_url = media_payload["url"]
+            filename = media_payload.get("filename")
+        else:
+            raise WhatsAppSendError("Hosted WhatsApp media requires a document or URL-backed source.")
 
     is_automation = message_is_hosted_automation(message)
     reservation_acquired = False
@@ -116,16 +127,23 @@ def send_hosted_message(*, message, defer_on_pause=True):
     try:
         from apps.channels.hosted_gateway_routing import gateway_client_for_account
 
-        response = gateway_client_for_account(
-            account, client_class=WhatsAppWebClient
-        ).send_message(
-            session_id=account.id,
-            to_number=message.to_number,
-            body=message.body,
-            message_type=message.message_type,
-            media_url=media_url,
-            filename=filename,
-        )
+        client = gateway_client_for_account(account, client_class=WhatsAppWebClient)
+        if document is not None:
+            import mimetypes
+            from pathlib import Path
+            filename = Path(document.file.name).name
+            with document.file.open("rb") as file_obj:
+                response = client.send_uploaded_media(
+                    session_id=account.id, to_number=message.to_number, file_obj=file_obj,
+                    message_type=WhatsAppMessage.MessageType.DOCUMENT,
+                    mime_type=mimetypes.guess_type(filename)[0] or "application/octet-stream",
+                    filename=filename, caption=message.body,
+                )
+        else:
+            response = client.send_message(
+                session_id=account.id, to_number=message.to_number, body=message.body,
+                message_type=message.message_type, media_url=media_url, filename=filename,
+            )
 
         raw_id = response.get("messageId")
         if not raw_id:

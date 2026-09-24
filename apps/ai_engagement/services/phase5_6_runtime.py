@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 import re
 import time
 from copy import deepcopy
@@ -166,9 +167,10 @@ def refine_evidence_from_context(*, context, resolution):
     with keyword fallback. Reuse those hits; never perform another provider call
     here. Live appointment availability is deliberately excluded.
     """
-    if resolution is None or resolution.question_type in {"appointment_availability", "not_evidence_bound"}:
+    if resolution is None or resolution.question_type in {"appointment_availability", "internal_crm_status", "conversation_memory"}:
         return resolution
-    if resolution.category not in {GroundingCategory.NO_VERIFIED_EVIDENCE, GroundingCategory.KNOWLEDGE_BASE}:
+    if (resolution.category not in {GroundingCategory.NO_VERIFIED_EVIDENCE, GroundingCategory.KNOWLEDGE_BASE}
+            and resolution.question_type != "product_or_service"):
         return resolution
     org_id = (context.organization or {}).get("id")
     lead_id = (context.lead or {}).get("id")
@@ -208,7 +210,7 @@ def refine_evidence_from_context(*, context, resolution):
         return resolution
     refined = replace(resolution, category=GroundingCategory.KNOWLEDGE_BASE,
                       information_class=InformationClass.DYNAMIC_RETRIEVED,
-                      verified=True, evidence=tuple(evidence), controlled_fallback="")
+                      verified=True, evidence=tuple([*resolution.evidence, *evidence][:8]), controlled_fallback="")
     _ACTIVE_EVIDENCE.set({**active, "resolution": refined})
     _record("grounding", refined.trace_dict())
     return refined
@@ -994,12 +996,17 @@ def _install_grounding_cost_guard() -> None:
             return {"decision": evidence_graph._safe_unknown_decision(decision),
                     "grounding_approved": False, "grounding_validation_path": "forbidden_claim"}
 
-        if _extractive_evidence_match(decision, resolution):
+        # Factual equivalence does not prove compliance with a language rule.
+        # Configured languages/conditional wording require the independent guard.
+        context_org = getattr(state.get("context"), "organization", {}) or {}
+        language_policy = bool(context_org.get("bot_languages") or re.search(
+            r"\b(?:language|hindi|english|hinglish|tamil|spanish)\b", str(context_org.get("ai_playbook") or ""), re.I))
+        if not language_policy and _extractive_evidence_match(decision, resolution):
             return {
                 "grounding_approved": True,
                 "grounding_validation_path": "deterministic_evidence_match",
             }
-        if _low_risk_normal_reply(decision, resolution):
+        if not language_policy and _low_risk_normal_reply(decision, resolution):
             return {
                 "grounding_approved": True,
                 "grounding_validation_path": "deterministic_low_risk",
@@ -1025,3 +1032,27 @@ __all__ = [
     "install_phase5_6_runtime",
     "install_phase5_6_safety_fixes",
 ]
+
+
+@contextmanager
+def sandbox_evidence_context(*, organization, lead, message, provider=None):
+    """Bind the shared evidence/composition contract without production writes."""
+    from apps.ai_engagement.services.intent_engine import IntentEngine
+    from apps.ai_engagement.services.qualification_state import state_for_lead
+    from apps.ai_engagement.services.organization_profile import compile_org_ai_profile
+    from apps.ai_engagement.models import OrgInfo
+    info = OrgInfo.objects.filter(organization=organization).first()
+    profile = compile_org_ai_profile(organization_name=organization.name, org_info=info)
+    requirements = profile.get("qualification", {}).get("requirements", [])
+    intent = IntentEngine(provider=provider).classify(organization=organization, lead=lead,
+        message=message, requirements=requirements, qualification_state=state_for_lead(lead, requirements=requirements))
+    resolution = EvidenceResolver().resolve(organization=organization, lead=lead, question=message,
+                                           intent_decision=intent, structured_memory={})
+    evidence_token = _ACTIVE_EVIDENCE.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk), "resolution": resolution})
+    memory_token = _ACTIVE_MEMORY.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk),
+                                     "snapshot": {}, "settings": dict(organization.settings or {}), "intent_decision": intent})
+    try:
+        yield
+    finally:
+        _ACTIVE_MEMORY.reset(memory_token)
+        _ACTIVE_EVIDENCE.reset(evidence_token)

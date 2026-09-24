@@ -182,11 +182,11 @@ Rules for the fields:
     ) -> list[dict[str, Any]]:
         """Build an organization-scoped allow-list for guided file sharing.
 
-        Normally candidates come from verified RAG chunks. When the latest lead
-        message explicitly asks for a file/brochure/catalogue/document, also
-        expose configured eligible files so a missing semantic chunk cannot make
-        a real uploaded file impossible to send. The response model still must
-        match share_instruction and may select only an ID in this allow-list.
+        Include configured guided files on ordinary turns so their authored
+        conditions can be evaluated without an explicit file request or RAG hit.
+        The response model must match share_instruction and may select only an
+        ID in this allow-list. Legacy unguided files still require retrieval or
+        an explicit request.
         """
         knowledge_items = context.as_dict().get("knowledge", [])
         document_ids = {
@@ -206,8 +206,6 @@ Rules for the fields:
             latest_text,
             flags=re.IGNORECASE,
         ))
-        if not document_ids and not explicit_file_request:
-            return []
 
         retrieved_documents = (
             self.get_eligible_documents(
@@ -218,14 +216,18 @@ Rules for the fields:
             else []
         )
         documents = list(retrieved_documents)
-        if explicit_file_request:
-            seen = {document.id for document in documents}
-            for document in self.get_eligible_documents(organization=organization):
-                if document.id not in seen:
-                    documents.append(document)
-                    seen.add(document.id)
-                if len(documents) >= 10:
-                    break
+        # Authored sharing conditions may trigger on an ordinary enquiry, not
+        # an explicit file request. Expose guided files for model evaluation;
+        # inclusion is not permission to send without satisfying the condition.
+        seen = {document.id for document in documents}
+        for document in self.get_eligible_documents(organization=organization):
+            if not explicit_file_request and not str(document.share_instruction or "").strip():
+                continue
+            if document.id not in seen:
+                documents.append(document)
+                seen.add(document.id)
+            if len(documents) >= 10:
+                break
 
         evidence_by_id: dict[int, dict[str, Any]] = {}
         for item in knowledge_items:
@@ -246,6 +248,7 @@ Rules for the fields:
                 "version": document.version,
                 "source_url": document.source_url,
                 "share_instruction": document.share_instruction,
+                "already_shared": document.id in (context.as_dict().get("lead", {}).get("shared_document_ids") or []),
                 "relevance": float(item.get("similarity", 0.0)),
                 "evidence": str(item.get("content") or "").strip(),
             })
