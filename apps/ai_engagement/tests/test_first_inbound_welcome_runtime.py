@@ -1,3 +1,4 @@
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -6,6 +7,7 @@ from django.test import SimpleTestCase
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.first_inbound_welcome_runtime import (
     apply_first_inbound_welcome,
+    personalize_first_name_reply,
 )
 
 
@@ -20,6 +22,27 @@ class FirstInboundWelcomeRuntimeTests(SimpleTestCase):
             reason_code="QUALIFICATION_NEXT",
             next_requirement_id="q1",
             model="test",
+        )
+
+    def test_final_personalization_preserves_silence_and_action_fields(self):
+        decision = replace(
+            self._decision("Thanks, {{lead_first_name}}."),
+            crm_actions=[{"type": "existing_action"}],
+        )
+        personalized = personalize_first_name_reply(
+            decision=decision, lead=SimpleNamespace(name="Alex Smith"),
+        )
+        self.assertEqual(personalized.message, "Thanks, Alex.")
+        self.assertEqual(personalized.crm_actions, decision.crm_actions)
+        self.assertEqual(personalized.next_requirement_id, decision.next_requirement_id)
+        self.assertEqual(personalized.should_engage, decision.should_engage)
+
+        decision = replace(decision, should_engage=False)
+        self.assertIs(
+            personalize_first_name_reply(
+                decision=decision, lead=SimpleNamespace(name="Alex Smith"),
+            ),
+            decision,
         )
 
     def test_first_reply_greets_by_first_name_then_preserves_q1(self):
