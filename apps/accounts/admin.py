@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
 from django.contrib.auth.forms import ReadOnlyPasswordHashField
 from django.db.models import Q
-from django.urls import reverse
+from django.urls import path, reverse
 from django.utils.html import format_html
 
 from .models import SignupVerificationDelivery, SuperadminAccount, User
@@ -124,6 +124,15 @@ class SuperadminCreationForm(forms.ModelForm):
             "is_active",
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # User.clean() requires tenantless records to already be identified as
+        # superadmins during ModelForm validation, before save() is reached.
+        self.instance.organization = None
+        self.instance.role = User.Role.SUPERADMIN
+        self.instance.is_staff = True
+        self.instance.is_superuser = True
+
     def clean_password2(self):
         password1 = self.cleaned_data.get("password1")
         password2 = self.cleaned_data.get("password2")
@@ -237,6 +246,19 @@ class SuperadminAccountAdmin(BaseUserAdmin):
             },
         ),
     )
+
+    def get_urls(self):
+        # Django's built-in UserAdmin uses the hard-coded URL name
+        # "auth_user_password_change". Register a proxy-specific route so the
+        # Account Information panel can reverse and own its reset-password URL.
+        custom_urls = [
+            path(
+                "<path:id>/password/",
+                self.admin_site.admin_view(self.user_change_password),
+                name="accounts_superadminaccount_password_change",
+            ),
+        ]
+        return custom_urls + super().get_urls()
 
     def get_queryset(self, request):
         return super().get_queryset(request).filter(
