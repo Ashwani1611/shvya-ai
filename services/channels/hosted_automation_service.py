@@ -257,14 +257,24 @@ def add_hosted_whatsapp_step(
 
     if sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
         raise HostedAutomationError("Use WhatsApp is available only for Hosted Account sequences.")
-    title = str(title or "").strip()
-    body = str(body or "").strip()
-    if not title:
-        raise HostedAutomationError("Message Name is required.")
-    if len(title) > 255:
-        raise HostedAutomationError("Message Name must be 255 characters or fewer.")
-    if not body:
-        raise HostedAutomationError("Message content is required.")
+    try:
+        title = normalize_plain_text(
+            title,
+            organization=sequence.organization,
+            field="Hosted Cadence title",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        body = normalize_plain_text(
+            body,
+            organization=sequence.organization,
+            field="Hosted Cadence body",
+            allow_placeholders=True,
+            required=True,
+        )
+    except ContentAuthoringError as exc:
+        raise HostedAutomationError(str(exc)) from exc
     validate_hosted_attachment(attachment)
     _validate_schedule(
         schedule_type=schedule_type,
@@ -311,10 +321,24 @@ def add_hosted_whatsapp_step(
 def update_hosted_whatsapp_step(*, step, title, body, attachment=None, remove_attachment=False):
     if step.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
         raise HostedAutomationError("This is not a Hosted Account WhatsApp step.")
-    title = str(title or "").strip()
-    body = str(body or "").strip()
-    if not title or not body:
-        raise HostedAutomationError("Message Name and content are required.")
+    try:
+        title = normalize_plain_text(
+            title,
+            organization=step.sequence.organization,
+            field="Hosted Cadence title",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        body = normalize_plain_text(
+            body,
+            organization=step.sequence.organization,
+            field="Hosted Cadence body",
+            allow_placeholders=True,
+            required=True,
+        )
+    except ContentAuthoringError as exc:
+        raise HostedAutomationError(str(exc)) from exc
     validate_hosted_attachment(attachment)
     step.title = title[:255]
     step.save(update_fields=["title", "updated_at"])
@@ -470,6 +494,7 @@ def hosted_ai_block_reason(*, account, lead):
     from apps.ai_engagement.services.ai_permissions import AIPermissionService
     from apps.crm.models import Lead
     from services.channels.hosted_whatsapp_service import get_session_settings
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 
     lead = Lead.objects.select_related(
         "organization", "pipeline", "stage"
