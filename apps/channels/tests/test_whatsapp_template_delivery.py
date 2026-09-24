@@ -105,6 +105,7 @@ class WhatsAppTemplateDeliveryTests(TestCase):
                 "category": "utility",
                 "format": "standard",
                 "body": "Hi Jane, welcome to Template Delivery Org",
+                "header_text": "",
                 "footer": "Powered by SHVYA",
                 "attachment_type": "none",
                 "buttons": [
@@ -117,6 +118,47 @@ class WhatsAppTemplateDeliveryTests(TestCase):
                 ],
                 "cards": [],
             },
+        )
+
+    def test_snapshot_falls_back_to_meta_synced_components(self):
+        self.template.footer = ""
+        self.template.buttons = []
+        self.template.save(update_fields=["footer", "buttons", "updated_at"])
+        state = self.template.meta_state
+        state.components = [
+            {"type": "HEADER", "format": "TEXT", "text": "Important update"},
+            {"type": "BODY", "text": "Hi {{1}}, welcome to {{2}}"},
+            {"type": "FOOTER", "text": "Synced footer"},
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {"type": "URL", "text": "Open portal", "url": "https://example.com/portal"},
+                    {"type": "QUICK_REPLY", "text": "Need help"},
+                ],
+            },
+        ]
+        state.save(update_fields=["components", "updated_at"])
+
+        message = queue_template_message(
+            template=self.template,
+            lead=self.lead,
+            user=self.user,
+        )
+        snapshot = message.media_payload["template_display"]
+
+        self.assertEqual(snapshot["header_text"], "Important update")
+        self.assertEqual(snapshot["attachment_type"], "text")
+        self.assertEqual(snapshot["footer"], "Synced footer")
+        self.assertEqual(
+            snapshot["buttons"],
+            [
+                {
+                    "type": "visit_website",
+                    "text": "Open portal",
+                    "detail": "https://example.com/portal",
+                },
+                {"type": "text_back", "text": "Need help", "detail": ""},
+            ],
         )
 
     @patch("services.channels.whatsapp_service.WhatsAppClient.send_template_message")
