@@ -652,7 +652,6 @@ def get_conversion_analysis(*, identity, arguments):
             state__sequence__organization=organization,
             sequence__organization=organization,
             state__sequence_id=F("sequence_id"),
-            sequence__whatsapp_account__organization=organization,
             step__sequence_id=F("sequence_id"),
             scheduled_for__gte=start_at,
             scheduled_for__lt=end_at,
@@ -668,7 +667,6 @@ def get_conversion_analysis(*, identity, arguments):
             organization=organization,
             lead_id__in=tenant_lead_ids,
             sequence__organization=organization,
-            sequence__whatsapp_account__organization=organization,
             completed_at__gte=start_at,
             completed_at__lt=end_at,
         ).count()
@@ -676,7 +674,6 @@ def get_conversion_analysis(*, identity, arguments):
             organization=organization,
             lead_id__in=tenant_lead_ids,
             sequence__organization=organization,
-            sequence__whatsapp_account__organization=organization,
             assigned_at__gte=start_at,
             assigned_at__lt=end_at,
         )
