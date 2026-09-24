@@ -92,6 +92,7 @@ class PlaygroundAPIView(APIView):
                 session_id=serializer.validated_data["session_id"],
                 message=serializer.validated_data["message"],
                 history=serializer.validated_data.get("history", []),
+                **({"stage_id": str(serializer.validated_data["stage_id"])} if serializer.validated_data.get("stage_id") else {}),
             )
         except PlaygroundError as exc:
             return Response(
@@ -140,3 +141,28 @@ class PlaygroundAPIView(APIView):
             },
             status=status.HTTP_200_OK,
         )
+
+
+class PlaygroundFileAPIView(PlaygroundAPIView):
+    """Authenticated tenant-scoped download for a guided-file preview."""
+    http_method_names = ["get", "head", "options"]
+
+    def get(self, request, document_id):
+        from pathlib import Path
+        from django.http import FileResponse, Http404
+        from apps.ai_engagement.models import Document
+        organization = self._organization(request)
+        if organization is None:
+            raise Http404
+        document = Document.objects.filter(pk=document_id, organization=organization, is_active=True,
+                     processing_status=Document.ProcessingStatus.COMPLETED).exclude(file="").exclude(share_instruction="").first()
+        if document is None:
+            raise Http404
+        try:
+            response = FileResponse(document.file.open("rb"), as_attachment=True,
+                                    filename=Path(document.file.name).name)
+        except (FileNotFoundError, OSError):
+            raise Http404 from None
+        response["Cache-Control"] = "private, no-store"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response

@@ -623,6 +623,9 @@ Do not add explanations, markdown, or chain-of-thought.
         compact = re.sub(r"[\s,â‚¹$â‚¬Â£+\-./:]", "", normalized)
         if len(normalized) <= 40 and compact and compact.isdigit():
             return False
+        words = set(re.findall(r"[^\W_]+", normalized, flags=re.UNICODE))
+        if words & self._KNOWLEDGE_TERMS:
+            return True
         if len(normalized) <= 24 and re.fullmatch(
             r"(?:option\s*)?[a-z0-9]{1,8}", normalized
         ):
@@ -635,7 +638,9 @@ Do not add explanations, markdown, or chain-of-thought.
             return True
         if "?" in text and len(normalized) > 20:
             return True
-        return False
+        # Meaningful multilingual enquiries must not depend on English trigger
+        # words or punctuation. Keep greetings and short answers inexpensive.
+        return len(normalized.split()) >= 3 or any("\u0900" <= ch <= "\u0dff" for ch in normalized)
 
     def _build_knowledge_query(self, *, context: AIContext) -> str:
         messages = (context.conversation or {}).get("messages", [])

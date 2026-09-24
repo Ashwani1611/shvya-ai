@@ -71,7 +71,8 @@ class AIBrainViewTests(SimpleTestCase):
     @patch("apps.crm.views.ai_setup.render")
     @patch("apps.crm.views.ai_setup._get_knowledge_data", return_value=(Mock(), Mock()))
     @patch("apps.crm.views.ai_setup.OrgInfoService")
-    def test_questionnaire_without_criteria_shows_admin_guidance(self, org_service, knowledge, render):
+    @patch("apps.crm.views.ai_setup.Pipeline.objects.filter")
+    def test_questionnaire_without_criteria_shows_admin_guidance(self, pipelines, org_service, knowledge, render):
         request = self.factory.get("/")
         for criteria, expected in (("", True), ("All required questions are answered.", False)):
             with self.subTest(criteria=criteria):
@@ -79,6 +80,9 @@ class AIBrainViewTests(SimpleTestCase):
                     "ai_playbook": "##Qualification Questions\nWhat is your budget?\n##Qualification Criteria\n" + criteria,
                 })
                 self.assertEqual(render.call_args.args[2]["playbook_needs_criteria"], expected)
+                pipelines.assert_called_with(organization=self.organization, is_active=True)
+                self.assertIs(render.call_args.args[2]["sandbox_pipelines"],
+                              pipelines.return_value.prefetch_related.return_value.order_by.return_value)
 
 
 class AIBrainConfigurationTests(SimpleTestCase):

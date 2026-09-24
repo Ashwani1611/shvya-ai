@@ -86,7 +86,7 @@ def _configured_completion_allowed(*, organization, lead, destination) -> bool:
         return False
 
 
-def _nonqualified_evidence_matches(*, organization, destination, latest_text: str) -> bool:
+def _nonqualified_evidence_matches(*, organization, destination, latest_text: str, context=None) -> bool:
     if not latest_text:
         return False
 
@@ -98,6 +98,7 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
         _condition_part,
         _stage_rule_references_destination,
         _strong_evidence_match,
+        _condition_evidence_match,
     )
 
     destination_payload = {
@@ -112,12 +113,21 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
         getattr(org_info, "ai_playbook", "") if org_info else ""
     )
     rules = policy.get("stage_shifting") or []
+    matching_rule = False
     for rule in rules:
         if not _stage_rule_references_destination(rule, destination_payload):
             continue
+        matching_rule = True
+        if "current pipeline" in rule.casefold() and context is not None:
+            if str((context.pipeline or {}).get("id")) != str(destination.pipeline_id):
+                continue
         condition = _condition_part(rule, destination_payload)
-        if condition and _strong_evidence_match(latest_text, condition):
+        if condition and (_condition_evidence_match(latest_text, condition, context) if context is not None
+                          else _strong_evidence_match(latest_text, condition)):
             return True
+    # A broad stage description cannot override an unsatisfied explicit rule.
+    if matching_rule:
+        return False
 
     description = str(destination.description or "").strip()
     if description and _strong_evidence_match(latest_text, description):
@@ -135,6 +145,17 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
 def _filter_stage_actions(*, organization, lead, actions, source_message=None):
     filtered = []
     latest_text = _latest_inbound_text(lead, source_message=source_message)
+    from types import SimpleNamespace
+    context = SimpleNamespace(pipeline={"id": str(lead.pipeline_id)}, conversation={"messages": []})
+    if any(isinstance(item, dict) and item.get("type") == "pipeline_transition" for item in actions or []):
+        messages = lead.whatsapp_messages.filter(organization=organization)
+        if source_message is not None:
+            from django.db.models import Q
+            messages = messages.filter(Q(created_at__lt=source_message.created_at) |
+                Q(created_at=source_message.created_at, id__lte=source_message.pk))
+            if getattr(source_message, "account_id", None):
+                messages = messages.filter(account_id=source_message.account_id)
+        context.conversation["messages"] = list(messages.order_by("-created_at", "-id").values("body", "direction", "status")[:40])
     for action in actions or []:
         if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
             filtered.append(deepcopy(action))
@@ -164,7 +185,7 @@ def _filter_stage_actions(*, organization, lead, actions, source_message=None):
         if _nonqualified_evidence_matches(
             organization=organization,
             destination=destination,
-            latest_text=latest_text,
+            latest_text=latest_text, context=context,
         ):
             filtered.append(deepcopy(action))
         else:

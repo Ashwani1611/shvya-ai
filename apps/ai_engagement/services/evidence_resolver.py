@@ -211,28 +211,15 @@ class EvidenceResolver:
                 lead=lead,
                 keys=keys,
             )
-            if structured:
+            knowledge = self._knowledge_evidence(organization=organization, question=question, guard=guard)
+            if structured or knowledge:
                 return EvidenceResolution(
                     category=GroundingCategory.STRUCTURED_ORG_DATA,
                     information_class=InformationClass.STATIC_CONFIGURED,
                     question_type=question_type,
                     sensitive=False,
                     verified=True,
-                    evidence=structured,
-                )
-            knowledge = self._knowledge_evidence(
-                organization=organization,
-                question=question,
-                guard=guard,
-            )
-            if knowledge:
-                return EvidenceResolution(
-                    category=GroundingCategory.KNOWLEDGE_BASE,
-                    information_class=InformationClass.DYNAMIC_RETRIEVED,
-                    question_type=question_type,
-                    sensitive=False,
-                    verified=True,
-                    evidence=knowledge,
+                    evidence=(knowledge + structured)[:self.MAX_ITEMS],
                 )
             return self._unknown(question_type=question_type, sensitive=False)
 
@@ -251,6 +238,16 @@ class EvidenceResolver:
                 information_class=InformationClass.STATIC_CONFIGURED,
                 question_type="objection", sensitive=False, verified=True, evidence=approved)
 
+        from apps.ai_engagement.services.authored_knowledge import matching_authored_answers
+        answers = matching_authored_answers(organization=organization, question=question, limit=self.MAX_ITEMS)
+        if answers:
+            return EvidenceResolution(
+                category=GroundingCategory.STRUCTURED_ORG_DATA,
+                information_class=InformationClass.STATIC_CONFIGURED,
+                question_type="product_or_service", sensitive=False, verified=True,
+                evidence=tuple(EvidenceItem(source_id=item["source_id"], source_type=item["source_type"],
+                                           content=item["content"][:self.MAX_CONTENT_CHARS]) for item in answers),
+            )
         return EvidenceResolution(
             category=GroundingCategory.NO_VERIFIED_EVIDENCE,
             information_class=InformationClass.UNKNOWN,
@@ -308,6 +305,13 @@ class EvidenceResolver:
     def _knowledge_evidence(self, *, organization, question: str, guard: TenantGuard) -> tuple[EvidenceItem, ...]:
         if not question:
             return ()
+        from apps.ai_engagement.services.authored_knowledge import matching_authored_answers
+        authored = matching_authored_answers(organization=organization, question=question, limit=self.MAX_ITEMS)
+        authored_items = tuple(EvidenceItem(
+            source_id=item["source_id"], source_type=item["source_type"],
+            content=item["content"][:self.MAX_CONTENT_CHARS], score=item["score"],
+            metadata={"question": item["question"]},
+        ) for item in authored)
         results = KnowledgeRetrievalService().retrieve_by_keyword(
             organization=organization,
             query_text=question,
@@ -336,7 +340,7 @@ class EvidenceResolver:
                     },
                 )
             )
-        return tuple(items)
+        return (authored_items + tuple(items))[:self.MAX_ITEMS]
 
     @staticmethod
     def _crm_evidence(lead) -> tuple[EvidenceItem, ...]:
