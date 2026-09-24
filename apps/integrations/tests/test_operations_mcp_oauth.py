@@ -220,7 +220,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         challenge = challenge_response["WWW-Authenticate"]
         self.assertIn(
             'resource_metadata="https://dashboard.shvya-ai.com'
-            '/operations/.well-known/oauth-protected-resource"',
+            '/.well-known/oauth-protected-resource/operations/mcp/"',
             challenge,
         )
         self.assertNotIn("staging.shvya-ai.com", challenge)
