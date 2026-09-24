@@ -38,6 +38,10 @@ class AutoFollowupSettings(models.Model):
 class FollowupSequence(models.Model):
     """Reusable, ordered set of WhatsApp/email/reminder steps."""
 
+    class Provider(models.TextChoices):
+        API = "api", "WhatsApp API"
+        HOSTED = "hosted", "Hosted/Coexistence"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
@@ -46,10 +50,17 @@ class FollowupSequence(models.Model):
     )
     name = models.CharField(max_length=255)
     description = models.CharField(max_length=300, blank=True)
+    provider = models.CharField(
+        max_length=8,
+        choices=Provider.choices,
+        default=Provider.API,
+    )
     whatsapp_account = models.ForeignKey(
         "channels.WhatsAppAccount",
         on_delete=models.RESTRICT,
         related_name="followup_sequences",
+        null=True,
+        blank=True,
     )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
