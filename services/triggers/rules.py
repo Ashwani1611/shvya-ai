@@ -243,8 +243,9 @@ def validate(org, data):
         ids = sorted({str(x) for x in ids})
         try:
             count = FollowupSequence.objects.filter(
-                organization=org, is_active=True, id__in=ids,
-                whatsapp_account__organization=org,
+                organization=org,
+                is_active=True,
+                id__in=ids,
             ).count()
         except (ValidationError, ValueError):
             fail("Invalid sequence.")
