@@ -507,10 +507,7 @@ def _organization_validation(organization):
                     "positions": positions,
                 }
             )
-        if (
-            sequence.whatsapp_account.connection_type
-            == WhatsAppAccount.ConnectionType.coexisted
-        ):
+        if sequence.provider == FollowupSequence.Provider.HOSTED:
             missing = [
                 str(step.id)
                 for step in sequence.steps.filter(
