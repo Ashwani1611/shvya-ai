@@ -85,20 +85,47 @@ def _send_generated_ai_message(job):
 )
 def process_hosted_ai_engagement_job_task(self, job_id):
     """Execute one durable Hosted Account AI job with explicit account context."""
+    request_id = str(getattr(self.request, "id", "") or "")
     try:
-        job = (
-            HostedAutomationJob.objects.select_related(
-                "account", "organization", "lead", "source_message"
-            ).get(id=job_id)
-        )
+        with transaction.atomic():
+            job = (
+                HostedAutomationJob.objects.select_for_update()
+                .select_related("account", "organization", "lead", "source_message")
+                .get(id=job_id)
+            )
+            if job.status not in {
+                HostedAutomationJob.Status.PROCESSING,
+                HostedAutomationJob.Status.QUEUED,
+            }:
+                return {"status": "skipped", "reason": "job_already_finished"}
+
+            result = dict(job.result or {})
+            processing_task_id = str(result.get("_processing_task_id") or "")
+            if (
+                job.status == HostedAutomationJob.Status.PROCESSING
+                and processing_task_id
+                and request_id
+                and processing_task_id != request_id
+            ):
+                return {"status": "skipped", "reason": "job_processing_elsewhere"}
+
+            job.status = HostedAutomationJob.Status.PROCESSING
+            job.started_at = timezone.now()
+            if request_id:
+                result["_processing_task_id"] = request_id
+                job.result = result
+                job.save(
+                    update_fields=[
+                        "status",
+                        "started_at",
+                        "result",
+                        "updated_at",
+                    ]
+                )
+            else:
+                job.save(update_fields=["status", "started_at", "updated_at"])
     except HostedAutomationJob.DoesNotExist:
         return {"status": "skipped", "reason": "job_not_found"}
-
-    if job.status not in {
-        HostedAutomationJob.Status.PROCESSING,
-        HostedAutomationJob.Status.QUEUED,
-    }:
-        return {"status": "skipped", "reason": "job_already_finished"}
 
     source_payload = (
         job.source_message.raw_payload
@@ -146,6 +173,34 @@ def process_hosted_ai_engagement_job_task(self, job_id):
     if pause_until:
         return _requeue_for_health(job, pause_until)
 
+    # A worker can crash after committing the source-bound outbound row but
+    # before copying its id into HostedAutomationJob.result. Recover that exact
+    # message instead of generating a second AI response.
+    if not (job.result or {}).get("message_id"):
+        recovered_message = (
+            WhatsAppMessage.objects.filter(
+                organization=job.organization,
+                account=job.account,
+                lead=job.lead,
+                direction=WhatsAppMessage.Direction.OUTBOUND,
+                raw_payload__shvya_ai__source_inbound_message_id=str(
+                    job.source_message_id
+                ),
+            )
+            .order_by("-created_at", "-id")
+            .first()
+        )
+        if recovered_message is not None:
+            job.result = {
+                **(job.result or {}),
+                "status": "completed",
+                "engaged": True,
+                "message_id": str(recovered_message.id),
+                "source_message_id": str(job.source_message_id),
+                "recovered_generated_message": True,
+            }
+            job.save(update_fields=["result", "updated_at"])
+
     # A previous run may already have generated the outbound message before
     # Account Health paused. Resume that exact queued message instead of
     # regenerating AI text after the 12-hour cooldown.
@@ -174,6 +229,13 @@ def process_hosted_ai_engagement_job_task(self, job_id):
         from celery.exceptions import Retry
 
         if isinstance(exc, Retry):
+            # Keep the processing lease fresh while Celery owns a scheduled
+            # retry so Beat does not mistake a legitimate retry delay for a
+            # crashed worker.
+            HostedAutomationJob.objects.filter(
+                pk=job.pk,
+                status=HostedAutomationJob.Status.PROCESSING,
+            ).update(started_at=timezone.now())
             raise
         logger.exception("Hosted AI engagement job %s failed", job_id)
         job.status = HostedAutomationJob.Status.FAILED
@@ -182,7 +244,8 @@ def process_hosted_ai_engagement_job_task(self, job_id):
         job.save(update_fields=["status", "completed_at", "error", "updated_at"])
         return {"status": "failed", "error": str(exc)}
 
-    result = result or {}
+    result = {**(job.result or {}), **(result or {})}
+    result.pop("_processing_task_id", None)
     # Persist the generated message id before attempting delivery. If health
     # flips to paused at the limit, this exact message survives the cooldown.
     job.result = result
