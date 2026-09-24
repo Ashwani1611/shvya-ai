@@ -9,7 +9,7 @@ from __future__ import annotations
 import re
 
 
-SECTION_TITLES = {
+REQUIRED_SECTION_TITLES = {
     "rules": "Rules",
     "welcome_message": "Welcome Message",
     "qualification_questions": "Qualification Questions",
@@ -18,8 +18,10 @@ SECTION_TITLES = {
     "stage_shifting": "Stage shifting logic",
     "attribute_mapped": "Attribute mapping logic",
     "reminders": "Reminder creation logic",
-    "faq": "FAQ",
 }
+# Optional evidence section; existing authored templates still require the eight
+# operating sections in their established order.
+SECTION_TITLES = {**REQUIRED_SECTION_TITLES, "faq": "FAQ"}
 SECTION_ALIASES = {
     "faq": {"faq", "faqs", "frequently asked questions", "frequently asked questions and answers"},
     "rules": {"rules", "rule", "engagement instructions"},
