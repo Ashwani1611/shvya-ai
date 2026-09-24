@@ -80,6 +80,51 @@ def _template_button_snapshot(button):
     }
 
 
+def _meta_component(components, kind):
+    kind = str(kind or "").upper()
+    for item in components or []:
+        if isinstance(item, dict) and str(item.get("type") or "").upper() == kind:
+            return item
+    return {}
+
+
+def _meta_button_snapshot(button):
+    """Normalize a Meta-synced button when the local template JSON is empty."""
+    if not isinstance(button, dict):
+        return None
+    meta_type = str(button.get("type") or "").upper()
+    mapping = {
+        "URL": "visit_website",
+        "PHONE_NUMBER": "call_phone",
+        "QUICK_REPLY": "text_back",
+        "COPY_CODE": "copy_offer",
+    }
+    kind = mapping.get(meta_type, meta_type.lower())
+    text = str(button.get("text") or "").strip()
+    detail = ""
+    if meta_type == "URL":
+        text = text or "Visit website"
+        detail = str(button.get("url") or "").strip()
+    elif meta_type == "PHONE_NUMBER":
+        text = text or "Call"
+        detail = str(button.get("phone_number") or "").strip()
+    elif meta_type == "COPY_CODE":
+        text = text or "Copy code"
+        example = button.get("example")
+        if isinstance(example, list):
+            detail = str(example[0] if example else "").strip()
+        else:
+            detail = str(example or button.get("coupon_code") or "").strip()
+    elif meta_type == "QUICK_REPLY":
+        text = text or "Quick reply"
+    else:
+        text = text or meta_type.replace("_", " ").title()
+
+    if not text and not detail:
+        return None
+    return {"type": kind, "text": text[:80], "detail": detail[:500]}
+
+
 def template_display_snapshot(*, template, rendered_body, state=None):
     """Freeze the complete template presentation used by the Chats inbox.
 
@@ -88,19 +133,43 @@ def template_display_snapshot(*, template, rendered_body, state=None):
     presentation. It contains display-only data and no credentials or media
     bytes.
     """
-    buttons = []
-    for item in template.buttons or []:
-        snapshot = _template_button_snapshot(item)
-        if snapshot:
-            buttons.append(snapshot)
-
-    cards = []
     metadata = state
     if metadata is None:
         try:
             metadata = template.meta_state
         except AttributeError:
             metadata = None
+    components = (
+        metadata.components
+        if metadata is not None and isinstance(metadata.components, list)
+        else []
+    )
+
+    buttons = []
+    for item in template.buttons or []:
+        snapshot = _template_button_snapshot(item)
+        if snapshot:
+            buttons.append(snapshot)
+    if not buttons:
+        meta_buttons = _meta_component(components, "BUTTONS").get("buttons") or []
+        for item in meta_buttons:
+            snapshot = _meta_button_snapshot(item)
+            if snapshot:
+                buttons.append(snapshot)
+
+    footer = str(template.footer or "").strip()
+    if not footer:
+        footer = str(_meta_component(components, "FOOTER").get("text") or "").strip()
+
+    header = _meta_component(components, "HEADER")
+    header_text = str(header.get("text") or "").strip()
+    attachment_type = str(template.attachment_type or "none").strip().lower() or "none"
+    if attachment_type == "none":
+        remote_header_format = str(header.get("format") or "").strip().lower()
+        if remote_header_format:
+            attachment_type = remote_header_format
+
+    cards = []
 
     # Avoid creating metadata from a read path. Carousel state is optional and
     # only used when it already exists.
@@ -128,8 +197,9 @@ def template_display_snapshot(*, template, rendered_body, state=None):
         "category": str(template.category or "")[:20],
         "format": str(template.template_format or "")[:20],
         "body": str(rendered_body or "")[:4096],
-        "footer": str(template.footer or "")[:60],
-        "attachment_type": str(template.attachment_type or "none")[:20],
+        "header_text": header_text[:1024],
+        "footer": footer[:60],
+        "attachment_type": attachment_type[:20],
         "buttons": buttons,
         "cards": cards,
     }
