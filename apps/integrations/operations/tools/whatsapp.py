@@ -20,6 +20,7 @@ from services.channels.template_service import (
     state_for,
     submit_template,
 )
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     create_hosted_account,
@@ -582,17 +583,55 @@ def get_whatsapp_template_status(*, identity, arguments):
     )
 
 
-def _template_create_values(arguments):
+def _template_create_values(*, organization, arguments):
     category = str((arguments or {}).get("category") or WhatsAppTemplate.Category.MARKETING).strip().lower()
     allowed_categories = {value for value, _label in WhatsAppTemplate.Category.choices}
     if category not in allowed_categories:
         raise OperationsToolError("Invalid WhatsApp template category.")
+    try:
+        body = normalize_plain_text(
+            (arguments or {}).get("body"),
+            organization=organization,
+            field="Template body",
+            allow_placeholders=True,
+            required=True,
+            max_length=1024,
+        )
+        footer = normalize_plain_text(
+            (arguments or {}).get("footer"),
+            organization=organization,
+            field="Template footer",
+            allow_placeholders=False,
+            max_length=60,
+        )
+        buttons = []
+        for item in list((arguments or {}).get("buttons") or []):
+            clean = dict(item or {})
+            if "text" in clean:
+                clean["text"] = normalize_plain_text(
+                    clean.get("text"),
+                    organization=organization,
+                    field="Template button text",
+                    allow_placeholders=False,
+                    max_length=25,
+                )
+            if "coupon_code" in clean:
+                clean["coupon_code"] = normalize_plain_text(
+                    clean.get("coupon_code"),
+                    organization=organization,
+                    field="Template coupon code",
+                    allow_placeholders=False,
+                    max_length=15,
+                )
+            buttons.append(clean)
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
     return {
         "name": str((arguments or {}).get("name") or "").strip(),
-        "body": str((arguments or {}).get("body") or ""),
+        "body": body,
         "category": category,
-        "footer": str((arguments or {}).get("footer") or ""),
-        "buttons": (arguments or {}).get("buttons") or [],
+        "footer": footer,
+        "buttons": buttons,
         "language": str((arguments or {}).get("language") or "en_US").strip() or "en_US",
     }
 
@@ -629,7 +668,7 @@ def create_whatsapp_template(*, identity, arguments):
         raise OperationsToolError(
             "The selected WhatsApp account is not routed to the requested pipeline."
         )
-    values = _template_create_values(arguments)
+    values = _template_create_values(organization=organization, arguments=arguments)
     if not values["name"] or not values["body"]:
         raise OperationsToolError("Template name and body are required.")
 

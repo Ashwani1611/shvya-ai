@@ -15,7 +15,11 @@ from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.channels.providers import whatsapp as meta
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
 from apps.channels.template_models import WhatsAppTemplateMetadata, WhatsAppTemplateOperation
-from apps.crm.models.attribute import AttributeDefinition
+from services.content_authoring import (
+    ContentAuthoringError,
+    available_placeholders,
+    normalize_plain_text,
+)
 
 logger = logging.getLogger(__name__)
 NAME_RE = re.compile(r"^[a-z0-9_]{1,512}$")
@@ -68,46 +72,71 @@ def state_for(template):
     return WhatsAppTemplateMetadata.objects.get_or_create(template=template)[0]
 
 
-def available_placeholders(*, organization):
-    """Return tenant-safe CRM placeholders exposed to template authors."""
-    base = [
-        ("lead_name", "Lead name", "lead", "name", "John Smith"),
-        ("lead_first_name", "Lead first name", "lead", "name", "John"),
-        ("phone", "Phone", "lead", "phone", "+919876543210"),
-        ("email", "Email", "lead", "email", "lead@example.com"),
-        ("lead_source", "Lead source", "lead", "lead_source", "Website"),
-        ("pipeline_name", "Pipeline", "lead", "pipeline", "Sales"),
-        ("stage_name", "Stage", "lead", "stage", "Qualified"),
-        ("org_name", "Organization name", "organization", "name", organization.name),
-        ("user_name", "User name", "user", "name", "Team member"),
-    ]
-    result = [
-        {
-            "key": key,
-            "label": label,
-            "source": source,
-            "field_name": field_name,
-            "data_type": "text",
-            "description": label,
-            "supported": True,
-            "example": example,
-        }
-        for key, label, source, field_name, example in base
-    ]
-    for item in AttributeDefinition.objects.filter(is_active=True, organization=organization):
-        result.append(
-            {
-                "key": item.key,
-                "label": item.name,
-                "source": "lead_attribute",
-                "field_name": item.key,
-                "data_type": item.field_type,
-                "description": item.description or item.name,
-                "supported": True,
-                "example": item.options[0] if item.options else f"Example {item.name}",
-            }
+def _plain_template_text(
+    value,
+    *,
+    organization,
+    field,
+    allow_placeholders,
+    required=False,
+    max_length=None,
+):
+    try:
+        return normalize_plain_text(
+            value,
+            organization=organization,
+            field=field,
+            allow_placeholders=allow_placeholders,
+            required=required,
+            max_length=max_length,
         )
-    return result
+    except ContentAuthoringError as exc:
+        raise TemplateError(str(exc)) from exc
+
+
+def _normalize_template_buttons(*, organization, buttons):
+    normalized = []
+    for item in list(buttons or []):
+        clean = dict(item or {})
+        if "text" in clean:
+            clean["text"] = _plain_template_text(
+                clean.get("text"),
+                organization=organization,
+                field="Template button text",
+                allow_placeholders=False,
+                max_length=25,
+            )
+        if "coupon_code" in clean:
+            clean["coupon_code"] = _plain_template_text(
+                clean.get("coupon_code"),
+                organization=organization,
+                field="Template coupon code",
+                allow_placeholders=False,
+                max_length=15,
+            )
+        normalized.append(clean)
+    return normalized
+
+
+def _normalize_carousel_authoring(*, organization, config):
+    clean = _clean_carousel_config(config or {})
+    for card in clean.get("cards", []):
+        card["body"] = _plain_template_text(
+            card.get("body"),
+            organization=organization,
+            field="Carousel card body",
+            allow_placeholders=False,
+            max_length=160,
+        )
+        for button in card.get("buttons", []):
+            button["text"] = _plain_template_text(
+                button.get("text"),
+                organization=organization,
+                field="Carousel button text",
+                allow_placeholders=False,
+                max_length=25,
+            )
+    return clean
 
 
 def build_meta_body(*, organization, body):
@@ -591,13 +620,39 @@ def create_template(
     language="en_US",
     carousel_config=None,
 ):
+    body = _plain_template_text(
+        body,
+        organization=organization,
+        field="Template body",
+        allow_placeholders=True,
+        required=True,
+        max_length=1024,
+    )
+    footer = _plain_template_text(
+        footer,
+        organization=organization,
+        field="Template footer",
+        allow_placeholders=False,
+        max_length=60,
+    )
+    buttons = _normalize_template_buttons(
+        organization=organization,
+        buttons=buttons,
+    )
     is_carousel = template_format == WhatsAppTemplate.Format.CAROUSEL
     if is_carousel:
         category = WhatsAppTemplate.Category.MARKETING
         footer = ""
         attachment_type = WhatsAppTemplate.AttachmentType.NONE
         buttons = []
-    clean_carousel = _clean_carousel_config(carousel_config or {}) if is_carousel else {}
+    clean_carousel = (
+        _normalize_carousel_authoring(
+            organization=organization,
+            config=carousel_config or {},
+        )
+        if is_carousel
+        else {}
+    )
     template = WhatsAppTemplate(
         organization=organization,
         account=account,
@@ -640,10 +695,36 @@ def update_draft(
 ):
     if template.status != WhatsAppTemplate.Status.DRAFT or template.meta_template_id:
         raise TemplateError("Submitted templates cannot be edited in place. Copy to a draft instead.")
+    body = _plain_template_text(
+        body,
+        organization=template.organization,
+        field="Template body",
+        allow_placeholders=True,
+        required=True,
+        max_length=1024,
+    )
+    footer = _plain_template_text(
+        footer,
+        organization=template.organization,
+        field="Template footer",
+        allow_placeholders=False,
+        max_length=60,
+    )
+    buttons = _normalize_template_buttons(
+        organization=template.organization,
+        buttons=buttons,
+    )
     st = state_for(template)
     old_attachment_type = template.attachment_type
     is_carousel = template_format == WhatsAppTemplate.Format.CAROUSEL
-    clean_carousel = _clean_carousel_config(carousel_config or {}) if is_carousel else {}
+    clean_carousel = (
+        _normalize_carousel_authoring(
+            organization=template.organization,
+            config=carousel_config or {},
+        )
+        if is_carousel
+        else {}
+    )
     if is_carousel:
         clean_carousel = _merge_carousel_handles(clean_carousel, st.carousel_config)
         category = WhatsAppTemplate.Category.MARKETING

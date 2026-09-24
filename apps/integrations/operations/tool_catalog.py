@@ -129,6 +129,11 @@ def _tool(
 
 OWN_TOOL_DEFINITIONS = [
     _tool(
+        "get_content_authoring_policy",
+        "Get content authoring policy",
+        "Return the active organization's supported customer-facing placeholders and the required plain-text authoring rules for Cadences, Touchpoints and WhatsApp templates. Call this before creating or editing those content surfaces.",
+    ),
+    _tool(
         "get_operations_context",
         "Get SHVYA Operations context",
         "Return the authenticated SHVYA role, human actor, active organization context, and effective capabilities.",
@@ -447,7 +452,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_cadence_configuration",
         "Configure Cadence",
-        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
+        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Names and descriptions are normalized to plain text; customer-facing step copy may use only placeholders returned by get_content_authoring_policy. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -470,7 +475,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "add_cadence_step",
         "Add Cadence step",
-        "Dry-run or append one WhatsApp-template, email or reminder step to an active Cadence. Existing schedule and template validation is reused.",
+        "Dry-run or append one WhatsApp-template, email or reminder step to an active Cadence. Customer-facing copy is normalized to plain text and may use only placeholders returned by get_content_authoring_policy.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -644,7 +649,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "create_whatsapp_template",
         "Create WhatsApp template",
-        "Dry-run or create a standard WhatsApp template draft for a connected Meta WABA using SHVYA's canonical template validation. This does not bypass Meta approval; call submit_whatsapp_template after creation.",
+        "Dry-run or create a standard WhatsApp template draft for a connected Meta WABA using SHVYA's canonical template validation. Template copy is normalized to plain text and body placeholders must come from get_content_authoring_policy. This does not bypass Meta approval; call submit_whatsapp_template after creation.",
         _write_properties(
             {
                 "whatsapp_account_id": {"type": "string", "format": "uuid"},
@@ -771,7 +776,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_touchpoint",
         "Configure Touchpoint",
-        "Dry-run or create/update one organization saved reply. Existing category records are reused where possible.",
+        "Dry-run or create/update one organization saved reply. Reply copy is normalized to plain text and may use only placeholders returned by get_content_authoring_policy. Existing category records are reused where possible.",
         _write_properties(
             {
                 "touchpoint_id": {"type": "string", "format": "uuid"},
@@ -899,7 +904,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "add_hosted_whatsapp_step",
         "Add Hosted WhatsApp Cadence step",
-        "Dry-run or add a free-form Hosted WhatsApp message step using SHVYA's existing Hosted automation service. Optional base64 media is validated and stored through the canonical attachment rules up to the 50 MiB Hosted limit.",
+        "Dry-run or add a free-form Hosted WhatsApp message step using SHVYA's existing Hosted automation service. Message copy is normalized to plain text and may use only placeholders returned by get_content_authoring_policy. Optional base64 media is validated and stored through the canonical attachment rules up to the 50 MiB Hosted limit.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -924,7 +929,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "update_cadence_step",
         "Update Cadence step",
-        "Dry-run or update an existing Cadence step and its schedule. Hosted free-form content remains Hosted-only and API WhatsApp steps remain approved-template-only.",
+        "Dry-run or update an existing Cadence step and its schedule. Customer-facing copy is normalized to plain text and may use only placeholders returned by get_content_authoring_policy. Hosted free-form content remains Hosted-only and API WhatsApp steps remain approved-template-only.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -1328,6 +1333,7 @@ TOOL_CAPABILITIES = {
     "upsert_workflow_configuration": CAP_WORKFLOW_CONFIG_WRITE,
     "upsert_cadence_configuration": CAP_CADENCE_CONFIG_WRITE,
     "add_cadence_step": CAP_CADENCE_CONFIG_WRITE,
+    "get_content_authoring_policy": CAP_ORGANIZATION_READ,
     "get_qualification_configuration": CAP_ORGANIZATION_READ,
     "validate_qualification_configuration": CAP_ORGANIZATION_READ,
     "upsert_qualification_configuration": CAP_AI_CONFIG_WRITE,

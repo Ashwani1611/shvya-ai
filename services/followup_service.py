@@ -35,6 +35,12 @@ from apps.followups.models import (
 )
 from apps.integrations.services.email import send_organization_email
 from services.channels.template_service import render_template_body
+from services.content_authoring import (
+    ContentAuthoringError,
+    normalize_plain_text,
+    personalization_values,
+    render_personalized_text,
+)
 
 
 WHATSAPP_MIN_SEND_GAP_SECONDS = 60
@@ -214,14 +220,24 @@ def create_sequence(
     whatsapp_account=None,
     provider="api",
 ):
-    name = (name or "").strip()
-    description = (description or "").strip()
-    if not name:
-        raise FollowupError("Sequence name is required.")
-    if len(name) > 255:
-        raise FollowupError("Sequence name must be 255 characters or fewer.")
-    if len(description) > 300:
-        raise FollowupError("Description must be 300 characters or fewer.")
+    try:
+        name = normalize_plain_text(
+            name,
+            organization=organization,
+            field="Cadence name",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        description = normalize_plain_text(
+            description,
+            organization=organization,
+            field="Cadence description",
+            allow_placeholders=False,
+            max_length=300,
+        )
+    except ContentAuthoringError as exc:
+        raise FollowupError(str(exc)) from exc
     if provider not in {"api", "hosted"}:
         raise FollowupError("Choose Use WhatsApp API or Use WhatsApp.")
     if provider == "api":
@@ -273,12 +289,24 @@ def create_sequence(
 
 
 def update_sequence(*, sequence, name, description):
-    name = (name or "").strip()
-    description = (description or "").strip()
-    if not name:
-        raise FollowupError("Sequence name is required.")
-    if len(name) > 255 or len(description) > 300:
-        raise FollowupError("Sequence name or description is too long.")
+    try:
+        name = normalize_plain_text(
+            name,
+            organization=sequence.organization,
+            field="Cadence name",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        description = normalize_plain_text(
+            description,
+            organization=sequence.organization,
+            field="Cadence description",
+            allow_placeholders=False,
+            max_length=300,
+        )
+    except ContentAuthoringError as exc:
+        raise FollowupError(str(exc)) from exc
     duplicate = FollowupSequence.objects.filter(
         organization=sequence.organization,
         name__iexact=name,
@@ -479,11 +507,32 @@ def add_email_step(
     recurring_weekdays=None,
     attachments=None,
 ):
-    title = (title or "").strip() or f"Email {sequence.steps.count() + 1}"
-    subject = (subject or "").strip()
-    body = (body or "").strip()
-    if not subject or not body:
-        raise FollowupError("Email subject and content are required.")
+    try:
+        title = normalize_plain_text(
+            title or f"Email {sequence.steps.count() + 1}",
+            organization=sequence.organization,
+            field="Email Cadence title",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        subject = normalize_plain_text(
+            subject,
+            organization=sequence.organization,
+            field="Email Cadence subject",
+            allow_placeholders=True,
+            required=True,
+            max_length=255,
+        )
+        body = normalize_plain_text(
+            body,
+            organization=sequence.organization,
+            field="Email Cadence body",
+            allow_placeholders=True,
+            required=True,
+        )
+    except ContentAuthoringError as exc:
+        raise FollowupError(str(exc)) from exc
     email_attachments = validate_email_attachments(attachments)
     _validate_schedule(
         schedule_type=schedule_type,
@@ -533,9 +582,16 @@ def add_reminder_step(
     recurring_unit="",
     recurring_weekdays=None,
 ):
-    text = (text or "").strip()
-    if not text:
-        raise FollowupError("Follow-up reminder note is required.")
+    try:
+        text = normalize_plain_text(
+            text,
+            organization=sequence.organization,
+            field="Cadence reminder text",
+            allow_placeholders=True,
+            required=True,
+        )
+    except ContentAuthoringError as exc:
+        raise FollowupError(str(exc)) from exc
     _validate_schedule(
         schedule_type=schedule_type,
         delay_value=delay_value,
@@ -1055,20 +1111,7 @@ def register_manual_outbound(*, lead, at=None):
 
 
 def _lead_template_values(lead, user=None):
-    values = {
-        "lead_name": lead.name or "",
-        "lead_first_name": (lead.name or "").split(" ")[0],
-        "phone": lead.phone or "",
-        "email": lead.email or "",
-        "lead_source": getattr(lead, "lead_source", "") or "",
-        "org_name": lead.organization.name,
-        "user_name": getattr(user, "name", "") or getattr(user, "email", "") or "",
-        "pipeline_name": lead.pipeline.name if lead.pipeline_id else "",
-        "stage_name": lead.stage.name if lead.stage_id else "",
-    }
-    for key, value in (getattr(lead, "attributes", None) or {}).items():
-        values.setdefault(str(key), value)
-    return values
+    return personalization_values(lead=lead, user=user)
 
 
 def _template_components(template, lead, user=None):
@@ -1295,11 +1338,7 @@ def _send_whatsapp_step(state, step, execution):
 
 
 def _render_text(text, lead, user=None):
-    values = _lead_template_values(lead, user=user)
-    rendered = text or ""
-    for key, value in values.items():
-        rendered = rendered.replace("{{" + key + "}}", str(value or ""))
-    return rendered
+    return render_personalized_text(text, lead=lead, user=user)
 
 
 def _send_email_step(state, step, execution):

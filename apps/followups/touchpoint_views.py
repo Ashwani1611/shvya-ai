@@ -9,6 +9,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.crm.decorators import crm_login_required
 from .models import TouchpointCategory, TouchpointReply
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 
 
 @crm_login_required
@@ -35,7 +36,14 @@ def touchpoints(request):
                             raise ValidationError("Choose a category.")
                         category.delete()
                     else:
-                        category.name = request.POST.get("name", "").strip()
+                        category.name = normalize_plain_text(
+                            request.POST.get("name", ""),
+                            organization=org,
+                            field="Touchpoint category",
+                            allow_placeholders=False,
+                            required=True,
+                            max_length=100,
+                        )
                         category.full_clean()
                         category.save()
                 elif action in {"save_reply", "delete_reply"}:
@@ -57,8 +65,22 @@ def touchpoints(request):
                             pk=request.POST.get("category_id"),
                             organization=org,
                         )
-                        reply.title = request.POST.get("title", "").strip()
-                        reply.body = request.POST.get("body", "").strip()
+                        reply.title = normalize_plain_text(
+                            request.POST.get("title", ""),
+                            organization=org,
+                            field="Touchpoint title",
+                            allow_placeholders=False,
+                            required=True,
+                            max_length=150,
+                        )
+                        reply.body = normalize_plain_text(
+                            request.POST.get("body", ""),
+                            organization=org,
+                            field="Touchpoint body",
+                            allow_placeholders=True,
+                            required=True,
+                            max_length=1000,
+                        )
                         reply.full_clean()
                         reply.save()
                 else:
@@ -67,6 +89,8 @@ def touchpoints(request):
             error = (
                 " ".join(exc.messages)
                 if isinstance(exc, ValidationError)
+                else str(exc)
+                if isinstance(exc, ContentAuthoringError)
                 else "Unable to save. Check the values and use a unique category name."
             )
             return JsonResponse({"error": error}, status=400)

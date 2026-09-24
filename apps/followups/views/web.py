@@ -16,6 +16,7 @@ from apps.followups.models import (
     FollowupStep,
     LeadSequenceState,
 )
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 from services.followup_service import (
     FollowupError,
     _validate_schedule,
@@ -510,26 +511,39 @@ def step_update(request, sequence_id, step_id):
             step.retry_count = retry_count
             step.retry_delay_hours = 24
         elif step.step_type == FollowupStep.StepType.EMAIL:
-            step.title = request.POST.get("title", step.title).strip()
-            step.email_subject = request.POST.get(
-                "email_subject",
-                step.email_subject,
-            ).strip()
-            step.email_body = request.POST.get(
-                "email_body",
-                step.email_body,
-            ).strip()
-            if not step.email_subject or not step.email_body:
-                raise FollowupError("Email subject and content are required.")
+            step.title = normalize_plain_text(
+                request.POST.get("title", step.title),
+                organization=sequence.organization,
+                field="Email Cadence title",
+                allow_placeholders=False,
+                required=True,
+                max_length=255,
+            )
+            step.email_subject = normalize_plain_text(
+                request.POST.get("email_subject", step.email_subject),
+                organization=sequence.organization,
+                field="Email Cadence subject",
+                allow_placeholders=True,
+                required=True,
+                max_length=255,
+            )
+            step.email_body = normalize_plain_text(
+                request.POST.get("email_body", step.email_body),
+                organization=sequence.organization,
+                field="Email Cadence body",
+                allow_placeholders=True,
+                required=True,
+            )
         elif step.step_type == FollowupStep.StepType.REMINDER:
-            step.reminder_text = request.POST.get(
-                "reminder_text",
-                step.reminder_text,
-            ).strip()
-            if not step.reminder_text:
-                raise FollowupError("Reminder note is required.")
+            step.reminder_text = normalize_plain_text(
+                request.POST.get("reminder_text", step.reminder_text),
+                organization=sequence.organization,
+                field="Cadence reminder text",
+                allow_placeholders=True,
+                required=True,
+            )
         step.save()
-    except (FollowupError, ValueError) as exc:
+    except (FollowupError, ContentAuthoringError, ValueError) as exc:
         messages.error(request, str(exc))
     else:
         messages.success(request, f"Step {step.position} saved.")

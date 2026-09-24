@@ -114,6 +114,7 @@ from services.channels.hosted_whatsapp_service import (
     preview_session_settings_update,
     update_session_settings,
 )
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 from services.crm.attribute_service import (
     MAX_CUSTOM_ATTRIBUTES,
     create_attribute_definition,
@@ -230,10 +231,24 @@ def upsert_cadence_configuration(*, identity, arguments):
         if sequence is None:
             raise OperationsToolError("Cadence not found in this organization.")
 
-    name = str(data.get("name", sequence.name if sequence else "") or "").strip()
-    description = str(
-        data.get("description", sequence.description if sequence else "") or ""
-    ).strip()
+    try:
+        name = normalize_plain_text(
+            data.get("name", sequence.name if sequence else ""),
+            organization=organization,
+            field="Cadence name",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        description = normalize_plain_text(
+            data.get("description", sequence.description if sequence else ""),
+            organization=organization,
+            field="Cadence description",
+            allow_placeholders=False,
+            max_length=300,
+        )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
     is_active = data.get(
         "is_active",
         sequence.is_active if sequence is not None else True,
@@ -623,9 +638,45 @@ def add_cadence_step(*, identity, arguments):
         redact_attachment_content(data),
         field="cadence_step",
     )
+    data = dict(data)
     step_type = str(data.get("type") or "").strip().lower()
     if step_type not in {"whatsapp", "email", "reminder"}:
         raise OperationsToolError("Cadence step type must be whatsapp, email, or reminder.")
+    try:
+        if step_type == "email":
+            if data.get("title"):
+                data["title"] = normalize_plain_text(
+                    data.get("title"),
+                    organization=organization,
+                    field="Email Cadence title",
+                    allow_placeholders=False,
+                    max_length=255,
+                )
+            data["subject"] = normalize_plain_text(
+                data.get("subject"),
+                organization=organization,
+                field="Email Cadence subject",
+                allow_placeholders=True,
+                required=True,
+                max_length=255,
+            )
+            data["body"] = normalize_plain_text(
+                data.get("body"),
+                organization=organization,
+                field="Email Cadence body",
+                allow_placeholders=True,
+                required=True,
+            )
+        elif step_type == "reminder":
+            data["text"] = normalize_plain_text(
+                data.get("text"),
+                organization=organization,
+                field="Cadence reminder text",
+                allow_placeholders=True,
+                required=True,
+            )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
     schedule = _cadence_schedule(data)
     email_attachments = None
     email_attachment_descriptors = []

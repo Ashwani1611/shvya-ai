@@ -20,6 +20,7 @@ from apps.integrations.operations.attachment_payloads import (
 )
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import CAP_CADENCE_CONFIG_WRITE, approval_required
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 from services.channels.hosted_automation_service import (
     HostedAutomationError,
     add_hosted_whatsapp_step as domain_add_hosted_whatsapp_step,
@@ -97,10 +98,27 @@ def add_hosted_whatsapp_step(*, identity, arguments):
         {key: value for key, value in data.items() if key != "attachment_base64"},
         field="hosted_cadence_step",
     )
-    title = str(data.get("title") or "").strip()
-    body = str(data.get("body") or "").strip()
-    if not title or not body:
-        raise OperationsToolError("Hosted WhatsApp step title and body are required.")
+    data = dict(data)
+    try:
+        title = normalize_plain_text(
+            data.get("title"),
+            organization=organization,
+            field="Hosted Cadence title",
+            allow_placeholders=False,
+            required=True,
+            max_length=255,
+        )
+        body = normalize_plain_text(
+            data.get("body"),
+            organization=organization,
+            field="Hosted Cadence body",
+            allow_placeholders=True,
+            required=True,
+        )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    data["title"] = title
+    data["body"] = body
     schedule = _cadence_schedule(data)
     attachment_name = str(data.get("attachment_name") or "").strip()
     attachment_size = 0
@@ -260,6 +278,63 @@ def update_cadence_step(*, identity, arguments):
         redact_attachment_content(data),
         field="cadence_step",
     )
+    data = dict(data)
+    hosted = (
+        step.step_type == FollowupStep.StepType.WHATSAPP
+        and sequence.whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+    )
+    try:
+        if hosted:
+            current_hosted = HostedFollowupStepConfig.objects.filter(step=step).first()
+            data["title"] = normalize_plain_text(
+                data.get("title", step.title),
+                organization=organization,
+                field="Hosted Cadence title",
+                allow_placeholders=False,
+                required=True,
+                max_length=255,
+            )
+            data["body"] = normalize_plain_text(
+                data.get("body", current_hosted.body if current_hosted else ""),
+                organization=organization,
+                field="Hosted Cadence body",
+                allow_placeholders=True,
+                required=True,
+            )
+        elif step.step_type == FollowupStep.StepType.EMAIL:
+            data["title"] = normalize_plain_text(
+                data.get("title", step.title),
+                organization=organization,
+                field="Email Cadence title",
+                allow_placeholders=False,
+                required=True,
+                max_length=255,
+            )
+            data["subject"] = normalize_plain_text(
+                data.get("subject", step.email_subject),
+                organization=organization,
+                field="Email Cadence subject",
+                allow_placeholders=True,
+                required=True,
+                max_length=255,
+            )
+            data["body"] = normalize_plain_text(
+                data.get("body", step.email_body),
+                organization=organization,
+                field="Email Cadence body",
+                allow_placeholders=True,
+                required=True,
+            )
+        elif step.step_type == FollowupStep.StepType.REMINDER:
+            data["text"] = normalize_plain_text(
+                data.get("text", step.reminder_text),
+                organization=organization,
+                field="Cadence reminder text",
+                allow_placeholders=True,
+                required=True,
+            )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
     schedule = _cadence_schedule(data)
     before = _step_snapshot(step)
     after = deepcopy(before)
@@ -286,10 +361,6 @@ def update_cadence_step(*, identity, arguments):
             "Use either attachments or remove_attachments, not both."
         )
 
-    hosted = (
-        step.step_type == FollowupStep.StepType.WHATSAPP
-        and sequence.whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.coexisted
-    )
     template = None
     if hosted:
         after["title"] = str(data.get("title", step.title) or "").strip()

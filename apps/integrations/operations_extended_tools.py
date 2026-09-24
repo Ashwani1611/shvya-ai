@@ -6,6 +6,7 @@ apps.integrations.operations.tools.
 
 from apps.integrations.operations.constants import MAX_MCP_KNOWLEDGE_UPLOAD_BYTES
 from apps.integrations.operations.registry import EXTENDED_HANDLERS
+from apps.integrations.operations.tools.content import get_content_authoring_policy
 from apps.integrations.operations.tools.cadence import (
     _attachment_from_data,
     _cadence,
@@ -90,6 +91,7 @@ __all__ = [
     "_touchpoint_proposal",
     "_trigger_schema",
     "_workflow_catalog_safe",
+    "get_content_authoring_policy",
     "get_qualification_configuration",
     "validate_qualification_configuration",
     "upsert_qualification_configuration",

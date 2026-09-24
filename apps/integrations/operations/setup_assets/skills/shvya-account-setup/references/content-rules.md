@@ -43,3 +43,16 @@ For all customer-visible messages, About, Playbook copy, FAQs and Touchpoints:
 Question wording: natural/verbatim. Length: standard/concise/detailed. Flow: direct/consultative. Product-specific follow-ups: off/on only when needed. Answer posture: answer relevant questions then resume, within disclosure rules. Script: Latin/native/mirror. Tone: professional/premium/warm. Pricing: defer/ranges/full, always sourced. Also record emoji preference, actual allowed languages, handoff policy and consent/opt-out rules.
 
 The client can change authoring defaults; backend permissions, evidence requirements and messaging constraints remain authoritative.
+
+## Cadence, Touchpoint and Meta template authoring
+
+Before creating or editing customer-facing Cadence messages, Touchpoints or WhatsApp templates, call `get_content_authoring_policy` in the selected organization.
+
+- Use only the returned tenant-safe placeholder keys.
+- Use canonical `{{placeholder_key}}` syntax.
+- Never invent placeholder names from labels or business prose.
+- Write customer-facing content as plain text only. Do not use HTML, Markdown, WhatsApp emphasis markers, headings, code fences or rich-text markup.
+- Names/titles are static. Email subject/body, Hosted message body, reminder text, Touchpoint body and WhatsApp template body may use supported placeholders.
+- Template footer/button text and carousel card/button text are static plain text.
+- The server normalizes common formatting to plain text and rejects unsupported placeholders; treat that as authoritative validation.
+
