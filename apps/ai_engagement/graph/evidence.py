@@ -189,6 +189,14 @@ def check_grounding(state):
         "ai_playbook": (context.organization or {}).get("ai_playbook", ""),
         "bot_languages": (context.organization or {}).get("bot_languages", ""),
         "knowledge": context.knowledge or [],
+        # Sharing conditions can depend on earlier replies as well as answers.
+        # Prior assistant text proves only that it was said, never company facts.
+        "recent_conversation": [
+            {"direction": item.get("direction"), "status": item.get("status"),
+             "body": str(item.get("body") or "")[:1000]}
+            for item in (context.conversation or {}).get("messages", [])[-24:]
+            if isinstance(item, dict)
+        ],
         "selected_file_document_id": decision.file_document_id,
         "file_candidates": (context.organization or {}).get("_file_candidates", []),
         "current_stage": getattr(context, "stage", {}),
