@@ -40,6 +40,7 @@ from apps.integrations.operations_policy import (
     WRITE_CAPABILITIES,
     capabilities_for_grant,
 )
+from apps.integrations.public_urls import operations_public_url
 from apps.organizations.models import Organization
 from apps.superadmin.models import AuditLog
 from apps.superadmin.views_flat import superuser_required
@@ -50,16 +51,16 @@ def operations_mcp_workspace_view(request):
     """Global Superadmin workspace for the single SHVYA Operations MCP."""
 
     now = timezone.now()
-    operations_mcp_url = request.build_absolute_uri(
+    operations_mcp_url = operations_public_url(request, 
         reverse("shvya-operations-mcp")
     )
-    oauth_authorize_url = request.build_absolute_uri(
+    oauth_authorize_url = operations_public_url(request, 
         reverse("shvya-operations-oauth-authorize")
     )
-    resource_metadata_url = request.build_absolute_uri(
+    resource_metadata_url = operations_public_url(request, 
         reverse("shvya-operations-oauth-resource-metadata-rfc9728")
     )
-    server_metadata_url = request.build_absolute_uri(
+    server_metadata_url = operations_public_url(request, 
         reverse("shvya-operations-oauth-server-metadata-rfc8414")
     )
 
@@ -261,7 +262,7 @@ def operations_mcp_access_key_generate_view(request):
         "direct-key-refresh-disabled:" + secrets.token_urlsafe(48)
     )
     expires_at = now + timedelta(days=ttl_days)
-    operations_mcp_url = request.build_absolute_uri(
+    operations_mcp_url = operations_public_url(request, 
         reverse("shvya-operations-mcp")
     )
 
