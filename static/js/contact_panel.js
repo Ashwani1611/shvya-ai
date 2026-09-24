@@ -101,6 +101,8 @@
   });
   function filterReplies(host){const q=host.querySelector('[data-reply-search]').value.toLowerCase();const c=host.querySelector('[data-reply-category]').value;host.querySelectorAll('[data-reply]').forEach(r=>r.hidden=(c&&r.dataset.category!==c)||!r.textContent.toLowerCase().includes(q));}
   document.addEventListener('click',async e=>{
+    const opener=e.target.closest('[data-open-contact-tab]');
+    if(opener){const host=document.querySelector('[data-contact-host]');if(!host)return;collapsed=false;try{sessionStorage.setItem('shvya-contact-collapsed','false');}catch(_){}panelChrome(host);await load(host);select(host,opener.dataset.openContactTab||'personal');host.querySelector('[data-template-search]')?.focus({preventScroll:true});return;}
     const host=e.target.closest('[data-contact-host]');if(!host)return;
     if(e.target.closest('[data-contact-collapse]')){collapsed=!collapsed;try{sessionStorage.setItem('shvya-contact-collapsed',String(collapsed));}catch(_){}panelChrome(host);return;}
     const followup=e.target.closest('[data-followup-url]');
@@ -116,7 +118,7 @@
     if(form.matches('[data-autosave],[data-routing]')){e.preventDefault();enqueue(form);return;}
     if(!form.matches('[data-send-template],[data-start-sequence],[data-note-editor],[data-create-chat-lead]'))return;
     e.preventDefault();e.stopImmediatePropagation();const button=form.querySelector('[type=submit]');if(button.disabled)return;button.disabled=true;
-    try{const result=await post(form.action,new FormData(form));if(form.matches('[data-create-chat-lead]')){if(result.redirect_url){location.assign(result.redirect_url);return;}host.dataset.sidebarUrl=result.sidebar_url;await load(host,true);document.dispatchEvent(new Event('shvya:lead-created'));}else if(form.matches('[data-send-template]'))feedback(host,'Template queued.');else{await load(host,true);feedback(host,result.message||'Note saved.');}}catch(error){feedback(host,error.message,true);}finally{button.disabled=false;}
+    try{const result=await post(form.action,new FormData(form));if(form.matches('[data-create-chat-lead]')){if(result.redirect_url){location.assign(result.redirect_url);return;}host.dataset.sidebarUrl=result.sidebar_url;await load(host,true);document.dispatchEvent(new Event('shvya:lead-created'));}else if(form.matches('[data-send-template]')){feedback(host,'Template queued.');if(window.shvyaWhatsAppNavigate)await window.shvyaWhatsAppNavigate(window.location.href,false,false);}else{await load(host,true);feedback(host,result.message||'Note saved.');}}catch(error){feedback(host,error.message,true);}finally{button.disabled=false;}
   },true);
   document.addEventListener('leadCardUpdated',async e=>{const host=document.querySelector('[data-contact-host]');if(host&&(!e.detail?.lead_id||host.querySelector('[data-lead-id]')?.dataset.leadId===e.detail.lead_id)){document.getElementById('modal-root')?.replaceChildren();await load(host,true);}});
   document.addEventListener('shvya:contact-refresh',()=>init());
