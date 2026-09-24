@@ -92,7 +92,7 @@ def _touchpoint_proposal(*, organization, arguments):
             organization=organization,
             field="Touchpoint category",
             allow_placeholders=False,
-            max_length=120,
+            max_length=100,
         )
     except ContentAuthoringError as exc:
         raise OperationsToolError(str(exc)) from exc
