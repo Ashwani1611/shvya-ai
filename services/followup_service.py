@@ -1479,7 +1479,11 @@ def reschedule_account_followups(*, account_id, organization_id, previous_settin
     candidates = LeadSequenceState.objects.filter(
         organization_id=organization_id, status=LeadSequenceState.Status.ACTIVE,
         lead_auto_followup_enabled=True, lead__auto_followup_enabled=True, sequence__is_active=True,
-        sequence__whatsapp_account__connection_type=account.connection_type,
+        sequence__provider=(
+            FollowupSequence.Provider.HOSTED
+            if account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+            else FollowupSequence.Provider.API
+        ),
         next_step__isnull=False,
     ).values_list("pk", flat=True)
     for state_id in candidates.iterator(chunk_size=200):
