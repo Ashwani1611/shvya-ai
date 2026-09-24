@@ -391,7 +391,6 @@ def _workflow_reference_index(organization):
             for item in FollowupSequence.objects.filter(
                 organization=organization,
                 is_active=True,
-                whatsapp_account__organization=organization,
             ).values_list("id", flat=True)
         },
         "account_ids": {
