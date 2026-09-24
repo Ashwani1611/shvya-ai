@@ -1,6 +1,6 @@
 # SHVYA architecture
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Implementation snapshot:** verified on 2026-09-24 against the staging-first architecture refactor. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 For the detailed request, routing, AI, RAG, async and failure-model documents, start with [`system-architecture/README.md`](./system-architecture/README.md).
 
