@@ -78,9 +78,10 @@ from apps.integrations.operations_tools import (
     ToolExecution,
     execute_operations_tool,
 )
-from apps.integrations.operations.constants import (
-    MAX_MCP_PUBLIC_REQUEST_BODY_BYTES,
-    MAX_MCP_REQUEST_BODY_BYTES,
+from apps.integrations.operations.request_body import (
+    OperationsMCPBodyTooLarge,
+    OperationsMCPLargeBodyAuthRequired,
+    read_operations_mcp_body,
 )
 from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
 from apps.integrations.operations.setup_protocol import (
@@ -134,106 +135,6 @@ TOOL_RESPONSE_TEXT_LIMITS = {
     "upsert_setup_intake_entry": 12000,
     "archive_setup_intake_entry": 12000,
 }
-
-def _mcp_request_too_large(request):
-    raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
-    if not raw:
-        return False
-    try:
-        return int(raw) > MAX_MCP_REQUEST_BODY_BYTES
-    except (TypeError, ValueError):
-        return True
-
-
-def _large_mcp_request_authorized(request):
-    raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
-    try:
-        content_length = int(raw) if raw else 0
-    except (TypeError, ValueError):
-        content_length = 0
-    if content_length <= MAX_MCP_PUBLIC_REQUEST_BODY_BYTES:
-        return True, None
-
-    auth_header = request.headers.get("Authorization", "")
-    raw_bearer = (
-        auth_header[7:].strip()
-        if auth_header.lower().startswith("bearer ")
-        else ""
-    )
-    if not raw_bearer:
-        challenge = _authorization_challenge(
-            request,
-            description="Authentication is required for large SHVYA Operations requests.",
-        )
-        response = JsonResponse(
-            _jsonrpc_error(
-                None,
-                -32001,
-                "Authentication required for large SHVYA Operations requests.",
-            ),
-            status=401,
-        )
-        response["WWW-Authenticate"] = challenge
-        response["Cache-Control"] = "no-store"
-        return False, response
-    try:
-        authenticate_bearer(raw_bearer)
-    except OperationsAuthError as exc:
-        challenge = _authorization_challenge(
-            request,
-            description=sanitize_text(exc, limit=160),
-        )
-        response = JsonResponse(
-            _jsonrpc_error(None, -32001, "Authentication required for SHVYA Operations."),
-            status=401,
-        )
-        response["WWW-Authenticate"] = challenge
-        response["Cache-Control"] = "no-store"
-        return False, response
-    return True, None
-
-
-def _read_mcp_request_body(request):
-    if _mcp_request_too_large(request):
-        return None, JsonResponse(
-            _jsonrpc_error(None, -32600, "Request body is too large."),
-            status=413,
-        )
-
-    allowed, response = _large_mcp_request_authorized(request)
-    if not allowed:
-        return None, response
-
-    raw_body = request.read(MAX_MCP_REQUEST_BODY_BYTES + 1)
-    if len(raw_body) > MAX_MCP_REQUEST_BODY_BYTES:
-        return None, JsonResponse(
-            _jsonrpc_error(None, -32600, "Request body is too large."),
-            status=413,
-        )
-
-    if len(raw_body) > MAX_MCP_PUBLIC_REQUEST_BODY_BYTES:
-        auth_header = request.headers.get("Authorization", "")
-        raw_bearer = (
-            auth_header[7:].strip()
-            if auth_header.lower().startswith("bearer ")
-            else ""
-        )
-        try:
-            authenticate_bearer(raw_bearer)
-        except OperationsAuthError as exc:
-            challenge = _authorization_challenge(
-                request,
-                description=sanitize_text(exc, limit=160),
-            )
-            auth_response = JsonResponse(
-                _jsonrpc_error(None, -32001, "Authentication required for SHVYA Operations."),
-                status=401,
-            )
-            auth_response["WWW-Authenticate"] = challenge
-            auth_response["Cache-Control"] = "no-store"
-            return None, auth_response
-    return raw_body, None
-
 
 def _oauth_request_too_large(request):
     raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
@@ -1199,9 +1100,25 @@ def _setup_protocol_response(request, *, request_id, method, params, modern):
 @ratelimit(limit=240, window=60)
 @require_POST
 def operations_mcp(request):
-    raw_body, body_error = _read_mcp_request_body(request)
-    if body_error is not None:
-        return body_error
+    try:
+        raw_body = read_operations_mcp_body(request)
+    except OperationsMCPLargeBodyAuthRequired as exc:
+        challenge = _authorization_challenge(
+            request,
+            description=exc.description,
+        )
+        response = JsonResponse(
+            _jsonrpc_error(None, exc.code, str(exc)),
+            status=exc.status_code,
+        )
+        response["WWW-Authenticate"] = challenge
+        response["Cache-Control"] = "no-store"
+        return response
+    except OperationsMCPBodyTooLarge as exc:
+        return JsonResponse(
+            _jsonrpc_error(None, exc.code, str(exc)),
+            status=exc.status_code,
+        )
     try:
         payload = json.loads(raw_body.decode("utf-8") or "{}")
     except (json.JSONDecodeError, UnicodeDecodeError):
