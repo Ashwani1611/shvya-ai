@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
+from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.crm.models import Pipeline
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import (
@@ -13,6 +14,7 @@ from apps.integrations.operations_policy import (
     approval_required,
 )
 from apps.organizations.features import is_hosted_account_enabled
+from services.channels.template_service import TemplateError, create_template, submit_template
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     create_hosted_account,
@@ -450,6 +452,442 @@ def begin_whatsapp_connection(*, identity, arguments):
             "operation": "begin_whatsapp_connection",
             "created": created,
             "pipeline_id": str(pipeline_locked.id),
+            "verification": "passed",
+        },
+    )
+
+
+def _template_account(*, organization, account_id):
+    account = (
+        WhatsAppAccount.objects.filter(
+            pk=_uuid(account_id, field="whatsapp_account_id"),
+            organization=organization,
+            is_active=True,
+        )
+        .first()
+    )
+    if account is None:
+        raise OperationsToolError("Active WhatsApp account not found in this organization.")
+    if account.status != WhatsAppAccount.Status.CONNECTED:
+        raise OperationsToolError("The selected WhatsApp account is not connected.")
+    if not account.waba_id or not account.phone_number_id or not account.access_token:
+        raise OperationsToolError(
+            "The selected WhatsApp account is not Meta template-capable. "
+            "A connected Meta WABA, phone number ID, and access token are required."
+        )
+    return account
+
+
+def _template_snapshot(template):
+    metadata = (
+        WhatsAppTemplateMetadata.objects.filter(template=template)
+        .only("language", "local_status", "meta_error_code", "meta_error_message")
+        .first()
+    )
+    pipeline = get_pipeline_for_account(account=template.account)
+    return {
+        "id": str(template.id),
+        "name": template.name,
+        "category": template.category,
+        "template_format": template.template_format,
+        "status": template.status,
+        "language": (metadata.language if metadata else "") or "en_US",
+        "body": template.body,
+        "footer": template.footer,
+        "attachment_type": template.attachment_type,
+        "buttons": template.buttons or [],
+        "meta_template_id": template.meta_template_id or "",
+        "rejection_reason": template.rejection_reason or "",
+        "local_status": metadata.local_status if metadata else "",
+        "meta_error_code": metadata.meta_error_code if metadata else "",
+        "meta_error_message": metadata.meta_error_message if metadata else "",
+        "whatsapp_account": {
+            "id": str(template.account_id),
+            "business_name": template.account.business_name,
+            "display_phone_number": template.account.display_phone_number,
+            "connection_type": template.account.connection_type,
+        },
+        "pipeline": (
+            {"id": str(pipeline.id), "name": pipeline.name}
+            if pipeline is not None
+            else None
+        ),
+        "created_at": template.created_at.isoformat() if template.created_at else None,
+        "updated_at": template.updated_at.isoformat() if template.updated_at else None,
+    }
+
+
+def list_whatsapp_templates(*, identity, arguments):
+    organization = _organization_for(identity)
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
+    queryset = (
+        WhatsAppTemplate.objects.filter(organization=organization)
+        .select_related("account")
+        .order_by("-updated_at")
+    )
+    account_id = str((arguments or {}).get("whatsapp_account_id") or "").strip()
+    if account_id:
+        account = _template_account(organization=organization, account_id=account_id)
+        queryset = queryset.filter(account=account)
+    status = str((arguments or {}).get("status") or "").strip().lower()
+    if status:
+        allowed = {value for value, _label in WhatsAppTemplate.Status.choices}
+        if status not in allowed:
+            raise OperationsToolError("Invalid WhatsApp template status.")
+        queryset = queryset.filter(status=status)
+    limit = int((arguments or {}).get("limit") or 50)
+    limit = min(max(limit, 1), 100)
+    rows = [_template_snapshot(item) for item in queryset[:limit]]
+    return ToolExecution(
+        data={"templates": rows, "count": len(rows)},
+        capability=CAP_ORGANIZATION_READ,
+        target_type="organization",
+        target_id=str(organization.id),
+        audit_summary={"template_count": len(rows)},
+    )
+
+
+def get_whatsapp_template_status(*, identity, arguments):
+    organization = _organization_for(identity)
+    _require_operations_capability(
+        identity=identity,
+        organization=organization,
+        capability=CAP_ORGANIZATION_READ,
+    )
+    template = (
+        WhatsAppTemplate.objects.filter(
+            pk=_uuid((arguments or {}).get("template_id"), field="template_id"),
+            organization=organization,
+        )
+        .select_related("account")
+        .first()
+    )
+    if template is None:
+        raise OperationsToolError("WhatsApp template not found in this organization.")
+    return ToolExecution(
+        data={"template": _template_snapshot(template)},
+        capability=CAP_ORGANIZATION_READ,
+        target_type="whatsapp_template",
+        target_id=str(template.id),
+        audit_summary={"status": template.status},
+    )
+
+
+def _template_create_values(arguments):
+    category = str((arguments or {}).get("category") or WhatsAppTemplate.Category.MARKETING).strip().lower()
+    allowed_categories = {value for value, _label in WhatsAppTemplate.Category.choices}
+    if category not in allowed_categories:
+        raise OperationsToolError("Invalid WhatsApp template category.")
+    return {
+        "name": str((arguments or {}).get("name") or "").strip(),
+        "body": str((arguments or {}).get("body") or ""),
+        "category": category,
+        "footer": str((arguments or {}).get("footer") or ""),
+        "buttons": (arguments or {}).get("buttons") or [],
+        "language": str((arguments or {}).get("language") or "en_US").strip() or "en_US",
+    }
+
+
+def _existing_template_matches(*, template, values):
+    metadata = WhatsAppTemplateMetadata.objects.filter(template=template).only("language").first()
+    return (
+        template.body == values["body"]
+        and template.category == values["category"]
+        and template.template_format == WhatsAppTemplate.Format.STANDARD
+        and template.footer == values["footer"]
+        and template.attachment_type == WhatsAppTemplate.AttachmentType.NONE
+        and (template.buttons or []) == values["buttons"]
+        and (((metadata.language if metadata else "") or "en_US") == values["language"])
+    )
+
+
+def create_whatsapp_template(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        tool_name="create_whatsapp_template",
+        arguments=arguments,
+    )
+    account = _template_account(
+        organization=organization,
+        account_id=(arguments or {}).get("whatsapp_account_id"),
+    )
+    pipeline_id = str((arguments or {}).get("pipeline_id") or "").strip()
+    pipeline = get_pipeline_for_account(account=account)
+    if pipeline_id and (pipeline is None or str(pipeline.id) != pipeline_id):
+        raise OperationsToolError(
+            "The selected WhatsApp account is not routed to the requested pipeline."
+        )
+    values = _template_create_values(arguments)
+    if not values["name"] or not values["body"]:
+        raise OperationsToolError("Template name and body are required.")
+
+    existing = (
+        WhatsAppTemplate.objects.filter(account=account, name=values["name"])
+        .select_related("account")
+        .first()
+    )
+    if existing is not None:
+        if not _existing_template_matches(template=existing, values=values):
+            raise OperationsToolError(
+                "A template with this name already exists for the selected WhatsApp account "
+                "with different content."
+            )
+        return ToolExecution(
+            data={
+                "status": "NO_CHANGE",
+                "template": _template_snapshot(existing),
+                "idempotent": True,
+            },
+            capability=CAP_MESSAGING_CONFIG_WRITE,
+            target_type="whatsapp_template",
+            target_id=str(existing.id),
+            reason=reason,
+            outcome=(
+                OperationsAuditEvent.Outcome.DRY_RUN
+                if dry_run
+                else OperationsAuditEvent.Outcome.SUCCESS
+            ),
+            audit_summary={
+                "operation": "create_whatsapp_template",
+                "idempotent": True,
+            },
+        )
+
+    proposal = {
+        "organization_id": str(organization.id),
+        "whatsapp_account_id": str(account.id),
+        "pipeline_id": str(pipeline.id) if pipeline else None,
+        "name": values["name"],
+        "body": values["body"],
+        "category": values["category"],
+        "footer": values["footer"],
+        "buttons": values["buttons"],
+        "language": values["language"],
+        "template_format": WhatsAppTemplate.Format.STANDARD,
+        "attachment_type": WhatsAppTemplate.AttachmentType.NONE,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+
+    if dry_run:
+        try:
+            with transaction.atomic():
+                preview = create_template(
+                    organization=organization,
+                    account=account,
+                    created_by=identity.actor,
+                    name=values["name"],
+                    body=values["body"],
+                    category=values["category"],
+                    template_format=WhatsAppTemplate.Format.STANDARD,
+                    footer=values["footer"],
+                    attachment_type=WhatsAppTemplate.AttachmentType.NONE,
+                    buttons=values["buttons"],
+                    language=values["language"],
+                )
+                preview_data = _template_snapshot(preview)
+                transaction.set_rollback(True)
+        except (TemplateError, IntegrityError) as exc:
+            raise OperationsToolError(str(exc)) from exc
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "template": preview_data,
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_MESSAGING_CONFIG_WRITE,
+                ),
+                "will_submit_to_meta": False,
+                "next_tool": "submit_whatsapp_template",
+            },
+            capability=CAP_MESSAGING_CONFIG_WRITE,
+            target_type="whatsapp_account",
+            target_id=str(account.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "create_whatsapp_template",
+                "proposal_digest": _proposal_digest(proposal),
+            },
+        )
+
+    try:
+        template = create_template(
+            organization=organization,
+            account=account,
+            created_by=identity.actor,
+            name=values["name"],
+            body=values["body"],
+            category=values["category"],
+            template_format=WhatsAppTemplate.Format.STANDARD,
+            footer=values["footer"],
+            attachment_type=WhatsAppTemplate.AttachmentType.NONE,
+            buttons=values["buttons"],
+            language=values["language"],
+        )
+    except (TemplateError, IntegrityError) as exc:
+        raise OperationsToolError(str(exc)) from exc
+
+    return ToolExecution(
+        data={
+            "status": "CREATED",
+            "template": _template_snapshot(template),
+            "submitted_to_meta": False,
+            "next_tool": "submit_whatsapp_template",
+            "verification": "passed",
+        },
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        target_type="whatsapp_template",
+        target_id=str(template.id),
+        reason=reason,
+        audit_summary={
+            "operation": "create_whatsapp_template",
+            "verification": "passed",
+        },
+    )
+
+
+def submit_whatsapp_template(*, identity, arguments):
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        tool_name="submit_whatsapp_template",
+        arguments=arguments,
+    )
+    template = (
+        WhatsAppTemplate.objects.filter(
+            pk=_uuid((arguments or {}).get("template_id"), field="template_id"),
+            organization=organization,
+        )
+        .select_related("account")
+        .first()
+    )
+    if template is None:
+        raise OperationsToolError("WhatsApp template not found in this organization.")
+    _template_account(organization=organization, account_id=str(template.account_id))
+
+    if template.meta_template_id and template.status in {
+        WhatsAppTemplate.Status.PENDING,
+        WhatsAppTemplate.Status.APPROVED,
+        WhatsAppTemplate.Status.PAUSED,
+    }:
+        return ToolExecution(
+            data={
+                "status": "NO_CHANGE",
+                "template": _template_snapshot(template),
+                "idempotent": True,
+                "already_submitted_to_meta": True,
+            },
+            capability=CAP_MESSAGING_CONFIG_WRITE,
+            target_type="whatsapp_template",
+            target_id=str(template.id),
+            reason=reason,
+            outcome=(
+                OperationsAuditEvent.Outcome.DRY_RUN
+                if dry_run
+                else OperationsAuditEvent.Outcome.SUCCESS
+            ),
+            audit_summary={
+                "operation": "submit_whatsapp_template",
+                "idempotent": True,
+            },
+        )
+    if template.status != WhatsAppTemplate.Status.DRAFT:
+        raise OperationsToolError(
+            "Only draft WhatsApp templates can be submitted to Meta."
+        )
+    if (
+        template.template_format != WhatsAppTemplate.Format.STANDARD
+        or template.attachment_type != WhatsAppTemplate.AttachmentType.NONE
+    ):
+        raise OperationsToolError(
+            "Operations MCP submission currently supports standard templates without "
+            "media sample uploads. Use the SHVYA template UI for media or carousel samples."
+        )
+
+    proposal = {
+        "organization_id": str(organization.id),
+        "whatsapp_account_id": str(template.account_id),
+        "template_id": str(template.id),
+        "name": template.name,
+        "status": template.status,
+        "meta_template_id": template.meta_template_id or "",
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "template": _template_snapshot(template),
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_MESSAGING_CONFIG_WRITE,
+                ),
+                "will_submit_to_meta": True,
+                "meta_approval_required": True,
+            },
+            capability=CAP_MESSAGING_CONFIG_WRITE,
+            target_type="whatsapp_template",
+            target_id=str(template.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "submit_whatsapp_template",
+                "proposal_digest": _proposal_digest(proposal),
+            },
+        )
+
+    current = (
+        WhatsAppTemplate.objects.filter(pk=template.pk, organization=organization)
+        .select_related("account")
+        .first()
+    )
+    if current is None:
+        raise OperationsApprovalRequired(
+            "The template no longer exists. Run a fresh dry-run."
+        )
+    current_proposal = {
+        "organization_id": str(organization.id),
+        "whatsapp_account_id": str(current.account_id),
+        "template_id": str(current.id),
+        "name": current.name,
+        "status": current.status,
+        "meta_template_id": current.meta_template_id or "",
+    }
+    _ensure_approved_proposal_unchanged(arguments=arguments, proposal=current_proposal)
+    try:
+        current = submit_template(template=current)
+    except TemplateError as exc:
+        raise OperationsToolError(str(exc)) from exc
+
+    return ToolExecution(
+        data={
+            "status": "SUBMITTED",
+            "template": _template_snapshot(current),
+            "submitted_to_meta": True,
+            "meta_approval_required": current.status != WhatsAppTemplate.Status.APPROVED,
+            "verification": "passed",
+        },
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        target_type="whatsapp_template",
+        target_id=str(current.id),
+        reason=reason,
+        audit_summary={
+            "operation": "submit_whatsapp_template",
+            "meta_status": current.status,
             "verification": "passed",
         },
     )
