@@ -46,6 +46,23 @@ class ArchitectureBoundaryTests(SimpleTestCase):
         )
         self.assertTrue(expected.issubset({path.name for path in base.glob("test_operations_mcp_*.py")}))
 
+    def test_ai_celery_tasks_are_split_by_responsibility(self):
+        facade = ROOT / "apps" / "ai_engagement" / "tasks.py"
+        handlers = ROOT / "apps" / "ai_engagement" / "task_handlers"
+        expected = {
+            "bumpups.py",
+            "knowledge.py",
+            "maintenance.py",
+            "qualification.py",
+            "summaries.py",
+        }
+        self.assertLess(
+            len(facade.read_text(encoding="utf-8").splitlines()),
+            170,
+            "apps.ai_engagement.tasks must remain a thin compatibility facade.",
+        )
+        self.assertTrue(expected.issubset({path.name for path in handlers.glob("*.py")}))
+
     def test_operations_tool_facade_stays_focused(self):
         path = ROOT / "apps" / "integrations" / "operations_tools.py"
         self.assertLess(
