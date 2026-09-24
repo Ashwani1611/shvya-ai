@@ -21,6 +21,7 @@ from apps.integrations.diagnostic_auth import (
     sanitize_data,
     sanitize_text,
 )
+from apps.integrations.public_urls import operations_public_url
 from apps.integrations.mcp_schema import (
     MCPInputValidationError,
     validate_mcp_arguments,
@@ -140,16 +141,17 @@ def _oauth_too_large_response():
 
 
 def _issuer(request):
-    return request.build_absolute_uri("/operations/").rstrip("/")
+    return operations_public_url(request, "/operations")
 
 
 def _resource(request):
-    return request.build_absolute_uri(reverse("shvya-operations-mcp"))
+    return operations_public_url(request, reverse("shvya-operations-mcp"))
 
 
 def _resource_metadata_url(request):
-    return request.build_absolute_uri(
-        reverse("shvya-operations-oauth-resource-metadata-rfc9728")
+    return operations_public_url(
+        request,
+        reverse("shvya-operations-oauth-resource-metadata-rfc9728"),
     )
 
 
@@ -260,8 +262,9 @@ def operations_oauth_resource_metadata(request):
                 OFFLINE_SCOPE,
             ],
             "bearer_methods_supported": ["header"],
-            "resource_documentation": request.build_absolute_uri(
-                reverse("crm-connect-hub-shvya-api")
+            "resource_documentation": operations_public_url(
+                request,
+                reverse("crm-connect-hub-shvya-api"),
             ),
         }
     )
@@ -272,17 +275,21 @@ def operations_oauth_server_metadata(request):
     return JsonResponse(
         {
             "issuer": _issuer(request),
-            "authorization_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-authorize")
+            "authorization_endpoint": operations_public_url(
+                request,
+                reverse("shvya-operations-oauth-authorize"),
             ),
-            "token_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-token")
+            "token_endpoint": operations_public_url(
+                request,
+                reverse("shvya-operations-oauth-token"),
             ),
-            "registration_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-register")
+            "registration_endpoint": operations_public_url(
+                request,
+                reverse("shvya-operations-oauth-register"),
             ),
-            "revocation_endpoint": request.build_absolute_uri(
-                reverse("shvya-operations-oauth-revoke")
+            "revocation_endpoint": operations_public_url(
+                request,
+                reverse("shvya-operations-oauth-revoke"),
             ),
             "revocation_endpoint_auth_methods_supported": ["none"],
             "response_types_supported": ["code"],
