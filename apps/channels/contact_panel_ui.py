@@ -19,6 +19,7 @@ from apps.followups.models import (
     TouchpointReply,
 )
 from apps.ai_engagement.services.intent_score import intent_score_for_lead
+from services.content_authoring import render_personalized_text
 from services.followup_service import (
     available_sequences_for_lead,
     assign_sequence,
@@ -59,6 +60,23 @@ def contact_panel(request, lead_id):
         for s in available_sequences_for_lead(lead=lead)
         if account and s.whatsapp_account_id == account.id
     ]
+    categories = list(
+        TouchpointCategory.objects.filter(
+            organization=lead.organization
+        ).prefetch_related(
+            Prefetch(
+                "replies",
+                queryset=TouchpointReply.objects.filter(is_active=True),
+            )
+        )
+    )
+    for category in categories:
+        for reply in category.replies.all():
+            reply.rendered_body = render_personalized_text(
+                reply.body,
+                lead=lead,
+                user=request.crm_user,
+            )
     response = render(
         request,
         "channels/contact_panel.html",
@@ -87,14 +105,7 @@ def contact_panel(request, lead_id):
             if account and channel == "whatsapp"
             else [],
             "lead_calls": lead.calls.all()[:50],
-            "categories": TouchpointCategory.objects.filter(
-                organization=lead.organization
-            ).prefetch_related(
-                Prefetch(
-                    "replies",
-                    queryset=TouchpointReply.objects.filter(is_active=True),
-                )
-            ),
+            "categories": categories,
         },
     )
     response["Cache-Control"] = "private, no-store"
