@@ -34,7 +34,7 @@ def test_bump_up_task_uses_canonical_prompt_module():
     assert "BUMP_UP_MESSAGE_INSTRUCTIONS" in source
     assert (
         "This is a scheduled bump-up. The lead has not replied for at least one hour."
-        not in dispatch_source
+        not in source
     )
     assert BUMP_UP_MESSAGE_INSTRUCTIONS.startswith(
         "This is a scheduled bump-up. The lead has not replied for at least one hour."
