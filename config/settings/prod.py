@@ -8,6 +8,10 @@ from .base import *  # noqa
 
 APP_ENV = "production"
 
+# Canonical externally advertised origin for the Operations MCP/OAuth server.
+# This is intentionally pinned in production instead of trusting request Host.
+OPERATIONS_PUBLIC_BASE_URL = "https://dashboard.shvya-ai.com"
+
 # ---------------------------------------------------------------------------
 # Private AWS S3 media storage
 #
