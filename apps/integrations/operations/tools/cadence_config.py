@@ -459,8 +459,10 @@ def upsert_cadence_configuration(*, identity, arguments):
                     "name": sequence.name,
                     "description": sequence.description,
                     "provider": provider,
-                    "whatsapp_account_id": str(
-                        sequence.whatsapp_account_id
+                    "whatsapp_account_id": (
+                        str(sequence.whatsapp_account_id)
+                        if sequence.whatsapp_account_id
+                        else None
                     ),
                     "is_active": sequence.is_active,
                 }
