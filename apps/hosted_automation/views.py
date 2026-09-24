@@ -113,7 +113,7 @@ def sequence_edit_page(request, sequence_id):
     from apps.followups.views.web import _step_context
 
     context = _step_context(sequence)
-    is_hosted = sequence.whatsapp_account.connection_type == "hosted"
+    is_hosted = sequence.provider == FollowupSequence.Provider.HOSTED
     context.update(
         {
             "is_followup_admin": True,
@@ -153,7 +153,7 @@ def hosted_whatsapp_step_modal(request, sequence_id):
     if blocked:
         return blocked
     sequence = _organization_sequence(request, sequence_id)
-    if sequence.whatsapp_account.connection_type != "hosted":
+    if sequence.provider != FollowupSequence.Provider.HOSTED:
         raise Http404
     from apps.followups.views.web import _step_context
 
@@ -171,7 +171,7 @@ def hosted_whatsapp_step_add(request, sequence_id):
     if blocked:
         return blocked
     sequence = _organization_sequence(request, sequence_id)
-    if sequence.whatsapp_account.connection_type != "hosted":
+    if sequence.provider != FollowupSequence.Provider.HOSTED:
         raise Http404
     from apps.followups.views.web import _schedule_payload
 
@@ -196,7 +196,7 @@ def step_update(request, sequence_id, step_id):
     sequence = _organization_sequence(request, sequence_id)
     step = get_object_or_404(FollowupStep, id=step_id, sequence=sequence)
     if not (
-        sequence.whatsapp_account.connection_type == "hosted"
+        sequence.provider == FollowupSequence.Provider.HOSTED
         and step.step_type == FollowupStep.StepType.WHATSAPP
     ):
         from apps.followups.views.web import step_update as original_step_update
