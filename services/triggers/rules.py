@@ -43,7 +43,7 @@ def catalog(org):
         ),
         "sequences": list(
             FollowupSequence.objects.filter(
-                organization=org, is_active=True, whatsapp_account__organization=org
+                organization=org, is_active=True
             ).values(
                 "id", "name"
             )
