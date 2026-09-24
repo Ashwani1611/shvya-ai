@@ -17,7 +17,6 @@ def populate_sequence_provider(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("channels", "0001_initial"),
         ("followups", "0008_followupstepattachment"),
     ]
 
