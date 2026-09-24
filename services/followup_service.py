@@ -406,7 +406,6 @@ def add_whatsapp_step(
         raise FollowupError("Retry count must be a number from 0 to 5.") from exc
     if retry_count < 0 or retry_count > 5:
         raise FollowupError("Message Retry Count can be from 0 to 5.")
-    email_attachments = validate_email_attachments(attachments)
     _validate_schedule(
         schedule_type=schedule_type,
         delay_value=delay_value,
@@ -457,6 +456,7 @@ def add_email_step(
     body = (body or "").strip()
     if not subject or not body:
         raise FollowupError("Email subject and content are required.")
+    email_attachments = validate_email_attachments(attachments)
     _validate_schedule(
         schedule_type=schedule_type,
         delay_value=delay_value,
