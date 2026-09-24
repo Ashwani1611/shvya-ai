@@ -43,7 +43,11 @@ from apps.integrations.operations.tools.touchpoints import (
 from apps.integrations.operations.tools.whatsapp import (
     begin_whatsapp_connection,
     bind_whatsapp_account_to_pipeline,
+    create_whatsapp_template,
+    get_whatsapp_template_status,
     list_whatsapp_accounts,
+    list_whatsapp_templates,
+    submit_whatsapp_template,
     validate_whatsapp_routing,
 )
 from apps.integrations.operations.tools.workflows import (
@@ -67,6 +71,10 @@ EXTENDED_HANDLERS = {
     "validate_qualification_configuration": validate_qualification_configuration,
     "upsert_qualification_configuration": upsert_qualification_configuration,
     "list_whatsapp_accounts": list_whatsapp_accounts,
+    "list_whatsapp_templates": list_whatsapp_templates,
+    "get_whatsapp_template_status": get_whatsapp_template_status,
+    "create_whatsapp_template": create_whatsapp_template,
+    "submit_whatsapp_template": submit_whatsapp_template,
     "begin_whatsapp_connection": begin_whatsapp_connection,
     "bind_whatsapp_account_to_pipeline": bind_whatsapp_account_to_pipeline,
     "validate_whatsapp_routing": validate_whatsapp_routing,

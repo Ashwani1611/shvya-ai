@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.ai_engagement.models import Document, FAQ, OrgInfo
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, Pipeline
 from apps.followups.models import FollowupSequence, FollowupStep, TouchpointReply
 from apps.hosted_automation.models import HostedFollowupStepConfig
@@ -176,6 +176,10 @@ class OperationsMCPConfigurationToolsTests(TestCase):
             "validate_qualification_configuration",
             "upsert_qualification_configuration",
             "list_whatsapp_accounts",
+            "list_whatsapp_templates",
+            "get_whatsapp_template_status",
+            "create_whatsapp_template",
+            "submit_whatsapp_template",
             "begin_whatsapp_connection",
             "bind_whatsapp_account_to_pipeline",
             "validate_whatsapp_routing",
@@ -430,6 +434,69 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertTrue(connected["safe_status_only"])
         self.assertNotIn("access_token", json.dumps(connected))
         self.assertNotIn('"qr":', json.dumps(connected).lower())
+
+    def test_meta_template_can_be_created_and_submitted_through_operations_mcp(self):
+        self.account.waba_id = "waba-restaurant-1"
+        self.account.access_token = "meta-secret-token"
+        self.account.save(update_fields=["waba_id", "access_token", "updated_at"])
+
+        create_args = {
+            "dry_run": False,
+            "approved": False,
+            "reason": "Create restaurant reservation confirmation template.",
+            "whatsapp_account_id": str(self.account.id),
+            "pipeline_id": str(self.pipeline.id),
+            "name": "reservation_confirmation",
+            "body": "Your reservation is confirmed.",
+            "category": "utility",
+            "language": "en_US",
+        }
+        created = self._call("create_whatsapp_template", create_args)
+        self.assertEqual(created["status"], "CREATED")
+        template = WhatsAppTemplate.objects.get(pk=created["template"]["id"])
+        self.assertEqual(template.account_id, self.account.id)
+        self.assertEqual(template.organization_id, self.organization.id)
+        self.assertEqual(template.status, WhatsAppTemplate.Status.DRAFT)
+        self.assertNotIn("meta-secret-token", json.dumps(created))
+
+        repeated = self._call("create_whatsapp_template", create_args)
+        self.assertEqual(repeated["status"], "NO_CHANGE")
+        self.assertTrue(repeated["idempotent"])
+
+        with patch(
+            "services.channels.template_service.WhatsAppClient._post",
+            return_value={"id": "meta-template-42", "status": "PENDING"},
+        ):
+            submitted = self._call(
+                "submit_whatsapp_template",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Submit reservation confirmation template to Meta.",
+                    "template_id": str(template.id),
+                },
+            )
+
+        self.assertEqual(submitted["status"], "SUBMITTED")
+        self.assertTrue(submitted["submitted_to_meta"])
+        template.refresh_from_db()
+        self.assertEqual(template.meta_template_id, "meta-template-42")
+        self.assertEqual(template.status, WhatsAppTemplate.Status.PENDING)
+
+        status = self._call(
+            "get_whatsapp_template_status",
+            {"template_id": str(template.id)},
+        )["template"]
+        self.assertEqual(status["status"], WhatsAppTemplate.Status.PENDING)
+        self.assertEqual(status["meta_template_id"], "meta-template-42")
+
+        listed = self._call(
+            "list_whatsapp_templates",
+            {"whatsapp_account_id": str(self.account.id)},
+        )
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["templates"][0]["id"], str(template.id))
+        self.assertNotIn("meta-secret-token", json.dumps(listed))
 
     def test_knowledge_document_upload_uses_existing_secure_ingestion_pipeline(self):
         payload = base64.b64encode(b"Restaurant menu and reservation policy.").decode("ascii")

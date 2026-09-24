@@ -597,6 +597,81 @@ OWN_TOOL_DEFINITIONS = [
         "Return safe organization WhatsApp account identity, status, and pipeline routing only. Credentials and session secrets are never returned.",
     ),
     _tool(
+        "list_whatsapp_templates",
+        "List WhatsApp templates",
+        "List organization-scoped WhatsApp templates and their current SHVYA/Meta status without exposing provider credentials.",
+        {
+            "whatsapp_account_id": {"type": "string", "format": "uuid"},
+            "status": {
+                "type": "string",
+                "enum": [
+                    "draft",
+                    "pending",
+                    "approved",
+                    "rejected",
+                    "paused",
+                    "archived",
+                    "pending_deletion",
+                ],
+            },
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 50},
+        },
+    ),
+    _tool(
+        "get_whatsapp_template_status",
+        "Get WhatsApp template status",
+        "Return one organization-scoped WhatsApp template, its local lifecycle state, Meta template ID/status, and rejection/error details.",
+        {
+            "template_id": {"type": "string", "format": "uuid"},
+        },
+        ["template_id"],
+    ),
+    _tool(
+        "create_whatsapp_template",
+        "Create WhatsApp template",
+        "Dry-run or create a standard WhatsApp template draft for a connected Meta WABA using SHVYA's canonical template validation. This does not bypass Meta approval; call submit_whatsapp_template after creation.",
+        _write_properties(
+            {
+                "whatsapp_account_id": {"type": "string", "format": "uuid"},
+                "pipeline_id": {"type": "string", "format": "uuid"},
+                "name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 150,
+                    "description": "Lowercase Meta template name using letters, numbers, and underscores.",
+                },
+                "body": {"type": "string", "minLength": 1, "maxLength": 4096},
+                "category": {
+                    "type": "string",
+                    "enum": ["marketing", "utility", "authentication"],
+                    "default": "marketing",
+                },
+                "language": {"type": "string", "maxLength": 20, "default": "en_US"},
+                "footer": {"type": "string", "maxLength": 60},
+                "buttons": {
+                    "type": "array",
+                    "maxItems": 10,
+                    "items": {"type": "object"},
+                    "default": [],
+                },
+            }
+        ),
+        ["whatsapp_account_id", "name", "body", "reason"],
+        read_only=False,
+    ),
+    _tool(
+        "submit_whatsapp_template",
+        "Submit WhatsApp template to Meta",
+        "Dry-run or submit an existing standard text/CTA WhatsApp template draft to the correct connected Meta WABA. Meta validation and approval remain authoritative and returned status/errors are preserved.",
+        _write_properties(
+            {
+                "template_id": {"type": "string", "format": "uuid"},
+            }
+        ),
+        ["template_id", "reason"],
+        read_only=False,
+    ),
+    _tool(
         "validate_whatsapp_routing",
         "Validate WhatsApp routing",
         "Audit active WhatsApp accounts against active pipeline-bound phone routing and report duplicates or unbound accounts without exposing credentials.",
@@ -1194,6 +1269,10 @@ TOOL_CAPABILITIES = {
     "validate_qualification_configuration": CAP_ORGANIZATION_READ,
     "upsert_qualification_configuration": CAP_AI_CONFIG_WRITE,
     "list_whatsapp_accounts": CAP_ORGANIZATION_READ,
+    "list_whatsapp_templates": CAP_ORGANIZATION_READ,
+    "get_whatsapp_template_status": CAP_ORGANIZATION_READ,
+    "create_whatsapp_template": CAP_MESSAGING_CONFIG_WRITE,
+    "submit_whatsapp_template": CAP_MESSAGING_CONFIG_WRITE,
     "validate_whatsapp_routing": CAP_ORGANIZATION_READ,
     "bind_whatsapp_account_to_pipeline": CAP_MESSAGING_CONFIG_WRITE,
     "begin_whatsapp_connection": CAP_MESSAGING_CONFIG_WRITE,
