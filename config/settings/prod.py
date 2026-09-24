@@ -12,6 +12,12 @@ APP_ENV = "production"
 # This is intentionally pinned in production instead of trusting request Host.
 OPERATIONS_PUBLIC_BASE_URL = "https://dashboard.shvya-ai.com"
 
+if OPERATIONS_PUBLIC_ORIGIN != "https://dashboard.shvya-ai.com":
+    raise ImproperlyConfigured(
+        "OPERATIONS_PUBLIC_ORIGIN must be https://dashboard.shvya-ai.com "
+        "for production Operations MCP/OAuth metadata."
+    )
+
 # ---------------------------------------------------------------------------
 # Private AWS S3 media storage
 #

@@ -38,7 +38,17 @@
 
     {% if authorization_error %}
       <div style="margin:18px 0;padding:14px 16px;border-radius:14px;background:#fef2f2;color:#991b1b;border:1px solid #fecaca;">
-        {{ authorization_error }}
+        <div style="display:grid;gap:8px;">
+          <div>
+            <strong>Authorization could not continue</strong>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px;">
+            <span style="border-radius:999px;background:#fee2e2;padding:4px 8px;font-weight:800;">{{ authorization_error_code|default:"OAUTH_REQUEST_INVALID" }}</span>
+            <span style="border-radius:999px;background:#fff;padding:4px 8px;border:1px solid #fecaca;">Stage: {{ authorization_error_stage|default:"Authorization request" }}</span>
+            <span style="border-radius:999px;background:#fff;padding:4px 8px;border:1px solid #fecaca;">Client: {{ client_name|default:"External AI" }}</span>
+          </div>
+          <div style="line-height:1.55;">{{ authorization_error }}</div>
+        </div>
       </div>
     {% endif %}
 
@@ -52,7 +62,7 @@
         <div style="display:grid;gap:12px;">
           {% for option in identity_options %}
             <label style="display:flex;gap:12px;align-items:flex-start;border:1px solid #d1d5db;border-radius:16px;padding:16px;cursor:pointer;">
-              <input type="radio" name="actor_mode" value="{{ option.role }}" required style="margin-top:4px;">
+              <input type="radio" name="actor_mode" value="{{ option.role }}" required {% if forloop.first %}checked{% endif %} style="margin-top:4px;">
               <span style="min-width:0;flex:1;">
                 <strong style="display:block;color:#111827;">
                   {% if option.role == role_superadmin %}SHVYA Superadmin{% else %}Organization Admin{% endif %}

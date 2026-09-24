@@ -2,9 +2,45 @@
 """Domain-focused coverage split from the historical Operations MCP suite."""
 
 from apps.integrations.tests.operations_mcp_test_base import *
+from django.contrib.postgres.operations import AddIndexConcurrently
 
 
 class TestOperationsMCPProtocol(OperationsMCPBase):
+    def test_jsonrpc_notifications_are_acknowledged_without_executing_tools(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        response = self.client.post(
+            "/operations/mcp/",
+            data=json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "tools/call",
+                    "params": {
+                        "name": "select_organization_context",
+                        "arguments": {
+                            "organization_id": str(self.organization.id),
+                            "reason": "Notification must not execute a tool",
+                        },
+                    },
+                }
+            ),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + bearer,
+        )
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.content, b"")
+        token = OperationsOAuthToken.objects.get(
+            access_token_hash=token_hash(bearer)
+        )
+        self.assertIsNone(token.active_organization_id)
+        self.assertFalse(
+            OperationsAuditEvent.objects.filter(
+                tool_name="select_organization_context"
+            ).exists()
+        )
+
     def test_unauthenticated_tool_call_returns_oauth_401_challenge(self):
         response = self.client.post(
             "/operations/mcp/",
@@ -57,13 +93,43 @@ class TestOperationsMCPProtocol(OperationsMCPBase):
         self.assertTrue(result["isError"])
         self.assertIn("mcp/www_authenticate", result["_meta"])
 
+    def test_authenticated_tool_listing_is_safely_audited(self):
+        bearer = self._token(
+            actor=self.superadmin,
+            role=ROLE_SUPERADMIN,
+        )
+        result = self._list_tools(bearer)
+        event = OperationsAuditEvent.objects.get(tool_name="tools/list")
+        self.assertEqual(event.actor, self.superadmin)
+        self.assertEqual(event.outcome, OperationsAuditEvent.Outcome.SUCCESS)
+        self.assertEqual(
+            result["_meta"]["shvya/audit_event_id"],
+            str(event.id),
+        )
+        self.assertEqual(
+            event.change_summary["tool_count"],
+            len(result["tools"]),
+        )
+
     def test_operations_related_migration_graphs_have_single_leaf(self):
-        conflicts = MigrationLoader(
+        loader = MigrationLoader(
             None,
             ignore_no_migrations=True,
-        ).detect_conflicts()
+        )
+        conflicts = loader.detect_conflicts()
         self.assertNotIn("integrations", conflicts)
         self.assertNotIn("channels", conflicts)
+        index_migration = loader.disk_migrations[
+            ("integrations", "0016_operations_oauth_lookup_indexes")
+        ]
+        self.assertFalse(index_migration.atomic)
+        self.assertTrue(index_migration.operations)
+        self.assertTrue(
+            all(
+                isinstance(operation, AddIndexConcurrently)
+                for operation in index_migration.operations
+            )
+        )
 
     def test_operations_tool_schema_rejects_non_object_arguments(self):
         bearer = self._token(
@@ -121,7 +187,12 @@ class TestOperationsMCPProtocol(OperationsMCPBase):
             HTTP_MCP_METHOD="server/discover",
         )
         self.assertEqual(response.status_code, 200)
-        instructions = response.json()["result"]["instructions"]
+        discovery = response.json()["result"]
+        self.assertEqual(
+            discovery["supportedVersions"],
+            ["2026-07-28", "2025-11-25"],
+        )
+        instructions = discovery["instructions"]
         self.assertEqual(instructions, OPERATIONS_AGENT_INSTRUCTIONS)
         for required_text in (
             "SHVYA backend permissions",

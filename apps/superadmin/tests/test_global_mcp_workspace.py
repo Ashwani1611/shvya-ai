@@ -82,6 +82,22 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
         body = response.content.decode("utf-8")
         self.assertIn("Superadmin MCP", body)
         self.assertIn("External AI control plane", body)
+        for section in (
+            "MCP Health",
+            "OAuth Health",
+            "Client Compatibility",
+            "Active OAuth Grants",
+            "Direct MCP Keys",
+            "Active Organization Support Contexts",
+            "Organization AI Policies",
+            "Security",
+            "MCP Self-Test",
+            "Audit Activity",
+        ):
+            self.assertIn(section, body)
+        self.assertIn("CODE VERIFIED", body)
+        self.assertIn("NOT LIVE VERIFIED", body)
+        self.assertIn("OAuth 401 challenge", body)
         self.assertIn(
             "http://testserver/operations/mcp/",
             body,
@@ -101,6 +117,7 @@ class SuperadminGlobalMCPWorkspaceTests(TestCase):
             "global-mcp-refresh",
             body,
         )
+        self.assertNotIn("staging.shvya-ai.com", body)
         self.assertIsNone(support.ended_at)
 
     def test_sidebar_has_dedicated_global_mcp_navigation(self):
