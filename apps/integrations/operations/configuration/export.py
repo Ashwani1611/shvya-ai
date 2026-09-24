@@ -272,13 +272,12 @@ def _portable_configuration(organization):
                 "name": sequence.name,
                 "description": sequence.description,
                 "active": sequence.is_active,
-                "provider": (
-                    "api"
-                    if sequence.whatsapp_account.connection_type
-                    == WhatsAppAccount.ConnectionType.API
-                    else "hosted"
+                "provider": sequence.provider,
+                "account_ref": (
+                    _account_ref(sequence.whatsapp_account)
+                    if sequence.whatsapp_account_id
+                    else None
                 ),
-                "account_ref": _account_ref(sequence.whatsapp_account),
                 "steps": [_step_export(step) for step in steps],
             }
         )
