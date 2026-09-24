@@ -230,6 +230,33 @@ class WhatsAppTemplateDeliveryTests(TestCase):
         self.assertContains(response, "Talk to sales")
         self.assertNotContains(response, 'id="composer-form"')
 
+    def test_historical_template_message_without_snapshot_backfills_full_display(self):
+        WhatsAppMessage.objects.create(
+            organization=self.org,
+            account=self.account,
+            lead=self.lead,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            from_number=self.account.display_phone_number or self.account.phone_number_id,
+            to_number=self.lead.phone,
+            body="Hi Jane, welcome to Template Delivery Org",
+            status=WhatsAppMessage.Status.SENT,
+            media_payload={
+                "transport": "template",
+                "template_id": str(self.template.id),
+                "template_name": self.template.name,
+            },
+        )
+
+        response = self.client.get(
+            reverse("whatsapp-chat-detail", args=[self.lead.pk])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'data-template-message="approved_welcome"')
+        self.assertContains(response, "Powered by SHVYA")
+        self.assertContains(response, "View plans")
+        self.assertContains(response, "Talk to sales")
+
     def test_recent_customer_message_keeps_free_form_composer_open(self):
         WhatsAppMessage.objects.create(
             organization=self.org,
