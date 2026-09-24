@@ -178,6 +178,7 @@ class OperationsMCPConfigurationToolsTests(TestCase):
     def test_p0_tools_are_discoverable_with_typed_workflow_discovery(self):
         tools = {item["name"]: item for item in self._tools()}
         expected = {
+            "get_content_authoring_policy",
             "get_qualification_configuration",
             "validate_qualification_configuration",
             "upsert_qualification_configuration",
@@ -221,6 +222,57 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertEqual(
             schema["action_schemas"]["ai"]["properties"]["enabled"]["type"],
             "boolean",
+        )
+
+    def test_content_authoring_policy_exposes_tenant_supported_placeholders(self):
+        policy = self._call("get_content_authoring_policy")
+        self.assertTrue(policy["plain_text_only"])
+        self.assertEqual(policy["placeholder_syntax"], "{{placeholder_key}}")
+        keys = {item["key"] for item in policy["placeholders"]}
+        self.assertIn("lead_first_name", keys)
+        self.assertIn("running_ads", keys)
+        self.assertNotIn("org_id", keys)
+
+    def test_operations_content_is_normalized_before_persistence(self):
+        touchpoint = self._call(
+            "upsert_touchpoint",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Create normalized restaurant saved reply.",
+                "data": {
+                    "category_name": "**Reservations**",
+                    "title": "**Welcome**",
+                    "body": "<b>Hi</b> **{lead_first_name}**, _welcome_.",
+                },
+            },
+        )["touchpoint"]
+        reply = TouchpointReply.objects.get(pk=touchpoint["id"])
+        self.assertEqual(reply.category.name, "Reservations")
+        self.assertEqual(reply.title, "Welcome")
+        self.assertEqual(reply.body, "Hi {{lead_first_name}}, welcome.")
+
+        hosted = self._call(
+            "add_hosted_whatsapp_step",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Create normalized Hosted restaurant follow-up.",
+                "cadence_id": str(self.cadence.id),
+                "data": {
+                    "title": "**Follow up**",
+                    "body": "<p>Hello {lead_first_name}</p> **Checking in**",
+                    "schedule": {"type": "immediate"},
+                },
+            },
+        )["step"]
+        hosted_row = HostedFollowupStepConfig.objects.get(
+            step_id=hosted["id"],
+        )
+        self.assertEqual(hosted_row.step.title, "Follow up")
+        self.assertEqual(
+            hosted_row.body,
+            "Hello {{lead_first_name}}\nChecking in",
         )
 
     def test_structured_qualification_can_validate_apply_and_simulate_without_side_effects(self):
