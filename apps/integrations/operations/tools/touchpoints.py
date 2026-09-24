@@ -7,6 +7,7 @@ from django.db.models import Prefetch
 
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
 from apps.integrations.operations_models import OperationsAuditEvent
+from services.content_authoring import ContentAuthoringError, normalize_plain_text
 from apps.integrations.operations_policy import (
     CAP_CADENCE_CONFIG_WRITE,
     CAP_ORGANIZATION_READ,
@@ -85,7 +86,16 @@ def _touchpoint_proposal(*, organization, arguments):
             raise OperationsToolError("Touchpoint not found in this organization.")
 
     category_id = str(data.get("category_id") or "").strip()
-    category_name = str(data.get("category_name") or "").strip()
+    try:
+        category_name = normalize_plain_text(
+            data.get("category_name"),
+            organization=organization,
+            field="Touchpoint category",
+            allow_placeholders=False,
+            max_length=120,
+        )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
     category = None
     if category_id:
         category = TouchpointCategory.objects.filter(
@@ -104,12 +114,25 @@ def _touchpoint_proposal(*, organization, arguments):
     else:
         raise OperationsToolError("category_id or category_name is required.")
 
-    title = str(data.get("title", reply.title if reply else "") or "").strip()
-    body = str(data.get("body", reply.body if reply else "") or "").strip()
-    if not title or len(title) > 150:
-        raise OperationsToolError("Touchpoint title must be 1-150 characters.")
-    if not body or len(body) > 1000:
-        raise OperationsToolError("Touchpoint body must be 1-1000 characters.")
+    try:
+        title = normalize_plain_text(
+            data.get("title", reply.title if reply else ""),
+            organization=organization,
+            field="Touchpoint title",
+            allow_placeholders=False,
+            required=True,
+            max_length=150,
+        )
+        body = normalize_plain_text(
+            data.get("body", reply.body if reply else ""),
+            organization=organization,
+            field="Touchpoint body",
+            allow_placeholders=True,
+            required=True,
+            max_length=1000,
+        )
+    except ContentAuthoringError as exc:
+        raise OperationsToolError(str(exc)) from exc
 
     resolved_category_name = category.name if category else category_name
     before = (
