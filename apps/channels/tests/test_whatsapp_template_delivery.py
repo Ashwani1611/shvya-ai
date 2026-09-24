@@ -257,6 +257,42 @@ class WhatsAppTemplateDeliveryTests(TestCase):
         self.assertContains(response, "View plans")
         self.assertContains(response, "Talk to sales")
 
+    def test_meta_synced_component_buttons_render_when_local_buttons_are_empty(self):
+        self.template.buttons = []
+        self.template.footer = ""
+        self.template.save(update_fields=["buttons", "footer", "updated_at"])
+        state = self.template.meta_state
+        state.components = [
+            {"type": "BODY", "text": "Hi {{1}}"},
+            {"type": "FOOTER", "text": "Synced footer"},
+            {
+                "type": "BUTTONS",
+                "buttons": [
+                    {"type": "URL", "text": "Open site", "url": "https://example.com"},
+                    {"type": "PHONE_NUMBER", "text": "Call us", "phone_number": "+919999999999"},
+                    {"type": "QUICK_REPLY", "text": "Interested"},
+                ],
+            },
+        ]
+        state.save(update_fields=["components", "updated_at"])
+
+        message = queue_template_message(
+            template=self.template,
+            lead=self.lead,
+            user=self.user,
+        )
+
+        display = message.media_payload["template_display"]
+        self.assertEqual(display["footer"], "Synced footer")
+        self.assertEqual(
+            display["buttons"],
+            [
+                {"type": "visit_website", "text": "Open site", "detail": "https://example.com"},
+                {"type": "call_phone", "text": "Call us", "detail": "+919999999999"},
+                {"type": "text_back", "text": "Interested", "detail": ""},
+            ],
+        )
+
     def test_recent_customer_message_keeps_free_form_composer_open(self):
         WhatsAppMessage.objects.create(
             organization=self.org,
