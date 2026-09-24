@@ -14,7 +14,12 @@ from apps.integrations.operations_policy import (
     approval_required,
 )
 from apps.organizations.features import is_hosted_account_enabled
-from services.channels.template_service import TemplateError, create_template, submit_template
+from services.channels.template_service import (
+    TemplateError,
+    create_template,
+    state_for,
+    submit_template,
+)
 from services.channels.hosted_whatsapp_service import (
     HostedWhatsAppValidationError,
     create_hosted_account,
@@ -806,14 +811,18 @@ def submit_whatsapp_template(*, identity, arguments):
         raise OperationsToolError(
             "Only draft WhatsApp templates can be submitted to Meta."
         )
-    if (
-        template.template_format != WhatsAppTemplate.Format.STANDARD
-        or template.attachment_type != WhatsAppTemplate.AttachmentType.NONE
-    ):
+    if template.template_format == WhatsAppTemplate.Format.CAROUSEL:
         raise OperationsToolError(
-            "Operations MCP submission currently supports standard templates without "
-            "media sample uploads. Use the SHVYA template UI for media or carousel samples."
+            "Carousel submission requires per-card media samples. Upload those samples "
+            "through the SHVYA template UI before submission."
         )
+    if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
+        metadata = state_for(template)
+        if not metadata.header_sample_handle:
+            raise OperationsToolError(
+                "This media template needs a stored Meta header sample before submission. "
+                "Upload the sample through the SHVYA template UI, then submit it here."
+            )
 
     proposal = {
         "organization_id": str(organization.id),
@@ -888,6 +897,271 @@ def submit_whatsapp_template(*, identity, arguments):
         audit_summary={
             "operation": "submit_whatsapp_template",
             "meta_status": current.status,
+            "verification": "passed",
+        },
+    )
+
+
+
+def _batch_template_state(template):
+    return {
+        "template_id": str(template.id),
+        "name": template.name,
+        "whatsapp_account_id": str(template.account_id),
+        "status": template.status,
+        "meta_template_id": template.meta_template_id or "",
+        "template_format": template.template_format,
+        "attachment_type": template.attachment_type,
+    }
+
+
+def _batch_template_block_reason(template):
+    if template.meta_template_id and template.status in {
+        WhatsAppTemplate.Status.PENDING,
+        WhatsAppTemplate.Status.APPROVED,
+        WhatsAppTemplate.Status.PAUSED,
+    }:
+        return ""
+    if template.status != WhatsAppTemplate.Status.DRAFT:
+        return "Only draft templates can be submitted to Meta."
+    if template.template_format == WhatsAppTemplate.Format.CAROUSEL:
+        return (
+            "Carousel submission requires per-card media samples through the "
+            "SHVYA template UI."
+        )
+    if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
+        metadata = state_for(template)
+        if not metadata.header_sample_handle:
+            return (
+                "Media template requires a stored Meta header sample before submission."
+            )
+    return ""
+
+
+def submit_whatsapp_templates(*, identity, arguments):
+    """Submit up to 50 organization templates and report each Meta result."""
+
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        tool_name="submit_whatsapp_templates",
+        arguments=arguments,
+    )
+    raw_ids = (arguments or {}).get("template_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        raise OperationsToolError("template_ids must be a non-empty array.")
+    if len(raw_ids) > 50:
+        raise OperationsToolError("At most 50 WhatsApp templates can be submitted at once.")
+
+    template_ids = []
+    seen = set()
+    for value in raw_ids:
+        template_id = _uuid(value, field="template_ids")
+        if template_id in seen:
+            continue
+        seen.add(template_id)
+        template_ids.append(template_id)
+
+    rows = list(
+        WhatsAppTemplate.objects.filter(
+            organization=organization,
+            pk__in=template_ids,
+        )
+        .select_related("account")
+    )
+    by_id = {item.id: item for item in rows}
+    if len(by_id) != len(template_ids):
+        raise OperationsToolError(
+            "One or more WhatsApp templates were not found in this organization."
+        )
+
+    ordered = [by_id[item_id] for item_id in template_ids]
+    proposal_rows = []
+    preview_rows = []
+    for template in ordered:
+        _template_account(
+            organization=organization,
+            account_id=str(template.account_id),
+        )
+        block_reason = _batch_template_block_reason(template)
+        already_submitted = bool(
+            template.meta_template_id
+            and template.status
+            in {
+                WhatsAppTemplate.Status.PENDING,
+                WhatsAppTemplate.Status.APPROVED,
+                WhatsAppTemplate.Status.PAUSED,
+            }
+        )
+        state = _batch_template_state(template)
+        proposal_rows.append(state)
+        preview_rows.append(
+            {
+                **state,
+                "already_submitted": already_submitted,
+                "can_submit": already_submitted or not block_reason,
+                "block_reason": block_reason,
+            }
+        )
+
+    proposal = {
+        "organization_id": str(organization.id),
+        "templates": proposal_rows,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "templates": preview_rows,
+                "count": len(preview_rows),
+                "submittable_count": sum(
+                    1 for row in preview_rows if row["can_submit"]
+                ),
+                "approval_required": approval_required(
+                    role=identity.role,
+                    organization=organization,
+                    capability=CAP_MESSAGING_CONFIG_WRITE,
+                ),
+                "meta_approval_required": True,
+            },
+            capability=CAP_MESSAGING_CONFIG_WRITE,
+            target_type="organization",
+            target_id=str(organization.id),
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={
+                "operation": "submit_whatsapp_templates",
+                "template_count": len(preview_rows),
+                "proposal_digest": _proposal_digest(proposal),
+            },
+        )
+
+    current_rows = list(
+        WhatsAppTemplate.objects.filter(
+            organization=organization,
+            pk__in=template_ids,
+        ).select_related("account")
+    )
+    current_by_id = {item.id: item for item in current_rows}
+    current_proposal = {
+        "organization_id": str(organization.id),
+        "templates": [
+            _batch_template_state(current_by_id[item_id])
+            for item_id in template_ids
+            if item_id in current_by_id
+        ],
+    }
+    if len(current_proposal["templates"]) != len(template_ids):
+        raise OperationsApprovalRequired(
+            "One or more templates changed after review. Run a fresh dry-run."
+        )
+    _ensure_approved_proposal_unchanged(
+        arguments=arguments,
+        proposal=current_proposal,
+    )
+
+    results = []
+    submitted_count = 0
+    no_change_count = 0
+    failed_count = 0
+    for template_id in template_ids:
+        template = current_by_id[template_id]
+        _template_account(
+            organization=organization,
+            account_id=str(template.account_id),
+        )
+        if (
+            template.meta_template_id
+            and template.status
+            in {
+                WhatsAppTemplate.Status.PENDING,
+                WhatsAppTemplate.Status.APPROVED,
+                WhatsAppTemplate.Status.PAUSED,
+            }
+        ):
+            no_change_count += 1
+            results.append(
+                {
+                    "template_id": str(template.id),
+                    "name": template.name,
+                    "status": "NO_CHANGE",
+                    "meta_status": template.status,
+                    "meta_template_id": template.meta_template_id,
+                }
+            )
+            continue
+
+        block_reason = _batch_template_block_reason(template)
+        if block_reason:
+            failed_count += 1
+            results.append(
+                {
+                    "template_id": str(template.id),
+                    "name": template.name,
+                    "status": "BLOCKED",
+                    "error": block_reason,
+                }
+            )
+            continue
+
+        try:
+            submitted = submit_template(template=template)
+        except TemplateError as exc:
+            failed_count += 1
+            results.append(
+                {
+                    "template_id": str(template.id),
+                    "name": template.name,
+                    "status": "FAILED",
+                    "error": str(exc),
+                    "meta_error_code": getattr(exc, "meta_error_code", ""),
+                }
+            )
+            continue
+
+        submitted_count += 1
+        results.append(
+            {
+                "template_id": str(submitted.id),
+                "name": submitted.name,
+                "status": "SUBMITTED",
+                "meta_status": submitted.status,
+                "meta_template_id": submitted.meta_template_id,
+            }
+        )
+
+    overall = (
+        "SUBMITTED"
+        if failed_count == 0
+        else "PARTIAL"
+        if submitted_count or no_change_count
+        else "FAILED"
+    )
+    return ToolExecution(
+        data={
+            "status": overall,
+            "results": results,
+            "count": len(results),
+            "submitted_count": submitted_count,
+            "no_change_count": no_change_count,
+            "failed_count": failed_count,
+            "meta_approval_required": True,
+            "verification": "passed",
+        },
+        capability=CAP_MESSAGING_CONFIG_WRITE,
+        target_type="organization",
+        target_id=str(organization.id),
+        reason=reason,
+        audit_summary={
+            "operation": "submit_whatsapp_templates",
+            "template_count": len(results),
+            "submitted_count": submitted_count,
+            "failed_count": failed_count,
             "verification": "passed",
         },
     )
