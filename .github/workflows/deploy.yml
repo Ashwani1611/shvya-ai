@@ -163,7 +163,7 @@ jobs:
               current="$(sed -n "s/^${key}=//p" .env | tail -n 1 | tr -d '\r')"
 
               case "$current" in
-                ""|'\"\"'|"''"|change-me-*)
+                ""|'""'|"''"|change-me-*)
                   echo "Required production secret ${key} is missing or still a placeholder."
                   echo "Refusing deployment instead of replacing an existing encryption root."
                   exit 1
