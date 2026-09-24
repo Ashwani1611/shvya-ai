@@ -93,6 +93,7 @@ def _attach_template_display(chat_messages, *, organization):
                 "category": "",
                 "format": "standard",
                 "body": message.body or "",
+                "header_text": "",
                 "footer": "",
                 "attachment_type": "none",
                 "buttons": [],
