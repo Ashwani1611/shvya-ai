@@ -4,7 +4,7 @@
 
 Render only the selected template's tokens, one literal substitution pass. Strings are inserted unchanged; arrays/objects/booleans/numbers are JSON serialized when a template needs them. Reject unknown names, referenced null/empty required values, type mismatches, and remaining `{{SHVYA_*}}` tokens. Do not recursively render token-looking text supplied as a value. The rendered Playbook must remain under Shvya's 100,000-character limit and contain exactly its eight canonical top-level sections.
 
-Keep IDs null in reusable examples until a real organization-owned record is discovered. A null example value is not suitable for a live MCP call. Authorization comes from the user and the server's effective capability policy, never from an `approved` variable. `SHVYA_DRY_RUN=true` and `SHVYA_ENABLE_AUTOMATIONS=false` are example planning values; no render defaults are applied; changing them is not itself approval to mutate or send.
+Keep IDs null in reusable examples until a real organization-owned record is discovered. A null example value is not suitable for a live MCP call. Authorization comes from the user and the server's effective capability policy, never from an `approved` variable. `SHVYA_DRY_RUN=true` and `SHVYA_ENABLE_AUTOMATIONS=false` are example planning values; no render defaults are applied; changing them is not itself approval to mutate or send. `SHVYA_ENABLE_AUTOMATIONS` governs enrollment/Workflow activation planning, not Cadence `is_active`: always create Cadences with `data.is_active: true`.
 
 ## Native runtime personalization is separate
 
@@ -12,7 +12,7 @@ The inspected Shvya renderer exposes `{{lead_name}}`, `{{lead_first_name}}`, `{{
 
 Source verification: `services/followup_service.py::_lead_template_values` and `services/channels/template_service.py::available_placeholders` / `render_template_body` in the inspected Shvya checkout. This proves the listed code baseline; rediscover the active environment before changing a live account. Display names of attributes are not automatically valid placeholder keys. Meta/API WhatsApp templates use approved positional parameter mappings to these values; a free-form message is not converted into an approved API template by inserting braces.
 
-Use personalization only when the delivery surface supports it. Check empty-name behavior and omit name-based greetings when data is missing. Keep CRM stage/pipeline names, phone/email, user identity, and internal custom attributes out of customer copy unless there is a specific approved customer-facing reason. The Ria Playbook's static customer copy needs no runtime tokens.
+Always author customer message bodies with `{{lead_first_name}}`, never `{{lead_name}}` or a literal recipient name. Preserve the token until delivery; verify actual first-name substitution and missing-name behavior. The AI Playbook reply boundary uses the safe first name or `there`; Cadence renderers can yield an empty value, so flag broken previews or missing required data before enrollment. Approved API templates require the supported first-name parameter mapping. Unsupported surfaces remain unbound; never invent conditional syntax. Keep CRM stage/pipeline names, phone/email, user identity, and internal custom attributes out of customer copy unless there is a specific approved customer-facing reason. Standalone About/FAQ knowledge and internal metadata do not need a recipient placeholder. The supplied Ria reference is preserved as evidence; newly rendered examples follow the current authoring standards.
 
 ## Changing organizations
 

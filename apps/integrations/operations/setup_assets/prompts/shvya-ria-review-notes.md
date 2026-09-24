@@ -1,6 +1,6 @@
 # Ria Playbook review notes
 
-`shvya-ria-ai-playbook.md` preserves the user-supplied reference, including customer copy and all behavioral edge cases. It is ready for review, not evidence of live configuration. `ai-playbook.template.md` generalizes that structure for other organizations; rendering with `shvya-example.values.json` produces the Shvya example with additional explicit evidence boundaries. Neither file has been applied to a live organization.
+`shvya-ria-ai-playbook.md` preserves the user-supplied reference, including customer copy and all behavioral edge cases. It is ready for review, not evidence of live configuration. `ai-playbook.template.md` generalizes that structure for other organizations; rendering with `shvya-example.values.json` produces the Shvya example with additional explicit evidence boundaries. Neither file has been applied to a live organization. The rendered examples now apply the requested plain-text and `{{lead_first_name}}` authoring standards; the supplied reference remains unchanged for provenance.
 
 ## What is grounded
 

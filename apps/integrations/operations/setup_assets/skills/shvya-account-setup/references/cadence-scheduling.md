@@ -32,7 +32,7 @@ The exposed Cadence schema has no `before_x_units`, `booked_slot` anchor, arbitr
 
 Do not copy `extension`, `whatsapp_api`, `whatsapp_template` or `ai_call` as Shvya step/provider enums. Hosted health protections remain in force even though Meta's free-text service window is an API-specific restriction. Do not turn an API template into free-form text merely because a template creation tool is absent.
 
-Existing Cadence sender/provider cannot be changed in place. A new provider or sender needs a new Cadence and reviewed dependency migration. Append steps only to an active Cadence; isolate unfinished Cadences from enrollment and enabled Workflows. Add sequentially, keep returned step IDs, use the reorder tool's exact schema, and verify unique contiguous order. Edits preserve untouched content/schedule; deletion fails if delivery history exists.
+Existing Cadence sender/provider cannot be changed in place. A new provider or sender needs a new Cadence and reviewed dependency migration. Always create a Cadence with `data.is_active: true`, then append its steps and verify it remains active on readback. Isolate unfinished Cadences from enrollment and enabled Workflows; active creation alone does not authorize sends or enrollment. Add sequentially, keep returned step IDs, use the reorder tool's exact schema, and verify unique contiguous order. Edits preserve untouched content/schedule and existing active status unless a status change is requested; deletion fails if delivery history exists.
 
 ## Entry, stop and re-entry design
 

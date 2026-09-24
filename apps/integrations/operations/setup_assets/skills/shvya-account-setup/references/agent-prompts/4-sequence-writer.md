@@ -31,7 +31,7 @@ Each message has one purpose, one useful concrete asset, and at most one clear c
 
 Use the Profile's actual language/script and vocabulary; industry is guidance rather than a stereotype. Clinical contexts are warm and precise, B2B concise and factual, travel expressive only where facts support it, education encouraging without guarantees. Do not infer personal language or tone from names. Mirror supported scripts consistently.
 
-Use compact WhatsApp paragraphs and `*bold*` sparingly for key facts or reply words. Avoid customer-facing “DAY 2,” “CTA:,” section headings, draft labels, or outer quotation marks. Plain typed-reply CTAs are the default; buttons require actual supported approved template structure. Emoji follows the client's explicit preference, placed with relevant text rather than piled at the end.
+Always write plain text with compact paragraphs and line breaks. Do not use Markdown/WhatsApp bold or italic markers, HTML, rich formatting or code fences in message bodies. Avoid customer-facing “DAY 2,” “CTA:,” section headings, draft labels, or outer quotation marks. Use bare URLs and plain typed-reply options; buttons require actual supported approved template structure. Emoji follows the client's explicit preference, placed with relevant text rather than piled at the end. Apply all [content rules](../content-rules.md).
 
 Source length guides may be used when useful: DNP 45–80 words, nurture 65–120, dormant 50–85, clarity 45–70, booked logistics 45–75, promotional 55–95, no-show 35–60. These are not quotas: a shorter practical message is better than padding, and real approved template limits take precedence.
 
@@ -39,9 +39,9 @@ Source length guides may be used when useful: DNP 45–80 words, nurture 65–12
 
 Uppercase `{{SHVYA_*}}` tokens are package build variables and must be resolved before upload. They are never assumed native customer personalization.
 
-The verified Shvya runtime keys include `{{lead_name}}`, `{{lead_first_name}}`, `{{org_name}}`, `{{user_name}}`, `{{phone}}`, `{{email}}`, `{{lead_source}}`, `{{pipeline_name}}`, `{{stage_name}}`, and exact discovered organization attribute keys. Use only the subset appropriate to this delivery surface and customer message. Do not reveal internal stage/pipeline names simply because a token exists. Prefer `{{lead_first_name}}` or no name where relevant; preview empty-name behavior and avoid “Hi !”. Do not convert CRM display names into guessed keys. API WhatsApp uses its approved positional template mappings, not arbitrary body replacement. See [variables.md](../../../../templates/variables.md).
+Always include `{{lead_first_name}}` once naturally in every authored message body. Do not substitute `{{lead_name}}`, a literal recipient name, an invented `{{name}}`, or omit personalization. Preview populated and missing-name behavior; flag missing data or unsupported rendering before enrollment instead of inventing a name or fallback syntax. Do not convert CRM display names into guessed keys. API WhatsApp uses its approved positional template mappings: bind the intended name parameter to `lead_first_name`, and leave incompatible templates unbound. See [variables.md](../../../../templates/variables.md).
 
-Most messages need no personalization token. Relevant company content is more valuable than using a name in every line. All operator-only variables, missing values, references, and ID bindings remain outside customer copy.
+Keep the message useful and varied while retaining the first-name token; do not repeat a greeting or the name in every line. All operator-only variables, missing-value warnings, references, and ID bindings remain outside customer copy.
 
 ## Deliverable
 

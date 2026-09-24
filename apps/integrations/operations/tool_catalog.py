@@ -447,7 +447,7 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "upsert_cadence_configuration",
         "Configure Cadence",
-        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
+        "Dry-run or create/update a tenant-owned Cadence using SHVYA's canonical follow-up service. Always create with data.is_active=true; keep unfinished Cadences isolated from enrollment. Existing Cadence sender/provider cannot be changed; create a new Cadence for a different sender/provider.",
         _write_properties(
             {
                 "cadence_id": {"type": "string", "format": "uuid"},
@@ -458,7 +458,10 @@ OWN_TOOL_DEFINITIONS = [
                         "description": {"type": "string"},
                         "provider": {"type": "string", "enum": ["api", "hosted"]},
                         "whatsapp_account_id": {"type": "string", "format": "uuid"},
-                        "is_active": {"type": "boolean"},
+                        "is_active": {
+                            "type": "boolean",
+                            "description": "Set true for new Cadences (also the backend create default). Omit on updates to preserve the current status; set false only for an intended disable/archive.",
+                        },
                     },
                     "additionalProperties": False,
                 },

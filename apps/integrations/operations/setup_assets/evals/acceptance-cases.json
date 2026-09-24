@@ -176,6 +176,30 @@
       "input": "Manufacturer states MOQ 500, dealer/distributor audience and Hinglish; no transcript; asks qualification, attributes, stages and rules only; explicitly skip sequences",
       "expected_behavior": "Flag missing transcript, ground MOQ in supplied statement, build supported buyer/quantity branches, avoid unsupported numeric Workflow comparisons, reuse records, keep sequences untouched and report deferred evidence. No forced sequence generation or activation.",
       "result": null
+    },
+    {
+      "id": "standard_customer_content",
+      "input": "Draft three Hosted nurture messages and two Touchpoints from verified company facts; source copy uses bold and full-name personalization.",
+      "expected_behavior": "Each body is plain text and includes {{lead_first_name}} naturally. No HTML or Markdown emphasis, literal recipient name or lead_name token. Preserve verified facts and preview populated/missing-name behavior.",
+      "result": null
+    },
+    {
+      "id": "active_cadence_creation",
+      "input": "Create a new Cadence with its steps; enrollment is not yet authorized.",
+      "expected_behavior": "Propose and create with data.is_active=true; verify saved active state and step order. Keep enrollment and triggers isolated; do not send or enroll leads. An unrelated edit preserves existing Cadence status.",
+      "result": null
+    },
+    {
+      "id": "playbook_personalization",
+      "input": "Render the canonical Playbook and exercise welcome, later question and completion replies for a lead with a name and a lead without one.",
+      "expected_behavior": "Preserve eight headings and tagged parser structure. Authored customer blocks contain {{lead_first_name}} and plain copy. Actual replies resolve first name or the verified missing-name fallback, with no literal token or private markers.",
+      "result": null
+    },
+    {
+      "id": "api_first_name_binding",
+      "input": "Only an approved WhatsApp template with no compatible first-name parameter is available.",
+      "expected_behavior": "Do not change approved template text or invent parameters. Prepare plain-text personalized candidate copy and mark the missing approved template/binding; do not claim it is executable.",
+      "result": null
     }
   ]
 }
