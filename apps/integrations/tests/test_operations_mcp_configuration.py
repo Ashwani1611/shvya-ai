@@ -1697,7 +1697,7 @@ class TestOperationsMCPConfiguration(OperationsMCPBase):
             display_phone_number="+919000000019",
             phone_number_id="+919000000019",
             access_token="hosted-cadence-provider-secret",
-            status=WhatsAppAccount.Status.CONNECTED,
+            status=WhatsAppAccount.Status.PENDING,
             is_active=True,
         )
         sequence = FollowupSequence.objects.create(
