@@ -21,7 +21,6 @@ from apps.integrations.diagnostic_auth import (
     sanitize_data,
     sanitize_text,
 )
-from apps.integrations.public_urls import operations_public_url
 from apps.integrations.mcp_schema import (
     MCPInputValidationError,
     validate_mcp_arguments,
@@ -67,6 +66,7 @@ from apps.integrations.operations_tools import (
     OperationsToolError,
     execute_operations_tool,
 )
+from apps.integrations.public_urls import operations_public_url
 from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
 from apps.integrations.operations.setup_protocol import (
     SETUP_LIBRARY_TOOL_NAMES,
