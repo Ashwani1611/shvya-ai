@@ -13,6 +13,11 @@ from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.followups.models import FollowupExecution, FollowupSequence, FollowupStep
 from apps.hosted_automation.models import HostedFollowupStepConfig
 from apps.integrations.operations.constants import MAX_MCP_CADENCE_ATTACHMENT_BYTES
+from apps.integrations.operations.attachment_payloads import (
+    AttachmentPayloadError,
+    decode_email_attachments,
+    redact_attachment_content,
+)
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import CAP_CADENCE_CONFIG_WRITE, approval_required
 from services.channels.hosted_automation_service import (
@@ -25,6 +30,7 @@ from services.followup_service import (
     _recalculate_active_states,
     _validate_schedule,
     delete_step,
+    replace_email_step_attachments,
 )
 from apps.integrations.operations_tools import (
     OperationsApprovalRequired,
@@ -207,6 +213,14 @@ def _step_snapshot(step):
         "template_id": str(step.whatsapp_template_id) if step.whatsapp_template_id else None,
         "email_subject": step.email_subject,
         "email_body": step.email_body,
+        "email_attachments": [
+            {
+                "name": item.original_name,
+                "mime_type": item.mime_type,
+                "size": item.size,
+            }
+            for item in step.attachments.order_by("position", "created_at")
+        ] if step.step_type == FollowupStep.StepType.EMAIL else [],
         "reminder_text": step.reminder_text,
         "hosted_body": hosted.body if hosted else None,
         "hosted_attachment_name": hosted.attachment_original_name if hosted else "",
@@ -243,7 +257,7 @@ def update_cadence_step(*, identity, arguments):
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a Cadence step object.")
     _reject_secret_like_content(
-        {key: value for key, value in data.items() if key != "attachment_base64"},
+        redact_attachment_content(data),
         field="cadence_step",
     )
     schedule = _cadence_schedule(data)
@@ -262,6 +276,15 @@ def update_cadence_step(*, identity, arguments):
     after["is_active"] = data.get("is_active", step.is_active)
     if not isinstance(after["is_active"], bool):
         raise OperationsToolError("is_active must be a boolean.")
+
+    email_attachments = None
+    email_attachment_descriptors = []
+    email_attachments_supplied = "attachments" in data
+    remove_email_attachments = bool(data.get("remove_attachments", False))
+    if email_attachments_supplied and remove_email_attachments:
+        raise OperationsToolError(
+            "Use either attachments or remove_attachments, not both."
+        )
 
     hosted = (
         step.step_type == FollowupStep.StepType.WHATSAPP
@@ -294,6 +317,22 @@ def update_cadence_step(*, identity, arguments):
         after["email_body"] = str(data.get("body", step.email_body) or "").strip()
         if not after["email_subject"] or not after["email_body"]:
             raise OperationsToolError("Email Cadence step subject and body are required.")
+        if email_attachments_supplied:
+            try:
+                email_attachments, email_attachment_descriptors = decode_email_attachments(data)
+            except AttachmentPayloadError as exc:
+                raise OperationsToolError(str(exc)) from exc
+            after["email_attachments"] = [
+                {
+                    "name": item["name"],
+                    "mime_type": item["mime_type"],
+                    "size": item["size"],
+                    "sha256": item["sha256"],
+                }
+                for item in email_attachment_descriptors
+            ]
+        elif remove_email_attachments:
+            after["email_attachments"] = []
     else:
         after["reminder_text"] = str(
             data.get("text", step.reminder_text) or ""
@@ -367,6 +406,19 @@ def update_cadence_step(*, identity, arguments):
             locked_step.title = after["title"]
             locked_step.email_subject = after["email_subject"]
             locked_step.email_body = after["email_body"]
+            if email_attachments_supplied:
+                try:
+                    replace_email_step_attachments(
+                        step=locked_step,
+                        attachments=email_attachments,
+                    )
+                except FollowupError as exc:
+                    raise OperationsToolError(str(exc)) from exc
+            elif remove_email_attachments:
+                replace_email_step_attachments(
+                    step=locked_step,
+                    attachments=[],
+                )
         else:
             locked_step.reminder_text = after["reminder_text"]
 
