@@ -245,7 +245,9 @@
                     {% if message.template_display %}
                     <div class="min-w-0" data-template-message="{{ message.template_display.name|default:'template' }}">
                         <div class="wa-template-label mb-1.5"><i class="ti ti-template mr-1"></i>{{ message.template_display.name|default:"WhatsApp template" }}</div>
-                        {% if message.template_display.attachment_type and message.template_display.attachment_type != 'none' %}
+                        {% if message.template_display.header_text %}
+                        <div class="wa-template-header whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{{ message.template_display.header_text }}</div>
+                        {% elif message.template_display.attachment_type and message.template_display.attachment_type != 'none' %}
                         <div class="wa-template-header"><i class="ti ti-photo mr-1"></i>{{ message.template_display.attachment_type|title }} header</div>
                         {% endif %}
                         {% if message.template_display.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.template_display.body }}</p>{% elif message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% endif %}
