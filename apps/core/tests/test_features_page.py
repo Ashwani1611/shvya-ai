@@ -45,19 +45,19 @@ class FeaturesPageTests(SimpleTestCase):
 
         self.assertContains(
             response,
-            'https://assets.example.com/production/public/marketing/shvya-cinematic-film.mp4',
+            'https://assets.example.com/production/media/public-assets/marketing/shvya-cinematic-film.mp4',
         )
         self.assertContains(
             response,
-            'https://assets.example.com/production/public/marketing/shvya-cinematic-poster.jpg',
+            'https://assets.example.com/production/media/public-assets/marketing/shvya-cinematic-poster.jpg',
         )
         self.assertContains(
             response,
-            'https://assets.example.com/production/public/images/shvya-mascot-body.png',
+            'https://assets.example.com/production/media/public-assets/images/shvya-mascot-body.png',
         )
         self.assertContains(
             response,
-            'https://assets.example.com/production/public/marketing/dark/wordmark.png',
+            'https://assets.example.com/production/media/public-assets/marketing/dark/wordmark.png',
         )
         self.assertNotContains(response, '/static/marketing/shvya-cinematic-film.mp4')
         self.assertContains(response, '/static/marketing/premium-features.css')
