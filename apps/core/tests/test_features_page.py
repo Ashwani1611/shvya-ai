@@ -35,7 +35,7 @@ class FeaturesPageTests(SimpleTestCase):
         self.assertNotContains(response, 'href="/#features"')
 
     @override_settings(
-        PUBLIC_ASSET_BASE_URL="https://assets.example.com/production/public"
+        PUBLIC_ASSET_BASE_URL="https://assets.example.com/production/media/public-assets"
     )
     def test_features_page_uses_external_base_for_heavy_assets(self):
         request = RequestFactory().get(reverse('features'))
