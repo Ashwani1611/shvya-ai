@@ -13,6 +13,24 @@ APP_ENV = "staging"
 DEBUG = False
 OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"
 
+# Keep staging public binaries isolated from production even when both
+# environments use the same S3 bucket.
+AWS_S3_PUBLIC_ASSET_PREFIX = str(
+    config(
+        "AWS_S3_PUBLIC_ASSET_PREFIX",
+        default="staging/media/public-assets",
+    )
+    or "staging/media/public-assets"
+).strip().strip("/")
+
+# Staging never opts into public S3 asset delivery implicitly. Enable it only
+# after the staging prefix has been uploaded and verified.
+USE_S3_PUBLIC_ASSETS = config(
+    "USE_S3_PUBLIC_ASSETS",
+    default=False,
+    cast=bool,
+)
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in config(

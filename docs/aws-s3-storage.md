@@ -16,8 +16,10 @@ Because the application is outside AWS, the Hostinger VPS must authenticate with
 
 Use the same private bucket with separate prefixes:
 
-- Production: `production/media/`
-- Staging: `staging/media/`
+- Production private media: `production/media/`
+- Staging private media: `staging/media/`
+- Production heavy public assets: `production/media/public-assets/`
+- Staging heavy public assets: `staging/media/public-assets/`
 
 The encrypted Help & Support attachment store remains on `MEDIA_ROOT` through `PrivateSupportStorage`. Static files remain on the existing Django/Nginx path.
 
@@ -141,3 +143,65 @@ Expected behavior:
 3. `url()` returns a temporary signed S3 URL.
 4. The object is deleted successfully.
 5. Anonymous public access remains blocked.
+
+
+## Heavy public assets (videos/images)
+
+Large public marketing binaries are separate from private customer media. The bucket
+stays private. SHVYA can serve them with temporary S3 presigned URLs, so a public bucket
+policy is not required. A CDN such as CloudFront can be added later and configured
+through PUBLIC_ASSET_BASE_URL.
+
+The current migration manifest includes every tracked static binary at or above 100 KiB:
+
+- `marketing/shvya-cinematic-film.mp4`
+- `marketing/dark/shvya-introduction.mp4`
+- `marketing/shvya-features-film.mp4`
+- `images/shvya-mascot-body.png`
+- `marketing/dark/wordmark.png`
+- `marketing/shvya-cinematic-poster.jpg`
+- `marketing/meta-partner-reference.png`
+- `marketing/shvya-cinematic-detail.jpg`
+
+Production environment:
+
+```env
+AWS_S3_PUBLIC_ASSET_PREFIX=production/media/public-assets
+USE_S3_PUBLIC_ASSETS=True
+AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE=86400
+# Optional CDN override:
+PUBLIC_ASSET_BASE_URL=
+```
+
+Staging uses a separate prefix:
+
+```env
+AWS_S3_PUBLIC_ASSET_PREFIX=staging/media/public-assets
+USE_S3_PUBLIC_ASSETS=False
+AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE=86400
+PUBLIC_ASSET_BASE_URL=
+```
+
+The deployment host already owns the AWS credentials used by Django. Upload and verify
+the manifest from that host:
+
+```bash
+docker compose exec -T web python manage.py sync_public_assets
+docker compose exec -T web python manage.py sync_public_assets --verify
+```
+
+Uploaded objects use AES-256 server-side encryption and long-lived immutable cache
+headers. With USE_S3_PUBLIC_ASSETS=True and no CDN override, Django generates temporary
+signed S3 URLs from the private bucket. If PUBLIC_ASSET_BASE_URL is configured, that
+external asset origin takes precedence.
+
+Until USE_S3_PUBLIC_ASSETS is enabled (or a CDN base is configured), templates fall
+back to their checked-in /static/ paths. The safe migration is therefore:
+
+1. deploy the storage-aware code while the source binaries still exist;
+2. run sync_public_assets and then sync_public_assets --verify on the deployment host;
+3. enable USE_S3_PUBLIC_ASSETS=True and verify the public pages load from S3;
+4. only then delete the migrated binaries from Git in a cleanup commit.
+
+After cleanup, sync_public_assets accepts a missing local source only when the matching
+S3 object already exists, so future verification fails closed if an object disappears.
