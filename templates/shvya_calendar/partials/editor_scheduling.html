@@ -1,3 +1,5 @@
+{% load calendar_google %}
+{% platform_google_status as shvya_meet %}
 <section class="sc-tab-panel" data-tab-panel="scheduling">
     <form method="post" action="{% url 'shvya_calendar:save' page_id=page.id %}">
       {% csrf_token %}<input type="hidden" name="section" value="scheduling">
@@ -42,7 +44,7 @@
             <label class="sc-field"><span>Buffer before</span><div class="sc-input-suffix"><input type="number" min="0" name="buffer_before_minutes" value="{{ page.buffer_before_minutes }}"><b>min</b></div></label>
             <label class="sc-field"><span>Buffer after</span><div class="sc-input-suffix"><input type="number" min="0" name="buffer_after_minutes" value="{{ page.buffer_after_minutes }}"><b>min</b></div></label>
           </div>
-          <div class="sc-info-strip sc-info-blue"><i class="ti ti-sparkles"></i><span><strong>Live slot contract:</strong> SHVYA availability − blocked time − active bookings − Google busy time − buffers.</span></div>
+          <div class="sc-info-strip sc-info-blue"><i class="ti ti-sparkles"></i><span><strong>Live slot contract:</strong> SHVYA availability − blocked time − active bookings − connected host's Google busy time − buffers.</span></div>
         </div>
       </details>
 
@@ -54,16 +56,23 @@
       </details>
 
       <details class="sc-accordion" open>
-        <summary><span class="sc-summary-icon"><i class="ti ti-brand-google"></i></span><span><strong>Calendar & Meeting</strong><small>Read Google busy time, create the event and generate a unique Meet link.</small></span><i class="ti ti-chevron-down"></i></summary>
+        <summary><span class="sc-summary-icon"><i class="ti ti-brand-google"></i></span><span><strong>Calendar & Meeting</strong><small>Create a unique Meet link using your host's connection or SHVYA-managed Google Meet.</small></span><i class="ti ti-chevron-down"></i></summary>
         <div class="sc-accordion-body">
           {% if google_connection %}
             <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div>{% if page.host_id == request.crm_user.id %}<button class="sc-button sc-button-small" type="submit" formaction="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}" formmethod="post" formnovalidate>Disconnect</button>{% else %}<span class="sc-status sc-status-published">Connected by host</span>{% endif %}</div>
+          {% elif shvya_meet.enabled and shvya_meet.configured %}
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>SHVYA-managed Google Meet</strong><span>Backend credentials configured. Select Google Meet to request a unique link for each booking, including manual Booked at entries.</span></div><span class="sc-status sc-status-published">Platform configured</span></div>
+            <div class="sc-info-strip sc-info-blue"><i class="ti ti-info-circle"></i><span>SHVYA is the Google organiser. Google's meeting admission rules still apply. Connect your own account for independent host control and Google conflict checking. Existing bookings keep their original organiser.</span></div>
+            {% if page.host_id == request.crm_user.id and google_configured %}<a class="sc-button sc-button-small" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect your own Google Calendar</a>{% endif %}
+          {% elif shvya_meet.enabled %}
+            <div class="sc-alert">SHVYA-managed Google Meet needs backend setup. Contact your SHVYA administrator to configure the OAuth credentials and dedicated Google account. SHVYA bookings remain available; no Meet link is fabricated.</div>
+            {% if page.host_id == request.crm_user.id and google_configured %}<a class="sc-button sc-button-small" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect your own Google Calendar</a>{% endif %}
           {% elif page.host_id == request.crm_user.id and google_configured %}
             <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>SHVYA bookings work independently. Connect to check Google conflicts and generate a unique Meet link for each appointment.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
           {% elif not google_configured %}
             <div class="sc-alert">Google Calendar OAuth is not configured on this SHVYA server yet. Add GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET to enable connection.</div>
           {% else %}
-            <div class="sc-alert">The selected host must sign in to SHVYA and connect their own Google Calendar.</div>
+            <div class="sc-alert">The selected host must sign in to SHVYA and connect their own Google Calendar, or your SHVYA administrator can enable SHVYA-managed Google Meet.</div>
           {% endif %}
           <div class="sc-grid-2">
             <label class="sc-field"><span>Meeting location</span><select name="meeting_location"><option value="google_meet" {% if page.meeting_location == 'google_meet' %}selected{% endif %}>Google Meet · automatic unique link</option><option value="phone" {% if page.meeting_location == 'phone' %}selected{% endif %}>Phone call</option><option value="in_person" {% if page.meeting_location == 'in_person' %}selected{% endif %}>In person</option><option value="custom" {% if page.meeting_location == 'custom' %}selected{% endif %}>Custom meeting link</option><option value="none" {% if page.meeting_location == 'none' %}selected{% endif %}>No meeting location</option></select></label>

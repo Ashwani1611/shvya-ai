@@ -186,8 +186,7 @@ def _headers(connection):
 
 
 def connection_for_page(page):
-    # Availability deliberately uses only this organisation's host, NEVER the
-    # shared SHVYA calendar: one tenant must not block another tenant's slots.
+    # Availability uses only this organisation's host, NEVER the shared calendar.
     if not page.host_id:
         return None
     return GoogleCalendarConnection.objects.filter(
@@ -229,9 +228,11 @@ def free_busy(*, page, time_min, time_max):
 def _conference_details(payload):
     meeting_link = str(payload.get("hangoutLink") or "")
     conference = payload.get("conferenceData") or {}
+    if not isinstance(conference, dict):
+        raise GoogleCalendarError("Google returned invalid conference details.")
     if not meeting_link:
         for entry in conference.get("entryPoints") or []:
-            if entry.get("entryPointType") == "video":
+            if isinstance(entry, dict) and entry.get("entryPointType") == "video":
                 meeting_link = str(entry.get("uri") or "")
                 break
     return meeting_link, str(conference.get("conferenceId") or "")
@@ -252,6 +253,13 @@ def _event_url(booking, connection):
 
 def _send_updates(booking):
     return "all" if booking.page.invite_lead_to_event and booking.lead.email else "none"
+
+
+def _event_error(booking, response, message):
+    booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+    booking.calendar_sync_error = message
+    booking.save(update_fields=["calendar_sync_status", "calendar_sync_error", "updated_at"])
+    return _google_error(response, message)
 
 
 def _save_event_details(booking, event):
@@ -286,8 +294,7 @@ def create_booking_event(booking, *, recovering=False):
     email = getattr(connection, "email", "")
     if calendar_id == "primary" and isinstance(email, str) and email:
         calendar_id = email
-    # Durable provider identity before HTTP. Compare-and-set prevents concurrent
-    # retries/host connection changes from selecting two different organisers.
+    # Compare-and-set makes the selected provider durable before external HTTP.
     if not booking.google_event_id:
         CalendarBooking.objects.filter(pk=booking.pk, organization_id=booking.organization_id,
                                        google_event_id="", status__in=ACTIVE).update(
@@ -312,7 +319,8 @@ def create_booking_event(booking, *, recovering=False):
         event["attendees"] = [{"email": booking.lead.email, "displayName": booking.lead.name}]
     params = {"sendUpdates": _send_updates(booking)}
     if page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET:
-        event["conferenceData"] = {"createRequest": {"requestId": booking.google_event_id,
+        request_id = platform_event_id(booking) if platform else booking.id.hex
+        event["conferenceData"] = {"createRequest": {"requestId": request_id,
                                     "conferenceSolutionKey": {"type": "hangoutsMeet"}}}
         params["conferenceDataVersion"] = "1"
     if platform:
@@ -332,7 +340,7 @@ def create_booking_event(booking, *, recovering=False):
             raise GoogleCalendarError("Google is still reconciling this event. Retry shortly.", transient=True)
         return refresh_booking_event_details(booking)
     if not response.ok:
-        raise _google_error(response, f"Google Calendar event creation failed ({response.status_code}).")
+        raise _event_error(booking, response, f"Google Calendar event creation failed ({response.status_code}).")
     payload = _response_json(response, failure_message="Google returned an invalid Calendar event response.")
     if not payload.get("id"):
         raise GoogleCalendarError("Google did not return an event identifier.")
@@ -395,7 +403,7 @@ def update_booking_event(booking):
     ):
         return create_booking_event(booking, recovering=True)
     if not response.ok:
-        raise _google_error(response, f"Google Calendar event update failed ({response.status_code}).")
+        raise _event_error(booking, response, f"Google Calendar event update failed ({response.status_code}).")
     event = _response_json(response, failure_message="Google returned an invalid Calendar update response.")
     return _save_event_details(booking, event)
 

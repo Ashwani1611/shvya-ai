@@ -155,8 +155,9 @@ def platform_access_token(connection):
 
 
 def connection_for_booking(booking):
-    """Keep provider ownership sticky, including when a host connects later."""
+    """Keep provider ownership sticky, including when a page's host changes."""
     from .google import GoogleCalendarError, connection_for_page
+    from .models import GoogleCalendarConnection
     if (
         booking.page.organization_id != booking.organization_id
         or booking.lead.organization_id != booking.organization_id
@@ -169,7 +170,12 @@ def connection_for_booking(booking):
         if booking.google_calendar_id != connection.calendar_id:
             raise GoogleCalendarError("This booking belongs to the previous SHVYA Google calendar. Restore that calendar configuration before syncing it.")
         return connection
-    host_connection = connection_for_page(booking.page)
+    if booking.host_id != booking.page.host_id:
+        host_connection = GoogleCalendarConnection.objects.filter(
+            user_id=booking.host_id, organization_id=booking.organization_id, is_active=True,
+        ).first() if booking.host_id else None
+    else:
+        host_connection = connection_for_page(booking.page)
     # Never move an existing organisation-owned event to platform credentials.
     if host_connection is not None or booking.google_event_id:
         return host_connection
@@ -183,9 +189,11 @@ def check_platform_event(booking, event):
     if not is_platform_booking(booking):
         return
     from .google import GoogleCalendarError
-    private = (event.get("extendedProperties") or {}).get("private") or {}
+    properties = event.get("extendedProperties") or {}
+    private = properties.get("private") if isinstance(properties, dict) else None
     if (
-        event.get("id") != platform_event_id(booking)
+        not isinstance(private, dict)
+        or event.get("id") != platform_event_id(booking)
         or private.get("shvya_organization_id") != str(booking.organization_id)
         or private.get("shvya_booking_id") != str(booking.pk)
     ):
