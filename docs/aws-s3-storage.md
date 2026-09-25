@@ -147,9 +147,10 @@ Expected behavior:
 
 ## Heavy public assets (videos/images)
 
-Large public marketing binaries are separate from private customer media. Keep the S3
-bucket private and deliver this prefix through a CDN such as CloudFront (OAC/OAI) when
-you want stable public URLs.
+Large public marketing binaries are separate from private customer media. The bucket
+stays private. SHVYA can serve them with temporary S3 presigned URLs, so a public bucket
+policy is not required. A CDN such as CloudFront can be added later and configured
+through PUBLIC_ASSET_BASE_URL.
 
 The current migration manifest includes every tracked static binary at or above 100 KiB:
 
@@ -166,14 +167,19 @@ Production environment:
 
 ```env
 AWS_S3_PUBLIC_ASSET_PREFIX=production/media/public-assets
-PUBLIC_ASSET_BASE_URL=https://assets.shvya-ai.com/production/media/public-assets
+USE_S3_PUBLIC_ASSETS=True
+AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE=86400
+# Optional CDN override:
+PUBLIC_ASSET_BASE_URL=
 ```
 
 Staging uses a separate prefix:
 
 ```env
 AWS_S3_PUBLIC_ASSET_PREFIX=staging/media/public-assets
-PUBLIC_ASSET_BASE_URL=https://assets-staging.shvya-ai.com/staging/media/public-assets
+USE_S3_PUBLIC_ASSETS=False
+AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE=86400
+PUBLIC_ASSET_BASE_URL=
 ```
 
 The deployment host already owns the AWS credentials used by Django. Upload and verify
@@ -185,15 +191,17 @@ docker compose exec -T web python manage.py sync_public_assets --verify
 ```
 
 Uploaded objects use AES-256 server-side encryption and long-lived immutable cache
-headers. The configured `PUBLIC_ASSET_BASE_URL` must map to the same object prefix.
+headers. With USE_S3_PUBLIC_ASSETS=True and no CDN override, Django generates temporary
+signed S3 URLs from the private bucket. If PUBLIC_ASSET_BASE_URL is configured, that
+external asset origin takes precedence.
 
-Until `PUBLIC_ASSET_BASE_URL` is set, the templates deliberately fall back to their
-checked-in `/static/` paths. This gives SHVYA a two-phase migration:
+Until USE_S3_PUBLIC_ASSETS is enabled (or a CDN base is configured), templates fall
+back to their checked-in /static/ paths. The safe migration is therefore:
 
-1. deploy the storage-aware code;
-2. upload and verify the objects;
-3. configure the CDN/public asset base and verify the public pages;
+1. deploy the storage-aware code while the source binaries still exist;
+2. run sync_public_assets and then sync_public_assets --verify on the deployment host;
+3. enable USE_S3_PUBLIC_ASSETS=True and verify the public pages load from S3;
 4. only then delete the migrated binaries from Git in a cleanup commit.
 
-Do not remove the source binaries before step 3 succeeds. That prevents a deployment
-from referencing objects that are not yet available.
+After cleanup, sync_public_assets accepts a missing local source only when the matching
+S3 object already exists, so future verification fails closed if an object disappears.
