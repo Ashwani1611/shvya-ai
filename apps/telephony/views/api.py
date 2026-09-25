@@ -636,7 +636,7 @@ class MobileLeadCollectionView(APIView):
             selected = pipelines[0]
         definitions = AttributeDefinition.objects.filter(
             organization=user.organization
-        ).order_by("display_order", "created_at")
+        ).exclude(key="booked_at").order_by("display_order", "created_at")
         return Response({
             "organization_name": user.organization.name,
             "default_pipeline_id": str(selected.id) if selected else None,
@@ -697,7 +697,7 @@ class MobileLeadCollectionView(APIView):
                 return Response({"detail": "Attributes must be an object."}, status=400)
             definitions = {
                 item.key: item
-                for item in AttributeDefinition.objects.filter(organization=user.organization)
+                for item in AttributeDefinition.objects.filter(organization=user.organization).exclude(key="booked_at")
             }
             if not set(incoming_attributes).issubset(definitions):
                 return Response({"detail": "Unknown lead attribute."}, status=400)

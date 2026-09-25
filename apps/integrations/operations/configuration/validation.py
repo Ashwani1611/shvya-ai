@@ -93,6 +93,7 @@ def _dependency_graph(organization):
             organization=organization,
             is_active=True,
         )
+        .exclude(key="booked_at")
         .order_by("display_order", "key")[:100]
     )
     workflows = list(

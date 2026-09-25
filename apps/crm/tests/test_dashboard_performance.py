@@ -142,7 +142,7 @@ class LeadDashboardPerformanceTests(TestCase):
         first = get_cached_attribute_definitions(
             self.organization.id
         )
-        self.assertEqual(len(first), 1)
+        self.assertEqual([item["key"] for item in first], ["booked_at", "company"])
 
         AttributeDefinition.objects.create(
             organization=self.organization,
@@ -154,4 +154,4 @@ class LeadDashboardPerformanceTests(TestCase):
         refreshed = get_cached_attribute_definitions(
             self.organization.id
         )
-        self.assertEqual(len(refreshed), 2)
+        self.assertEqual([item["key"] for item in refreshed], ["booked_at", "company", "budget"])
