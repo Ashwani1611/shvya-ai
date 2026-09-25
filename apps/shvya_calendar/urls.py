@@ -1,12 +1,14 @@
 from django.urls import path
 
 from . import views, workspace
+from .google_settings import google_settings
 
 app_name = "shvya_calendar"
 
 urlpatterns = [
     path("", views.calendar_index, name="index"),
     path("bookings/", views.calendar_index, name="bookings"),
+    path("google-settings/", google_settings, name="google_settings"),
     path("calendar/", workspace.calendar_workspace, name="calendar"),
     path("calendar/events/", workspace.calendar_events, name="events"),
     path("calendar/bookings/<uuid:booking_id>/", workspace.booking_detail, name="booking_detail"),

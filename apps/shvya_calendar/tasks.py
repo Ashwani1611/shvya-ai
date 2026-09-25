@@ -262,15 +262,22 @@ def recover_pending_google_meet():
     platform = platform_status()
     if platform["enabled"] and platform["configured"]:
         # Environment activation does not emit signals. Recover only future,
-        # unconnected Meet bookings; never touch an existing host-owned event.
+        # unconnected Meet bookings in explicitly opted-in organisations;
+        # never touch an existing host-owned event or silently opt a tenant in.
         eligible = list(CalendarBooking.objects.filter(
+            organization__is_active=True,
+            organization__settings__calendar_google__allow_platform_fallback=True,
             status__in=[CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
             calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED,
             page__meeting_location="google_meet", google_event_id="",
             start_at__gt=timezone.now(),
         ).values_list("pk", flat=True)[:100])
-        CalendarBooking.objects.filter(pk__in=eligible, google_event_id="",
-                                       calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED).update(
+        CalendarBooking.objects.filter(
+            pk__in=eligible, google_event_id="",
+            calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED,
+            organization__is_active=True,
+            organization__settings__calendar_google__allow_platform_fallback=True,
+        ).update(
             calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
         )
     unsynced_ids = list(CalendarBooking.objects.filter(

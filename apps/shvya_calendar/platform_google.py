@@ -14,6 +14,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
+from .google_policy import organization_allows_platform_fallback
+
 
 _token_lock = Lock()
 _token_cache = {}
@@ -164,6 +166,8 @@ def connection_for_booking(booking):
     ):
         raise GoogleCalendarError("Booking, lead and calendar must belong to the same organisation.")
     if is_platform_booking(booking):
+        # Opt-out stops new organiser selections, not maintenance of an
+        # existing platform-owned meeting, including a pending Google response.
         connection = platform_connection(booking.organization_id)
         if connection is None:
             raise GoogleCalendarError("Re-enable SHVYA-managed Google Meet to sync this platform-owned booking.")
@@ -180,6 +184,9 @@ def connection_for_booking(booking):
     if host_connection is not None or booking.google_event_id:
         return host_connection
     if booking.page.meeting_location != booking.page.MeetingLocation.GOOGLE_MEET:
+        return None
+    if (not platform_enabled()
+            or not organization_allows_platform_fallback(booking.organization_id)):
         return None
     return platform_connection(booking.organization_id)
 

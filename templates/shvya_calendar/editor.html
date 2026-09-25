@@ -19,6 +19,7 @@
       <h1>{{ page.name }}</h1>
     </div>
     <div class="sc-title-actions">
+      <a class="sc-button" href="{% url 'shvya_calendar:google_settings' %}"><i class="ti ti-brand-google"></i> Google settings</a>
       <button class="sc-button" type="button" data-open-share><i class="ti ti-share"></i> Share</button>
       {% if page.status == 'published' %}
         <a class="sc-button" target="_blank" rel="noopener" href="{% url 'shvya_calendar_public:page' public_id=page.public_id slug=page.slug %}"><i class="ti ti-external-link"></i> Open page</a>
@@ -47,6 +48,7 @@
     </div>
   </section>
 
+  <div class="sc-info-strip sc-info-blue"><i class="ti ti-shield-check"></i><span>Your organisation's Google account is the primary organiser. SHVYA-managed hosting requires your organisation's opt-in in <a href="{% url 'shvya_calendar:google_settings' %}">Google settings</a>. Other organisations' bookings do not appear in your SHVYA Calendar. Existing meetings keep their original organiser.</span></div>
   <nav class="sc-tabs" aria-label="Calendar settings">
     <a data-tab-link="lead" href="?tab=lead">Lead Form</a>
     <a data-tab-link="scheduling" href="?tab=scheduling">Scheduling</a>
