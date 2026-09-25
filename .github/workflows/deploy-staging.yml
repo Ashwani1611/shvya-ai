@@ -17,13 +17,19 @@ concurrency:
 jobs:
   deploy:
     name: Deploy staging to isolated Docker stack
+    # TEMPORARY PAUSE: staging deployment is intentionally disabled while the
+    # staging Git branch remains active. Change only the leading `false` to
+    # `true` to resume the existing automatic/manual deployment conditions.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      false &&
       (
-        github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
-        github.event.workflow_run.head_repository.full_name == github.repository &&
-        github.event.workflow_run.head_branch == 'staging'
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event.workflow_run.conclusion == 'success' &&
+          github.event.workflow_run.event == 'push' &&
+          github.event.workflow_run.head_repository.full_name == github.repository &&
+          github.event.workflow_run.head_branch == 'staging'
+        )
       )
     runs-on: ubuntu-latest
     environment: staging
