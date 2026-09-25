@@ -31,7 +31,7 @@ class Command(BaseCommand):
             getattr(
                 settings,
                 "AWS_S3_PUBLIC_ASSET_PREFIX",
-                "production/public",
+                "production/media/public-assets",
             )
             or ""
         ).strip().strip("/")
