@@ -6,7 +6,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .google import GoogleCalendarError, connection_for_page, free_busy
+from .google import free_busy
 from .models import CalendarBlock, CalendarBooking, CalendarPage
 
 
@@ -32,17 +32,9 @@ def _overlaps(start, end, busy_start, busy_end):
     return start < busy_end and end > busy_start
 
 
-def available_slots(*, page, local_date):
+def available_slots(*, page, local_date, exclude_booking_id=None, check_google=True):
     if page.status != CalendarPage.Status.PUBLISHED:
         return []
-    if (
-        page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
-        and connection_for_page(page) is None
-    ):
-        raise GoogleCalendarError(
-            "Google Calendar is not connected for this booking host yet. "
-            "Your lead details are saved, but scheduling is temporarily unavailable."
-        )
     zone = _page_zone(page)
     now = timezone.now()
     local_now = now.astimezone(zone)
@@ -80,7 +72,7 @@ def available_slots(*, page, local_date):
             status__in=active_statuses,
             start_at__lt=range_end,
             end_at__gt=range_start,
-        ).values_list("start_at", "end_at")
+        ).exclude(pk=exclude_booking_id).values_list("start_at", "end_at")
     )
     blocked = list(
         CalendarBlock.objects.filter(
@@ -93,7 +85,7 @@ def available_slots(*, page, local_date):
         page=page,
         time_min=range_start,
         time_max=range_end,
-    )
+    ) if check_google else []
 
     duration = timedelta(minutes=page.slot_duration_minutes)
     before = timedelta(minutes=page.buffer_before_minutes)

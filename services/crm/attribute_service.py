@@ -179,6 +179,7 @@ def create_attribute_definition(
                 organization=organization,
                 is_active=True,
             )
+            .exclude(key="booked_at")
             .count()
         )
 
@@ -283,6 +284,9 @@ def update_attribute_definition(
     This function does not modify Lead attribute values.
     """
 
+    if attribute.key == "booked_at":
+        raise ValidationError("Booked at is a fixed calendar attribute and cannot be changed or deleted.")
+
     if attribute.organization_id != organization.id:
 
         raise ValidationError(
@@ -376,6 +380,9 @@ def delete_attribute_definition(
     Both operations happen in one transaction so the definition
     and its Lead values cannot become partially deleted.
     """
+
+    if attribute.key == "booked_at":
+        raise ValidationError("Booked at is a fixed calendar attribute and cannot be changed or deleted.")
 
     if attribute.organization_id != organization.id:
 

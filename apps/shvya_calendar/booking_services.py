@@ -52,7 +52,13 @@ from .models import (
 from .service_common import logger
 from .reminder_services import schedule_booking_reminders
 
+@transaction.atomic
 def _create_booking_row(*, page, submission, slot_start):
+    # Use the same lead → page lock order as manual CRM reservations.
+    if not Lead.objects.select_for_update().filter(
+        pk=submission.lead_id, organization_id=page.organization_id,
+    ).exists():
+        raise ValidationError("This lead is no longer available for booking.")
     # Lock only the two rows that define the booking contract and operate with
     # scalar FK ids. This avoids lazy/stale related-object dereferences and
     # model-wide validation side effects in the public confirmation path.
@@ -282,12 +288,13 @@ def reschedule_booking(*, booking, slot_start_iso):
     local_date = requested.astimezone(_page_zone(page)).date()
     valid_starts = {
         item["start"]
-        for item in available_slots(page=page, local_date=local_date)
+        for item in available_slots(page=page, local_date=local_date, exclude_booking_id=booking.pk)
     }
     if requested not in valid_starts:
         raise ValidationError("That slot is no longer available.")
 
     with transaction.atomic():
+        Lead.objects.select_for_update().get(pk=booking.lead_id, organization_id=booking.organization_id)
         locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
         locked = (
             CalendarBooking.objects

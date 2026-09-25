@@ -59,7 +59,7 @@
           {% if google_connection %}
             <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ google_connection.email }}</strong><span>Connected · calendar {{ google_connection.calendar_id }}</span></div>{% if page.host_id == request.crm_user.id %}<button class="sc-button sc-button-small" type="submit" formaction="{% url 'shvya_calendar:google_disconnect' page_id=page.id %}" formmethod="post" formnovalidate>Disconnect</button>{% else %}<span class="sc-status sc-status-published">Connected by host</span>{% endif %}</div>
           {% elif page.host_id == request.crm_user.id and google_configured %}
-            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>Required for conflict checking and automatic Google Meet creation.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
+            <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>Connect Google Calendar</strong><span>SHVYA bookings work independently. Connect to check Google conflicts and generate a unique Meet link for each appointment.</span></div><a class="sc-button" href="{% url 'shvya_calendar:google_connect' page_id=page.id %}">Connect Google Calendar</a></div>
           {% elif not google_configured %}
             <div class="sc-alert">Google Calendar OAuth is not configured on this SHVYA server yet. Add GOOGLE_CALENDAR_CLIENT_ID and GOOGLE_CALENDAR_CLIENT_SECRET to enable connection.</div>
           {% else %}

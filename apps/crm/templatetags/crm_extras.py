@@ -85,3 +85,12 @@ def lead_avatar(lead):
     ]
     glasses = '<g fill="none" stroke="#302a40" stroke-width="2"><rect x="21" y="28" width="9" height="7" rx="3"/><rect x="34" y="28" width="9" height="7" rx="3"/><path d="M30 30h4"/></g>' if seed[5] % 3 == 0 else ''
     return mark_safe(f'<svg class="lead-cartoon-avatar" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="44" height="44" aria-hidden="true"><rect width="64" height="64" rx="18" fill="{backgrounds[seed[0]%6]}"/><circle cx="52" cy="12" r="14" fill="white" opacity=".25"/><path d="M8 64Q8 45 32 45Q56 45 56 64" fill="{shirt}"/><g fill="{hair}">{styles[seed[4]%4]}</g><path d="M27 40h10v10q-5 6-10 0" fill="{skin}"/><ellipse cx="32" cy="31" rx="14" ry="17" fill="{skin}"/><g fill="{hair}"><path d="M18 25Q13 9 32 10Q48 8 47 24Q31 19 26 17Q23 25 18 25Z"/></g><g fill="#302a40"><circle cx="26" cy="31" r="1.6"/><circle cx="38" cy="31" r="1.6"/></g><path d="M28 39q4 4 8 0" fill="none" stroke="#874c44" stroke-width="2" stroke-linecap="round"/>{glasses}</svg>')
+
+
+@register.filter
+def appointment_datetime(value):
+    from datetime import datetime
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%d %b %Y, %I:%M %p")
+    except (ValueError, TypeError):
+        return value

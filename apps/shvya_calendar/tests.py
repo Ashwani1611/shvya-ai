@@ -26,7 +26,6 @@ from .models import (
     CalendarSubmission,
     CalendarSubmissionAttachment,
 )
-from .google import GoogleCalendarError
 from .services import (
     available_slots,
     book_slot,
@@ -39,7 +38,7 @@ from .services import (
 
 class ShvyaCalendarServiceTests(TestCase):
     def setUp(self):
-        self.organization = Organization.objects.create(name="Calendar Org")
+        self.organization = Organization.objects.create(name="Calendar Org", package="enterprise")
         self.user = User.objects.create_user(
             email="calendar@example.com",
             organization=self.organization,
@@ -264,7 +263,7 @@ class ShvyaCalendarServiceTests(TestCase):
             size=18,
         )
 
-        other_org = Organization.objects.create(name="Other Calendar Org")
+        other_org = Organization.objects.create(name="Other Calendar Org", package="enterprise")
         other_user = User.objects.create_user(
             email="other-calendar@example.com",
             organization=other_org,
@@ -335,7 +334,7 @@ class ShvyaCalendarServiceTests(TestCase):
             "Place the complete flow inside your website",
         )
         self.assertContains(response, "Copy embed")
-        self.assertContains(response, "<iframe", html=False)
+        self.assertContains(response, "&lt;iframe", html=False)
 
     def test_logo_upload_is_saved_and_published_in_snapshot(self):
         self._authenticate_dashboard_client()
@@ -392,11 +391,12 @@ class ShvyaCalendarServiceTests(TestCase):
         self.page.refresh_from_db()
         self.assertEqual(self.page.status, CalendarPage.Status.PUBLISHED)
         self.assertEqual(version.version, self.page.current_version)
-        with self.assertRaises(GoogleCalendarError):
-            available_slots(
-                page=self.page,
-                local_date=timezone.localdate() + timedelta(days=1),
-            )
+        # Google connection is optional for SHVYA availability.
+        day = timezone.localdate() + timedelta(days=1)
+        slots = [slot for offset in range(7) for slot in available_slots(
+            page=self.page, local_date=day + timedelta(days=offset),
+        )]
+        self.assertTrue(slots)
 
     def test_status_toggle_publishes_google_meet_page_without_http_500(self):
         self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
@@ -838,7 +838,9 @@ class ShvyaCalendarServiceTests(TestCase):
             end_at=timezone.now() + timedelta(hours=4, minutes=30),
             timezone="Asia/Kolkata",
         )
-        deliveries = schedule_booking_reminders(booking)
+        with self.captureOnCommitCallbacks(execute=True):
+            deliveries = schedule_booking_reminders(booking)
+            mocked_delay.assert_not_called()
         self.assertEqual(len(deliveries), 1)
         self.assertEqual(deliveries[0].step, step)
         self.assertLessEqual(
@@ -1019,14 +1021,14 @@ class ShvyaCalendarServiceTests(TestCase):
         mocked_create_event.assert_called_once()
         mocked_schedule_reminders.assert_called_once()
 
-    @patch("apps.shvya_calendar.views.upcoming_slot_days", return_value=[])
-    @patch("apps.shvya_calendar.views.book_slot")
+    @patch("apps.shvya_calendar.public_views.upcoming_slot_days", return_value=[])
+    @patch("apps.shvya_calendar.public_views.book_slot")
     def test_public_schedule_recovers_booking_created_before_late_failure(
         self,
         mocked_book_slot,
         _mocked_slot_days,
     ):
-        from apps.shvya_calendar.views import _booking_flow_token
+        from apps.shvya_calendar.public_views import _booking_flow_token
 
         request = self._request(
             {

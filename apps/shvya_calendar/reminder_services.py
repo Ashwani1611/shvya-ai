@@ -120,16 +120,14 @@ def schedule_booking_reminders(booking):
             },
         )
         deliveries.append(delivery)
-        try:
-            if due_at <= timezone.now():
-                dispatch_calendar_reminder.delay(str(delivery.id))
-            else:
-                dispatch_calendar_reminder.apply_async(
-                    args=[str(delivery.id)],
-                    eta=due_at,
-                )
-        except Exception:
-            # The row remains pending and can be safely retried; never lose the booking
-            # because the task broker is temporarily unavailable.
-            pass
+        def enqueue(delivery_id=str(delivery.id), when=due_at):
+            try:
+                if when <= timezone.now():
+                    dispatch_calendar_reminder.delay(delivery_id)
+                else:
+                    dispatch_calendar_reminder.apply_async(args=[delivery_id], eta=when)
+            except Exception:
+                # Beat recovers the durable pending delivery after broker outages.
+                logging.getLogger(__name__).exception("Unable to enqueue calendar reminder %s", delivery_id)
+        transaction.on_commit(enqueue)
     return deliveries

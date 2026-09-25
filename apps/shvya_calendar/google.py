@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -7,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from .models import CalendarBooking, GoogleCalendarConnection
+from .models import CalendarBooking, CalendarPage, GoogleCalendarConnection
 
 
 GOOGLE_AUTHORIZE_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -185,6 +184,19 @@ def save_connection(*, organization, user, token_payload, userinfo):
     connection.last_error = ""
     connection.full_clean()
     connection.save()
+    from .attribute_sync import enqueue_booking_sync
+    from django.db import transaction
+
+    pending = CalendarBooking.objects.filter(
+        organization=organization, host=user, page__host=user,
+        status__in=[CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
+        start_at__gt=timezone.now(),
+        calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED,
+    )
+    booking_ids = list(pending.values_list("pk", flat=True))
+    pending.update(calendar_sync_status=CalendarBooking.SyncStatus.PENDING)
+    for booking_id in booking_ids:
+        transaction.on_commit(lambda pk=booking_id: enqueue_booking_sync(pk))
     return connection
 
 
@@ -297,6 +309,8 @@ def free_busy(*, page, time_min, time_max):
         connection.calendar_id or "primary",
         {},
     )
+    if calendar.get("errors"):
+        raise GoogleCalendarError("Google Calendar could not check conflicts. Reconnect the booking host's calendar.")
     result = []
     for item in calendar.get("busy", []):
         try:
@@ -342,6 +356,7 @@ def create_booking_event(booking):
 
     lead = booking.lead
     event = {
+        "id": booking.id.hex,
         "summary": page.session_title or page.name,
         "description": page.session_description or page.intro_description,
         "start": {
@@ -360,7 +375,7 @@ def create_booking_event(booking):
     if page.meeting_location == page.MeetingLocation.GOOGLE_MEET:
         event["conferenceData"] = {
             "createRequest": {
-                "requestId": str(uuid.uuid4()),
+                "requestId": booking.id.hex,
                 "conferenceSolutionKey": {"type": "hangoutsMeet"},
             }
         }
@@ -377,6 +392,12 @@ def create_booking_event(booking):
         json=event,
         timeout=25,
     )
+    if response.status_code == 409:
+        # A previous attempt may have succeeded before the HTTP response was lost.
+        booking.google_event_id = booking.id.hex
+        booking.google_calendar_id = calendar_id
+        booking.save(update_fields=["google_event_id", "google_calendar_id", "updated_at"])
+        return refresh_booking_event_details(booking)
     if not response.ok:
         message = f"Google Calendar event creation failed ({response.status_code})."
         booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
@@ -388,7 +409,7 @@ def create_booking_event(booking):
                 "updated_at",
             ]
         )
-        return booking
+        raise _google_error(response, message)
 
     payload = _response_json(
         response,
@@ -567,7 +588,7 @@ def update_booking_event(booking):
                 "updated_at",
             ]
         )
-        return booking
+        raise _google_error(response, message)
 
     event = _response_json(
         response,
@@ -577,7 +598,11 @@ def update_booking_event(booking):
     booking.google_event_url = str(event.get("htmlLink") or booking.google_event_url)
     booking.meeting_link = meeting_link or booking.meeting_link
     booking.google_conference_id = conference_id or booking.google_conference_id
-    booking.calendar_sync_status = CalendarBooking.SyncStatus.SYNCED
+    booking.calendar_sync_status = (
+        CalendarBooking.SyncStatus.PENDING
+        if booking.page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET and not booking.meeting_link
+        else CalendarBooking.SyncStatus.SYNCED
+    )
     booking.calendar_sync_error = ""
     booking.save(
         update_fields=[
