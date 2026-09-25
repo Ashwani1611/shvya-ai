@@ -207,3 +207,20 @@ def test_production_deploy_verifies_runtime_environment_and_oauth_origin():
     ) in script
     assert "data.get('issuer') == base + '/operations'" in script
     assert public_check < runtime_check < oauth_check < record
+
+
+@pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
+def test_application_image_is_built_once_and_shared_before_rollout(filename, compose, branch):
+    import yaml
+
+    compose_file = "docker-compose.yml" if branch == "main" else "docker-compose.staging.yml"
+    services = yaml.safe_load((ROOT / compose_file).read_text(encoding="utf-8"))["services"]
+    script = _script(filename)
+    application = _application_services(script, compose)
+    image = "shvya-ai-app:latest" if branch == "main" else "shvya-staging-app:latest"
+    assert {name for name, service in services.items() if service.get("image") == image} == application
+    assert all(services[name]["build"] == "." for name in application)
+    builds = [shlex.split(line.strip()[len(compose):])
+              for line in script.splitlines() if line.strip().startswith(f"{compose} build ")]
+    assert builds == [["build", "web"], ["build", "whatsapp-web-gateway"]]
+    assert script.index(f"{compose} build web\n") < script.index(f"{compose} run --rm --no-deps")
