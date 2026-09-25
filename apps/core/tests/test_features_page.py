@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from django.test import RequestFactory, SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase, override_settings
 from django.urls import resolve, reverse
 
 from apps.core.views import FeaturesView
@@ -33,6 +33,34 @@ class FeaturesPageTests(SimpleTestCase):
         self.assertContains(response, 'href="/book-a-call/"')
         self.assertContains(response, 'href="/features/"')
         self.assertNotContains(response, 'href="/#features"')
+
+    @override_settings(
+        PUBLIC_ASSET_BASE_URL="https://assets.example.com/production/public"
+    )
+    def test_features_page_uses_external_base_for_heavy_assets(self):
+        request = RequestFactory().get(reverse('features'))
+        with patch('apps.core.views.get_crm_authenticated_user', return_value=None):
+            response = FeaturesView.as_view()(request)
+            response.render()
+
+        self.assertContains(
+            response,
+            'https://assets.example.com/production/public/marketing/shvya-cinematic-film.mp4',
+        )
+        self.assertContains(
+            response,
+            'https://assets.example.com/production/public/marketing/shvya-cinematic-poster.jpg',
+        )
+        self.assertContains(
+            response,
+            'https://assets.example.com/production/public/images/shvya-mascot-body.png',
+        )
+        self.assertContains(
+            response,
+            'https://assets.example.com/production/public/marketing/dark/wordmark.png',
+        )
+        self.assertNotContains(response, '/static/marketing/shvya-cinematic-film.mp4')
+        self.assertContains(response, '/static/marketing/premium-features.css')
 
     def test_features_header_preserves_signed_in_navigation(self):
         request = RequestFactory().get(reverse('features'))

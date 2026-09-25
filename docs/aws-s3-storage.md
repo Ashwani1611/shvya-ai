@@ -141,3 +141,57 @@ Expected behavior:
 3. `url()` returns a temporary signed S3 URL.
 4. The object is deleted successfully.
 5. Anonymous public access remains blocked.
+
+
+## Heavy public assets (videos/images)
+
+Large public marketing binaries are separate from private customer media. Keep the S3
+bucket private and deliver this prefix through a CDN such as CloudFront (OAC/OAI) when
+you want stable public URLs.
+
+The current migration manifest includes every tracked static binary at or above 100 KiB:
+
+- `marketing/shvya-cinematic-film.mp4`
+- `marketing/dark/shvya-introduction.mp4`
+- `marketing/shvya-features-film.mp4`
+- `images/shvya-mascot-body.png`
+- `marketing/dark/wordmark.png`
+- `marketing/shvya-cinematic-poster.jpg`
+- `marketing/meta-partner-reference.png`
+- `marketing/shvya-cinematic-detail.jpg`
+
+Production environment:
+
+```env
+AWS_S3_PUBLIC_ASSET_PREFIX=production/public
+PUBLIC_ASSET_BASE_URL=https://assets.shvya-ai.com/production/public
+```
+
+Staging uses a separate prefix:
+
+```env
+AWS_S3_PUBLIC_ASSET_PREFIX=staging/public
+PUBLIC_ASSET_BASE_URL=https://assets-staging.shvya-ai.com/staging/public
+```
+
+The deployment host already owns the AWS credentials used by Django. Upload and verify
+the manifest from that host:
+
+```bash
+docker compose exec -T web python manage.py sync_public_assets
+docker compose exec -T web python manage.py sync_public_assets --verify
+```
+
+Uploaded objects use AES-256 server-side encryption and long-lived immutable cache
+headers. The configured `PUBLIC_ASSET_BASE_URL` must map to the same object prefix.
+
+Until `PUBLIC_ASSET_BASE_URL` is set, the templates deliberately fall back to their
+checked-in `/static/` paths. This gives SHVYA a two-phase migration:
+
+1. deploy the storage-aware code;
+2. upload and verify the objects;
+3. configure the CDN/public asset base and verify the public pages;
+4. only then delete the migrated binaries from Git in a cleanup commit.
+
+Do not remove the source binaries before step 3 succeeds. That prevents a deployment
+from referencing objects that are not yet available.
