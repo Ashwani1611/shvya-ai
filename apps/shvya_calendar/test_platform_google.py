@@ -9,6 +9,7 @@ from django.test import SimpleTestCase, TestCase, override_settings
 
 from . import test_attribute_sync as fixtures
 from .booking_services import book_slot
+from .google_policy import ORGANIZATION_WITH_FALLBACK, save_google_mode
 from .google import (
     GoogleCalendarError, cancel_booking_event, create_booking_event,
     free_busy, update_booking_event,
@@ -43,6 +44,7 @@ class PlatformGoogleBookingTests(TestCase):
 
     def setUp(self):
         fixtures.CalendarAttributeSyncTests.setUp(self)
+        save_google_mode(actor=self.user, mode=ORGANIZATION_WITH_FALLBACK)
         self.page.meeting_location = CalendarPage.MeetingLocation.GOOGLE_MEET
         self.page.invite_lead_to_event = False
         self.page.save()

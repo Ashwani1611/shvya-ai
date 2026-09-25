@@ -1,0 +1,18 @@
+.sc-google-settings { max-width: 1040px; margin-inline: auto; }
+.sc-google-card { margin-block: 22px; }
+.sc-google-card h2 { font-size: clamp(20px, 2.4vw, 27px); letter-spacing: -.025em; margin: 0 0 14px; }
+.sc-google-card h3 { margin-top: 26px; }
+.sc-google-card p { line-height: 1.65; margin: 12px 0 18px; }
+.sc-google-options { border: 0; margin: 20px 0; padding: 0; display: grid; gap: 14px; }
+.sc-google-options legend { font-weight: 600; padding-bottom: 12px; }
+.sc-google-option { display: flex; align-items: flex-start; gap: 14px; padding: 22px; border: 1px solid #d8dee8; border-radius: 18px; cursor: pointer; transition: border-color .15s ease, box-shadow .15s ease; }
+.sc-google-option:has(input:checked) { border-color: #0060a2; box-shadow: 0 0 0 1px #0060a2; }
+.sc-google-option:focus-within { outline: 3px solid #83b9e4; outline-offset: 3px; }
+.sc-google-option input { flex: 0 0 auto; width: 18px; height: 18px; margin-top: 3px; accent-color: #0060a2; }
+.sc-google-option strong, .sc-google-option small { display: block; }
+.sc-google-option small { font-size: 14px; line-height: 1.6; margin-top: 9px; }
+.sc-google-page-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; padding: 18px 0; border-bottom: 1px solid #d8dee8; }
+.sc-google-page-row small { display: block; margin-top: 5px; }
+.sc-google-settings .errorlist { color: #a51e2c; padding-left: 20px; }
+@media (max-width: 640px) { .sc-google-option { padding: 16px; } .sc-google-page-row .sc-title-actions { width: 100%; flex-wrap: wrap; } }
+@media (prefers-reduced-motion: reduce) { .sc-google-option { transition: none; } }
