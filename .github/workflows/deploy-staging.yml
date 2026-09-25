@@ -128,7 +128,9 @@ jobs:
             $COMPOSE config --quiet
 
             echo "Building staging application containers..."
-            $COMPOSE build web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat whatsapp-web-gateway
+            # Every Python service uses the same image; export/unpack it only once.
+            $COMPOSE build web
+            $COMPOSE build whatsapp-web-gateway
 
             echo "Preparing writable staging bind mounts for the non-root runtime user..."
             $COMPOSE run --rm --no-deps --user 0 web sh -c \
