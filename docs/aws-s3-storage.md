@@ -18,8 +18,8 @@ Use the same private bucket with separate prefixes:
 
 - Production private media: `production/media/`
 - Staging private media: `staging/media/`
-- Production heavy public assets: `production/public/`
-- Staging heavy public assets: `staging/public/`
+- Production heavy public assets: `production/media/public-assets/`
+- Staging heavy public assets: `staging/media/public-assets/`
 
 The encrypted Help & Support attachment store remains on `MEDIA_ROOT` through `PrivateSupportStorage`. Static files remain on the existing Django/Nginx path.
 
@@ -46,11 +46,7 @@ Create a dedicated IAM user such as `shvya-s3-storage`. A policy that permits bo
             "production/media",
             "production/media/*",
             "staging/media",
-            "staging/media/*",
-            "production/public",
-            "production/public/*",
-            "staging/public",
-            "staging/public/*"
+            "staging/media/*"
           ]
         }
       }
@@ -65,9 +61,7 @@ Create a dedicated IAM user such as `shvya-s3-storage`. A policy that permits bo
       ],
       "Resource": [
         "arn:aws:s3:::shvya-ai/production/media/*",
-        "arn:aws:s3:::shvya-ai/staging/media/*",
-        "arn:aws:s3:::shvya-ai/production/public/*",
-        "arn:aws:s3:::shvya-ai/staging/public/*"
+        "arn:aws:s3:::shvya-ai/staging/media/*"
       ]
     }
   ]
@@ -171,15 +165,15 @@ The current migration manifest includes every tracked static binary at or above 
 Production environment:
 
 ```env
-AWS_S3_PUBLIC_ASSET_PREFIX=production/public
-PUBLIC_ASSET_BASE_URL=https://assets.shvya-ai.com/production/public
+AWS_S3_PUBLIC_ASSET_PREFIX=production/media/public-assets
+PUBLIC_ASSET_BASE_URL=https://assets.shvya-ai.com/production/media/public-assets
 ```
 
 Staging uses a separate prefix:
 
 ```env
-AWS_S3_PUBLIC_ASSET_PREFIX=staging/public
-PUBLIC_ASSET_BASE_URL=https://assets-staging.shvya-ai.com/staging/public
+AWS_S3_PUBLIC_ASSET_PREFIX=staging/media/public-assets
+PUBLIC_ASSET_BASE_URL=https://assets-staging.shvya-ai.com/staging/media/public-assets
 ```
 
 The deployment host already owns the AWS credentials used by Django. Upload and verify

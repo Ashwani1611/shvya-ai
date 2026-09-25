@@ -18,9 +18,9 @@ OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"
 AWS_S3_PUBLIC_ASSET_PREFIX = str(
     config(
         "AWS_S3_PUBLIC_ASSET_PREFIX",
-        default="staging/public",
+        default="staging/media/public-assets",
     )
-    or "staging/public"
+    or "staging/media/public-assets"
 ).strip().strip("/")
 
 ALLOWED_HOSTS = [

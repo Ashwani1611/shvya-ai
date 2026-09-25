@@ -42,9 +42,9 @@ AWS_S3_MEDIA_PREFIX = str(
 AWS_S3_PUBLIC_ASSET_PREFIX = str(
     config(
         "AWS_S3_PUBLIC_ASSET_PREFIX",
-        default="production/public",
+        default="production/media/public-assets",
     )
-    or "production/public"
+    or "production/media/public-assets"
 ).strip().strip("/")
 AWS_QUERYSTRING_EXPIRE = config(
     "AWS_QUERYSTRING_EXPIRE",
