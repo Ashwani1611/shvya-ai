@@ -39,8 +39,16 @@ class Command(BaseCommand):
             getattr(settings, "AWS_S3_REGION_NAME", "") or ""
         ).strip() or None
 
+        if not getattr(settings, "USE_S3_STORAGE", False):
+            self.stdout.write(
+                "S3 storage is disabled; skipping heavy public asset sync."
+            )
+            return
+
         if not bucket:
-            raise CommandError("AWS_STORAGE_BUCKET_NAME is required.")
+            raise CommandError(
+                "AWS_STORAGE_BUCKET_NAME is required when S3 storage is enabled."
+            )
 
         client = boto3.client("s3", region_name=region)
         static_root = Path(settings.BASE_DIR) / "static"
