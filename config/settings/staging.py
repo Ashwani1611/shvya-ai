@@ -13,6 +13,16 @@ APP_ENV = "staging"
 DEBUG = False
 OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"
 
+# Keep staging public binaries isolated from production even when both
+# environments use the same S3 bucket.
+AWS_S3_PUBLIC_ASSET_PREFIX = str(
+    config(
+        "AWS_S3_PUBLIC_ASSET_PREFIX",
+        default="staging/public",
+    )
+    or "staging/public"
+).strip().strip("/")
+
 ALLOWED_HOSTS = [
     host.strip()
     for host in config(

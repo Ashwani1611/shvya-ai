@@ -39,6 +39,13 @@ AWS_S3_REGION_NAME = str(
 AWS_S3_MEDIA_PREFIX = str(
     config("AWS_S3_MEDIA_PREFIX", default="media") or "media"
 ).strip().strip("/")
+AWS_S3_PUBLIC_ASSET_PREFIX = str(
+    config(
+        "AWS_S3_PUBLIC_ASSET_PREFIX",
+        default="production/public",
+    )
+    or "production/public"
+).strip().strip("/")
 AWS_QUERYSTRING_EXPIRE = config(
     "AWS_QUERYSTRING_EXPIRE",
     default=900,

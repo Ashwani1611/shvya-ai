@@ -68,6 +68,13 @@ OPERATIONS_PUBLIC_ORIGIN = str(
     )
 ).strip().rstrip("/")
 
+# Optional CDN/object-storage base for large public binary assets. When empty,
+# templates fall back to Django's normal static URL so local development and
+# deployments that have not migrated assets continue to work unchanged.
+PUBLIC_ASSET_BASE_URL = str(
+    config("PUBLIC_ASSET_BASE_URL", default="") or ""
+).strip().rstrip("/")
+
 
 # ---------------------------------------------------------------------------
 # OpenAI
