@@ -32,10 +32,10 @@
 
         {% if booking.meeting_link %}
           <a class="sc-meet-card" href="{{ booking.meeting_link }}" target="_blank" rel="noopener">
-            <span><i class="ti ti-video"></i><strong>Join Google Meet</strong><small>{{ booking.meeting_link }}</small></span><i class="ti ti-arrow-up-right"></i>
+            <span><i class="ti ti-video"></i><strong>{% if page.meeting_location == 'google_meet' %}Join Google Meet{% else %}Join meeting{% endif %}</strong><small>{{ booking.meeting_link }}</small></span><i class="ti ti-arrow-up-right"></i>
           </a>
-        {% elif booking.calendar_sync_status == 'failed' %}
-          <div class="sc-alert">Your booking is confirmed. The calendar meeting link is being resolved by the team.</div>
+        {% elif page.meeting_location == 'google_meet' and not booking.meeting_link %}
+          <div class="sc-alert">Your booking is confirmed. The team will provide your Google Meet link once it is ready.</div>
         {% endif %}
 
         <div class="sc-success-actions">

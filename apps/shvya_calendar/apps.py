@@ -6,3 +6,6 @@ class ShvyaCalendarConfig(AppConfig):
     name = "apps.shvya_calendar"
     label = "shvya_calendar"
     verbose_name = "SHVYA Calendar"
+
+    def ready(self):
+        from . import signals  # noqa: F401

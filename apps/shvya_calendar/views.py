@@ -165,11 +165,14 @@ def _editor_context(request, page, active_tab=None):
     ).order_by("display_order", "name")
     connection = None
     if page.host_id:
-        connection = GoogleCalendarConnection.objects.filter(
-            organization=user.organization,
-            user_id=page.host_id,
-            is_active=True,
-        ).first()
+        try:
+            connection = GoogleCalendarConnection.objects.filter(
+                organization=user.organization,
+                user_id=page.host_id,
+                is_active=True,
+            ).first()
+        except Exception:
+            logger.exception("Unable to inspect Calendar connection for page %s", page.pk)
     sequence, _created = CalendarReminderSequence.objects.get_or_create(page=page)
     pending_calls = (
         CalendarReminderDelivery.objects
@@ -683,8 +686,8 @@ def calendar_status(request, page_id):
                 request,
                 (
                     "Booking page is ON and lead capture is live. Connect the "
-                    "booking host's Google Calendar before Google Meet slots can "
-                    "be booked."
+                    "booking host's Google Calendar to generate Google Meet links. "
+                    "SHVYA appointments can already be booked."
                 ),
             )
         else:
@@ -1068,8 +1071,8 @@ def google_disconnect(request, page_id):
             request,
             (
                 "Google Calendar disconnected. Published lead-capture pages "
-                "remain live, but Google Meet scheduling is paused until this "
-                "host reconnects Calendar."
+                "and SHVYA booking remain live. Automatic Google Meet links "
+                "resume when this host reconnects Calendar."
             ),
         )
     else:
