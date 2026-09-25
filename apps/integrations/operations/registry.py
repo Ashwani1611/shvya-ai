@@ -57,6 +57,27 @@ from apps.integrations.operations.tools.workflows import (
     list_workflow_triggers,
     validate_workflow_configuration,
 )
+from apps.integrations.operations.tools.calendar import (
+    get_calendar_configuration,
+    reschedule_booking_operation,
+    update_booking_status,
+    upsert_calendar_configuration,
+    validate_calendar_configuration,
+    verify_booking,
+)
+from apps.integrations.operations.tools.commitments import list_commitments, upsert_commitment
+from apps.integrations.operations.tools.enhancements import (
+    disconnect_integration,
+    get_integration_lifecycle,
+    run_acceptance_suite,
+    validate_cadence_batch,
+)
+from apps.integrations.operations.tools.onboarding import (
+    list_industry_playbooks,
+    prepare_account_onboarding,
+)
+from apps.integrations.operations.tools.traces import get_production_trace
+from apps.integrations.operations.tools.team_settings import get_team_settings, upsert_team_settings
 
 
 EXTENDED_HANDLERS = {
@@ -101,4 +122,21 @@ EXTENDED_HANDLERS = {
     "simulate_ai_conversation": simulate_ai_conversation,
     "simulate_workflow": simulate_workflow,
     "simulate_cadence": simulate_cadence,
+    "get_calendar_configuration": get_calendar_configuration,
+    "validate_calendar_configuration": validate_calendar_configuration,
+    "upsert_calendar_configuration": upsert_calendar_configuration,
+    "verify_booking": verify_booking,
+    "update_booking_status": update_booking_status,
+    "reschedule_booking": reschedule_booking_operation,
+    "get_production_trace": get_production_trace,
+    "prepare_account_onboarding": prepare_account_onboarding,
+    "list_industry_playbooks": list_industry_playbooks,
+    "get_integration_lifecycle": get_integration_lifecycle,
+    "disconnect_integration": disconnect_integration,
+    "validate_cadence_batch": validate_cadence_batch,
+    "run_acceptance_suite": run_acceptance_suite,
+    "list_commitments": list_commitments,
+    "upsert_commitment": upsert_commitment,
+    "get_team_settings": get_team_settings,
+    "upsert_team_settings": upsert_team_settings,
 }

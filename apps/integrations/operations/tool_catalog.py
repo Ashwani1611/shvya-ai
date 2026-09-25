@@ -6,6 +6,10 @@ from apps.integrations.operations.setup_catalog import (
     SETUP_TOOL_CAPABILITIES,
     setup_tool_definitions,
 )
+from apps.integrations.operations.extended_catalog import (
+    EXTENDED_TOOL_CAPABILITIES,
+    extended_tool_definitions,
+)
 from apps.integrations.operations_auth import (
     OFFLINE_SCOPE,
     OPERATIONS_READ_SCOPE,
@@ -1289,6 +1293,7 @@ OWN_TOOL_DEFINITIONS = [
 ]
 
 OWN_TOOL_DEFINITIONS.extend(setup_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(extended_tool_definitions(_tool, _write_properties))
 
 DIAGNOSTIC_DEFINITIONS = []
 for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
@@ -1385,6 +1390,7 @@ TOOL_CAPABILITIES = {
     "test_ai_response_policy": CAP_DIAGNOSTICS_READ,
     "get_operations_audit": CAP_AUDIT_READ,
 }
+TOOL_CAPABILITIES.update(EXTENDED_TOOL_CAPABILITIES)
 TOOL_CAPABILITIES.update(SETUP_TOOL_CAPABILITIES)
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
     TOOL_CAPABILITIES[_diagnostic_name] = CAP_DIAGNOSTICS_READ

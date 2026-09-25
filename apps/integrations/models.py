@@ -543,6 +543,8 @@ from .operations_models import (  # noqa: E402,F401
     OperationsApprovalUse,
     OperationsAuditEvent,
     OperationsConfigurationPlan,
+    OperationsCommitment,
+    OperationsAcceptanceRun,
     OperationsOAuthAuthorizationCode,
     OperationsOAuthClient,
     OperationsOAuthToken,

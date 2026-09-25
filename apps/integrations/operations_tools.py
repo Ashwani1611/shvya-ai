@@ -593,6 +593,24 @@ def get_operations_context(*, identity, arguments):
     )
 
 
+def get_capability_discovery(*, identity, arguments):
+    """Describe the live, actor-bound Operations surface without tenant reads."""
+    from apps.integrations.operations.capabilities import capability_discovery
+    from apps.integrations.operations.tool_catalog import TOOL_CAPABILITIES, TOOL_DEFINITIONS
+
+    tools = [
+        {"name": item["name"], "capability": TOOL_CAPABILITIES.get(item["name"]), "securitySchemes": item.get("securitySchemes", [])}
+        for item in TOOL_DEFINITIONS
+    ]
+    return ToolExecution(
+        data=capability_discovery(identity=identity, tools=tools),
+        capability=CAP_ORGANIZATION_READ,
+        target_type="platform",
+        target_id="",
+        audit_summary={"tool_count": len(tools)},
+    )
+
+
 def list_organizations(*, identity, arguments):
     if identity.role != ROLE_SUPERADMIN:
         raise OperationsPermissionError("Only SHVYA Superadmin can list organizations.")
@@ -1039,6 +1057,7 @@ def execute_operations_tool(*, name, identity, arguments):
         )
 
     handlers = {
+        "get_capability_discovery": get_capability_discovery,
         "get_operations_context": get_operations_context,
         "list_organizations": list_organizations,
         "select_organization_context": select_organization_context,

@@ -9,6 +9,7 @@ from apps.integrations.views.operations_mcp import (
     operations_oauth_server_metadata,
     operations_oauth_token,
 )
+from apps.integrations.views.operations_capabilities import operations_capabilities
 
 from apps.integrations.views.mcp import (
     diagnostic_mcp,
@@ -22,6 +23,11 @@ from apps.integrations.views.mcp import (
 
 
 urlpatterns = [
+    path(
+        "operations/capabilities",
+        operations_capabilities,
+        name="shvya-operations-capabilities",
+    ),
     # RFC 8414 metadata location for issuer https://<host>/operations.
     path(
         ".well-known/oauth-authorization-server/operations",
