@@ -58,7 +58,7 @@ USE_S3_STORAGE = config(
 )
 USE_S3_PUBLIC_ASSETS = config(
     "USE_S3_PUBLIC_ASSETS",
-    default=False,
+    default=USE_S3_STORAGE,
     cast=bool,
 )
 AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE = config(
