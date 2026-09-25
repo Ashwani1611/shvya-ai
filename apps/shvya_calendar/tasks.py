@@ -258,14 +258,29 @@ def refresh_booking_conference(self, booking_id):
 
 @shared_task(name="shvya_calendar.recover_pending_google_meet")
 def recover_pending_google_meet():
-    unsynced_ids = CalendarBooking.objects.filter(
+    from .platform_google import platform_status
+    platform = platform_status()
+    if platform["enabled"] and platform["configured"]:
+        # Environment activation does not emit signals. Recover only future,
+        # unconnected Meet bookings; never touch an existing host-owned event.
+        eligible = list(CalendarBooking.objects.filter(
+            status__in=[CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
+            calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED,
+            page__meeting_location="google_meet", google_event_id="",
+            start_at__gt=timezone.now(),
+        ).values_list("pk", flat=True)[:100])
+        CalendarBooking.objects.filter(pk__in=eligible, google_event_id="",
+                                       calendar_sync_status=CalendarBooking.SyncStatus.NOT_CONNECTED).update(
+            calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
+        )
+    unsynced_ids = list(CalendarBooking.objects.filter(
         status__in=[CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
         calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
         start_at__gt=timezone.now(),
     ).filter(
         models.Q(google_event_id="") | ~models.Q(meeting_link="") |
         ~models.Q(page__meeting_location="google_meet")
-    ).values_list("id", flat=True)[:100]
+    ).values_list("id", flat=True)[:100])
     for booking_id in unsynced_ids:
         sync_booking_calendar.delay(str(booking_id))
     booking_ids = list(
@@ -276,7 +291,7 @@ def recover_pending_google_meet():
                 CalendarBooking.Status.RESCHEDULED,
             ],
             calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
-            meeting_link="",
+            meeting_link="", start_at__gt=timezone.now(),
         )
         .exclude(google_event_id="")
         .values_list("id", flat=True)[:100]
@@ -302,6 +317,8 @@ def sync_booking_calendar(self, booking_id):
             calendar_sync_error=str(exc)[:1000],
         )
         if retry:
-            raise self.retry(exc=exc, countdown=_google_retry_delay(booking_id=booking.pk, retries=self.request.retries))
+            raise self.retry(exc=exc, countdown=_google_retry_delay(
+                booking_id=booking.pk, retries=self.request.retries, retry_after=exc.retry_after,
+            ))
         return {"status": "failed"}
     return {"status": booking.calendar_sync_status}
