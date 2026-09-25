@@ -43,10 +43,11 @@ RUN node scripts/patch-hosted-uploaded-media-send.js
 RUN node scripts/patch-hosted-media-download-and-filter.js
 # Durable live callbacks, disconnected-session recovery, and server-ACK sends.
 RUN node scripts/patch-hosted-realtime-delivery.js
-# Serialize browser/profile lifecycle operations and fence stale QR/startup
-# events so overlapping refresh, restore and logout cannot break ownership.
+# Serialize browser/profile operations and fence stale lifecycle events.
 RUN node scripts/patch-hosted-session-lifecycle.js
-RUN node --check src/index.js
+# Apply last: verify owned browser exit before releasing leases and back off failures.
+RUN node scripts/patch-hosted-process-lifecycle.js
+RUN node --check src/session-lifecycle.js && node --check src/index.js
 
 # npm is required only while assembling node_modules. The production gateway
 # runs directly with Node and never invokes npm/npx, so remove the package
@@ -62,6 +63,7 @@ STOPSIGNAL SIGTERM
 
 # Do not run the gateway through `npm start`: Docker signals PID 1, and npm's
 # child process forwarding is not reliable enough for session-lease cleanup.
-# The shell exists only for the one-time cleanup; `exec` replaces it with Node,
-# making src/index.js PID 1 so its SIGTERM handler always receives Docker stop.
+# Compose init reaps orphaned Chromium descendants and forwards signals.
+# The shell exists only for one-time cleanup; exec makes Node its direct child.
+# Standalone docker run must likewise use --init.
 CMD ["sh", "-c", "node scripts/cleanup-chromium-profile-locks.js && exec node src/index.js"]

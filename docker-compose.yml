@@ -434,6 +434,9 @@ services:
     restart: unless-stopped
     mem_limit: 2g        # FIX 3: cap memory so gateway can never starve Django/Celery
     memswap_limit: 2g    # FIX 3: no extra swap beyond the hard limit
+    # Reap orphaned Chromium descendants and forward stop signals to Node.
+    init: true
+    stop_grace_period: 60s
 
     env_file:
       - .env
