@@ -16,8 +16,10 @@ Because the application is outside AWS, the Hostinger VPS must authenticate with
 
 Use the same private bucket with separate prefixes:
 
-- Production: `production/media/`
-- Staging: `staging/media/`
+- Production private media: `production/media/`
+- Staging private media: `staging/media/`
+- Production heavy public assets: `production/public/`
+- Staging heavy public assets: `staging/public/`
 
 The encrypted Help & Support attachment store remains on `MEDIA_ROOT` through `PrivateSupportStorage`. Static files remain on the existing Django/Nginx path.
 
@@ -44,7 +46,11 @@ Create a dedicated IAM user such as `shvya-s3-storage`. A policy that permits bo
             "production/media",
             "production/media/*",
             "staging/media",
-            "staging/media/*"
+            "staging/media/*",
+            "production/public",
+            "production/public/*",
+            "staging/public",
+            "staging/public/*"
           ]
         }
       }
@@ -59,7 +65,9 @@ Create a dedicated IAM user such as `shvya-s3-storage`. A policy that permits bo
       ],
       "Resource": [
         "arn:aws:s3:::shvya-ai/production/media/*",
-        "arn:aws:s3:::shvya-ai/staging/media/*"
+        "arn:aws:s3:::shvya-ai/staging/media/*",
+        "arn:aws:s3:::shvya-ai/production/public/*",
+        "arn:aws:s3:::shvya-ai/staging/public/*"
       ]
     }
   ]
