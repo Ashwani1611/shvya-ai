@@ -199,6 +199,10 @@ jobs:
             echo "Ensuring database, Redis, and PgBouncer are healthy..."
             docker compose up -d --wait db redis pgbouncer
 
+            echo "Uploading and verifying heavy public assets when S3 is enabled..."
+            docker compose run --rm --no-deps web python manage.py sync_public_assets
+            docker compose run --rm --no-deps web python manage.py sync_public_assets --verify
+
             APPLICATION_MAINTENANCE=0
             report_maintenance_failure() {
               deploy_status=$?
