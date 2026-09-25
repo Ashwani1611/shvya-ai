@@ -513,9 +513,24 @@ def _fetch_cimd_metadata(
             raise MCPClientMetadataError(
                 "SHVYA MCP requires public PKCE token authentication."
             )
-    if data.get("token_endpoint_auth_method", "none") != "none":
+    # ChatGPT currently publishes `private_key_jwt` as its singular
+    # preference while advertising both `private_key_jwt` and `none` in the
+    # plural field.  The singular value is a preference, not a requirement;
+    # the authorization server negotiates the intersection.  SHVYA supports
+    # the public PKCE `none` method, so accept that metadata and persist the
+    # client as a public client.  If a client only advertises a method other
+    # than `none`, reject it rather than silently downgrading it.
+    preferred_auth_method = data.get("token_endpoint_auth_method", "none")
+    if supported_auth_methods is None and preferred_auth_method != "none":
         raise MCPClientMetadataError(
             "SHVYA MCP accepts only public PKCE clients."
+        )
+    if (
+        supported_auth_methods is not None
+        and preferred_auth_method not in supported_auth_methods
+    ):
+        raise MCPClientMetadataError(
+            "Client ID Metadata Document has an invalid token authentication preference."
         )
 
     application_type = str(

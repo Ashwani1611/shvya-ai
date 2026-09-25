@@ -156,6 +156,44 @@ class MCPSharedValidationTests(SimpleTestCase):
         )
 
     @patch("apps.integrations.mcp_oauth_clients.requests.get")
+    def test_chatgpt_live_cimd_preference_can_negotiate_public_pkce(self, mocked):
+        client_id = "https://chatgpt.com/oauth/client.json"
+
+        class Response:
+            status_code = 200
+            headers = {"Content-Type": "application/json"}
+            content = json.dumps(
+                {
+                    "client_id": client_id,
+                    "client_name": "ChatGPT",
+                    "redirect_uris": [
+                        "https://chatgpt.com/connector_platform_oauth_redirect"
+                    ],
+                    "grant_types": ["authorization_code", "refresh_token"],
+                    "response_types": ["code"],
+                    "token_endpoint_auth_method": "private_key_jwt",
+                    "token_endpoint_auth_methods_supported": [
+                        "none",
+                        "private_key_jwt",
+                    ],
+                    "jwks_uri": "https://chatgpt.com/oauth/jwks.json",
+                }
+            ).encode("utf-8")
+
+        mocked.return_value = Response()
+        with patch(
+            "apps.integrations.mcp_oauth_clients._resolved_public_addresses",
+            return_value={"203.0.113.10"},
+        ):
+            metadata = fetch_operations_cimd_metadata(client_id)
+
+        self.assertEqual(metadata["client_id"], client_id)
+        self.assertEqual(
+            metadata["redirect_uris"],
+            ["https://chatgpt.com/connector_platform_oauth_redirect"],
+        )
+
+    @patch("apps.integrations.mcp_oauth_clients.requests.get")
     def test_claude_cimd_ignores_unimplemented_jwt_bearer_grant(self, mocked):
         client_id = "https://claude.ai/oauth/mcp-oauth-client-metadata"
         payload = {
