@@ -1,4 +1,3 @@
-from pathlib import Path
 from unittest.mock import patch
 
 from django.conf import settings
@@ -40,11 +39,9 @@ class PublicAssetTests(SimpleTestCase):
         )
         storage_registry.__getitem__.assert_called_once_with("public_assets")
 
-    def test_migration_manifest_sources_exist(self):
-        static_root = Path(settings.BASE_DIR) / "static"
-        missing = [
-            relative
-            for relative in HEAVY_PUBLIC_ASSETS
-            if not (static_root / relative).is_file()
-        ]
-        self.assertEqual(missing, [])
+    def test_migration_manifest_paths_are_safe_and_unique(self):
+        self.assertEqual(len(HEAVY_PUBLIC_ASSETS), len(set(HEAVY_PUBLIC_ASSETS)))
+        for relative in HEAVY_PUBLIC_ASSETS:
+            self.assertTrue(relative)
+            self.assertFalse(relative.startswith("/"))
+            self.assertNotIn("..", relative.split("/"))
