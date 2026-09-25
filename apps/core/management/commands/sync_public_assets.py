@@ -64,7 +64,20 @@ class Command(BaseCommand):
 
             source = static_root / relative
             if not source.is_file():
-                raise CommandError(f"Source asset is missing: {source}")
+                try:
+                    client.head_object(Bucket=bucket, Key=key)
+                except Exception as exc:
+                    raise CommandError(
+                        f"Source asset is missing and S3 object does not exist: "
+                        f"{source} / s3://{bucket}/{key}: {exc}"
+                    ) from exc
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f"source removed; verified existing s3://{bucket}/{key}"
+                    )
+                )
+                processed += 1
+                continue
 
             if options["dry_run"]:
                 self.stdout.write(

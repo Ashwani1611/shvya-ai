@@ -2,6 +2,7 @@ from urllib.parse import quote
 
 from django import template
 from django.conf import settings
+from django.core.files.storage import storages
 from django.templatetags.static import static
 
 register = template.Library()
@@ -14,6 +15,10 @@ def public_asset(path):
     base = str(
         getattr(settings, "PUBLIC_ASSET_BASE_URL", "") or ""
     ).strip().rstrip("/")
-    if not base:
-        return static(relative)
-    return f"{base}/{quote(relative, safe='/@:+-._~')}"
+    if base:
+        return f"{base}/{quote(relative, safe='/@:+-._~')}"
+
+    if getattr(settings, "USE_S3_PUBLIC_ASSETS", False):
+        return storages["public_assets"].url(relative)
+
+    return static(relative)
