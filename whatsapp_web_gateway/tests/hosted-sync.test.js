@@ -221,3 +221,6 @@ test('manual sync acknowledges queued work instead of holding the HTTP request o
   assert.match(route, /res\.status\(202\)/);
   assert.doesNotMatch(route, /await startHistorySync/);
 });
+
+// Keep lifecycle regressions in the existing mandatory CI gateway entry point.
+require('./session-lifecycle.cases')({ source, root });

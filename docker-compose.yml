@@ -422,6 +422,9 @@ services:
     build:
       context: ./whatsapp_web_gateway
     restart: unless-stopped
+    # Reap orphaned Chromium descendants and forward stop signals to Node.
+    init: true
+    stop_grace_period: 60s
 
     env_file:
       - .env
