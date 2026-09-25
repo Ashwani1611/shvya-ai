@@ -129,7 +129,8 @@ jobs:
             docker compose config --quiet
 
             echo "Building updated Python application containers..."
-            docker compose build web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat
+            # Every Python service uses the same image; export/unpack it only once.
+            docker compose build web
 
             if [ "$GATEWAY_CHANGED" -eq 1 ]; then
               echo "WhatsApp Web gateway changed; rebuilding its image..."
