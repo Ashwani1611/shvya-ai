@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 from django.conf import settings
 from django.test import SimpleTestCase, override_settings
@@ -16,13 +17,28 @@ class PublicAssetTests(SimpleTestCase):
         )
 
     @override_settings(
-        PUBLIC_ASSET_BASE_URL="https://assets.example.com/production/public/"
+        PUBLIC_ASSET_BASE_URL="https://assets.example.com/production/media/public-assets/"
     )
     def test_public_asset_uses_external_origin_and_escapes_path(self):
         self.assertEqual(
             public_asset("marketing/demo film.mp4"),
-            "https://assets.example.com/production/public/marketing/demo%20film.mp4",
+            "https://assets.example.com/production/media/public-assets/marketing/demo%20film.mp4",
         )
+
+    @override_settings(
+        PUBLIC_ASSET_BASE_URL="",
+        USE_S3_PUBLIC_ASSETS=True,
+    )
+    @patch("apps.core.templatetags.public_assets.storages")
+    def test_public_asset_uses_s3_storage_when_enabled(self, storage_registry):
+        storage_registry.__getitem__.return_value.url.return_value = (
+            "https://signed-s3.example/object?signature=test"
+        )
+        self.assertEqual(
+            public_asset("marketing/example.mp4"),
+            "https://signed-s3.example/object?signature=test",
+        )
+        storage_registry.__getitem__.assert_called_once_with("public_assets")
 
     def test_migration_manifest_sources_exist(self):
         static_root = Path(settings.BASE_DIR) / "static"
