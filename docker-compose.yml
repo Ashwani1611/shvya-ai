@@ -73,6 +73,7 @@ services:
 
   web:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${WEB_REPLICAS:-1}
@@ -132,6 +133,7 @@ services:
 
   ws:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${ASGI_REPLICAS:-1}
@@ -174,6 +176,7 @@ services:
 
   worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_GENERAL_REPLICAS:-1}
@@ -216,6 +219,7 @@ services:
 
   ai_realtime_worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_AI_REALTIME_REPLICAS:-1}
@@ -261,6 +265,7 @@ services:
 
   hosted_ai_worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_HOSTED_AI_REPLICAS:-1}
@@ -306,6 +311,7 @@ services:
 
   campaign_worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_CAMPAIGN_REPLICAS:-1}
@@ -331,6 +337,7 @@ services:
 
   ingestion_worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_INGESTION_REPLICAS:-1}
@@ -356,6 +363,7 @@ services:
 
   automation_worker:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
     deploy:
       replicas: ${CELERY_AUTOMATION_REPLICAS:-1}
@@ -379,6 +387,7 @@ services:
 
   beat:
     build: .
+    image: shvya-ai-app:latest
     restart: unless-stopped
 
     env_file:
