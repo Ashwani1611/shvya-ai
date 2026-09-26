@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import secrets
 from dataclasses import dataclass
@@ -48,10 +49,14 @@ ACCESS_TOKEN_TTL = timedelta(hours=4)
 REFRESH_TOKEN_TTL = timedelta(days=14)
 AUTH_CODE_TTL = timedelta(minutes=5)
 
+logger = logging.getLogger(__name__)
+
 CLAUDE_BROWSER_CLIENT_ID = "shvya_claude_browser"
 CLAUDE_BROWSER_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
+    "https://claude.ai/api/mcp/auth_callback/",
+    "https://claude.com/api/mcp/auth_callback/",
 )
 
 _PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
@@ -384,20 +389,39 @@ def _session_user(request, area: str):
 
 def available_browser_identities(request):
     result = {}
+
     superadmin = _session_user(request, "superadmin")
     if superadmin is not None:
         result[ROLE_SUPERADMIN] = superadmin
+    else:
+        logger.debug(
+            "MCP authorize: no superadmin session found. "
+            "SESSION_KEY present in superadmin store: %s",
+            bool(get_session_store(request, "superadmin").get(SESSION_KEY)),
+        )
 
     org_user = _session_user(request, "dashboard")
-    if (
-        org_user is not None
-        and getattr(org_user, "role", None) == User.Role.ADMIN
-        and getattr(org_user, "organization_id", None)
-        and organization_is_active(org_user.organization)
-    ):
-        policy = policy_for(org_user.organization)
-        if policy.organization_admin_enabled:
-            result[ROLE_ORGANIZATION_ADMIN] = org_user
+    if org_user is not None:
+        if getattr(org_user, "role", None) != User.Role.ADMIN:
+            logger.debug(
+                "MCP authorize: org user found but role is %s, not ADMIN",
+                org_user.role,
+            )
+        elif not getattr(org_user, "organization_id", None):
+            logger.debug("MCP authorize: org user has no organization_id")
+        elif not organization_is_active(org_user.organization):
+            logger.debug("MCP authorize: org user's organization is inactive")
+        else:
+            policy = policy_for(org_user.organization)
+            if not policy.organization_admin_enabled:
+                logger.debug(
+                    "MCP authorize: org admin MCP access disabled by superadmin policy"
+                )
+            else:
+                result[ROLE_ORGANIZATION_ADMIN] = org_user
+    else:
+        logger.debug("MCP authorize: no dashboard session found")
+
     return result
 
 
@@ -457,9 +481,7 @@ def issue_authorization_code(
         capabilities_for_grant(
             role=role,
             organization=organization,
-            allow_writes=(
-                OPERATIONS_WRITE_SCOPE in requested
-            ),
+            allow_writes=(OPERATIONS_WRITE_SCOPE in requested),
         )
     )
 
@@ -529,7 +551,9 @@ def exchange_authorization_code(
                 or not organization_is_active(auth_code.organization)
                 or not policy_for(auth_code.organization).organization_admin_enabled
             ):
-                raise OperationsAuthError("Organization Operations permission has been revoked.")
+                raise OperationsAuthError(
+                    "Organization Operations permission has been revoked."
+                )
         else:
             raise OperationsAuthError("Unsupported SHVYA Operations role.")
 
@@ -543,9 +567,7 @@ def exchange_authorization_code(
             access_token_hash=token_hash(raw_access),
             refresh_token_hash=token_hash(raw_refresh),
             scope=auth_code.scope,
-            granted_capabilities=list(
-                auth_code.granted_capabilities or []
-            ),
+            granted_capabilities=list(auth_code.granted_capabilities or []),
             resource=auth_code.resource,
             expires_at=now + ACCESS_TOKEN_TTL,
             refresh_expires_at=now + REFRESH_TOKEN_TTL,
@@ -579,17 +601,12 @@ def _record_automatic_grant_revocation(
             reason=str(message or "")[:500],
             outcome=OperationsAuditEvent.Outcome.SUCCESS,
             request_fingerprint=token_hash(
-                "oauth_auto_revoke:"
-                + str(token.id)
-                + ":"
-                + str(message or "")
+                "oauth_auto_revoke:" + str(token.id) + ":" + str(message or "")
             ),
             change_summary={
                 "access": "revoked",
                 "reason_code": "live_authority_invalid",
-                "support_session_closed": (
-                    support_session is not None
-                ),
+                "support_session_closed": (support_session is not None),
             },
             duration_ms=0,
             error_code="",
@@ -634,9 +651,7 @@ def operations_grant_status(token, *, now=None):
             or actor.organization_id != token.organization_id
             or token.organization is None
             or not organization_is_active(token.organization)
-            or not policy_for(
-                token.organization
-            ).organization_admin_enabled
+            or not policy_for(token.organization).organization_admin_enabled
         ):
             return (
                 False,
@@ -652,12 +667,7 @@ def operations_grant_status(token, *, now=None):
     )
 
 
-def _deny_and_revoke_live_grant(
-    token,
-    message,
-    *,
-    revoke=True,
-):
+def _deny_and_revoke_live_grant(token, message, *, revoke=True):
     """Reject a grant whose live SHVYA authority is gone."""
 
     if revoke:
@@ -676,9 +686,7 @@ def _deny_and_revoke_live_grant(
             if organization is not None
             else None
         )
-        revoked = revoke_token_record(
-            token=token
-        )
+        revoked = revoke_token_record(token=token)
         if revoked is not None:
             _record_automatic_grant_revocation(
                 token=token,
@@ -689,22 +697,13 @@ def _deny_and_revoke_live_grant(
 
 
 def _validate_live_token(token, *, revoke_on_failure=True):
-    valid, _reason_code, message = operations_grant_status(
-        token
-    )
+    valid, _reason_code, message = operations_grant_status(token)
     if valid:
         return
-    _deny_and_revoke_live_grant(
-        token,
-        message,
-        revoke=revoke_on_failure,
-    )
+    _deny_and_revoke_live_grant(token, message, revoke=revoke_on_failure)
 
 
-def revoke_refresh_grant_if_live_authority_invalid(
-    *,
-    refresh_token,
-):
+def revoke_refresh_grant_if_live_authority_invalid(*, refresh_token):
     """Persist revocation after a failed refresh when live SHVYA authority is gone."""
 
     token = (
@@ -754,16 +753,10 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
 
         validation_error = None
         try:
-            _validate_live_token(
-                token,
-                revoke_on_failure=False,
-            )
+            _validate_live_token(token, revoke_on_failure=False)
         except OperationsAuthError as exc:
             validation_error = exc
-            _revoke_locked_token(
-                token,
-                now=now,
-            )
+            _revoke_locked_token(token, now=now)
 
         if validation_error is None:
             raw_access = secrets.token_urlsafe(48)
@@ -880,9 +873,7 @@ def revoke_token(*, raw_token: str):
     if token is None:
         return None
 
-    return revoke_token_record(
-        token=token
-    )
+    return revoke_token_record(token=token)
 
 
 def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
@@ -914,11 +905,7 @@ def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
     if OPERATIONS_READ_SCOPE not in scopes:
         raise OperationsAuthError("OAuth token is missing operations.read scope.")
 
-    granted_capabilities = frozenset(
-        expand_capabilities(
-            token.granted_capabilities
-        )
-    )
+    granted_capabilities = frozenset(expand_capabilities(token.granted_capabilities))
 
     OperationsOAuthToken.objects.filter(pk=token.pk).update(last_used_at=now)
     return OperationsIdentity(
