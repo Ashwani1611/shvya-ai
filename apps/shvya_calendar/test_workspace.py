@@ -254,6 +254,31 @@ class CalendarWorkspaceTests(TestCase):
         self.assertEqual(self.lead.pipeline_id, self.pipeline.pk)
 
     @patch("apps.shvya_calendar.workspace.reschedule_booking")
+    def test_reschedule_form_avoids_action_dom_clobbering(self, reschedule):
+        detail = self.client.get(self.url("booking_detail"))
+        self.assertContains(
+            detail,
+            'name="booking_action" value="reschedule"',
+            html=False,
+        )
+        self.assertContains(
+            detail,
+            'name="booking_action" value="move"',
+            html=False,
+        )
+        self.assertNotContains(detail, 'name="action"', html=False)
+
+        response = self.client.post(
+            self.url("booking_update"),
+            {
+                "booking_action": "reschedule",
+                "slot_start": "2026-09-25T10:00:00+00:00",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        reschedule.assert_called_once()
+
+    @patch("apps.shvya_calendar.workspace.reschedule_booking")
     def test_reschedule_delegates_to_existing_service(self, reschedule):
         response = self.client.post(
             self.url("booking_update"),
