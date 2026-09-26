@@ -34,6 +34,10 @@ RUN node scripts/patch-hosted-lease-invariant.js
 # If a persisted profile itself fails Chromium initialization, retry that
 # failed in-memory state safely instead of treating it as already restored.
 RUN node scripts/patch-hosted-failed-session-retry.js
+# Clean stale Chromium SingletonLock/Cookie/Socket files before every retry
+# and cap runaway restart storms with exponential backoff (root cause of the
+# Sept 2026 zombie-Chromium incident: 8,520 procs from unbounded 30s retries).
+RUN node scripts/patch-hosted-chromium-lock-cleanup.js
 # Expire abandoned QR sessions, clean their unpaired LocalAuth profile, release
 # their lease, and expose per-state counts from the gateway health endpoint.
 RUN node scripts/patch-hosted-qr-expiry.js
