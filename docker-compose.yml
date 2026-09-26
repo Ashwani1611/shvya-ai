@@ -102,9 +102,6 @@ services:
       redis:
         condition: service_healthy
 
-    # Migrations and collectstatic are performed by the deploy workflow before
-    # this container is replaced. Keeping startup limited to Gunicorn reduces
-    # the window where Nginx has no ready upstream during production deploys.
     command:
       - gunicorn
       - config.wsgi:application
@@ -113,9 +110,6 @@ services:
       - --workers
       - ${GUNICORN_WORKERS:-3}
 
-    # Require the real dependency readiness endpoint to succeed. This prevents
-    # redirects, auth errors, missing routes, and other 4xx responses from
-    # incorrectly marking the web container healthy.
     healthcheck:
       test:
         [
@@ -138,10 +132,6 @@ services:
     deploy:
       replicas: ${ASGI_REPLICAS:-1}
     scale: ${ASGI_REPLICAS:-1}
-
-    # Separate from `web` on purpose: gunicorn (WSGI) cannot serve
-    # WebSocket connections, so live chat updates need their own
-    # ASGI process.
 
     env_file:
       - .env
@@ -225,9 +215,6 @@ services:
       replicas: ${CELERY_AI_REALTIME_REPLICAS:-1}
     scale: ${CELERY_AI_REALTIME_REPLICAS:-1}
 
-    # Customer-facing WhatsApp API AI replies get their own Celery lane so
-    # summaries, knowledge ingestion, follow-ups, and other background tasks
-    # cannot create head-of-line delays for engagement.
     env_file:
       - .env
 
@@ -271,9 +258,6 @@ services:
       replicas: ${CELERY_HOSTED_AI_REPLICAS:-1}
     scale: ${CELERY_HOSTED_AI_REPLICAS:-1}
 
-    # Hosted Account AI keeps its durable delayed DB queue, but due-time wakes
-    # and actual AI processing run independently of the general worker so a
-    # background backlog cannot leave queued Hosted engagement stranded.
     env_file:
       - .env
 
@@ -422,6 +406,8 @@ services:
     build:
       context: ./whatsapp_web_gateway
     restart: unless-stopped
+    mem_limit: 2g        # FIX 3: cap memory so gateway can never starve Django/Celery
+    memswap_limit: 2g    # FIX 3: no extra swap beyond the hard limit
 
     env_file:
       - .env
