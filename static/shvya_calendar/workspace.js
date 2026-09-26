@@ -174,7 +174,9 @@
         event.preventDefault(); const buttons = content.querySelectorAll('[type=submit]'); buttons.forEach(b => { b.disabled = true; });
         $('cw-action-message').textContent = 'Saving…';
         try {
-          await jsonResponse(await fetch(form.action, {method:'POST', body:new FormData(form), headers:{'X-Requested-With':'XMLHttpRequest'}}));
+          const endpoint = form.getAttribute('action');
+          if (!endpoint) throw new Error('This booking action is unavailable. Refresh and try again.');
+          await jsonResponse(await fetch(endpoint, {method:'POST', body:new FormData(form), headers:{'X-Requested-With':'XMLHttpRequest'}}));
           await load(); await openDetail(url);
           const message = $('cw-action-message'); if (message) message.textContent = 'Booking updated.';
         } catch (error) { const message = $('cw-action-message'); if (message) message.textContent = error.message; buttons.forEach(b => { b.disabled = false; }); }
