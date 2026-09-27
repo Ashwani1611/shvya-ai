@@ -55,7 +55,7 @@
                 stage.querySelector('[data-page-selection]').hidden = inputs.length === 0;
                 stage.querySelector('[data-page-select-label]').textContent =
                     stage.dataset.singlePage === 'true'
-                        ? `Select all ${inputs.length} leads`
+                        ? `Select all ${inputs.length} lead${inputs.length === 1 ? "" : "s"}`
                         : `Select ${inputs.length} on this page`;
                 page.checked = inputs.length > 0 && selected === inputs.length;
                 page.indeterminate = selected > 0 && selected < inputs.length;
