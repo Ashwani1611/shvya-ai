@@ -1,0 +1,13 @@
+{% for lead in leads %}
+    {% include "crm/partials/lead_card.html" with conversation_summary=lead.has_conversation_summary %}
+{% endfor %}
+{% if lead_page.next_query %}
+<div data-auto-page
+     hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}&amp;append=1"
+     hx-trigger="intersect once threshold:0.2"
+     hx-swap="outerHTML"
+     class="flex justify-center py-4 text-sm text-gray-500"
+     aria-label="Loading more leads">
+    Loading more leads…
+</div>
+{% endif %}
