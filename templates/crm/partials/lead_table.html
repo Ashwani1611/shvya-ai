@@ -869,6 +869,17 @@
                         {% endif %}
                     </div>
                 </nav>
+                {% if lead_page.next_query %}
+                <div data-auto-page
+                     hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}"
+                     hx-trigger="intersect once threshold:0.2"
+                     hx-target="#lead-table-container"
+                     hx-swap="innerHTML"
+                     class="flex justify-center py-4 text-sm text-gray-500"
+                     aria-label="Scroll to load the next lead page">
+                    Scroll down to load more leads
+                </div>
+                {% endif %}
                 {% endif %}
 
             {% else %}
