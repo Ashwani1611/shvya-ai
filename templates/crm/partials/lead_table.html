@@ -9,6 +9,7 @@
 {% else %}
 
 <div class="w-full" data-bulk-root data-pipeline="{{ selected_pipeline_id }}"
+     data-pipeline-count="{{ pipeline_lead_count }}"
      data-bulk-url="{% url 'crm-leads-bulk' %}"
      data-refresh-url="{% url 'crm-lead-table-partial' %}?{{ bulk_query }}"
      data-can-move="{{ bulk_permissions.move|yesno:'true,false' }}"
@@ -805,7 +806,7 @@
 
                 <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
                     <input type="checkbox" data-stage-select aria-label="Select visible leads in {{ group.stage.name }}">
-                    <span><span data-stage-select-label>Select all {{ group.count }} leads in this stage</span> <small>(matching current filters)</small></span>
+                    <span><span data-stage-select-label>Select all {{ pipeline_lead_count }} leads in this pipeline</span> <small>(all stages and pages, including leads outside current filters)</small></span>
                 </label>
 
                 {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages > 1 %}
