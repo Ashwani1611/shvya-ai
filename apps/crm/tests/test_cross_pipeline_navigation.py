@@ -95,9 +95,6 @@ class CrossPipelineLeadNavigationTests(TestCase):
             "stage": self.target_stage.pk,
         })
         self.assertEqual(first.status_code, 200)
-        self.assertContains(first, "Page 1 of 2")
-        self.assertContains(first, "Showing 1–40 of 43 leads")
-        self.assertContains(first, "Next")
         self.assertContains(first, 'data-auto-page')
         self.assertContains(first, 'hx-trigger="intersect once threshold:0.2"')
         self.assertNotContains(first, f'id="lead-card-{self.lead.pk}"')
@@ -110,6 +107,22 @@ class CrossPipelineLeadNavigationTests(TestCase):
         self.assertEqual(second.status_code, 200)
         self.assertNotContains(second, "data-auto-page")
         self.assertContains(second, f'id="lead-card-{self.lead.pk}"')
+        appended = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "page": 2,
+            "append": 1,
+        })
+        self.assertEqual(appended.status_code, 200)
+        self.assertContains(appended, f'id="lead-card-{self.lead.pk}"')
+        self.assertNotContains(appended, "data-auto-page")
+        self.assertNotContains(appended, "data-stage-panel")
+        self.assertNotContains(appended, "data-stage-select")
+        self.assertEqual(self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "append": 1,
+        }).status_code, 400)
 
         deep_link = self.client.get(url, {
             "pipeline": self.target_pipeline.pk,
