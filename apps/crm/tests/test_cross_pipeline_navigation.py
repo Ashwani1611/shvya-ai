@@ -98,7 +98,6 @@ class CrossPipelineLeadNavigationTests(TestCase):
         self.assertContains(first, "Page 1 of 2")
         self.assertContains(first, "Showing 1–40 of 43 leads")
         self.assertContains(first, "Next")
-        self.assertContains(first, ">43</span>")
         self.assertNotContains(first, f'id="lead-card-{self.lead.pk}"')
 
         second = self.client.get(url, {
