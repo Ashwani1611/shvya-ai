@@ -809,7 +809,7 @@
                 <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
                     <label class="crm-stage-select" data-page-selection {% if not group.leads %}hidden{% endif %}>
                         <input type="checkbox" data-page-select aria-label="Select visible leads on this page">
-                        <span data-page-select-label>{% if lead_page.total_pages <= 1 %}Select all {{ group.leads|length }} leads{% else %}Select {{ group.leads|length }} on this page{% endif %}</span>
+                        <span data-page-select-label>{% if lead_page.total_pages <= 1 %}Select all {{ group.leads|length }} lead{{ group.leads|length|pluralize }}{% else %}Select {{ group.leads|length }} on this page{% endif %}</span>
                     </label>
                     <label class="crm-stage-select" data-stage-selection {% if not group.leads or lead_page.total_pages <= 1 %}hidden{% endif %}>
                         <input type="checkbox" data-stage-select aria-label="Select all leads in {{ group.stage.name }}">
