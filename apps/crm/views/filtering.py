@@ -1,4 +1,6 @@
-from django.db.models import Count, Prefetch
+import uuid
+
+from django.db.models import Count, Prefetch, Q
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -132,55 +134,116 @@ def lead_table_partial(request):
         user=user,
         include_search=True,
     )
-    # Fetch related card data across the pipeline in batches. Keep the full
-    # result set visible; a silent per-stage limit would hide leads.
-    queryset = queryset.filter(stage__in=stages).annotate(
-        call_count=Count("calls", distinct=True),
-    ).prefetch_related(
-        Prefetch("lead_notes", queryset=LeadNote.objects.order_by("-created_at")),
-        Prefetch("calls", queryset=LeadCall.objects.order_by("-called_at")),
-        Prefetch(
-            "reminders",
-            queryset=LeadReminder.objects.filter(status="pending").order_by("due_at"),
-            to_attr="pending_reminders_for_card",
-        ),
-        Prefetch(
-            "activities",
-            queryset=LeadActivity.objects.select_related(
-                "actor", "old_pipeline", "new_pipeline", "old_stage", "new_stage",
-            ).order_by("-created_at"),
-            to_attr="activities_for_card",
-        ),
-    )
-    stage_leads_by_id = {stage.id: [] for stage in stages}
-    leads = list(queryset)
-    has_current_matches = bool(leads)
-    attribute_definitions = list(public_attribute_definitions(user.organization))
-    from apps.ai_engagement.services.intent_score import prepare_intent_scores
-    prepare_intent_scores(leads)
-    from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
-    attach_calendar_attachments_to_leads(leads, organization=user.organization)
-    now = timezone.now()
-    for lead in leads:
-        _prepare_lead(lead, attribute_definitions, now)
-        stage_leads_by_id[lead.stage_id].append(lead)
-
-    stage_groups = [
-        {
-            "stage": stage,
-            "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
-            "leads": stage_leads_by_id[stage.id],
-            "count": len(stage_leads_by_id[stage.id]),
-        }
-        for index, stage in enumerate(stages)
-    ]
-
     requested_stage = str(request.GET.get("stage") or "").strip()
     filter_stage = str(request.GET.get("filter_stage") or "").strip()
     valid_stage_ids = {str(stage.id) for stage in stages}
     active_stage_id = filter_stage if filter_stage in valid_stage_ids else requested_stage
     if active_stage_id not in valid_stage_ids:
         active_stage_id = str(stages[0].id) if stages else ""
+
+    # Count matching leads across stages without building every card.
+    counts = dict(
+        queryset.filter(stage__in=stages)
+        .values("stage_id")
+        .annotate(total=Count("pk"))
+        .values_list("stage_id", "total")
+    )
+    has_current_matches = any(counts.values())
+    stage_groups = [
+        {
+            "stage": stage,
+            "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
+            "leads": [],
+            "count": counts.get(stage.id, 0),
+            "query": query_with(
+                request.GET, pipeline=current_pipeline.id, stage=stage.id,
+                filter_stage=None, page=None,
+            ),
+        }
+        for index, stage in enumerate(stages)
+    ]
+
+    page_size = 40
+    active_stage = next(
+        (stage for stage in stages if str(stage.id) == active_stage_id), None
+    )
+    active_count = counts.get(active_stage.id, 0) if active_stage else 0
+    total_pages = max(1, (active_count + page_size - 1) // page_size)
+    try:
+        page_number = int(request.GET.get("page") or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    page_number = min(max(1, page_number), total_pages)
+    # A dashboard link can point to a lead beyond page one. Locate its page
+    # within this filtered stage before rendering the first batch.
+    requested_lead_id = str(request.GET.get("lead") or "").strip()
+    if active_stage is not None and requested_lead_id and not request.GET.get("page"):
+        try:
+            requested_lead_id = uuid.UUID(requested_lead_id)
+        except (TypeError, ValueError, AttributeError):
+            requested_lead_id = None
+        if requested_lead_id is not None:
+            target = queryset.filter(
+                stage=active_stage, pk=requested_lead_id,
+            ).values("created_at", "pk").first()
+            if target is not None:
+                preceding = queryset.filter(stage=active_stage).filter(
+                    Q(created_at__gt=target["created_at"])
+                    | Q(created_at=target["created_at"], pk__gt=target["pk"])
+                ).count()
+                page_number = preceding // page_size + 1
+
+    if active_stage is not None and active_count:
+        # Only visible cards need scoring, attachments, history or notes.
+        leads = list(
+            queryset.filter(stage=active_stage)
+            .annotate(call_count=Count("calls", distinct=True))
+            .order_by("-created_at", "-pk")
+            .prefetch_related(
+                Prefetch("lead_notes", queryset=LeadNote.objects.order_by("-created_at")),
+                Prefetch("calls", queryset=LeadCall.objects.order_by("-called_at")),
+                Prefetch(
+                    "reminders",
+                    queryset=LeadReminder.objects.filter(status="pending").order_by("due_at"),
+                    to_attr="pending_reminders_for_card",
+                ),
+                Prefetch(
+                    "activities",
+                    queryset=LeadActivity.objects.select_related(
+                        "actor", "old_pipeline", "new_pipeline", "old_stage", "new_stage",
+                    ).order_by("-created_at"),
+                    to_attr="activities_for_card",
+                ),
+            )[(page_number - 1) * page_size:page_number * page_size]
+        )
+        attribute_definitions = list(public_attribute_definitions(user.organization))
+        from apps.ai_engagement.services.intent_score import prepare_intent_scores
+        prepare_intent_scores(leads)
+        from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+        attach_calendar_attachments_to_leads(leads, organization=user.organization)
+        now = timezone.now()
+        for lead in leads:
+            _prepare_lead(lead, attribute_definitions, now)
+        for group in stage_groups:
+            if group["stage"].id == active_stage.id:
+                group["leads"] = leads
+                break
+
+    context["lead_page"] = {
+        "number": page_number,
+        "total_pages": total_pages,
+        "start": (page_number - 1) * page_size + 1 if active_count else 0,
+        "end": min(page_number * page_size, active_count),
+        "total": active_count,
+        "previous_query": query_with(
+            request.GET, pipeline=current_pipeline.id, stage=active_stage_id,
+            filter_stage=None, page=page_number - 1,
+        ) if page_number > 1 else "",
+        "next_query": query_with(
+            request.GET, pipeline=current_pipeline.id, stage=active_stage_id,
+            filter_stage=None, page=page_number + 1,
+        ) if page_number < total_pages else "",
+    }
 
     matches = []
     if not has_current_matches and has_active_filters(request.GET):
