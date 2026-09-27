@@ -152,6 +152,11 @@ def lead_table_partial(request):
         .annotate(total=Count("pk", distinct=True))
         .values_list("stage_id", "total")
     )
+    stage_bulk_counts = dict(
+        Lead.objects.filter(organization=user.organization, pipeline=current_pipeline)
+        .order_by().values("stage_id").annotate(total=Count("pk"))
+        .values_list("stage_id", "total")
+    )
     has_current_matches = any(counts.values())
     stage_groups = [
         {
@@ -159,6 +164,7 @@ def lead_table_partial(request):
             "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
             "leads": [],
             "count": counts.get(stage.id, 0),
+            "bulk_count": stage_bulk_counts.get(stage.id, 0),
             "query": query_with(
                 request.GET, pipeline=current_pipeline.id, stage=stage.id,
                 filter_stage=None, page=None,
