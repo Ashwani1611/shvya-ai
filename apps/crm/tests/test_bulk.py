@@ -99,6 +99,11 @@ class BulkLeadTests(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'data-stage-count="45"')
         self.assertContains(page, f"Select all 45 leads in {self.stage.name}")
+        self.assertContains(page, "Select 40 on this page")
+        page_two = self.client.get(reverse("crm-lead-table-partial"), {
+            "pipeline": self.pipeline.pk, "stage": self.stage.pk, "page": 2,
+        })
+        self.assertContains(page_two, "Select 5 on this page")
 
         response = self.post(
             "options", selection_scope="pipeline", lead_ids=[],
