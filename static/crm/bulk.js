@@ -54,13 +54,16 @@
             if (page) {
                 stage.querySelector('[data-page-selection]').hidden = inputs.length === 0;
                 stage.querySelector('[data-page-select-label]').textContent =
-                    `Select ${inputs.length} on this page`;
+                    stage.dataset.singlePage === 'true'
+                        ? `Select all ${inputs.length} lead${inputs.length === 1 ? "" : "s"}`
+                        : `Select ${inputs.length} on this page`;
                 page.checked = inputs.length > 0 && selected === inputs.length;
                 page.indeterminate = selected > 0 && selected < inputs.length;
             }
             const all = stage.querySelector('[data-stage-select]');
             if (all) {
-                stage.querySelector('[data-stage-selection]').hidden = stageTotal(stage) === 0;
+                stage.querySelector('[data-stage-selection]').hidden =
+                    stageTotal(stage) === 0 || stage.dataset.singlePage === 'true';
                 stage.querySelector('[data-stage-select-label]').textContent =
                     `Select all ${stageTotal(stage)} leads in this stage`;
                 all.checked = stageSelected && excludedLeadIds.size === 0;
