@@ -1,6 +1,9 @@
 import uuid
 
+from uuid import UUID
+
 from django.db.models import Count, Prefetch, Q
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
@@ -282,6 +285,36 @@ def lead_table_partial(request):
         }
     )
     return render(request, "crm/partials/lead_table_filtered.html", context)
+
+
+@crm_login_required
+@require_GET
+def lead_stage_counts(request):
+    """Current filtered stage totals after client-side card mutations."""
+    user = request.crm_user
+    try:
+        pipeline_id = UUID(str(request.GET.get("pipeline") or ""))
+    except (TypeError, ValueError, AttributeError):
+        return JsonResponse({"error": "Pipeline not found."}, status=404)
+    pipeline = accessible_pipelines(user).filter(id=pipeline_id).first()
+    if pipeline is None:
+        return JsonResponse({"error": "Pipeline not found."}, status=404)
+    stages = list(Stage.objects.filter(
+        pipeline=pipeline, is_active=True,
+    ).values_list("id", flat=True))
+    queryset = apply_lead_filters(
+        Lead.objects.filter(organization=user.organization, pipeline=pipeline),
+        request.GET, user=user, include_search=True,
+    )
+    counts = dict(
+        queryset.filter(stage_id__in=stages)
+        .values("stage_id")
+        .annotate(total=Count("pk", distinct=True))
+        .values_list("stage_id", "total")
+    )
+    return JsonResponse({
+        "counts": {str(stage_id): counts.get(stage_id, 0) for stage_id in stages},
+    })
 
 
 def _filter_surface(request):

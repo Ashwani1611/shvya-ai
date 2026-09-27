@@ -12,15 +12,17 @@
     let action = '', selection = null, options = null, busy = false, loading = false, generation = 0;
     let trigger = null, refreshUrl = '', endpoint = '';
     let pipelineSelected = false, selectedPipelineId = '';
+    const excludedLeadIds = new Set();
 
     const pipelineTotal = current => Number(current?.dataset.pipelineCount || 0);
     const chosenCount = (chosen, current) => chosen.selection_scope === 'pipeline'
-        ? pipelineTotal(current) : chosen.lead_ids.length;
+        ? Math.max(0, pipelineTotal(current) - chosen.exclude_lead_ids.length) : chosen.lead_ids.length;
 
     function currentSelection(current, panel) {
         if (pipelineSelected && selectedPipelineId === current?.dataset.pipeline) {
             return {
                 selection_scope: 'pipeline',
+                exclude_lead_ids: [...excludedLeadIds],
                 pipeline: current.dataset.pipeline,
                 source_stage: panel.dataset.stagePanel,
             };
@@ -38,12 +40,13 @@
         if (pipelineSelected && selectedPipelineId !== current.dataset.pipeline) {
             pipelineSelected = false;
             selectedPipelineId = '';
+            excludedLeadIds.clear();
         }
         current.querySelectorAll('[data-stage-panel]').forEach(stage => {
             const inputs = boxes(stage);
             if (stage !== panel) inputs.forEach(input => { input.checked = false; });
             if (stage === panel && pipelineSelected) {
-                inputs.forEach(input => { input.checked = true; });
+                inputs.forEach(input => { input.checked = !excludedLeadIds.has(input.value); });
             }
             inputs.forEach(input => input.closest('.lead-card')?.classList.toggle('crm-is-selected', input.checked));
             const selected = inputs.filter(input => input.checked).length;
@@ -52,12 +55,13 @@
                 stage.querySelector('[data-stage-selection]').hidden = pipelineTotal(current) === 0;
                 stage.querySelector('[data-stage-select-label]').textContent =
                     `Select all ${pipelineTotal(current)} leads in this pipeline`;
-                all.checked = pipelineSelected;
-                all.indeterminate = !pipelineSelected && selected > 0;
+                all.checked = pipelineSelected && excludedLeadIds.size === 0;
+                all.indeterminate = (pipelineSelected && excludedLeadIds.size > 0)
+                    || (!pipelineSelected && selected > 0);
             }
         });
         const count = pipelineSelected
-            ? pipelineTotal(current)
+            ? Math.max(0, pipelineTotal(current) - excludedLeadIds.size)
             : boxes(panel).filter(input => input.checked).length;
         current.querySelector('[data-bulk-toolbar]').hidden = count === 0;
         current.querySelector('[data-bulk-count]').textContent =
@@ -67,6 +71,7 @@
     function clearSelection() {
         pipelineSelected = false;
         selectedPipelineId = '';
+        excludedLeadIds.clear();
         root()?.querySelectorAll('[data-lead-select]').forEach(input => { input.checked = false; });
         syncSelection();
     }
@@ -241,12 +246,13 @@
         if (event.target.matches('[data-stage-select]')) {
             pipelineSelected = event.target.checked;
             selectedPipelineId = pipelineSelected ? root()?.dataset.pipeline || '' : '';
+            excludedLeadIds.clear();
             boxes(event.target.closest('[data-stage-panel]')).forEach(input => { input.checked = pipelineSelected; });
             syncSelection();
         } else if (event.target.matches('[data-lead-select]')) {
             if (pipelineSelected) {
-                pipelineSelected = false;
-                selectedPipelineId = '';
+                if (event.target.checked) excludedLeadIds.delete(event.target.value);
+                else excludedLeadIds.add(event.target.value);
             }
             syncSelection();
         }

@@ -116,6 +116,35 @@ class BulkLeadTests(TestCase):
         self.assertTrue(Lead.objects.filter(pk=extra[-1].pk).exists())
         self.assertTrue(Lead.objects.filter(pk=other_stage.pk).exists())
 
+    def test_pipeline_selection_can_exclude_a_visible_lead_without_losing_other_pages(self):
+        extra = Lead.objects.create(
+            organization=self.organization, pipeline=self.pipeline,
+            stage=self.next_stage, name="Elsewhere", phone="+919988877766",
+        )
+        response = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], 3)
+
+        exported = self.post(
+            "export", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(exported.status_code, 200, exported.content)
+        workbook = load_workbook(BytesIO(exported.content), read_only=True)
+        names = [row[1] for row in list(workbook.active.values)[1:]]
+        workbook.close()
+        self.assertNotIn(self.leads[0].name, names)
+        self.assertIn(extra.name, names)
+
+        invalid = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(uuid4())],
+        )
+        self.assertEqual(invalid.status_code, 400)
+
     def test_pipeline_selection_is_tenant_scoped_and_requires_permission(self):
         other = Organization.objects.create(package="dfy", name="Other bulk org")
         foreign = Lead.objects.create(

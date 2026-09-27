@@ -113,3 +113,15 @@ class CrossPipelineLeadNavigationTests(TestCase):
         })
         self.assertEqual(deep_link.status_code, 200)
         self.assertContains(deep_link, f'id="lead-card-{self.lead.pk}"')
+
+    def test_stage_count_endpoint_reports_database_totals_across_pages(self):
+        route = reverse("crm-lead-stage-counts")
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 1)
+        self.lead.stage = self.target_pipeline.stages.order_by("display_order").first()
+        self.lead.save(update_fields=["stage"])
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 0)
+        self.assertEqual(self.client.get(route, {"pipeline": "invalid"}).status_code, 404)

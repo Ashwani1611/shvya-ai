@@ -77,6 +77,15 @@ def _selection(user, data, *, lock=False):
     if scope == "pipeline":
         if data.get("lead_ids"):
             raise ValueError("Do not combine pipeline selection with individual lead IDs.")
+        excluded_values = data.get("exclude_lead_ids", [])
+        if not isinstance(excluded_values, list):
+            raise ValueError("Invalid excluded lead selection.")
+        excluded_ids = {_uuid(value) for value in excluded_values}
+        if excluded_ids:
+            found = set(queryset.filter(pk__in=excluded_ids).values_list("pk", flat=True))
+            if found != excluded_ids:
+                raise ValueError("An excluded lead is no longer in this pipeline.")
+            queryset = queryset.exclude(pk__in=excluded_ids)
         # The pipeline control explicitly includes every stage and page,
         # independently of the current search or stage filter.
         ids = None
