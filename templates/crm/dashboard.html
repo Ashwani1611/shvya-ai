@@ -249,7 +249,7 @@
 
         class="crm-premium-pipeline-surface flex-1 min-h-0"
 
-        hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}{% if request.GET.stage %}&stage={{ request.GET.stage }}{% endif %}"
+        hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}{% if request.GET.stage %}&stage={{ request.GET.stage }}{% endif %}{% if request.GET.lead %}&lead={{ request.GET.lead }}{% endif %}"
 
         hx-trigger="load"
 
