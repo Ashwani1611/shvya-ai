@@ -11,17 +11,17 @@
     const boxes = panel => [...(panel?.querySelectorAll('[data-lead-select]') || [])];
     let action = '', selection = null, options = null, busy = false, loading = false, generation = 0;
     let trigger = null, refreshUrl = '', endpoint = '';
-    let pipelineSelected = false, selectedPipelineId = '';
+    let stageSelected = false, selectedStageId = '';
     const excludedLeadIds = new Set();
 
-    const pipelineTotal = current => Number(current?.dataset.pipelineCount || 0);
-    const chosenCount = (chosen, current) => chosen.selection_scope === 'pipeline'
-        ? Math.max(0, pipelineTotal(current) - chosen.exclude_lead_ids.length) : chosen.lead_ids.length;
+    const stageTotal = panel => Number(panel?.dataset.stageCount || 0);
+    const chosenCount = (chosen, current) => chosen.selection_scope === 'stage'
+        ? Math.max(0, stageTotal(current?.querySelector(`[data-stage-panel="${chosen.source_stage}"]`)) - chosen.exclude_lead_ids.length) : chosen.lead_ids.length;
 
     function currentSelection(current, panel) {
-        if (pipelineSelected && selectedPipelineId === current?.dataset.pipeline) {
+        if (stageSelected && selectedStageId === panel?.dataset.stagePanel) {
             return {
-                selection_scope: 'pipeline',
+                selection_scope: 'stage',
                 exclude_lead_ids: [...excludedLeadIds],
                 pipeline: current.dataset.pipeline,
                 source_stage: panel.dataset.stagePanel,
@@ -37,40 +37,40 @@
     function syncSelection() {
         const current = root(), panel = activePanel();
         if (!current) return;
-        if (pipelineSelected && selectedPipelineId !== current.dataset.pipeline) {
-            pipelineSelected = false;
-            selectedPipelineId = '';
+        if (stageSelected && selectedStageId !== panel?.dataset.stagePanel) {
+            stageSelected = false;
+            selectedStageId = '';
             excludedLeadIds.clear();
         }
         current.querySelectorAll('[data-stage-panel]').forEach(stage => {
             const inputs = boxes(stage);
             if (stage !== panel) inputs.forEach(input => { input.checked = false; });
-            if (stage === panel && pipelineSelected) {
+            if (stage === panel && stageSelected) {
                 inputs.forEach(input => { input.checked = !excludedLeadIds.has(input.value); });
             }
             inputs.forEach(input => input.closest('.lead-card')?.classList.toggle('crm-is-selected', input.checked));
             const selected = inputs.filter(input => input.checked).length;
             const all = stage.querySelector('[data-stage-select]');
             if (all) {
-                stage.querySelector('[data-stage-selection]').hidden = pipelineTotal(current) === 0;
+                stage.querySelector('[data-stage-selection]').hidden = stageTotal(stage) === 0;
                 stage.querySelector('[data-stage-select-label]').textContent =
-                    `Select all ${pipelineTotal(current)} leads in this pipeline`;
-                all.checked = pipelineSelected && excludedLeadIds.size === 0;
-                all.indeterminate = (pipelineSelected && excludedLeadIds.size > 0)
-                    || (!pipelineSelected && selected > 0);
+                    `Select all ${stageTotal(stage)} leads in this stage`;
+                all.checked = stageSelected && excludedLeadIds.size === 0;
+                all.indeterminate = (stageSelected && excludedLeadIds.size > 0)
+                    || (!stageSelected && selected > 0);
             }
         });
-        const count = pipelineSelected
-            ? Math.max(0, pipelineTotal(current) - excludedLeadIds.size)
+        const count = stageSelected
+            ? Math.max(0, stageTotal(panel) - excludedLeadIds.size)
             : boxes(panel).filter(input => input.checked).length;
         current.querySelector('[data-bulk-toolbar]').hidden = count === 0;
         current.querySelector('[data-bulk-count]').textContent =
-            `${count} lead${count === 1 ? '' : 's'} selected${pipelineSelected ? ' across this pipeline' : ' on this page'}`;
+            `${count} lead${count === 1 ? '' : 's'} selected${stageSelected ? ' in this stage' : ' on this page'}`;
     }
 
     function clearSelection() {
-        pipelineSelected = false;
-        selectedPipelineId = '';
+        stageSelected = false;
+        selectedStageId = '';
         excludedLeadIds.clear();
         root()?.querySelectorAll('[data-lead-select]').forEach(input => { input.checked = false; });
         syncSelection();
@@ -244,13 +244,13 @@
 
     document.addEventListener('change', event => {
         if (event.target.matches('[data-stage-select]')) {
-            pipelineSelected = event.target.checked;
-            selectedPipelineId = pipelineSelected ? root()?.dataset.pipeline || '' : '';
+            stageSelected = event.target.checked;
+            selectedStageId = stageSelected ? event.target.closest('[data-stage-panel]')?.dataset.stagePanel || '' : '';
             excludedLeadIds.clear();
-            boxes(event.target.closest('[data-stage-panel]')).forEach(input => { input.checked = pipelineSelected; });
+            boxes(event.target.closest('[data-stage-panel]')).forEach(input => { input.checked = stageSelected; });
             syncSelection();
         } else if (event.target.matches('[data-lead-select]')) {
-            if (pipelineSelected) {
+            if (stageSelected) {
                 if (event.target.checked) excludedLeadIds.delete(event.target.value);
                 else excludedLeadIds.add(event.target.value);
             }
@@ -258,7 +258,7 @@
         }
     });
     document.addEventListener('click', event => {
-        if (event.target.closest('.stage-tab') && !pipelineSelected) clearSelection();
+        if (event.target.closest('.stage-tab')) clearSelection();
         if (event.target.closest('[data-bulk-clear]')) clearSelection();
         const button = event.target.closest('[data-bulk-action]');
         if (button?.dataset.bulkAction === 'campaign') openCampaign(button);
