@@ -784,7 +784,6 @@
 
             data-stage-panel="{{ group.stage.id }}"
             data-stage-count="{{ group.bulk_count }}"
-            data-single-page="{% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages <= 1 %}true{% else %}false{% endif %}"
 
             class="
                 stage-panel
