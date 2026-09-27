@@ -100,7 +100,7 @@
 
                 data-color="{{ group.theme.hex }}"
 
-                hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}&stage={{ group.stage.id }}"
+                hx-get="{% url 'crm-lead-table-partial' %}?{{ group.query }}"
 
                 hx-target="#lead-table-container"
 
@@ -804,7 +804,7 @@
         >
 
                 <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
-                    <input type="checkbox" data-stage-select aria-label="Select all matching leads in {{ group.stage.name }}">
+                    <input type="checkbox" data-stage-select aria-label="Select visible leads in {{ group.stage.name }}">
                     <span><span data-stage-select-label>Select all {{ group.count }} leads in this stage</span> <small>(matching current filters)</small></span>
                 </label>
 
@@ -831,6 +831,21 @@
                     {% endfor %}
 
                 </div>
+
+                {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages > 1 %}
+                <nav class="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm" aria-label="Lead pages">
+                    <span class="text-gray-500">Showing {{ lead_page.start }}–{{ lead_page.end }} of {{ lead_page.total }} leads</span>
+                    <div class="flex items-center gap-2">
+                        {% if lead_page.previous_query %}
+                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.previous_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Previous</button>
+                        {% endif %}
+                        <span class="text-gray-600">Page {{ lead_page.number }} of {{ lead_page.total_pages }}</span>
+                        {% if lead_page.next_query %}
+                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Next</button>
+                        {% endif %}
+                    </div>
+                </nav>
+                {% endif %}
 
             {% else %}
 
