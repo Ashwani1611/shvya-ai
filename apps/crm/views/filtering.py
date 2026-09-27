@@ -291,6 +291,16 @@ def lead_table_partial(request):
             ),
         }
     )
+    if request.GET.get("append") == "1":
+        if not request.GET.get("page") or active_stage is None:
+            return JsonResponse({"error": "Invalid lead page."}, status=400)
+        active_group = next(
+            group for group in stage_groups if group["stage"].id == active_stage.id
+        )
+        return render(request, "crm/partials/lead_cards_append.html", {
+            "leads": active_group["leads"],
+            "lead_page": context["lead_page"],
+        })
     return render(request, "crm/partials/lead_table_filtered.html", context)
 
 
