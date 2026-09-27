@@ -76,9 +76,8 @@ class BulkLeadTests(TestCase):
         self.assertContains(response, 'data-bulk-action="export"')
         self.assertContains(response, 'data-bulk-action="delete"')
         self.assertContains(response, 'data-stage-count="3"')
-        self.assertContains(response, 'data-single-page="true"')
-        self.assertContains(response, "Select all 1 lead")
-        self.assertContains(response, "data-stage-selection hidden")
+        self.assertContains(response, f"Select all 3 leads in {self.stage.name}")
+        self.assertNotContains(response, "data-page-select")
         self.assertContains(response, "search=Lead+0")
         self.assertContains(response, "data-lead-select", count=1)
 
@@ -102,11 +101,8 @@ class BulkLeadTests(TestCase):
         self.assertEqual(page.status_code, 200)
         self.assertContains(page, 'data-stage-count="45"')
         self.assertContains(page, f"Select all 45 leads in {self.stage.name}")
-        self.assertContains(page, "Select 40 on this page")
-        page_two = self.client.get(reverse("crm-lead-table-partial"), {
-            "pipeline": self.pipeline.pk, "stage": self.stage.pk, "page": 2,
-        })
-        self.assertContains(page_two, "Select 5 on this page")
+        self.assertNotContains(page, "data-page-select")
+        self.assertContains(page, "data-auto-page")
 
         response = self.post(
             "options", selection_scope="pipeline", lead_ids=[],
