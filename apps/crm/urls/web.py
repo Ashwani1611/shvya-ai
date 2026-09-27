@@ -70,6 +70,7 @@ from apps.crm.views.filtering import (
     global_reminders_modal,
     lead_filters_modal,
     lead_table_partial,
+    lead_stage_counts,
 )
 
 from apps.crm.views.ai_setup import (
@@ -139,6 +140,11 @@ urlpatterns = [
         "leads/table/",
         lead_table_partial,
         name="crm-lead-table-partial",
+    ),
+    path(
+        "leads/stage-counts/",
+        lead_stage_counts,
+        name="crm-lead-stage-counts",
     ),
 
 
