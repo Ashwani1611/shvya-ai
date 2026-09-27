@@ -65,7 +65,7 @@ def _uuid(value):
 def _selection(user, data, *, lock=False):
     """Resolve a tenant-scoped explicit selection or the whole pipeline."""
     scope = data.get("selection_scope", "ids")
-    if scope not in ("ids", "pipeline"):
+    if scope not in ("ids", "pipeline", "stage"):
         raise ValueError("Invalid lead selection scope.")
     pipeline = get_user_pipelines(user).filter(pk=_uuid(data.get("pipeline"))).first()
     if pipeline is None:
@@ -74,7 +74,12 @@ def _selection(user, data, *, lock=False):
     queryset = Lead.objects.filter(
         organization=user.organization, pipeline=pipeline,
     ).select_related("pipeline", "stage", "organization").order_by("pk")
-    if scope == "pipeline":
+    if scope in ("pipeline", "stage"):
+        if scope == "stage":
+            stage_id = _uuid(data.get("source_stage"))
+            if not pipeline.stages.filter(pk=stage_id, is_active=True).exists():
+                raise ValueError("The selected stage is no longer available.")
+            queryset = queryset.filter(stage_id=stage_id)
         if data.get("lead_ids"):
             raise ValueError("Do not combine pipeline selection with individual lead IDs.")
         excluded_values = data.get("exclude_lead_ids", [])
@@ -86,8 +91,8 @@ def _selection(user, data, *, lock=False):
             if found != excluded_ids:
                 raise ValueError("An excluded lead is no longer in this pipeline.")
             queryset = queryset.exclude(pk__in=excluded_ids)
-        # The pipeline control explicitly includes every stage and page,
-        # independently of the current search or stage filter.
+        # Whole-stage or whole-pipeline selection includes every page,
+        # independently of current search filters.
         ids = None
     else:
         values = data.get("lead_ids")
