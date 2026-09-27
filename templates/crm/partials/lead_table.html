@@ -784,6 +784,7 @@
 
             data-stage-panel="{{ group.stage.id }}"
             data-stage-count="{{ group.bulk_count }}"
+            data-single-page="{% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages <= 1 %}true{% else %}false{% endif %}"
 
             class="
                 stage-panel
@@ -808,9 +809,9 @@
                 <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
                     <label class="crm-stage-select" data-page-selection {% if not group.leads %}hidden{% endif %}>
                         <input type="checkbox" data-page-select aria-label="Select visible leads on this page">
-                        <span data-page-select-label>Select {{ group.leads|length }} on this page</span>
+                        <span data-page-select-label>{% if lead_page.total_pages <= 1 %}Select all {{ group.leads|length }} leads{% else %}Select {{ group.leads|length }} on this page{% endif %}</span>
                     </label>
-                    <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
+                    <label class="crm-stage-select" data-stage-selection {% if not group.leads or lead_page.total_pages <= 1 %}hidden{% endif %}>
                         <input type="checkbox" data-stage-select aria-label="Select all leads in {{ group.stage.name }}">
                         <span><span data-stage-select-label>Select all {{ group.bulk_count }} leads in {{ group.stage.name }}</span> <small>(across all pages in this stage)</small></span>
                     </label>
