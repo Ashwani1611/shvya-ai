@@ -48,6 +48,7 @@ from apps.crm.views.lead_import import (
     lead_import_destination_modal,
     lead_import_destination_save,
     lead_import_execute,
+    lead_import_status,
     lead_import_mapping_modal,
     lead_import_mapping_save,
     lead_import_review_modal,
@@ -437,6 +438,12 @@ urlpatterns = [
         "leads/import/execute/",
         lead_import_execute,
         name="crm-lead-import-execute",
+    ),
+
+    path(
+        "leads/import/status/",
+        lead_import_status,
+        name="crm-lead-import-status",
     ),
 
 # ========================================================

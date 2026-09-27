@@ -37,9 +37,11 @@ MAX_IMPORT_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 MAX_IMPORT_ROWS = 25_000
 
-IMPORT_STATE_TIMEOUT = 60 * 60  # 1 hour
+IMPORT_STATE_TIMEOUT = 24 * 60 * 60  # Allow a queued large import to finish.
+IMPORT_JOB_TIMEOUT = 24 * 60 * 60
 
 IMPORT_CACHE_PREFIX = "shvya:lead_import:"
+IMPORT_JOB_PREFIX = "shvya:lead_import_job:"
 
 SUPPORTED_EXTENSIONS = {
     ".csv",
@@ -974,3 +976,19 @@ def delete_import_state(
             import_token
         )
     )
+
+
+def get_import_job(import_token):
+    return cache.get(f"{IMPORT_JOB_PREFIX}{import_token}:status")
+
+
+def save_import_job(import_token, status):
+    cache.set(f"{IMPORT_JOB_PREFIX}{import_token}:status", status, IMPORT_JOB_TIMEOUT)
+
+
+def claim_import_job(import_token):
+    return cache.add(f"{IMPORT_JOB_PREFIX}{import_token}:lock", True, IMPORT_JOB_TIMEOUT)
+
+
+def release_import_job(import_token):
+    cache.delete(f"{IMPORT_JOB_PREFIX}{import_token}:lock")
