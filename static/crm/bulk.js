@@ -354,6 +354,13 @@
             )));
         if (relevant) syncSelection();
     }).observe(table, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
-    document.body.addEventListener('htmx:afterSwap', syncSelection);
+    document.body.addEventListener('htmx:afterSwap', event => {
+        if (event.detail?.requestConfig?.elt?.matches?.('[data-auto-page]')) {
+            document.getElementById('lead-table-container')?.scrollIntoView({
+                block: 'start', behavior: 'auto',
+            });
+        }
+        syncSelection();
+    });
     syncSelection();
 })();
