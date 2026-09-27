@@ -11,29 +11,62 @@
     const boxes = panel => [...(panel?.querySelectorAll('[data-lead-select]') || [])];
     let action = '', selection = null, options = null, busy = false, loading = false, generation = 0;
     let trigger = null, refreshUrl = '', endpoint = '';
+    let pipelineSelected = false, selectedPipelineId = '';
+
+    const pipelineTotal = current => Number(current?.dataset.pipelineCount || 0);
+    const chosenCount = (chosen, current) => chosen.selection_scope === 'pipeline'
+        ? pipelineTotal(current) : chosen.lead_ids.length;
+
+    function currentSelection(current, panel) {
+        if (pipelineSelected && selectedPipelineId === current?.dataset.pipeline) {
+            return {
+                selection_scope: 'pipeline',
+                pipeline: current.dataset.pipeline,
+                source_stage: panel.dataset.stagePanel,
+            };
+        }
+        return {
+            lead_ids: boxes(panel).filter(input => input.checked).map(input => input.value),
+            pipeline: current.dataset.pipeline,
+            source_stage: panel.dataset.stagePanel,
+        };
+    }
 
     function syncSelection() {
         const current = root(), panel = activePanel();
         if (!current) return;
+        if (pipelineSelected && selectedPipelineId !== current.dataset.pipeline) {
+            pipelineSelected = false;
+            selectedPipelineId = '';
+        }
         current.querySelectorAll('[data-stage-panel]').forEach(stage => {
             const inputs = boxes(stage);
             if (stage !== panel) inputs.forEach(input => { input.checked = false; });
+            if (stage === panel && pipelineSelected) {
+                inputs.forEach(input => { input.checked = true; });
+            }
             inputs.forEach(input => input.closest('.lead-card')?.classList.toggle('crm-is-selected', input.checked));
             const selected = inputs.filter(input => input.checked).length;
             const all = stage.querySelector('[data-stage-select]');
             if (all) {
-                stage.querySelector('[data-stage-selection]').hidden = inputs.length === 0;
-                stage.querySelector('[data-stage-select-label]').textContent = `Select all ${inputs.length} lead${inputs.length === 1 ? '' : 's'} in this stage`;
-                all.checked = inputs.length > 0 && selected === inputs.length;
-                all.indeterminate = selected > 0 && selected < inputs.length;
+                stage.querySelector('[data-stage-selection]').hidden = pipelineTotal(current) === 0;
+                stage.querySelector('[data-stage-select-label]').textContent =
+                    `Select all ${pipelineTotal(current)} leads in this pipeline`;
+                all.checked = pipelineSelected;
+                all.indeterminate = !pipelineSelected && selected > 0;
             }
         });
-        const count = boxes(panel).filter(input => input.checked).length;
+        const count = pipelineSelected
+            ? pipelineTotal(current)
+            : boxes(panel).filter(input => input.checked).length;
         current.querySelector('[data-bulk-toolbar]').hidden = count === 0;
-        current.querySelector('[data-bulk-count]').textContent = `${count} lead${count === 1 ? '' : 's'} selected`;
+        current.querySelector('[data-bulk-count]').textContent =
+            `${count} lead${count === 1 ? '' : 's'} selected${pipelineSelected ? ' across this pipeline' : ' on this page'}`;
     }
 
     function clearSelection() {
+        pipelineSelected = false;
+        selectedPipelineId = '';
         root()?.querySelectorAll('[data-lead-select]').forEach(input => { input.checked = false; });
         syncSelection();
     }
@@ -108,20 +141,18 @@
 
     async function openCampaign(button) {
         const current = root(), panel = activePanel();
-        const ids = boxes(panel).filter(input => input.checked).map(input => input.value);
-        if (!ids.length || current?.dataset.canCampaign !== 'true') return;
+        if (!current || !panel || current.dataset.canCampaign !== 'true') return;
+        const chosen = currentSelection(current, panel);
+        const count = chosenCount(chosen, current);
+        if (!count) return;
 
         trigger = button;
         action = 'campaign';
-        selection = {
-            lead_ids: ids,
-            pipeline: current.dataset.pipeline,
-            source_stage: panel.dataset.stagePanel,
-        };
+        selection = chosen;
         endpoint = current.dataset.bulkUrl;
 
         button.disabled = true;
-        status(`Preparing Bulk Campaigns for ${ids.length} selected lead${ids.length === 1 ? '' : 's'}…`);
+        status(`Preparing Bulk Campaigns for ${count} selected lead${count === 1 ? '' : 's'}…`);
         try {
             const response = await request({action: 'campaign'});
             const result = await response.json();
@@ -141,11 +172,13 @@
 
     async function openDialog(button) {
         const current = root(), panel = activePanel();
-        const ids = boxes(panel).filter(input => input.checked).map(input => input.value);
-        if (!ids.length) return;
+        if (!current || !panel) return;
+        const chosen = currentSelection(current, panel);
+        const count = chosenCount(chosen, current);
+        if (!count) return;
         trigger = button;
         action = button.dataset.bulkAction;
-        selection = {lead_ids: ids, pipeline: current.dataset.pipeline, source_stage: panel.dataset.stagePanel};
+        selection = chosen;
         endpoint = current.dataset.bulkUrl;
         const url = new URL(current.dataset.refreshUrl, window.location.origin);
         url.searchParams.set('pipeline', selection.pipeline);
@@ -156,7 +189,7 @@
         showError('');
         loading = true;
         el('title').textContent = {update: 'Update Leads', export: 'Export Leads', delete: 'Delete Leads'}[action];
-        el('description').textContent = `Loading options for ${ids.length} selected lead${ids.length === 1 ? '' : 's'}…`;
+        el('description').textContent = `Loading options for ${count} selected lead${count === 1 ? '' : 's'}…`;
         dialog.querySelectorAll('[data-bulk-section]').forEach(section => { section.hidden = true; });
         el('submit').classList.toggle('crm-bulk-danger', action === 'delete');
         el('submit').classList.toggle('crm-bulk-primary', action !== 'delete');
@@ -206,12 +239,20 @@
 
     document.addEventListener('change', event => {
         if (event.target.matches('[data-stage-select]')) {
-            boxes(event.target.closest('[data-stage-panel]')).forEach(input => { input.checked = event.target.checked; });
+            pipelineSelected = event.target.checked;
+            selectedPipelineId = pipelineSelected ? root()?.dataset.pipeline || '' : '';
+            boxes(event.target.closest('[data-stage-panel]')).forEach(input => { input.checked = pipelineSelected; });
             syncSelection();
-        } else if (event.target.matches('[data-lead-select]')) syncSelection();
+        } else if (event.target.matches('[data-lead-select]')) {
+            if (pipelineSelected) {
+                pipelineSelected = false;
+                selectedPipelineId = '';
+            }
+            syncSelection();
+        }
     });
     document.addEventListener('click', event => {
-        if (event.target.closest('.stage-tab')) clearSelection();
+        if (event.target.closest('.stage-tab') && !pipelineSelected) clearSelection();
         if (event.target.closest('[data-bulk-clear]')) clearSelection();
         const button = event.target.closest('[data-bulk-action]');
         if (button?.dataset.bulkAction === 'campaign') openCampaign(button);
@@ -258,7 +299,7 @@
                 anchor.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'leads.xlsx';
                 document.body.append(anchor); anchor.click(); anchor.remove();
                 setTimeout(() => URL.revokeObjectURL(url), 60000);
-                status(`XLSX export prepared for ${selection.lead_ids.length} selected leads.`);
+                status(`XLSX export prepared for ${chosenCount(selection, root())} selected leads.`);
             } else {
                 const result = await response.json();
                 clearSelection();

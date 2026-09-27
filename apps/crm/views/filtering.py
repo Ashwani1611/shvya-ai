@@ -268,6 +268,9 @@ def lead_table_partial(request):
             "selected_pipeline_id": str(current_pipeline.id),
             "active_stage_id": active_stage_id,
             "bulk_permissions": bulk_permissions(user, current_pipeline),
+            "pipeline_lead_count": Lead.objects.filter(
+                organization=user.organization, pipeline=current_pipeline,
+            ).count(),
             "bulk_campaign_available": bulk_campaign_available(user, current_pipeline),
             "cross_pipeline_matches": matches,
             "all_pipelines_query": query_with(
