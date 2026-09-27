@@ -1157,7 +1157,34 @@ document.body.addEventListener(
        SAME LEAD + SAME TAB + REINITIALIZE HTMX
        ============================================================ */
 
-    document.body.addEventListener(
+    
+/* Stage badges are totals across pages. Reload them after a card moves. */
+let crmStageCountRefreshTimer;
+function refreshCrmStageCounts() {
+    clearTimeout(crmStageCountRefreshTimer);
+    crmStageCountRefreshTimer = setTimeout(async function () {
+        const root = document.querySelector('[data-bulk-root]');
+        if (!root) return;
+        const source = new URL(root.dataset.refreshUrl || window.location.href, window.location.origin);
+        const url = new URL('{% url "crm-lead-stage-counts" %}', window.location.origin);
+        source.searchParams.forEach((value, key) => url.searchParams.set(key, value));
+        url.searchParams.set('pipeline', root.dataset.pipeline);
+        try {
+            const response = await fetch(url, {credentials: 'same-origin'});
+            if (!response.ok) return;
+            const result = await response.json();
+            if (root !== document.querySelector('[data-bulk-root]')) return;
+            root.querySelectorAll('.stage-tab[data-stage-id]').forEach(function (tab) {
+                const count = tab.querySelector('[data-stage-count]');
+                if (count) count.textContent = String(result.counts[tab.dataset.stageId] ?? 0);
+            });
+        } catch (error) {
+            console.warn('Unable to refresh CRM stage totals', error);
+        }
+    }, 120);
+}
+
+document.body.addEventListener(
         'leadCardUpdated',
         async function(event) {
 
@@ -1625,8 +1652,7 @@ document.body.addEventListener(
 
                             if (oldCount) {
 
-                                oldCount.textContent =
-                                    remainingOldCards;
+                                refreshCrmStageCounts();
 
                             }
 
@@ -1788,8 +1814,7 @@ document.body.addEventListener(
 
                         if (oldCount) {
 
-                            oldCount.textContent =
-                                remainingOldCards;
+                            refreshCrmStageCounts();
 
                         }
 
@@ -1814,10 +1839,7 @@ document.body.addEventListener(
 
                         if (newCount) {
 
-                            newCount.textContent =
-                                newPanel.querySelectorAll(
-                                    '[id^="lead-card-"]'
-                                ).length;
+                            refreshCrmStageCounts();
 
                         }
 
@@ -2638,8 +2660,7 @@ document.body.addEventListener(
                             : 0;
 
 
-                    oldCount.textContent =
-                        count;
+                    refreshCrmStageCounts();
 
                 }
 
@@ -2666,10 +2687,7 @@ document.body.addEventListener(
 
             if (newCount) {
 
-                newCount.textContent =
-                    newPanel.querySelectorAll(
-                        '[id^="lead-card-"]'
-                    ).length;
+                refreshCrmStageCounts();
 
             }
 
