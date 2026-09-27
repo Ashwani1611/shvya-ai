@@ -50,20 +50,10 @@
             }
             inputs.forEach(input => input.closest('.lead-card')?.classList.toggle('crm-is-selected', input.checked));
             const selected = inputs.filter(input => input.checked).length;
-            const page = stage.querySelector('[data-page-select]');
-            if (page) {
-                stage.querySelector('[data-page-selection]').hidden = inputs.length === 0;
-                stage.querySelector('[data-page-select-label]').textContent =
-                    stage.dataset.singlePage === 'true'
-                        ? `Select all ${inputs.length} lead${inputs.length === 1 ? "" : "s"}`
-                        : `Select ${inputs.length} on this page`;
-                page.checked = inputs.length > 0 && selected === inputs.length;
-                page.indeterminate = selected > 0 && selected < inputs.length;
-            }
             const all = stage.querySelector('[data-stage-select]');
             if (all) {
                 stage.querySelector('[data-stage-selection]').hidden =
-                    stageTotal(stage) === 0 || stage.dataset.singlePage === 'true';
+                    stageTotal(stage) === 0;
                 stage.querySelector('[data-stage-select-label]').textContent =
                     `Select all ${stageTotal(stage)} leads in this stage`;
                 all.checked = stageSelected && excludedLeadIds.size === 0;
@@ -254,15 +244,7 @@
     }
 
     document.addEventListener('change', event => {
-        if (event.target.matches('[data-page-select]')) {
-            stageSelected = false;
-            selectedStageId = '';
-            excludedLeadIds.clear();
-            boxes(event.target.closest('[data-stage-panel]')).forEach(input => {
-                input.checked = event.target.checked;
-            });
-            syncSelection();
-        } else if (event.target.matches('[data-stage-select]')) {
+        if (event.target.matches('[data-stage-select]')) {
             stageSelected = event.target.checked;
             selectedStageId = stageSelected ? event.target.closest('[data-stage-panel]')?.dataset.stagePanel || '' : '';
             excludedLeadIds.clear();
@@ -354,13 +336,6 @@
             )));
         if (relevant) syncSelection();
     }).observe(table, {childList: true, subtree: true, attributes: true, attributeFilter: ['class']});
-    document.body.addEventListener('htmx:afterSwap', event => {
-        if (event.detail?.requestConfig?.elt?.matches?.('[data-auto-page]')) {
-            document.getElementById('lead-table-container')?.scrollIntoView({
-                block: 'start', behavior: 'auto',
-            });
-        }
-        syncSelection();
-    });
+    document.body.addEventListener('htmx:afterSwap', syncSelection);
     syncSelection();
 })();

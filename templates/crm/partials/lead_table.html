@@ -784,7 +784,6 @@
 
             data-stage-panel="{{ group.stage.id }}"
             data-stage-count="{{ group.bulk_count }}"
-            data-single-page="{% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages <= 1 %}true{% else %}false{% endif %}"
 
             class="
                 stage-panel
@@ -806,31 +805,12 @@
             "
         >
 
-                <div class="flex flex-wrap items-center gap-3 border-b border-gray-100 px-4 py-3">
-                    <label class="crm-stage-select" data-page-selection {% if not group.leads %}hidden{% endif %}>
-                        <input type="checkbox" data-page-select aria-label="Select visible leads on this page">
-                        <span data-page-select-label>{% if lead_page.total_pages <= 1 %}Select all {{ group.leads|length }} lead{{ group.leads|length|pluralize }}{% else %}Select {{ group.leads|length }} on this page{% endif %}</span>
-                    </label>
-                    <label class="crm-stage-select" data-stage-selection {% if not group.leads or lead_page.total_pages <= 1 %}hidden{% endif %}>
+                <div class="flex items-center border-b border-gray-100 px-4 py-3">
+                    <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
                         <input type="checkbox" data-stage-select aria-label="Select all leads in {{ group.stage.name }}">
-                        <span><span data-stage-select-label>Select all {{ group.bulk_count }} leads in {{ group.stage.name }}</span> <small>(across all pages in this stage)</small></span>
+                        <span><span data-stage-select-label>Select all {{ group.bulk_count }} leads in {{ group.stage.name }}</span> <small>(across this stage)</small></span>
                     </label>
                 </div>
-
-                {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages > 1 %}
-                <nav class="flex items-center justify-between gap-3 border-b border-gray-100 px-4 py-3 text-sm" aria-label="Lead pages">
-                    <span class="text-gray-500">Showing {{ lead_page.start }}–{{ lead_page.end }} of {{ lead_page.total }} leads</span>
-                    <div class="flex items-center gap-2">
-                        {% if lead_page.previous_query %}
-                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.previous_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Previous</button>
-                        {% endif %}
-                        <span class="text-gray-600">Page {{ lead_page.number }} of {{ lead_page.total_pages }}</span>
-                        {% if lead_page.next_query %}
-                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Next</button>
-                        {% endif %}
-                    </div>
-                </nav>
-                {% endif %}
 
             {% if group.leads %}
 
@@ -854,33 +834,17 @@
 
                     {% endfor %}
 
-                </div>
-
-                {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.total_pages > 1 %}
-                <nav class="flex items-center justify-between gap-3 border-t border-gray-100 px-4 py-3 text-sm" aria-label="Lead pages">
-                    <span class="text-gray-500">Showing {{ lead_page.start }}–{{ lead_page.end }} of {{ lead_page.total }} leads</span>
-                    <div class="flex items-center gap-2">
-                        {% if lead_page.previous_query %}
-                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.previous_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Previous</button>
-                        {% endif %}
-                        <span class="text-gray-600">Page {{ lead_page.number }} of {{ lead_page.total_pages }}</span>
-                        {% if lead_page.next_query %}
-                        <button type="button" hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}" hx-target="#lead-table-container" hx-swap="innerHTML" class="rounded-lg border border-gray-200 px-3 py-1.5 hover:bg-gray-50">Next</button>
-                        {% endif %}
+                    {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.next_query %}
+                    <div data-auto-page
+                         hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}&amp;append=1"
+                         hx-trigger="intersect once threshold:0.2"
+                         hx-swap="outerHTML"
+                         class="flex justify-center py-4 text-sm text-gray-500"
+                         aria-label="Loading more leads">
+                        Loading more leads…
                     </div>
-                </nav>
-                {% if lead_page.next_query %}
-                <div data-auto-page
-                     hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}"
-                     hx-trigger="intersect once threshold:0.2"
-                     hx-target="#lead-table-container"
-                     hx-swap="innerHTML"
-                     class="flex justify-center py-4 text-sm text-gray-500"
-                     aria-label="Scroll to load the next lead page">
-                    Scroll down to load more leads
+                    {% endif %}
                 </div>
-                {% endif %}
-                {% endif %}
 
             {% else %}
 
