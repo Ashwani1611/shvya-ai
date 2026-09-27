@@ -96,6 +96,8 @@ class CrossPipelineLeadNavigationTests(TestCase):
         })
         self.assertEqual(first.status_code, 200)
         self.assertContains(first, "Page 1 of 2")
+        self.assertContains(first, "Showing 1–40 of 43 leads")
+        self.assertContains(first, "Next")
         self.assertNotContains(first, f'id="lead-card-{self.lead.pk}"')
 
         second = self.client.get(url, {
@@ -119,9 +121,19 @@ class CrossPipelineLeadNavigationTests(TestCase):
         response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 1)
+        for index in range(2):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.target_pipeline,
+                stage=self.target_stage,
+                name=f"Counted lead {index}",
+                phone=f"+91987770000{index}",
+            )
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 3)
         self.lead.stage = self.target_pipeline.stages.order_by("display_order").first()
         self.lead.save(update_fields=["stage"])
         response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 0)
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 2)
         self.assertEqual(self.client.get(route, {"pipeline": "invalid"}).status_code, 404)

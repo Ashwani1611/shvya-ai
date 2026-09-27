@@ -147,6 +147,7 @@ def lead_table_partial(request):
     # Count matching leads across stages without building every card.
     counts = dict(
         queryset.filter(stage__in=stages)
+        .order_by()
         .values("stage_id")
         .annotate(total=Count("pk", distinct=True))
         .values_list("stage_id", "total")
@@ -308,6 +309,7 @@ def lead_stage_counts(request):
     )
     counts = dict(
         queryset.filter(stage_id__in=stages)
+        .order_by()
         .values("stage_id")
         .annotate(total=Count("pk", distinct=True))
         .values_list("stage_id", "total")
