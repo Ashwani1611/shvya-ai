@@ -251,7 +251,7 @@ def lead_table_partial(request):
         ) if page_number > 1 else "",
         "next_query": query_with(
             request.GET, pipeline=current_pipeline.id, stage=active_stage_id,
-            filter_stage=None, page=page_number + 1,
+            filter_stage=None, page=page_number + 1, append=None,
         ) if page_number < total_pages else "",
     }
 
