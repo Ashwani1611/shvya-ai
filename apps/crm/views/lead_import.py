@@ -41,7 +41,12 @@ from services.crm.lead_import_service import (
     parse_uploaded_file,
     delete_import_state,
     normalize_import_phone,
+    claim_import_job,
+    get_import_job,
+    release_import_job,
+    save_import_job,
 )
+from apps.crm.tasks import import_leads_task
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
@@ -75,6 +80,53 @@ from .bulk import bulk_permissions
 
 
 logger = logging.getLogger(__name__)
+
+
+def _review_rows(organization, rows, mapping):
+    """Count matches with bounded queries and render only a small preview."""
+    prepared = []
+    phones = set()
+    for index, row in enumerate(rows, start=1):
+        name = (row.get(mapping["name"]) or "").strip()
+        raw_phone = (row.get(mapping["phone"]) or "").strip()
+        email = (row.get(mapping.get("email")) or "").strip()
+        try:
+            if not name or not raw_phone:
+                raise DjangoValidationError("Name and phone are required.")
+            normalized = normalize_phone(normalize_import_phone(raw_phone))
+            phones.add(normalized)
+        except DjangoValidationError:
+            normalized = ""
+        prepared.append((index, name, raw_phone, email, normalized))
+
+    existing = set()
+    phone_list = list(phones)
+    for start in range(0, len(phone_list), 500):
+        existing.update(Lead.objects.filter(
+            organization=organization,
+            phone__in=phone_list[start:start + 500],
+        ).values_list("phone", flat=True))
+
+    counts = {"new_lead_count": 0, "existing_lead_count": 0, "invalid_phone_count": 0}
+    preview = []
+    seen = set(existing)
+    for index, name, raw_phone, email, normalized in prepared:
+        if not normalized:
+            status = "invalid"
+            counts["invalid_phone_count"] += 1
+        elif normalized in seen:
+            status = "existing"
+            counts["existing_lead_count"] += 1
+        else:
+            status = "new"
+            counts["new_lead_count"] += 1
+            seen.add(normalized)
+        if len(preview) < 50:
+            preview.append({
+                "row_number": index, "name": name, "phone": raw_phone,
+                "normalized_phone": normalized, "email": email, "status": status,
+            })
+    return counts, preview
 
 @crm_login_required
 @require_GET
@@ -958,118 +1010,12 @@ def lead_import_destination_save(
         [],
     )
 
-    new_lead_count = 0
-    existing_lead_count = 0
-    invalid_phone_count = 0
+    review_counts, preview_rows = _review_rows(user.organization, rows, mapping)
+    state["review"] = review_counts
 
-    preview_rows = []
-
-    name_column = mapping.get(
-        "name"
-    )
-
-    phone_column = mapping.get(
-        "phone"
-    )
-
-    email_column = mapping.get(
-        "email"
-    )
-
-    for index, row in enumerate(
-        rows,
-        start=1,
-    ):
-        name = (
-            row.get(
-                name_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        raw_phone = (
-            row.get(
-                phone_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        email = (
-            row.get(
-                email_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        try:
-
-            normalized_phone = (
-                normalize_import_phone(
-                    raw_phone
-                )
-            )
-
-            normalized_phone = (
-                normalize_phone(
-                    normalized_phone
-                )
-            )
-
-        except DjangoValidationError:
-
-            invalid_phone_count += 1
-
-            preview_rows.append(
-                {
-                    "row_number": index,
-                    "name": name,
-                    "phone": raw_phone,
-                    "normalized_phone": "",
-                    "email": email,
-                    "status": "invalid",
-                }
-            )
-
-            continue
-
-        existing_lead = (
-            Lead.objects
-            .filter(
-                organization=user.organization,
-                phone=normalized_phone,
-            )
-            .first()
-        )
-
-        if existing_lead:
-
-            existing_lead_count += 1
-            status = "existing"
-
-        else:
-
-            new_lead_count += 1
-            status = "new"
-
-        preview_rows.append(
-            {
-                "row_number": index,
-                "name": name,
-                "phone": raw_phone,
-                "normalized_phone": normalized_phone,
-                "email": email,
-                "status": status,
-            }
-        )
-
-    state["review"] = {
-        "new_lead_count": new_lead_count,
-        "existing_lead_count": existing_lead_count,
-        "invalid_phone_count": invalid_phone_count,
-    }
+    new_lead_count = review_counts["new_lead_count"]
+    existing_lead_count = review_counts["existing_lead_count"]
+    invalid_phone_count = review_counts["invalid_phone_count"]
 
     save_import_state(
         import_token,
@@ -1237,127 +1183,12 @@ def lead_import_review_modal(
     # CHECK EACH ROW
     # --------------------------------------------------------
 
-    new_lead_count = 0
-    existing_lead_count = 0
+    review_counts, preview_rows = _review_rows(user.organization, rows, mapping)
+    state["review"] = review_counts
 
-    invalid_phone_count = 0
-
-    preview_rows = []
-
-    for index, row in enumerate(
-        rows,
-        start=1,
-    ):
-
-        name_column = mapping.get(
-            "name"
-        )
-
-        phone_column = mapping.get(
-            "phone"
-        )
-
-        email_column = mapping.get(
-            "email"
-        )
-
-        name = (
-            row.get(
-                name_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        raw_phone = (
-            row.get(
-                phone_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        email = (
-            row.get(
-                email_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        normalized_phone = ""
-
-        if raw_phone:
-
-            try:
-
-                normalized_phone = (
-                    normalize_import_phone(
-                        raw_phone
-                    )
-                )
-
-                normalized_phone = normalize_phone(
-                    normalized_phone
-                )
-
-            except DjangoValidationError:
-
-                invalid_phone_count += 1
-
-                preview_rows.append(
-                    {
-
-                        "row_number": index,
-                        "name": name,
-                        "phone": raw_phone,
-                        "normalized_phone": "",
-                        "email": email,
-                        "status": "invalid",
-                    }
-                )  
-
-                continue
-
-        existing_lead = None
-
-        if normalized_phone:
-
-            existing_lead = (
-                Lead.objects
-                .filter(
-                    organization=user.organization,
-                    phone=normalized_phone,
-                )
-                .first()
-            )
-
-        if existing_lead:
-
-            existing_lead_count += 1
-            status = "existing"
-
-        else:
-
-            new_lead_count += 1
-            status = "new"
-
-        preview_rows.append(
-            {
-                "row_number": index,
-                "name": name,
-                "phone": raw_phone,
-                "normalized_phone": normalized_phone,
-                "email": email,
-                "status": status,
-            }
-        )
-
-    state["review"] = {
-        "new_lead_count": new_lead_count,
-        "existing_lead_count": existing_lead_count,
-        "invalid_phone_count": invalid_phone_count,
-    }
+    new_lead_count = review_counts["new_lead_count"]
+    existing_lead_count = review_counts["existing_lead_count"]
+    invalid_phone_count = review_counts["invalid_phone_count"]
 
     save_import_state(
         import_token,
@@ -1387,333 +1218,84 @@ def lead_import_review_modal(
     )
 
 
+def _render_import_job(request, import_token, job):
+    if job["status"] == "completed":
+        return render(request, "crm/partials/lead_import_progress_modal.html", job)
+    if job["status"] == "failed":
+        return render(request, "crm/partials/lead_import_working_modal.html", {
+            "import_token": import_token, "job": job, "failed": True,
+        })
+    return render(request, "crm/partials/lead_import_working_modal.html", {
+        "import_token": import_token, "job": job, "failed": False,
+    })
+
+
+@crm_login_required
+@require_GET
+def lead_import_status(request):
+    token = request.GET.get("token", "").strip()
+    job = get_import_job(token) if token else None
+    if not job or job.get("organization_id") != str(request.crm_user.organization_id):
+        return HttpResponse("Import status expired or unavailable.", status=404)
+    return _render_import_job(request, token, job)
+
+
 @crm_login_required
 @require_POST
-def lead_import_execute(
-    request,
-):
+def lead_import_execute(request):
     user = request.crm_user
-
-    import_token = request.POST.get(
-        "import_token",
-        "",
-    ).strip()
-
-    if not import_token:
-
-        return HttpResponse(
-            "Import session is missing.",
-            status=400,
-        )
-
-    state = get_import_state(
-        import_token
-    )
-
+    token = request.POST.get("import_token", "").strip()
+    if not token:
+        return HttpResponse("Import session is missing.", status=400)
+    state = get_import_state(token)
+    job = get_import_job(token)
+    if job and job.get("organization_id") == str(user.organization_id):
+        if job["status"] in {"queued", "running", "completed"}:
+            return _render_import_job(request, token, job)
     if not state:
+        return HttpResponse("Import session has expired. Please start again.", status=400)
+    if state.get("organization_id") != str(user.organization_id):
+        return HttpResponse("Invalid import session.", status=403)
+
+    mode = request.POST.get("import_mode", "new_only").strip()
+    if mode not in {"new_only", "new_and_existing"}:
+        return HttpResponse("Invalid import mode.", status=400)
+    mapping = state.get("mapping", {})
+    if not mapping.get("name") or not mapping.get("phone"):
+        return HttpResponse("Name and phone mapping are required.", status=400)
+    if not state.get("pipeline_id") or not state.get("stage_id"):
+        return HttpResponse("Pipeline and stage are required.", status=400)
+    pipeline = get_user_pipelines(user).filter(
+        organization=user.organization, is_active=True, id=state["pipeline_id"],
+    ).first()
+    if not pipeline or not Stage.objects.filter(
+        id=state["stage_id"], pipeline=pipeline, is_active=True,
+    ).exists():
+        return HttpResponse("Invalid destination pipeline or stage.", status=400)
+
+    if not claim_import_job(token):
+        job = get_import_job(token)
+        if job and job.get("organization_id") == str(user.organization_id):
+            return _render_import_job(request, token, job)
+        return HttpResponse("This import is already starting. Try again shortly.", status=409)
+
+    job = {
+        "status": "queued", "organization_id": str(user.organization_id),
+        "import_mode": mode,
+        "processed": 0, "total": len(state["rows"]),
+        "created_count": 0, "updated_count": 0,
+        "skipped_count": 0, "invalid_count": 0,
+    }
+    save_import_job(token, job)
+    try:
+        import_leads_task.delay(token, str(user.organization_id), mode)
+    except Exception:
+        logger.exception("Could not queue lead import")
+        release_import_job(token)
+        save_import_job(token, {**job, "status": "failed", "message": "Could not start import. Try again."})
+        return HttpResponse("Could not start import. Try again.", status=503)
+    return _render_import_job(request, token, get_import_job(token) or job)
 
-        return HttpResponse(
-            "Import session has expired. Please start again.",
-            status=400,
-        )
-
-    if str(
-        state.get("organization_id", "")
-    ) != str(
-        user.organization_id
-    ):
-
-        return HttpResponse(
-            "Invalid import session.",
-            status=403,
-        )
-
-    import_mode = request.POST.get(
-        "import_mode",
-        "new_only",
-    ).strip()
-
-    if import_mode not in {
-        "new_only",
-        "new_and_existing",
-    }:
-
-        return HttpResponse(
-            "Invalid import mode.",
-            status=400,
-        )
-
-    mapping = state.get(
-        "mapping",
-        {},
-    )
-
-    rows = state.get(
-        "rows",
-        [],
-    )
-
-    pipeline_id = state.get(
-        "pipeline_id"
-    )
-
-    stage_id = state.get(
-        "stage_id"
-    )
-
-    if not mapping.get("name"):
-
-        return HttpResponse(
-            "Name mapping is missing.",
-            status=400,
-        )
-
-    if not mapping.get("phone"):
-
-        return HttpResponse(
-            "Phone mapping is missing.",
-            status=400,
-        )
-
-    if not pipeline_id or not stage_id:
-
-        return HttpResponse(
-            "Pipeline and stage are required.",
-            status=400,
-        )
-
-    allowed_pipelines = (
-        get_user_pipelines(
-            user
-        )
-        .filter(
-            organization=user.organization,
-            is_active=True,
-        )
-    )
-
-    pipeline = get_object_or_404(
-        allowed_pipelines,
-        id=pipeline_id,
-    )
-
-    stage = get_object_or_404(
-        Stage,
-        id=stage_id,
-        pipeline=pipeline,
-        is_active=True,
-    )
-
-    attribute_definitions = (
-        AttributeDefinition.objects
-        .filter(is_active=True, 
-            organization=user.organization,
-        )
-    )
-
-    created_count = 0
-    updated_count = 0
-    skipped_count = 0
-    invalid_count = 0
-
-    name_column = mapping.get(
-        "name"
-    )
-
-    phone_column = mapping.get(
-        "phone"
-    )
-
-    email_column = mapping.get(
-        "email"
-    )
-
-    # --------------------------------------------------------
-    # IMPORT EACH ROW
-    # --------------------------------------------------------
-
-    for row in rows:
-
-        name = (
-            row.get(
-                name_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        raw_phone = (
-            row.get(
-                phone_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        email = (
-            row.get(
-                email_column,
-                "",
-            )
-            or ""
-        ).strip()
-
-        if not name or not raw_phone:
-
-            invalid_count += 1
-
-            continue
-
-        try:
-
-            normalized_phone = (
-                normalize_import_phone(
-                    raw_phone
-                )
-            )
-
-            normalized_phone = (
-                normalize_phone(
-                    normalized_phone
-                )
-            )
-
-        except DjangoValidationError:
-
-            invalid_count += 1
-
-            continue
-
-        existing_lead = (
-            Lead.objects
-            .filter(
-                organization=user.organization,
-                phone=normalized_phone,
-            )
-            .first()
-        )
-
-        # ----------------------------------------------------
-        # BUILD ATTRIBUTE VALUES
-        # ----------------------------------------------------
-
-        attributes = {}
-
-        for attribute in attribute_definitions:
-
-            sheet_column = mapping.get(
-                attribute.key
-            )
-
-            if not sheet_column:
-
-                continue
-
-            value = (
-                row.get(
-                    sheet_column,
-                    "",
-                )
-                or ""
-            ).strip()
-
-            if value:
-
-                attributes[
-                    attribute.key
-                ] = value
-
-        # ----------------------------------------------------
-        # EXISTING LEAD
-        # ----------------------------------------------------
-
-        if existing_lead:
-
-            # ------------------------------------------------
-            # NEW LEADS ONLY
-            #
-            # Existing leads are completely untouched.
-            # ------------------------------------------------
-
-            if import_mode == "new_only":
-
-                skipped_count += 1
-
-                continue
-
-            # ------------------------------------------------
-            # NEW & EXISTING LEADS
-            #
-            # Move the existing lead to the selected
-            # pipeline and stage.
-            # ------------------------------------------------
-
-            existing_lead.pipeline = pipeline
-
-            existing_lead.stage = stage
-
-            existing_lead.name = (
-                name
-                or existing_lead.name
-            )
-
-            if email:
-
-                existing_lead.email = email
-
-            if attributes:
-
-                existing_lead.attributes = {
-                    **(
-                        existing_lead.attributes
-                        or {}
-                    ),
-                    **attributes,
-                }
-
-            existing_lead.full_clean()
-
-            existing_lead.save()
-
-            updated_count += 1
-
-            continue
-
-        # ----------------------------------------------------
-        # NEW LEAD
-        # ----------------------------------------------------
-
-        create_lead(
-            organization=user.organization,
-            pipeline=pipeline,
-            stage=stage,
-            name=name,
-            phone=normalized_phone,
-            email=email,
-            attributes=attributes,
-            lead_source="csv_import",
-        )
-
-        created_count += 1
-
-    # --------------------------------------------------------
-    # CLEAN UP TEMPORARY STATE
-    # --------------------------------------------------------
-
-    delete_import_state(
-        import_token
-    )
-
-    return render(
-        request,
-        "crm/partials/lead_import_progress_modal.html",
-        {
-            "created_count": created_count,
-            "updated_count": updated_count,
-            "skipped_count": skipped_count,
-            "invalid_count": invalid_count,
-        },
-    )
 
 @crm_login_required
 @require_GET
@@ -1750,5 +1332,3 @@ def lead_import_sample_file(
 # ============================================================
 # INTERNAL LEAD TABLE CONTEXT BUILDER
 # ============================================================
-
-
