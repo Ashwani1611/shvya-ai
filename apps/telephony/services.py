@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -221,8 +221,38 @@ def register_device(*, user, payload):
     return device
 
 
-@transaction.atomic
 def ingest_call_event(*, user, payload):
+    """Return the committed event when concurrent requests use the same UUID.
+
+    The inner atomic block rolls back all call and CRM side effects if the
+    unique event insert loses a race. Query the winner only after rollback.
+    """
+    try:
+        return _ingest_call_event_atomic(user=user, payload=payload)
+    except IntegrityError:
+        try:
+            event_uuid = uuid.UUID(str(payload.get("event_uuid") or ""))
+        except (AttributeError, TypeError, ValueError):
+            raise
+        existing_event = (
+            CallEvent.objects.select_related("call", "call__lead", "call__crm_call")
+            .filter(event_uuid=event_uuid)
+            .first()
+        )
+        if existing_event is None:
+            raise
+        if existing_event.organization_id != user.organization_id:
+            raise ValidationError("Event identity belongs to another organization.")
+        return {
+            "call": existing_event.call,
+            "event": existing_event,
+            "event_created": False,
+            "lead_created": False,
+        }
+
+
+@transaction.atomic
+def _ingest_call_event_atomic(*, user, payload):
     require_call_user(user)
     if not isinstance(payload, dict):
         raise ValidationError("Expected a JSON object.")

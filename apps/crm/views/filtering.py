@@ -1,10 +1,11 @@
+from django.db.models import Count, Prefetch
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import Lead, LeadNote, LeadReminder, Stage
+from apps.crm.models import Lead, LeadActivity, LeadCall, LeadNote, LeadReminder, Stage
 from services.crm.lead_filter_service import (
     accessible_pipelines,
     active_filter_items,
@@ -20,42 +21,30 @@ from .bulk import bulk_campaign_available, bulk_permissions
 
 
 def _pipeline_entered_at(lead):
-    activity = (
-        lead.activities.filter(
-            topic="pipeline_changed",
-            new_pipeline_id=lead.pipeline_id,
-        )
-        .order_by("-created_at")
-        .first()
-    )
-    return activity.created_at if activity else lead.created_at
+    for activity in lead.activities_for_card:
+        if (
+            activity.topic == LeadActivity.Topic.PIPELINE_CHANGED
+            and activity.new_pipeline_id == lead.pipeline_id
+        ):
+            return activity.created_at
+    return lead.created_at
 
 
-def _prepare_lead(lead, attribute_definitions):
-    now = timezone.now()
+def _prepare_lead(lead, attribute_definitions, now):
     lead.days_in_stage = max(0, (now - lead.stage_entered_at).days)
     lead.days_in_pipeline = max(0, (now - _pipeline_entered_at(lead)).days)
-    lead.call_count = lead.calls.count()
-    lead.next_reminder = (
-        lead.reminders.filter(status="pending").order_by("due_at").first()
-    )
+    pending_reminders = lead.pending_reminders_for_card
+    lead.next_reminder = pending_reminders[0] if pending_reminders else None
     lead.initials = "".join(part[0] for part in lead.name.split()[:2]).upper() or "?"
 
-    latest_note = LeadNote.objects.filter(lead=lead).order_by("-created_at").first()
+    notes = list(lead.lead_notes.all())
+    latest_note = notes[0] if notes else None
     lead.display_note = latest_note
     lead.display_note_text = (lead.notes or "").strip()
     if not lead.display_note_text and latest_note:
         lead.display_note_text = (latest_note.note or "").strip()
 
-    lead.activities_for_card = lead.activities.select_related(
-        "actor",
-        "old_pipeline",
-        "new_pipeline",
-        "old_stage",
-        "new_stage",
-    ).order_by("-created_at")
     lead.attribute_definitions = attribute_definitions
-    # Summary is an action surface; the live modal owns availability state.
     lead.has_conversation_summary = True
     return lead
 
@@ -143,29 +132,48 @@ def lead_table_partial(request):
         user=user,
         include_search=True,
     )
-    has_current_matches = queryset.exists()
-
+    # Fetch related card data across the pipeline in batches. Keep the full
+    # result set visible; a silent per-stage limit would hide leads.
+    queryset = queryset.filter(stage__in=stages).annotate(
+        call_count=Count("calls", distinct=True),
+    ).prefetch_related(
+        Prefetch("lead_notes", queryset=LeadNote.objects.order_by("-created_at")),
+        Prefetch("calls", queryset=LeadCall.objects.order_by("-called_at")),
+        Prefetch(
+            "reminders",
+            queryset=LeadReminder.objects.filter(status="pending").order_by("due_at"),
+            to_attr="pending_reminders_for_card",
+        ),
+        Prefetch(
+            "activities",
+            queryset=LeadActivity.objects.select_related(
+                "actor", "old_pipeline", "new_pipeline", "old_stage", "new_stage",
+            ).order_by("-created_at"),
+            to_attr="activities_for_card",
+        ),
+    )
+    stage_leads_by_id = {stage.id: [] for stage in stages}
+    leads = list(queryset)
+    has_current_matches = bool(leads)
     attribute_definitions = list(public_attribute_definitions(user.organization))
-    stage_groups = []
-    for index, stage in enumerate(stages):
-        stage_leads = list(queryset.filter(stage=stage).prefetch_related("lead_notes"))
-        from apps.ai_engagement.services.intent_score import prepare_intent_scores
-        prepare_intent_scores(stage_leads)
-        from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
-        attach_calendar_attachments_to_leads(
-            stage_leads,
-            organization=user.organization,
-        )
-        for lead in stage_leads:
-            _prepare_lead(lead, attribute_definitions)
-        stage_groups.append(
-            {
-                "stage": stage,
-                "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
-                "leads": stage_leads,
-                "count": len(stage_leads),
-            }
-        )
+    from apps.ai_engagement.services.intent_score import prepare_intent_scores
+    prepare_intent_scores(leads)
+    from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+    attach_calendar_attachments_to_leads(leads, organization=user.organization)
+    now = timezone.now()
+    for lead in leads:
+        _prepare_lead(lead, attribute_definitions, now)
+        stage_leads_by_id[lead.stage_id].append(lead)
+
+    stage_groups = [
+        {
+            "stage": stage,
+            "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
+            "leads": stage_leads_by_id[stage.id],
+            "count": len(stage_leads_by_id[stage.id]),
+        }
+        for index, stage in enumerate(stages)
+    ]
 
     requested_stage = str(request.GET.get("stage") or "").strip()
     filter_stage = str(request.GET.get("filter_stage") or "").strip()
