@@ -75,7 +75,7 @@ class BulkLeadTests(TestCase):
         self.assertContains(response, 'data-bulk-action="update"')
         self.assertContains(response, 'data-bulk-action="export"')
         self.assertContains(response, 'data-bulk-action="delete"')
-        self.assertContains(response, "Select all 1 leads in this stage")
+        self.assertContains(response, "Select all 3 leads in this pipeline")
         self.assertContains(response, "search=Lead+0")
         self.assertContains(response, "data-lead-select", count=1)
 
