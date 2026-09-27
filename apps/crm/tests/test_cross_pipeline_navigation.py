@@ -78,3 +78,38 @@ class CrossPipelineLeadNavigationTests(TestCase):
             response,
             f'const requestedLeadId = "{escapejs(str(self.lead.pk))}";',
         )
+
+    def test_stage_pages_keep_every_lead_reachable(self):
+        for index in range(42):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.target_pipeline,
+                stage=self.target_stage,
+                name=f"Paged lead {index}",
+                phone=f"+9198766{index:05d}",
+            )
+
+        url = reverse("crm-lead-table-partial")
+        first = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+        })
+        self.assertEqual(first.status_code, 200)
+        self.assertContains(first, "Page 1 of 2")
+        self.assertNotContains(first, f'id="lead-card-{self.lead.pk}"')
+
+        second = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "page": 2,
+        })
+        self.assertEqual(second.status_code, 200)
+        self.assertContains(second, f'id="lead-card-{self.lead.pk}"')
+
+        deep_link = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "lead": self.lead.pk,
+        })
+        self.assertEqual(deep_link.status_code, 200)
+        self.assertContains(deep_link, f'id="lead-card-{self.lead.pk}"')
