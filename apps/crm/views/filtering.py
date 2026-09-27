@@ -145,7 +145,7 @@ def lead_table_partial(request):
     counts = dict(
         queryset.filter(stage__in=stages)
         .values("stage_id")
-        .annotate(total=Count("pk"))
+        .annotate(total=Count("pk", distinct=True))
         .values_list("stage_id", "total")
     )
     has_current_matches = any(counts.values())
