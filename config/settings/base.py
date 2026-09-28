@@ -222,7 +222,7 @@ CELERY_TASK_ROUTES = {
     "apps.channels.tasks.send_bulk_campaign_task": {"queue": "campaigns"},
     "ai.ingest_and_index_document": {"queue": "ingestion"},
     "ai.ingest_and_index_url_source": {"queue": "ingestion"},
-    "ai.reindex_document_embeddings": {"queue": "ingestion"},
+    "ai.reindex_document_embeddings": {"queue": "ingestion"},\n    "crm.import_leads": {"queue": "ingestion"},
     "apps.triggers.tasks.dispatch_smart_triggers": {"queue": "automation"},
     "apps.followups.tasks.dispatch_auto_followups_task": {"queue": "automation"},
 }
