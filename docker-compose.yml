@@ -342,7 +342,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "ingestion", "--concurrency=${CELERY_INGESTION_CONCURRENCY:-2}", "--prefetch-multiplier=1"]
+    command: ["celery", "-A", "config", "worker", "-l", "info", "-Q", "ingestion", "--concurrency=${CELERY_INGESTION_CONCURRENCY:-1}", "--prefetch-multiplier=1"]
 
 
   automation_worker:
