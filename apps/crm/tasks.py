@@ -221,6 +221,7 @@ def import_leads_task(import_token, organization_id, import_mode):
     can_resume = previous_job.get("status") == "running"
     next_index = int(previous_job.get("next_index") or 0) if can_resume else 0
     next_index = min(max(next_index, 0), total)
+    processed_index = next_index
 
     count_keys = (
         "created_count",
@@ -294,6 +295,7 @@ def import_leads_task(import_token, organization_id, import_mode):
 
             # Persist a checkpoint only after the DB batch commits. If a worker
             # is lost, Celery redelivers the task and it resumes from here.
+            processed_index = end
             update_status("running", end, checkpoint=end)
 
         update_status("completed", total, checkpoint=total)
@@ -306,9 +308,7 @@ def import_leads_task(import_token, organization_id, import_mode):
         )
         update_status(
             "failed",
-            int(previous_job.get("next_index") or 0)
-            if can_resume
-            else sum(counts.values()),
+            processed_index,
             (
                 "Import stopped. Reopen the import and try again; existing "
                 "leads will be skipped when using New leads only."
