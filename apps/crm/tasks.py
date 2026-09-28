@@ -199,7 +199,7 @@ def import_leads_task(import_token, organization_id, import_mode):
     """Import leads in bounded batches on the ingestion queue.
 
     Spreadsheet imports intentionally do not emit Lead post-save signals. This
-    prevents a large file from faning out into workflows, Hosted WhatsApp
+    prevents a large file from fanning out into workflows, Hosted WhatsApp
     refreshes, webhook deliveries, or welcome messages while preserving the
     permanent Lead Created CRM activity.
     """
