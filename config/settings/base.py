@@ -57,6 +57,24 @@ ALLOWED_HOSTS = config(
     default="localhost,127.0.0.1",
 ).split(",")
 
+# The Operations MCP is one global production resource.  Runtime OAuth
+# metadata must never derive its issuer/audience from Host or proxy headers.
+# Local/test settings may override this explicitly; production validates the
+# canonical value again in config.settings.prod.
+OPERATIONS_PUBLIC_ORIGIN = str(
+    config(
+        "OPERATIONS_PUBLIC_ORIGIN",
+        default="https://dashboard.shvya-ai.com",
+    )
+).strip().rstrip("/")
+
+# Optional CDN/object-storage base for large public binary assets. When empty,
+# templates fall back to Django's normal static URL so local development and
+# deployments that have not migrated assets continue to work unchanged.
+PUBLIC_ASSET_BASE_URL = str(
+    config("PUBLIC_ASSET_BASE_URL", default="") or ""
+).strip().rstrip("/")
+
 
 # ---------------------------------------------------------------------------
 # OpenAI
@@ -205,6 +223,7 @@ CELERY_TASK_ROUTES = {
     "ai.ingest_and_index_document": {"queue": "ingestion"},
     "ai.ingest_and_index_url_source": {"queue": "ingestion"},
     "ai.reindex_document_embeddings": {"queue": "ingestion"},
+    "crm.import_leads": {"queue": "ingestion"},
     "apps.triggers.tasks.dispatch_smart_triggers": {"queue": "automation"},
     "apps.followups.tasks.dispatch_auto_followups_task": {"queue": "automation"},
 }

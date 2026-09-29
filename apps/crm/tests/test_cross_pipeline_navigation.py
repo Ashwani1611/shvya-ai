@@ -78,3 +78,78 @@ class CrossPipelineLeadNavigationTests(TestCase):
             response,
             f'const requestedLeadId = "{escapejs(str(self.lead.pk))}";',
         )
+
+    def test_stage_pages_keep_every_lead_reachable(self):
+        for index in range(42):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.target_pipeline,
+                stage=self.target_stage,
+                name=f"Paged lead {index}",
+                phone=f"+9198766{index:05d}",
+            )
+
+        url = reverse("crm-lead-table-partial")
+        first = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+        })
+        self.assertEqual(first.status_code, 200)
+        self.assertContains(first, 'data-auto-page')
+        self.assertContains(first, 'hx-trigger="intersect once threshold:0.2"')
+        self.assertNotContains(first, f'id="lead-card-{self.lead.pk}"')
+
+        second = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "page": 2,
+        })
+        self.assertEqual(second.status_code, 200)
+        self.assertNotContains(second, "data-auto-page")
+        self.assertContains(second, f'id="lead-card-{self.lead.pk}"')
+        appended = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "page": 2,
+            "append": 1,
+        })
+        self.assertEqual(appended.status_code, 200)
+        self.assertContains(appended, f'id="lead-card-{self.lead.pk}"')
+        self.assertNotContains(appended, "data-auto-page")
+        self.assertNotContains(appended, "data-stage-panel")
+        self.assertNotContains(appended, "data-stage-select")
+        self.assertEqual(self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "append": 1,
+        }).status_code, 400)
+
+        deep_link = self.client.get(url, {
+            "pipeline": self.target_pipeline.pk,
+            "stage": self.target_stage.pk,
+            "lead": self.lead.pk,
+        })
+        self.assertEqual(deep_link.status_code, 200)
+        self.assertContains(deep_link, f'id="lead-card-{self.lead.pk}"')
+
+    def test_stage_count_endpoint_reports_database_totals_across_pages(self):
+        route = reverse("crm-lead-stage-counts")
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 1)
+        for index in range(2):
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.target_pipeline,
+                stage=self.target_stage,
+                name=f"Counted lead {index}",
+                phone=f"+91987770000{index}",
+            )
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 3)
+        self.lead.stage = self.target_pipeline.stages.order_by("display_order").first()
+        self.lead.save(update_fields=["stage"])
+        response = self.client.get(route, {"pipeline": self.target_pipeline.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["counts"][str(self.target_stage.pk)], 2)
+        self.assertEqual(self.client.get(route, {"pipeline": "invalid"}).status_code, 404)

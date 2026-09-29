@@ -1,5 +1,6 @@
 import base64
 import json
+import tempfile
 from datetime import timedelta
 from unittest.mock import patch
 
@@ -8,9 +9,14 @@ from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.ai_engagement.models import Document, FAQ, OrgInfo
-from apps.channels.models import WhatsAppAccount
+from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.crm.models import AttributeDefinition, Lead, Pipeline
-from apps.followups.models import FollowupSequence, FollowupStep, TouchpointReply
+from apps.followups.models import (
+    FollowupSequence,
+    FollowupStep,
+    FollowupStepAttachment,
+    TouchpointReply,
+)
 from apps.hosted_automation.models import HostedFollowupStepConfig
 from apps.integrations.models import (
     OperationsOAuthClient,
@@ -176,6 +182,11 @@ class OperationsMCPConfigurationToolsTests(TestCase):
             "validate_qualification_configuration",
             "upsert_qualification_configuration",
             "list_whatsapp_accounts",
+            "list_whatsapp_templates",
+            "get_whatsapp_template_status",
+            "create_whatsapp_template",
+            "submit_whatsapp_template",
+            "submit_whatsapp_templates",
             "begin_whatsapp_connection",
             "bind_whatsapp_account_to_pipeline",
             "validate_whatsapp_routing",
@@ -385,6 +396,116 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertEqual(simulated["messages_sent"], 0)
         self.assertEqual(len(simulated["steps"]), 1)
 
+    def test_hosted_attachment_over_512_kib_can_be_uploaded_through_operations_mcp(self):
+        raw = b"h" * (2 * 1024 * 1024)
+        encoded = base64.b64encode(raw).decode("ascii")
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            result = self._call(
+                "add_hosted_whatsapp_step",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Attach restaurant brochure to Hosted follow-up.",
+                    "cadence_id": str(self.cadence.id),
+                    "data": {
+                        "title": "Restaurant brochure",
+                        "body": "Here is our restaurant brochure.",
+                        "attachment_name": "brochure.pdf",
+                        "attachment_mime_type": "application/pdf",
+                        "attachment_base64": encoded,
+                        "schedule": {"type": "immediate"},
+                    },
+                },
+            )
+            step = FollowupStep.objects.get(pk=result["step"]["id"])
+            hosted = HostedFollowupStepConfig.objects.get(step=step)
+            self.assertEqual(hosted.attachment_size, len(raw))
+            self.assertEqual(hosted.attachment_original_name, "brochure.pdf")
+            self.assertTrue(hosted.attachment)
+
+    def test_email_cadence_attachments_can_be_created_replaced_and_removed(self):
+        with tempfile.TemporaryDirectory() as media_root, self.settings(MEDIA_ROOT=media_root):
+            created = self._call(
+                "add_cadence_step",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Add reservation email with menu attachment.",
+                    "cadence_id": str(self.cadence.id),
+                    "data": {
+                        "type": "email",
+                        "title": "Reservation email",
+                        "subject": "Your reservation",
+                        "body": "Please review the attached menu.",
+                        "attachments": [
+                            {
+                                "name": "menu.pdf",
+                                "mime_type": "application/pdf",
+                                "content_base64": base64.b64encode(b"menu-v1").decode("ascii"),
+                            }
+                        ],
+                        "schedule": {"type": "immediate"},
+                    },
+                },
+            )
+            step = FollowupStep.objects.get(pk=created["step"]["id"])
+            attachment = FollowupStepAttachment.objects.get(step=step)
+            self.assertEqual(attachment.original_name, "menu.pdf")
+            self.assertEqual(attachment.size, len(b"menu-v1"))
+
+            updated = self._call(
+                "update_cadence_step",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Replace reservation email attachment.",
+                    "cadence_id": str(self.cadence.id),
+                    "step_id": str(step.id),
+                    "data": {
+                        "title": "Reservation email",
+                        "subject": "Your reservation",
+                        "body": "Please review the updated menu.",
+                        "attachments": [
+                            {
+                                "name": "updated-menu.pdf",
+                                "mime_type": "application/pdf",
+                                "content_base64": base64.b64encode(b"menu-v2").decode("ascii"),
+                            }
+                        ],
+                        "schedule": {"type": "immediate"},
+                    },
+                },
+            )
+            self.assertEqual(
+                updated["step"]["email_attachments"][0]["name"],
+                "updated-menu.pdf",
+            )
+            self.assertEqual(step.attachments.count(), 1)
+            self.assertEqual(
+                step.attachments.get().original_name,
+                "updated-menu.pdf",
+            )
+
+            removed = self._call(
+                "update_cadence_step",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Remove reservation email attachment.",
+                    "cadence_id": str(self.cadence.id),
+                    "step_id": str(step.id),
+                    "data": {
+                        "title": "Reservation email",
+                        "subject": "Your reservation",
+                        "body": "No attachment is needed now.",
+                        "remove_attachments": True,
+                        "schedule": {"type": "immediate"},
+                    },
+                },
+            )
+            self.assertEqual(removed["step"]["email_attachments"], [])
+            self.assertFalse(step.attachments.exists())
+
     def test_workflow_validation_and_simulation_use_canonical_validator_without_execution(self):
         data = {
             "name": "Restaurant lead AI",
@@ -430,6 +551,119 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertTrue(connected["safe_status_only"])
         self.assertNotIn("access_token", json.dumps(connected))
         self.assertNotIn('"qr":', json.dumps(connected).lower())
+
+    def test_meta_template_can_be_created_and_submitted_through_operations_mcp(self):
+        self.account.waba_id = "waba-restaurant-1"
+        self.account.access_token = "meta-secret-token"
+        self.account.save(update_fields=["waba_id", "access_token", "updated_at"])
+
+        create_args = {
+            "dry_run": False,
+            "approved": False,
+            "reason": "Create restaurant reservation confirmation template.",
+            "whatsapp_account_id": str(self.account.id),
+            "pipeline_id": str(self.pipeline.id),
+            "name": "reservation_confirmation",
+            "body": "Your reservation is confirmed.",
+            "category": "utility",
+            "language": "en_US",
+        }
+        created = self._call("create_whatsapp_template", create_args)
+        self.assertEqual(created["status"], "CREATED")
+        template = WhatsAppTemplate.objects.get(pk=created["template"]["id"])
+        self.assertEqual(template.account_id, self.account.id)
+        self.assertEqual(template.organization_id, self.organization.id)
+        self.assertEqual(template.status, WhatsAppTemplate.Status.DRAFT)
+        self.assertNotIn("meta-secret-token", json.dumps(created))
+
+        repeated = self._call("create_whatsapp_template", create_args)
+        self.assertEqual(repeated["status"], "NO_CHANGE")
+        self.assertTrue(repeated["idempotent"])
+
+        with patch(
+            "services.channels.template_service.WhatsAppClient._post",
+            return_value={"id": "meta-template-42", "status": "PENDING"},
+        ):
+            submitted = self._call(
+                "submit_whatsapp_template",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Submit reservation confirmation template to Meta.",
+                    "template_id": str(template.id),
+                },
+            )
+
+        self.assertEqual(submitted["status"], "SUBMITTED")
+        self.assertTrue(submitted["submitted_to_meta"])
+        template.refresh_from_db()
+        self.assertEqual(template.meta_template_id, "meta-template-42")
+        self.assertEqual(template.status, WhatsAppTemplate.Status.PENDING)
+
+        status = self._call(
+            "get_whatsapp_template_status",
+            {"template_id": str(template.id)},
+        )["template"]
+        self.assertEqual(status["status"], WhatsAppTemplate.Status.PENDING)
+        self.assertEqual(status["meta_template_id"], "meta-template-42")
+
+        listed = self._call(
+            "list_whatsapp_templates",
+            {"whatsapp_account_id": str(self.account.id)},
+        )
+        self.assertEqual(listed["count"], 1)
+        self.assertEqual(listed["templates"][0]["id"], str(template.id))
+        self.assertNotIn("meta-secret-token", json.dumps(listed))
+
+    def test_multiple_meta_templates_can_be_submitted_in_one_operations_call(self):
+        self.account.waba_id = "waba-batch-1"
+        self.account.access_token = "meta-batch-secret"
+        self.account.save(update_fields=["waba_id", "access_token", "updated_at"])
+        first = WhatsAppTemplate.objects.create(
+            organization=self.organization,
+            account=self.account,
+            created_by=self.admin,
+            name="batch_one",
+            body="First batch template",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.DRAFT,
+        )
+        second = WhatsAppTemplate.objects.create(
+            organization=self.organization,
+            account=self.account,
+            created_by=self.admin,
+            name="batch_two",
+            body="Second batch template",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.DRAFT,
+        )
+
+        responses = [
+            {"id": "meta-batch-one", "status": "PENDING"},
+            {"id": "meta-batch-two", "status": "PENDING"},
+        ]
+        with patch(
+            "services.channels.template_service.WhatsAppClient._post",
+            side_effect=responses,
+        ):
+            result = self._call(
+                "submit_whatsapp_templates",
+                {
+                    "dry_run": False,
+                    "approved": False,
+                    "reason": "Submit restaurant Meta templates in one batch.",
+                    "template_ids": [str(first.id), str(second.id)],
+                },
+            )
+
+        self.assertEqual(result["status"], "SUBMITTED")
+        self.assertEqual(result["submitted_count"], 2)
+        self.assertEqual(result["failed_count"], 0)
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.meta_template_id, "meta-batch-one")
+        self.assertEqual(second.meta_template_id, "meta-batch-two")
+        self.assertNotIn("meta-batch-secret", json.dumps(result))
 
     def test_knowledge_document_upload_uses_existing_secure_ingestion_pipeline(self):
         payload = base64.b64encode(b"Restaurant menu and reservation policy.").decode("ascii")

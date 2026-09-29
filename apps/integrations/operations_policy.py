@@ -30,6 +30,11 @@ CAP_WORKFLOW_CONFIG_WRITE = "automation.workflow.config.write"
 CAP_CADENCE_CONFIG_WRITE = "automation.cadence.config.write"
 CAP_MESSAGING_CONFIG_WRITE = "automation.messaging.config.write"
 CAP_CONFIGURATION_PLAN_WRITE = "configuration.plan.write"
+CAP_TRACE_CONTENT_READ = "trace.content.read"
+CAP_CALENDAR_CONFIG_WRITE = "calendar.config.write"
+CAP_INTEGRATION_LIFECYCLE_WRITE = "integration.lifecycle.write"
+CAP_OPERATIONS_TASK_WRITE = "operations.task.write"
+CAP_TEAM_SETTINGS_WRITE = "team.settings.write"
 
 READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
@@ -38,6 +43,7 @@ READ_CAPABILITIES = (
     CAP_SETUP_LIBRARY_READ,
     CAP_SETUP_ARTIFACTS_PREPARE,
     CAP_SETUP_INTAKE_READ,
+    CAP_TRACE_CONTENT_READ,
 )
 WRITE_CAPABILITIES = (
     CAP_LEAD_STAGE_WRITE,
@@ -51,6 +57,10 @@ WRITE_CAPABILITIES = (
     CAP_MESSAGING_CONFIG_WRITE,
     CAP_CONFIGURATION_PLAN_WRITE,
     CAP_SETUP_INTAKE_WRITE,
+    CAP_CALENDAR_CONFIG_WRITE,
+    CAP_INTEGRATION_LIFECYCLE_WRITE,
+    CAP_OPERATIONS_TASK_WRITE,
+    CAP_TEAM_SETTINGS_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
 
@@ -94,6 +104,11 @@ CAPABILITY_LABELS = {
     CAP_CADENCE_CONFIG_WRITE: "Configure Cadence",
     CAP_MESSAGING_CONFIG_WRITE: "Configure messaging automation settings",
     CAP_CONFIGURATION_PLAN_WRITE: "Create/apply/rollback organization configuration plans",
+    CAP_TRACE_CONTENT_READ: "Read bounded rendered AI trace content",
+    CAP_CALENDAR_CONFIG_WRITE: "Configure Calendar and booking reminders",
+    CAP_INTEGRATION_LIFECYCLE_WRITE: "Connect, reconnect, test and disconnect integrations",
+    CAP_OPERATIONS_TASK_WRITE: "Track onboarding, integration and audit commitments",
+    CAP_TEAM_SETTINGS_WRITE: "Configure team responder, ownership, handoff, sender and Co-Pilot settings",
 }
 
 

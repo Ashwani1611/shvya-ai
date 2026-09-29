@@ -3,7 +3,7 @@ import uuid
 
 from django.contrib.postgres.indexes import GinIndex, OpClass
 from django.core.exceptions import ValidationError
-from django.db import models
+from django.db import models, transaction
 from django.db.models.functions import Cast, Upper
 from django.utils import timezone
 
@@ -204,6 +204,20 @@ class Lead(models.Model):
                 name="crm_lead_attr_trgm",
             ),
         ]
+
+    def save(self, *args, **kwargs):
+        fields = kwargs.get("update_fields")
+        if fields is not None and "attributes" not in fields:
+            return super().save(*args, **kwargs)
+        from apps.shvya_calendar.attribute_sync import sync_manual_booking
+
+        with transaction.atomic():
+            previous = type(self).objects.filter(pk=self.pk).values_list("attributes", flat=True).first() or {}
+            result = super().save(*args, **kwargs)
+            value = (self.attributes or {}).get("booked_at", "")
+            if value != previous.get("booked_at", ""):
+                sync_manual_booking(self, value)
+            return result
 
     def __str__(self):
         return f"{self.name} ({self.phone})"

@@ -1,0 +1,33 @@
+<div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+  <div class="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl"
+       {% if not failed %}hx-get="{% url 'crm-lead-import-status' %}?token={{ import_token|urlencode }}"
+       hx-trigger="load delay:2s" hx-target="#modal-root" hx-swap="innerHTML"{% endif %}>
+    <h2 class="text-xl font-semibold text-gray-900">
+      {% if failed %}Import stopped{% else %}Importing leads{% endif %}
+    </h2>
+    {% if failed %}
+      <p class="mt-3 text-sm text-red-600">{{ job.message }}</p>
+      <form class="mt-4" hx-post="{% url 'crm-lead-import-execute' %}"
+            hx-target="#modal-root" hx-swap="innerHTML">
+        {% csrf_token %}
+        <input type="hidden" name="import_token" value="{{ import_token }}">
+        <input type="hidden" name="import_mode" value="{{ job.import_mode|default:'new_only' }}">
+        <button type="submit" class="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white">Retry import</button>
+      </form>
+    {% else %}
+      <p class="mt-3 text-sm text-gray-600">
+        Processed {{ job.processed }} of {{ job.total }} leads.
+        You can close this window; the import continues in the background.
+      </p>
+      <div class="mt-4 h-2 overflow-hidden rounded-full bg-gray-100">
+        <div class="h-full bg-blue-500" style="width: {% widthratio job.processed job.total 100 %}%"></div>
+      </div>
+      <p class="mt-3 text-xs text-gray-500">
+        Created {{ job.created_count }} · Updated {{ job.updated_count }} ·
+        Skipped {{ job.skipped_count }} · Invalid {{ job.invalid_count }}
+      </p>
+    {% endif %}
+    <button type="button" class="mt-6 rounded-lg border px-4 py-2 text-sm"
+            onclick="document.getElementById('modal-root').innerHTML = ''">Close</button>
+  </div>
+</div>

@@ -397,7 +397,7 @@ class AIContextBuilder:
         )
 
         attribute_definitions = list(
-            lead.organization.crm_attribute_definitions.values(
+            lead.organization.crm_attribute_definitions.exclude(key="booked_at").values(
                 "key", "name", "field_type", "description", "options",
             )
         )

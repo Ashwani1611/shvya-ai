@@ -440,7 +440,7 @@
                                 text-gray-800
                             "
                         >
-                            {{ lead.attributes|get_item:attribute.key|default:"—" }}
+                            {% if attribute.key == "booked_at" %}{{ lead.attributes|get_item:attribute.key|appointment_datetime|default:"—" }}{% else %}{{ lead.attributes|get_item:attribute.key|default:"—" }}{% endif %}
                         </p>
 
                     </div>

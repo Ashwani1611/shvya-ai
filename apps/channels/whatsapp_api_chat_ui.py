@@ -22,6 +22,7 @@ from services.channels.whatsapp_api_chat_service import (
 )
 from services.channels.whatsapp_error_service import message_failure_details
 from services.channels.whatsapp_failure_patch import _failure_block
+from services.channels.whatsapp_template_delivery import template_display_snapshot
 from services.crm.lead_filter_service import active_filter_items, apply_lead_filters
 
 from .models import WhatsAppAccount, WhatsAppTemplate, WhatsAppMessage
@@ -44,6 +45,60 @@ def _requested_account(request, lead):
 
 def _lead_initials(lead):
     return "".join([p[0] for p in (lead.name or "").split()[:2]]).upper() or "?"
+
+
+def _attach_template_display(chat_messages, *, organization):
+    """Attach durable/full template presentation data to chat messages.
+
+    New template sends persist a frozen display snapshot. Older messages are
+    backfilled from the current organization-owned template when possible so
+    previously sent footer/buttons also appear without a data migration.
+    """
+    template_ids = set()
+    for message in chat_messages:
+        message.template_display = None
+        payload = message.media_payload if isinstance(message.media_payload, dict) else {}
+        snapshot = payload.get("template_display")
+        if isinstance(snapshot, dict) and snapshot:
+            message.template_display = snapshot
+            continue
+        if payload.get("transport") == "template" and payload.get("template_id"):
+            template_ids.add(str(payload["template_id"]))
+
+    templates = {}
+    if template_ids:
+        templates = {
+            str(template.id): template
+            for template in WhatsAppTemplate.objects.filter(
+                organization=organization,
+                id__in=template_ids,
+            ).select_related("meta_state")
+        }
+
+    for message in chat_messages:
+        if message.template_display:
+            continue
+        payload = message.media_payload if isinstance(message.media_payload, dict) else {}
+        if payload.get("transport") != "template":
+            continue
+        template = templates.get(str(payload.get("template_id") or ""))
+        if template is not None:
+            message.template_display = template_display_snapshot(
+                template=template,
+                rendered_body=message.body,
+            )
+        else:
+            message.template_display = {
+                "name": str(payload.get("template_name") or "Template"),
+                "category": "",
+                "format": "standard",
+                "body": message.body or "",
+                "header_text": "",
+                "footer": "",
+                "attachment_type": "none",
+                "buttons": [],
+                "cards": [],
+            }
 
 
 def _chat_sidebar_context(request, user):
@@ -166,9 +221,19 @@ def whatsapp_chat_detail_view(request, lead_id):
         return redirect("whatsapp-chats")
 
     chat_messages = list(chat_messages)
+    _attach_template_display(chat_messages, organization=user.organization)
     for message in chat_messages:
         if message.status == message.Status.FAILED:
             message.error = _failure_block(message_failure_details(message))
+
+    conversation_account = selected_account or resolve_api_account_for_lead(
+        organization=user.organization,
+        lead=lead,
+    )
+    conversation_window_open = bool(
+        conversation_account
+        and is_within_api_24h_window(lead=lead, account=conversation_account)
+    )
 
     mark_api_conversation_read(organization=user.organization, lead=lead, account=selected_account)
 
@@ -180,6 +245,7 @@ def whatsapp_chat_detail_view(request, lead_id):
         {
             "active_lead": lead,
             "chat_messages": chat_messages,
+            "conversation_window_open": conversation_window_open,
         }
     )
     response = render(request, "channels/whatsapp_chat_list.html", context)

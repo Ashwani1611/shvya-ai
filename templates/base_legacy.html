@@ -1157,7 +1157,34 @@ document.body.addEventListener(
        SAME LEAD + SAME TAB + REINITIALIZE HTMX
        ============================================================ */
 
-    document.body.addEventListener(
+    
+/* Stage badges are totals across pages. Reload them after a card moves. */
+let crmStageCountRefreshTimer;
+function refreshCrmStageCounts() {
+    clearTimeout(crmStageCountRefreshTimer);
+    crmStageCountRefreshTimer = setTimeout(async function () {
+        const root = document.querySelector('[data-bulk-root]');
+        if (!root) return;
+        const source = new URL(root.dataset.refreshUrl || window.location.href, window.location.origin);
+        const url = new URL('{% url "crm-lead-stage-counts" %}', window.location.origin);
+        source.searchParams.forEach((value, key) => url.searchParams.set(key, value));
+        url.searchParams.set('pipeline', root.dataset.pipeline);
+        try {
+            const response = await fetch(url, {credentials: 'same-origin'});
+            if (!response.ok) return;
+            const result = await response.json();
+            if (root !== document.querySelector('[data-bulk-root]')) return;
+            root.querySelectorAll('.stage-tab[data-stage-id]').forEach(function (tab) {
+                const count = tab.querySelector('[data-stage-count]');
+                if (count) count.textContent = String(result.counts[tab.dataset.stageId] ?? 0);
+            });
+        } catch (error) {
+            console.warn('Unable to refresh CRM stage totals', error);
+        }
+    }, 120);
+}
+
+document.body.addEventListener(
         'leadCardUpdated',
         async function(event) {
 
@@ -1625,8 +1652,7 @@ document.body.addEventListener(
 
                             if (oldCount) {
 
-                                oldCount.textContent =
-                                    remainingOldCards;
+                                refreshCrmStageCounts();
 
                             }
 
@@ -1788,8 +1814,7 @@ document.body.addEventListener(
 
                         if (oldCount) {
 
-                            oldCount.textContent =
-                                remainingOldCards;
+                            refreshCrmStageCounts();
 
                         }
 
@@ -1814,10 +1839,7 @@ document.body.addEventListener(
 
                         if (newCount) {
 
-                            newCount.textContent =
-                                newPanel.querySelectorAll(
-                                    '[id^="lead-card-"]'
-                                ).length;
+                            refreshCrmStageCounts();
 
                         }
 
@@ -2638,8 +2660,7 @@ document.body.addEventListener(
                             : 0;
 
 
-                    oldCount.textContent =
-                        count;
+                    refreshCrmStageCounts();
 
                 }
 
@@ -2666,10 +2687,7 @@ document.body.addEventListener(
 
             if (newCount) {
 
-                newCount.textContent =
-                    newPanel.querySelectorAll(
-                        '[id^="lead-card-"]'
-                    ).length;
+                refreshCrmStageCounts();
 
             }
 
@@ -3024,354 +3042,43 @@ document.body.addEventListener(
    NO BROWSER REFRESH
    ============================================================ */
 
-document.body.addEventListener(
-    'leadCreated',
-    async function(event) {
-
-        const detail =
-            event.detail || {};
-
-        const leadId =
-            detail.lead_id;
-
-        const pipelineId =
-            detail.pipeline_id;
-
-        const stageId =
-            detail.stage_id;
-
-
-        if (
-            !leadId ||
-            !pipelineId ||
-            !stageId
-        ) {
-
-            console.error(
-                'Invalid leadCreated event:',
-                detail
-            );
-
-            return;
-
-        }
-
-
-        /* ----------------------------------------------------
-           CLOSE NEW LEAD MODAL
-           ---------------------------------------------------- */
-
-        const modalRoot =
-            document.getElementById(
-                'modal-root'
-            );
-
-        if (modalRoot) {
-
-            modalRoot.innerHTML = '';
-
-        }
-
-
-        /* ----------------------------------------------------
-           READ CURRENTLY DISPLAYED PIPELINE
-           FROM EXISTING LEAD TABLE REQUEST
-           ---------------------------------------------------- */
-
-        const leadTable =
-            document.getElementById(
-                'lead-table-container'
-            );
-
-        if (!leadTable) {
-
-            return;
-
-        }
-
-
-        const tableRequest =
-            leadTable.getAttribute(
-                'hx-get'
-            );
-
-        if (!tableRequest) {
-
-            return;
-
-        }
-
-
-        let currentPipelineId = '';
-
-
-        try {
-
-            const requestUrl =
-                new URL(
-                    tableRequest,
-                    window.location.origin
-                );
-
-            currentPipelineId =
-                requestUrl.searchParams.get(
-                    'pipeline'
-                ) || '';
-
-        } catch (error) {
-
-            console.error(
-                'Unable to determine current pipeline:',
-                error
-            );
-
-            return;
-
-        }
-
-
-        /* ----------------------------------------------------
-           DON'T INSERT INTO A DIFFERENT PIPELINE
-           ---------------------------------------------------- */
-
-        if (
-            currentPipelineId &&
-            currentPipelineId !== pipelineId
-        ) {
-
-            return;
-
-        }
-
-
-        /* ----------------------------------------------------
-           FIND TARGET STAGE PANEL
-           ---------------------------------------------------- */
-
-        const targetPanel =
-            document.getElementById(
-                'stage-panel-' +
-                stageId
-            );
-
-
-        if (!targetPanel) {
-
-            console.warn(
-                'Target stage panel not found:',
-                stageId
-            );
-
-            return;
-
-        }
-
-
-        try {
-
-            /* ------------------------------------------------
-               FETCH THE NEW LEAD CARD
-               ------------------------------------------------ */
-
-            const response =
-                await fetch(
-                    '/dashboard/leads/' +
-                    leadId +
-                    '/card/?_=' +
-                    Date.now(),
-                    {
-                        method: 'GET',
-
-                        cache: 'no-store',
-
-                        headers: {
-                            'HX-Request': 'true',
-                            'Cache-Control': 'no-cache'
-                        },
-
-                        credentials:
-                            'same-origin'
-                    }
-                );
-
-
-            if (!response.ok) {
-
-                console.error(
-                    'New lead card fetch failed:',
-                    response.status
-                );
-
-                return;
-
-            }
-
-
-            const html =
-                await response.text();
-
-
-            /* ------------------------------------------------
-               PARSE NEW CARD
-               ------------------------------------------------ */
-
-            const parser =
-                new DOMParser();
-
-
-            const parsed =
-                parser.parseFromString(
-                    html,
-                    'text/html'
-                );
-
-
-            const newCard =
-                parsed.querySelector(
-                    '#lead-card-' +
-                    leadId
-                );
-
-
-            if (!newCard) {
-
-                console.error(
-                    'New lead card not found.'
-                );
-
-                return;
-
-            }
-
-
-            /* ------------------------------------------------
-               PREVENT DUPLICATE
-               ------------------------------------------------ */
-
-            if (
-                document.getElementById(
-                    'lead-card-' +
-                    leadId
-                )
-            ) {
-
-                return;
-
-            }
-
-
-            /* ------------------------------------------------
-               FIND / CREATE CARD CONTAINER
-               ------------------------------------------------ */
-
-            let cardsContainer =
-                targetPanel.querySelector(
-                    '[data-lead-cards]'
-                );
-
-
-            if (!cardsContainer) {
-
-                cardsContainer =
-                    document.createElement(
-                        'div'
-                    );
-
-                cardsContainer.className =
-                    'flex flex-col gap-3';
-
-                cardsContainer.setAttribute(
-                    'data-lead-cards',
-                    ''
-                );
-
-
-                const emptyState =
-                    targetPanel.querySelector(
-                        '[data-empty-stage]'
-                    );
-
-
-                if (emptyState) {
-
-                    emptyState.remove();
-
-                }
-
-
-                targetPanel.appendChild(
-                    cardsContainer
-                );
-
-            }
-
-
-            /* ------------------------------------------------
-               INSERT NEW LEAD
-               ------------------------------------------------ */
-
-            cardsContainer.appendChild(
-                newCard
-            );
-
-
-            /* ------------------------------------------------
-               INITIALIZE HTMX BEHAVIOR
-               ------------------------------------------------ */
-
-            if (
-                typeof htmx !== 'undefined'
-            ) {
-
-                htmx.process(
-                    newCard
-                );
-
-            }
-
-
-            /* ------------------------------------------------
-               UPDATE STAGE COUNT
-               ------------------------------------------------ */
-
-            const stageTab =
-                document.querySelector(
-                    '.stage-tab[data-stage-id="' +
-                    stageId +
-                    '"]'
-                );
-
-
-            if (stageTab) {
-
-                const stageCount =
-                    stageTab.querySelector(
-                        '[data-stage-count]'
-                    );
-
-
-                if (stageCount) {
-
-                    stageCount.textContent =
-                        targetPanel.querySelectorAll(
-                            '[id^="lead-card-"]'
-                        ).length;
-
-                }
-
-            }
-
-        } catch (error) {
-
-            console.error(
-                'Unable to insert new lead:',
-                error
-            );
-
-        }
-
+document.body.addEventListener('leadCreated', function (event) {
+    const detail = event.detail || {};
+    const pipelineId = detail.pipeline_id;
+    const stageId = detail.stage_id;
+    if (!detail.lead_id || !pipelineId || !stageId) {
+        return;
     }
-);
+
+    const modalRoot = document.getElementById('modal-root');
+    if (modalRoot) {
+        modalRoot.innerHTML = '';
+    }
+
+    // Stage counts represent all matching leads, not the number of cards in
+    // the DOM. Reload the selected stage from the server after creation.
+    // The newest lead is on the first page and the count remains authoritative.
+    const pipelineSelect = document.getElementById('pipeline-select');
+    if (pipelineSelect && Array.from(pipelineSelect.options).some(
+        option => option.value === String(pipelineId)
+    )) {
+        pipelineSelect.value = String(pipelineId);
+    }
+    const url = '{% url "crm-lead-table-partial" %}?pipeline='
+        + encodeURIComponent(pipelineId)
+        + '&stage=' + encodeURIComponent(stageId);
+    if (typeof htmx !== 'undefined') {
+        htmx.ajax('GET', url, {
+            target: '#lead-table-container',
+            swap: 'innerHTML'
+        });
+    } else {
+        window.location.assign('/dashboard/?pipeline='
+            + encodeURIComponent(pipelineId)
+            + '&stage=' + encodeURIComponent(stageId)
+            + '&lead=' + encodeURIComponent(detail.lead_id));
+    }
+});
 
 /* ============================================================
    IMPORT LEADS — STEP 1 → STEP 2

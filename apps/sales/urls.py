@@ -1,9 +1,11 @@
 from django.urls import path
 
 from apps.sales import lifecycle_views, views
+from apps.sales.preview import template_preview
 
 
 urlpatterns = [
+    path("templates/preview/", template_preview, name="shvya-sales-template-preview"),
     path("", views.sales_dashboard_view, name="shvya-sales-dashboard"),
     path("settings/", lifecycle_views.sales_settings_view, name="shvya-sales-settings"),
     path("documents/", views.sales_document_list_view, name="shvya-sales-document-list"),

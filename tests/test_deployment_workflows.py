@@ -157,6 +157,58 @@ def test_production_gateway_rebuild_is_change_scoped_but_health_checks_remain():
     assert diff_check < conditional_build < build < health < authenticated_probe < callback_probe
 
 
+def test_production_deploy_requires_same_sha_security_success_before_ssh():
+    workflow = (ROOT / ".github/workflows" / "deploy.yml").read_text(encoding="utf-8")
+    security_gate = workflow.index("Require Security success for deployment SHA")
+    ssh_deploy = workflow.index("Deploy over SSH")
+
+    assert "actions: read" in workflow
+    assert 'actions/workflows/security.yml/runs' in workflow
+    assert 'head_sha="${DEPLOY_SHA}"' in workflow
+    assert '-f event=push' in workflow
+    assert '-f branch=main' in workflow
+    assert "completed:success" in workflow
+    assert security_gate < ssh_deploy
+
+
+def test_production_deploy_never_generates_credential_encryption_key():
+    script = _script("deploy.yml")
+    required_guard = script.index("require_env_secret CREDENTIAL_ENCRYPTION_KEY")
+
+    assert "ensure_env_secret CREDENTIAL_ENCRYPTION_KEY" not in script
+    assert "require_env_secret() {" in script
+    assert "Refusing deployment instead of replacing an existing encryption root." in script
+    assert required_guard < script.index("docker compose config --quiet")
+
+
+def test_security_workflow_runs_for_every_main_and_staging_push():
+    workflow = (ROOT / ".github/workflows" / "security.yml").read_text(encoding="utf-8")
+    push_block = workflow.split("  push:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
+
+    assert "branches: [main, staging]" in push_block
+    assert "paths:" not in push_block
+
+
+def test_production_deploy_verifies_runtime_environment_and_oauth_origin():
+    script = _script("deploy.yml")
+    public_check = script.index("Verifying the public HTTPS endpoint...")
+    runtime_check = script.index("Verifying production Django environment identity...")
+    oauth_check = script.index("Verifying public Operations OAuth metadata...")
+    record = script.index('mv "${STATE_FILE}.tmp" "$STATE_FILE"')
+
+    assert "settings.APP_ENV == 'production'" in script
+    assert (
+        "settings.OPERATIONS_PUBLIC_BASE_URL == "
+        "'https://dashboard.shvya-ai.com'"
+    ) in script
+    assert (
+        "https://dashboard.shvya-ai.com/"
+        ".well-known/oauth-authorization-server/operations"
+    ) in script
+    assert "data.get('issuer') == base + '/operations'" in script
+    assert public_check < runtime_check < oauth_check < record
+
+
 @pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
 def test_application_image_is_built_once_and_shared_before_rollout(filename, compose, branch):
     import yaml

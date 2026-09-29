@@ -6,8 +6,8 @@
 
 {% block extra_head %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260921-1">
-<script src="{% static 'js/shvya_sales.js' %}?v=20260921-1" defer></script>
+<link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}?v=20260924-2">
+<script src="{% static 'js/shvya_sales.js' %}?v=20260924-2" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -21,7 +21,7 @@
         </div>
     </section>
 
-    <form method="post" enctype="multipart/form-data" class="sy-template-builder" data-template-builder>
+    <form method="post" enctype="multipart/form-data" class="sy-template-builder" data-template-builder data-preview-url="{% url 'shvya-sales-template-preview' %}">
         {% csrf_token %}
         <section class="sy-template-controls">
             <article class="sy-panel sy-form-card">
@@ -128,6 +128,13 @@
                         <code>{{document.content}}</code>
                         <code>{{items_table}}</code>
                         <code>{{document.terms}}</code>
+                        <code>{{document.type}}</code><code>{{document.currency}}</code>
+                        <code>{{document.url}}</code><code>{{document.subtotal}}</code>
+                        <code>{{document.tax}}</code><code>{{document.discount}}</code>
+                        <code>{{lead.email}}</code><code>{{lead.phone}}</code>
+                        <code>{{invoice.paid}}</code><code>{{invoice.refunded}}</code>
+                        <code>{{invoice.credits}}</code><code>{{invoice.balance}}</code>
+                        <code>{{invoice.payment_url}}</code>
                     </div>
                     {% endverbatim %}
                 </details>
@@ -164,38 +171,26 @@
             </article>
 
             <article class="sy-panel sy-form-card">
-                <div class="sy-card-title"><span>5</span><div><h2>Email draft</h2><p>Reusable default, still editable every time the user sends.</p></div></div>
+                <div class="sy-card-title"><span>5</span><div><h2>Email draft</h2><p>Use the merge fields listed above. Customer and document values are filled before sending.</p></div></div>
                 <label class="sy-field"><span>Subject</span><input name="email_subject_template" value="{% if template %}{{ template.email_subject_template }}{% else %}{{ default_email_subject }}{% endif %}"></label>
                 <label class="sy-field"><span>Body</span><textarea name="email_body_template" rows="8">{% if template %}{{ template.email_body_template }}{% else %}{{ default_email_body }}{% endif %}</textarea></label>
             </article>
 
             <article class="sy-panel sy-form-card">
-                <div class="sy-card-title"><span>6</span><div><h2>WhatsApp draft</h2><p>Used only when the user chooses WhatsApp. Pipeline sender rules still apply.</p></div></div>
+                <div class="sy-card-title"><span>6</span><div><h2>WhatsApp draft</h2><p>Use the same merge fields as the document and email. Sends use the pipeline’s linked number.</p></div></div>
                 <label class="sy-field"><span>Message</span><textarea name="whatsapp_body_template" rows="7">{% if template %}{{ template.whatsapp_body_template }}{% else %}{{ default_whatsapp_body }}{% endif %}</textarea></label>
             </article>
         </section>
 
         <aside class="sy-template-preview-side">
             <div class="sy-sticky-card">
-                <p class="sy-eyebrow">LIVE STYLE PREVIEW</p>
-                <div class="sy-builder-preview" data-builder-preview style="--preview-accent: {{ template.accent_color|default:'#0071e3' }}">
-                    <div class="sy-builder-preview-head">
-                        <div class="sy-preview-brand">
-                            <span data-preview-logo-box>{% if template.logo_file %}<img src="{{ template.logo_file.url }}" alt="">{% elif template.logo_url %}<img src="{{ template.logo_url }}" alt="">{% else %}<i class="ti ti-building"></i>{% endif %}</span>
-                            <strong data-preview-header-text>{{ template.header_text|default:"Your company" }}</strong>
-                        </div>
-                        <span>QT-00001</span>
-                    </div>
-                    <div class="sy-builder-preview-body">
-                        <p class="sy-preview-kicker">QUOTATION</p>
-                        <h3>Project proposal</h3>
-                        <p>Prepared for Customer Name</p>
-                        <div class="sy-preview-bars"><i></i><i></i><i></i></div>
-                        <div class="sy-preview-table"><span></span><span></span><span></span></div>
-                        <strong class="sy-preview-amount">INR 52,000.00</strong>
-                    </div>
-                    <footer data-preview-footer-text>{{ template.footer_text|default:"Thank you for your business." }}</footer>
-                </div>
+                <p class="sy-eyebrow">LIVE TEMPLATE PREVIEW</p>
+                <p class="sy-field-note">Sample customer and amounts. Actual documents use the selected customer's values. Custom attributes require a real lead.</p>
+                <p data-preview-status role="status"></p>
+                <iframe title="Document preview" data-live-preview sandbox="allow-same-origin" style="width:100%;height:620px;border:1px solid #ddd;border-radius:14px;background:white"></iframe>
+                <details open><summary>Email preview</summary><strong data-email-subject-preview></strong><iframe title="Email preview" data-email-body-preview sandbox="allow-same-origin" style="width:100%;height:440px;border:0"></iframe></details>
+                <details><summary>WhatsApp preview</summary><div data-whatsapp-preview style="white-space:pre-wrap;overflow-wrap:anywhere;padding:18px;background:#e7f4e8;border-radius:12px"></div></details>
+                <span hidden data-saved-logo="{% if template.logo_file %}{{ template.logo_file.url }}{% else %}{{ template.logo_url }}{% endif %}" data-saved-signature="{% if template.signature_file %}{{ template.signature_file.url }}{% else %}{{ template.signature_url }}{% endif %}"></span>
                 <button type="submit" class="sy-btn sy-btn-primary sy-btn-block">Save template <i class="ti ti-check"></i></button>
                 <p class="sy-form-hint"><i class="ti ti-lock"></i> A document freezes this template when created. Editing the template later does not rewrite previously created documents.</p>
             </div>

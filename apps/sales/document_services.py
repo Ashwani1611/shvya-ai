@@ -525,7 +525,7 @@ def merge_values(document, *, public_url=""):
     if lead:
         for key, value in (lead.attributes or {}).items():
             values[f"lead.attribute.{key}"] = value
-    if document.document_type == DocumentType.INVOICE:
+    if document.document_type == DocumentType.INVOICE and not document._state.adding:
         from apps.sales.lifecycle import invoice_ledger
         from apps.sales.models_lifecycle import SalesPaymentCheckout
 
@@ -556,23 +556,56 @@ def merge_values(document, *, public_url=""):
                 ),
             }
         )
+    values["items_table"] = "\n".join(
+        f"{item.get('name', '')} — {item.get('qty', '')} × {document.currency} {item.get('rate', '')} = {document.currency} {item.get('amount', '')}"
+        for item in (document.line_items or [])
+    )
+    values.update({
+        "document.content": document.content or "",
+        "document.terms": document.terms or "",
+    })
+    # The same names work in layouts, email drafts and WhatsApp drafts.
+    aliases = {
+        "org_name": "organization.name", "lead_name": "lead.name",
+        "phone": "recipient.phone", "email": "recipient.email",
+        "recipient_name": "recipient.name", "pipeline_name": "lead.pipeline",
+        "stage_name": "lead.stage", "document_number": "document.number",
+        "document_title": "document.title", "document_type": "document.type",
+        "document_total": "document.total", "document_url": "document.url",
+        "document_due_date": "document.due_date",
+        "document_valid_until": "document.valid_until",
+    }
+    values.update({alias: values[key] for alias, key in aliases.items()})
+    values["lead_first_name"] = str(values["lead.name"] or values["recipient.name"]).split(" ")[0]
+    for key in ("paid", "refunded", "credits", "balance", "payment_url"):
+        values.setdefault(f"invoice.{key}", "")
+    for key in ("document.content", "document.terms"):
+        values[key] = render_text_template(values[key], {
+            name: value for name, value in values.items()
+            if name not in {"document.content", "document.terms"}
+        })
     return values
 
 
-def render_text_template(source, values):
+def render_text_template(source, values, *, strict=False):
     def replace(match):
         key = match.group(1).strip()
         value = values.get(key, match.group(0))
         return str(value if value is not None else "")
 
-    return MERGE_RE.sub(replace, str(source or ""))
+    rendered = MERGE_RE.sub(replace, str(source or ""))
+    if strict:
+        unresolved = sorted(set(MERGE_RE.findall(rendered)))
+        if unresolved:
+            raise SalesDeliveryError("Resolve these template variables before sending: " + ", ".join(unresolved))
+    return rendered
 
 
 def render_document_html(document, *, public_url=""):
     values = merge_values(document, public_url=public_url)
     values["items_table"] = _items_table(document)
-    values["document.content"] = html.escape(document.content or "").replace("\n", "<br>")
-    values["document.terms"] = html.escape(document.terms or "").replace("\n", "<br>")
+    values["document.content"] = html.escape(values["document.content"]).replace("\n", "<br>")
+    values["document.terms"] = html.escape(values["document.terms"]).replace("\n", "<br>")
 
     source = (
         document.layout_override
@@ -589,7 +622,7 @@ def render_document_html(document, *, public_url=""):
         key = match.group(1).strip()
         if key not in values:
             return match.group(0)
-        value = str(values.get(key) or "")
+        value = str(values[key] if values[key] is not None else "")
         return value if key in safe_keys else html.escape(value)
 
     return MERGE_RE.sub(replace, source)
@@ -614,8 +647,8 @@ def snapshot_document_presentation(document, *, public_url=""):
             if template and HEX_COLOR_RE.match(template.accent_color or "")
             else "#0071e3"
         ),
-        "header_text": template.header_text if template else document.organization.name,
-        "footer_text": template.footer_text if template else "",
+        "header_text": render_text_template(template.header_text, merge_values(document, public_url=public_url)) if template else document.organization.name,
+        "footer_text": render_text_template(template.footer_text, merge_values(document, public_url=public_url)) if template else "",
         "item_table_config": normalize_item_table_config(
             template.item_table_config if template else {}
         ),

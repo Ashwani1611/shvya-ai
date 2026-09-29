@@ -8,6 +8,16 @@ from .base import *  # noqa
 
 APP_ENV = "production"
 
+# Canonical externally advertised origin for the Operations MCP/OAuth server.
+# This is intentionally pinned in production instead of trusting request Host.
+OPERATIONS_PUBLIC_BASE_URL = "https://dashboard.shvya-ai.com"
+
+if OPERATIONS_PUBLIC_ORIGIN != "https://dashboard.shvya-ai.com":
+    raise ImproperlyConfigured(
+        "OPERATIONS_PUBLIC_ORIGIN must be https://dashboard.shvya-ai.com "
+        "for production Operations MCP/OAuth metadata."
+    )
+
 # ---------------------------------------------------------------------------
 # Private AWS S3 media storage
 #
@@ -29,6 +39,13 @@ AWS_S3_REGION_NAME = str(
 AWS_S3_MEDIA_PREFIX = str(
     config("AWS_S3_MEDIA_PREFIX", default="media") or "media"
 ).strip().strip("/")
+AWS_S3_PUBLIC_ASSET_PREFIX = str(
+    config(
+        "AWS_S3_PUBLIC_ASSET_PREFIX",
+        default="production/media/public-assets",
+    )
+    or "production/media/public-assets"
+).strip().strip("/")
 AWS_QUERYSTRING_EXPIRE = config(
     "AWS_QUERYSTRING_EXPIRE",
     default=900,
@@ -39,6 +56,21 @@ USE_S3_STORAGE = config(
     default=bool(AWS_STORAGE_BUCKET_NAME),
     cast=bool,
 )
+USE_S3_PUBLIC_ASSETS = config(
+    "USE_S3_PUBLIC_ASSETS",
+    default=USE_S3_STORAGE,
+    cast=bool,
+)
+AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE = config(
+    "AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE",
+    default=86400,
+    cast=int,
+)
+
+if USE_S3_PUBLIC_ASSETS and not USE_S3_STORAGE:
+    raise ImproperlyConfigured(
+        "USE_S3_PUBLIC_ASSETS requires USE_S3_STORAGE=True."
+    )
 
 if USE_S3_STORAGE:
     if not AWS_STORAGE_BUCKET_NAME:
@@ -72,6 +104,26 @@ if USE_S3_STORAGE:
             "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",
         },
     }
+
+    if USE_S3_PUBLIC_ASSETS:
+        STORAGES["public_assets"] = {
+            "BACKEND": "storages.backends.s3.S3Storage",
+            "OPTIONS": {
+                "bucket_name": AWS_STORAGE_BUCKET_NAME,
+                "region_name": AWS_S3_REGION_NAME,
+                "location": AWS_S3_PUBLIC_ASSET_PREFIX,
+                "default_acl": None,
+                "file_overwrite": True,
+                "querystring_auth": True,
+                "querystring_expire": AWS_PUBLIC_ASSET_QUERYSTRING_EXPIRE,
+                "signature_version": "s3v4",
+                "addressing_style": "virtual",
+                "object_parameters": {
+                    "ServerSideEncryption": "AES256",
+                    "CacheControl": "public,max-age=31536000,immutable",
+                },
+            },
+        }
 
 
 # Production security is explicit and must not inherit DEBUG-dependent values

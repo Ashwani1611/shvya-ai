@@ -70,6 +70,11 @@ from apps.integrations.diagnostic_tools import (
     DiagnosticToolError,
     execute_tool as execute_diagnostic_tool,
 )
+from apps.integrations.operations.attachment_payloads import (
+    AttachmentPayloadError,
+    decode_email_attachments,
+    redact_attachment_content,
+)
 from apps.integrations.operations_approval import approval_fingerprint
 from apps.integrations.operations_audit import organization_visible_audit_reason
 from apps.integrations.operations_models import (
@@ -614,11 +619,16 @@ def add_cadence_step(*, identity, arguments):
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
         raise OperationsToolError("data must be a Cadence step object.")
-    _reject_secret_like_content(data, field="cadence_step")
+    _reject_secret_like_content(
+        redact_attachment_content(data),
+        field="cadence_step",
+    )
     step_type = str(data.get("type") or "").strip().lower()
     if step_type not in {"whatsapp", "email", "reminder"}:
         raise OperationsToolError("Cadence step type must be whatsapp, email, or reminder.")
     schedule = _cadence_schedule(data)
+    email_attachments = None
+    email_attachment_descriptors = []
 
     template = None
     if step_type == "whatsapp":
@@ -634,6 +644,10 @@ def add_cadence_step(*, identity, arguments):
     elif step_type == "email":
         if not str(data.get("subject") or "").strip() or not str(data.get("body") or "").strip():
             raise OperationsToolError("Email Cadence steps require subject and body.")
+        try:
+            email_attachments, email_attachment_descriptors = decode_email_attachments(data)
+        except AttachmentPayloadError as exc:
+            raise OperationsToolError(str(exc)) from exc
     else:
         if not str(data.get("text") or "").strip():
             raise OperationsToolError("Reminder Cadence steps require reminder text.")
@@ -650,6 +664,11 @@ def add_cadence_step(*, identity, arguments):
         "body": str(data.get("body") or ""),
         "text": str(data.get("text") or ""),
         "retry_count": data.get("retry_count", 0),
+        "attachments": (
+            email_attachment_descriptors
+            if step_type == "email"
+            else []
+        ),
     }
     if not dry_run:
         _ensure_approved_proposal_unchanged(
@@ -665,6 +684,7 @@ def add_cadence_step(*, identity, arguments):
                 "step_type": step_type,
                 "next_position": sequence.steps.count() + 1,
                 "schedule_type": schedule["schedule_type"],
+                "attachment_count": len(email_attachment_descriptors),
                 "approval_required": approval_required(
                     role=identity.role,
                     organization=organization,
@@ -706,6 +726,8 @@ def add_cadence_step(*, identity, arguments):
 
             schedule = _cadence_schedule(data)
             template = None
+            email_attachments = None
+            email_attachment_descriptors = []
             if step_type == "whatsapp":
                 template = WhatsAppTemplate.objects.filter(
                     pk=_uuid(
@@ -729,6 +751,10 @@ def add_cadence_step(*, identity, arguments):
                     raise OperationsToolError(
                         "Email Cadence steps require subject and body."
                     )
+                try:
+                    email_attachments, email_attachment_descriptors = decode_email_attachments(data)
+                except AttachmentPayloadError as exc:
+                    raise OperationsToolError(str(exc)) from exc
             else:
                 if not str(data.get("text") or "").strip():
                     raise OperationsToolError(
@@ -750,6 +776,11 @@ def add_cadence_step(*, identity, arguments):
                 "body": str(data.get("body") or ""),
                 "text": str(data.get("text") or ""),
                 "retry_count": data.get("retry_count", 0),
+                "attachments": (
+                    email_attachment_descriptors
+                    if step_type == "email"
+                    else []
+                ),
             }
             _ensure_approved_proposal_unchanged(
                 arguments=arguments,
@@ -769,6 +800,7 @@ def add_cadence_step(*, identity, arguments):
                     title=str(data.get("title") or ""),
                     subject=str(data.get("subject") or ""),
                     body=str(data.get("body") or ""),
+                    attachments=email_attachments,
                     **schedule,
                 )
             else:
@@ -830,6 +862,24 @@ def add_cadence_step(*, identity, arguments):
                     != str(data.get("body") or "").strip()
                 ):
                     verification_errors.append("email_body")
+                stored_attachments = [
+                    {
+                        "name": item.original_name,
+                        "mime_type": item.mime_type,
+                        "size": item.size,
+                    }
+                    for item in step.attachments.order_by("position", "created_at")
+                ]
+                expected_attachments = [
+                    {
+                        "name": item["name"],
+                        "mime_type": item["mime_type"],
+                        "size": item["size"],
+                    }
+                    for item in email_attachment_descriptors
+                ]
+                if stored_attachments != expected_attachments:
+                    verification_errors.append("email_attachments")
             else:
                 if (
                     step.reminder_text
@@ -861,6 +911,14 @@ def add_cadence_step(*, identity, arguments):
                 "type": step.step_type,
                 "position": step.position,
                 "schedule_type": step.schedule_type,
+                "attachments": [
+                    {
+                        "name": item.original_name,
+                        "mime_type": item.mime_type,
+                        "size": item.size,
+                    }
+                    for item in step.attachments.order_by("position", "created_at")
+                ] if step.step_type == FollowupStep.StepType.EMAIL else [],
             },
             "verification": "passed",
         },

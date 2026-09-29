@@ -9,6 +9,7 @@
 {% else %}
 
 <div class="w-full" data-bulk-root data-pipeline="{{ selected_pipeline_id }}"
+     
      data-bulk-url="{% url 'crm-leads-bulk' %}"
      data-refresh-url="{% url 'crm-lead-table-partial' %}?{{ bulk_query }}"
      data-can-move="{{ bulk_permissions.move|yesno:'true,false' }}"
@@ -100,7 +101,7 @@
 
                 data-color="{{ group.theme.hex }}"
 
-                hx-get="{% url 'crm-lead-table-partial' %}?pipeline={{ selected_pipeline_id }}&stage={{ group.stage.id }}"
+                hx-get="{% url 'crm-lead-table-partial' %}?{{ group.query }}"
 
                 hx-target="#lead-table-container"
 
@@ -782,6 +783,7 @@
             id="stage-panel-{{ group.stage.id }}"
 
             data-stage-panel="{{ group.stage.id }}"
+            data-stage-count="{{ group.bulk_count }}"
 
             class="
                 stage-panel
@@ -803,10 +805,12 @@
             "
         >
 
-                <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
-                    <input type="checkbox" data-stage-select aria-label="Select all matching leads in {{ group.stage.name }}">
-                    <span><span data-stage-select-label>Select all {{ group.count }} leads in this stage</span> <small>(matching current filters)</small></span>
-                </label>
+                <div class="flex items-center border-b border-gray-100 px-4 py-3">
+                    <label class="crm-stage-select" data-stage-selection {% if not group.leads %}hidden{% endif %}>
+                        <input type="checkbox" data-stage-select aria-label="Select all leads in {{ group.stage.name }}">
+                        <span><span data-stage-select-label>Select all {{ group.bulk_count }} leads in {{ group.stage.name }}</span> <small>(across this stage)</small></span>
+                    </label>
+                </div>
 
             {% if group.leads %}
 
@@ -830,6 +834,16 @@
 
                     {% endfor %}
 
+                    {% if active_stage_id == group.stage.id|stringformat:'s' and lead_page.next_query %}
+                    <div data-auto-page
+                         hx-get="{% url 'crm-lead-table-partial' %}?{{ lead_page.next_query }}&amp;append=1"
+                         hx-trigger="intersect once threshold:0.2"
+                         hx-swap="outerHTML"
+                         class="flex justify-center py-4 text-sm text-gray-500"
+                         aria-label="Loading more leads">
+                        Loading more leads…
+                    </div>
+                    {% endif %}
                 </div>
 
             {% else %}

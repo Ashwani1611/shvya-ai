@@ -47,12 +47,33 @@ from .models import (
     CalendarSubmission,
     CalendarSubmissionAttachment,
 )
+from .platform_google import platform_enabled
 
 
 from .service_common import logger
 from .reminder_services import schedule_booking_reminders
 
+
+def _has_google_sync(page):
+    return bool(page.host_id or (
+        page.meeting_location == CalendarPage.MeetingLocation.GOOGLE_MEET
+        and platform_enabled()
+    ))
+
+
+def _recover_transient_sync(booking, exc):
+    if isinstance(exc, GoogleCalendarError) and exc.transient:
+        from .attribute_sync import enqueue_booking_sync
+        transaction.on_commit(lambda pk=booking.pk: enqueue_booking_sync(pk))
+
+
+@transaction.atomic
 def _create_booking_row(*, page, submission, slot_start):
+    # Use the same lead → page lock order as manual CRM reservations.
+    if not Lead.objects.select_for_update().filter(
+        pk=submission.lead_id, organization_id=page.organization_id,
+    ).exists():
+        raise ValidationError("This lead is no longer available for booking.")
     # Lock only the two rows that define the booking contract and operate with
     # scalar FK ids. This avoids lazy/stale related-object dereferences and
     # model-wide validation side effects in the public confirmation path.
@@ -88,8 +109,6 @@ def _create_booking_row(*, page, submission, slot_start):
     if not locked_submission.lead_id:
         raise ValidationError("This lead submission cannot be booked.")
 
-    # Verify the lead still belongs to the same organization without loading a
-    # related object that may be stale in a long-lived request.
     if not Lead.objects.filter(
         pk=locked_submission.lead_id,
         organization_id=locked_page.organization_id,
@@ -115,8 +134,6 @@ def _create_booking_row(*, page, submission, slot_start):
         CalendarBooking.Status.RESCHEDULED,
     ]
 
-    # Browser retries/back navigation must never create two appointments for the
-    # same lead-form submission.
     existing_for_submission = (
         CalendarBooking.objects
         .filter(
@@ -148,12 +165,9 @@ def _create_booking_row(*, page, submission, slot_start):
         "timezone": locked_page.timezone,
         "calendar_sync_status": (
             CalendarBooking.SyncStatus.PENDING
-            if locked_page.host_id
+            if _has_google_sync(locked_page)
             else CalendarBooking.SyncStatus.NOT_CONNECTED
         ),
-        # Generate before INSERT instead of relying on model.full_clean()/save
-        # ordering. This keeps the public path independent from editable=False
-        # unique token validation and legacy blank-token rows.
         "cancel_token": secrets.token_urlsafe(32),
         "reschedule_token": secrets.token_urlsafe(32),
     }
@@ -164,9 +178,6 @@ def _create_booking_row(*, page, submission, slot_start):
         with transaction.atomic():
             booking = CalendarBooking.objects.create(**create_values)
     except IntegrityError as exc:
-        # If another request raced us, recover the durable appointment for the
-        # same submission. Otherwise convert the database error into a normal
-        # slot/capacity message rather than the generic public exception toast.
         recovered = (
             CalendarBooking.objects
             .filter(
@@ -224,25 +235,27 @@ def book_slot(*, page, submission, slot_start_iso):
     if not created:
         return booking
 
-    if page.host_id:
+    if _has_google_sync(page):
         try:
             create_booking_event(booking)
         except Exception as exc:
-            # Calendar/Meet sync is a post-booking integration. Once the core
-            # booking row exists, a provider/token/network/storage problem must
-            # never make the visitor think their appointment failed.
+            # The reservation remains confirmed even when a provider is down.
             logger.exception(
                 "SHVYA Calendar Google sync failed after booking %s was created",
                 booking.id,
             )
+            sync_status = (CalendarBooking.SyncStatus.PENDING
+                           if isinstance(exc, GoogleCalendarError) and exc.transient
+                           else CalendarBooking.SyncStatus.FAILED)
             try:
                 CalendarBooking.objects.filter(pk=booking.pk).update(
-                    calendar_sync_status=CalendarBooking.SyncStatus.FAILED,
+                    calendar_sync_status=sync_status,
                     calendar_sync_error=str(exc)[:1000],
                     updated_at=timezone.now(),
                 )
-                booking.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+                booking.calendar_sync_status = sync_status
                 booking.calendar_sync_error = str(exc)[:1000]
+                _recover_transient_sync(booking, exc)
             except Exception:
                 logger.exception(
                     "Unable to persist Calendar sync failure for booking %s",
@@ -252,9 +265,6 @@ def book_slot(*, page, submission, slot_start_iso):
     try:
         schedule_booking_reminders(booking)
     except Exception:
-        # Reminder creation/delivery is also secondary to the confirmed slot.
-        # Keep the appointment durable and surface operational failures in logs
-        # rather than returning the visitor to slot selection.
         logger.exception(
             "SHVYA Calendar reminder scheduling failed for booking %s",
             booking.id,
@@ -282,12 +292,13 @@ def reschedule_booking(*, booking, slot_start_iso):
     local_date = requested.astimezone(_page_zone(page)).date()
     valid_starts = {
         item["start"]
-        for item in available_slots(page=page, local_date=local_date)
+        for item in available_slots(page=page, local_date=local_date, exclude_booking_id=booking.pk)
     }
     if requested not in valid_starts:
         raise ValidationError("That slot is no longer available.")
 
     with transaction.atomic():
+        Lead.objects.select_for_update().get(pk=booking.lead_id, organization_id=booking.organization_id)
         locked_page = CalendarPage.objects.select_for_update().get(pk=page.pk)
         locked = (
             CalendarBooking.objects
@@ -323,7 +334,7 @@ def reschedule_booking(*, booking, slot_start_iso):
         locked.status = CalendarBooking.Status.RESCHEDULED
         locked.calendar_sync_status = (
             CalendarBooking.SyncStatus.PENDING
-            if locked.host_id
+            if _has_google_sync(locked_page)
             else CalendarBooking.SyncStatus.NOT_CONNECTED
         )
         locked.full_clean()
@@ -342,7 +353,9 @@ def reschedule_booking(*, booking, slot_start_iso):
     try:
         update_booking_event(locked)
     except GoogleCalendarError as exc:
-        locked.calendar_sync_status = CalendarBooking.SyncStatus.FAILED
+        locked.calendar_sync_status = (
+            CalendarBooking.SyncStatus.PENDING if exc.transient else CalendarBooking.SyncStatus.FAILED
+        )
         locked.calendar_sync_error = str(exc)
         locked.save(
             update_fields=[
@@ -351,6 +364,7 @@ def reschedule_booking(*, booking, slot_start_iso):
                 "updated_at",
             ]
         )
+        _recover_transient_sync(locked, exc)
     schedule_booking_reminders(locked)
     return locked
 

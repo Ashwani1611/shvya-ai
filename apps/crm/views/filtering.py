@@ -1,10 +1,16 @@
+import uuid
+
+from uuid import UUID
+
+from django.db.models import Count, Prefetch, Q
+from django.http import JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET
 
 from apps.crm.decorators import crm_login_required
-from apps.crm.models import Lead, LeadNote, LeadReminder, Stage
+from apps.crm.models import Lead, LeadActivity, LeadCall, LeadNote, LeadReminder, Stage
 from services.crm.lead_filter_service import (
     accessible_pipelines,
     active_filter_items,
@@ -20,42 +26,30 @@ from .bulk import bulk_campaign_available, bulk_permissions
 
 
 def _pipeline_entered_at(lead):
-    activity = (
-        lead.activities.filter(
-            topic="pipeline_changed",
-            new_pipeline_id=lead.pipeline_id,
-        )
-        .order_by("-created_at")
-        .first()
-    )
-    return activity.created_at if activity else lead.created_at
+    for activity in lead.activities_for_card:
+        if (
+            activity.topic == LeadActivity.Topic.PIPELINE_CHANGED
+            and activity.new_pipeline_id == lead.pipeline_id
+        ):
+            return activity.created_at
+    return lead.created_at
 
 
-def _prepare_lead(lead, attribute_definitions):
-    now = timezone.now()
+def _prepare_lead(lead, attribute_definitions, now):
     lead.days_in_stage = max(0, (now - lead.stage_entered_at).days)
     lead.days_in_pipeline = max(0, (now - _pipeline_entered_at(lead)).days)
-    lead.call_count = lead.calls.count()
-    lead.next_reminder = (
-        lead.reminders.filter(status="pending").order_by("due_at").first()
-    )
+    pending_reminders = lead.pending_reminders_for_card
+    lead.next_reminder = pending_reminders[0] if pending_reminders else None
     lead.initials = "".join(part[0] for part in lead.name.split()[:2]).upper() or "?"
 
-    latest_note = LeadNote.objects.filter(lead=lead).order_by("-created_at").first()
+    notes = list(lead.lead_notes.all())
+    latest_note = notes[0] if notes else None
     lead.display_note = latest_note
     lead.display_note_text = (lead.notes or "").strip()
     if not lead.display_note_text and latest_note:
         lead.display_note_text = (latest_note.note or "").strip()
 
-    lead.activities_for_card = lead.activities.select_related(
-        "actor",
-        "old_pipeline",
-        "new_pipeline",
-        "old_stage",
-        "new_stage",
-    ).order_by("-created_at")
     lead.attribute_definitions = attribute_definitions
-    # Summary is an action surface; the live modal owns availability state.
     lead.has_conversation_summary = True
     return lead
 
@@ -143,36 +137,123 @@ def lead_table_partial(request):
         user=user,
         include_search=True,
     )
-    has_current_matches = queryset.exists()
-
-    attribute_definitions = list(public_attribute_definitions(user.organization))
-    stage_groups = []
-    for index, stage in enumerate(stages):
-        stage_leads = list(queryset.filter(stage=stage).prefetch_related("lead_notes"))
-        from apps.ai_engagement.services.intent_score import prepare_intent_scores
-        prepare_intent_scores(stage_leads)
-        from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
-        attach_calendar_attachments_to_leads(
-            stage_leads,
-            organization=user.organization,
-        )
-        for lead in stage_leads:
-            _prepare_lead(lead, attribute_definitions)
-        stage_groups.append(
-            {
-                "stage": stage,
-                "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
-                "leads": stage_leads,
-                "count": len(stage_leads),
-            }
-        )
-
     requested_stage = str(request.GET.get("stage") or "").strip()
     filter_stage = str(request.GET.get("filter_stage") or "").strip()
     valid_stage_ids = {str(stage.id) for stage in stages}
     active_stage_id = filter_stage if filter_stage in valid_stage_ids else requested_stage
     if active_stage_id not in valid_stage_ids:
         active_stage_id = str(stages[0].id) if stages else ""
+
+    # Count matching leads across stages without building every card.
+    counts = dict(
+        queryset.filter(stage__in=stages)
+        .order_by()
+        .values("stage_id")
+        .annotate(total=Count("pk", distinct=True))
+        .values_list("stage_id", "total")
+    )
+    stage_bulk_counts = dict(
+        Lead.objects.filter(organization=user.organization, pipeline=current_pipeline)
+        .order_by().values("stage_id").annotate(total=Count("pk"))
+        .values_list("stage_id", "total")
+    )
+    has_current_matches = any(counts.values())
+    stage_groups = [
+        {
+            "stage": stage,
+            "theme": STAGE_THEMES[index % len(STAGE_THEMES)],
+            "leads": [],
+            "count": counts.get(stage.id, 0),
+            "bulk_count": stage_bulk_counts.get(stage.id, 0),
+            "query": query_with(
+                request.GET, pipeline=current_pipeline.id, stage=stage.id,
+                filter_stage=None, page=None,
+            ),
+        }
+        for index, stage in enumerate(stages)
+    ]
+
+    page_size = 40
+    active_stage = next(
+        (stage for stage in stages if str(stage.id) == active_stage_id), None
+    )
+    active_count = counts.get(active_stage.id, 0) if active_stage else 0
+    total_pages = max(1, (active_count + page_size - 1) // page_size)
+    try:
+        page_number = int(request.GET.get("page") or 1)
+    except (TypeError, ValueError):
+        page_number = 1
+    page_number = min(max(1, page_number), total_pages)
+    # A dashboard link can point to a lead beyond page one. Locate its page
+    # within this filtered stage before rendering the first batch.
+    requested_lead_id = str(request.GET.get("lead") or "").strip()
+    if active_stage is not None and requested_lead_id and not request.GET.get("page"):
+        try:
+            requested_lead_id = uuid.UUID(requested_lead_id)
+        except (TypeError, ValueError, AttributeError):
+            requested_lead_id = None
+        if requested_lead_id is not None:
+            target = queryset.filter(
+                stage=active_stage, pk=requested_lead_id,
+            ).values("created_at", "pk").first()
+            if target is not None:
+                preceding = queryset.filter(stage=active_stage).filter(
+                    Q(created_at__gt=target["created_at"])
+                    | Q(created_at=target["created_at"], pk__gt=target["pk"])
+                ).count()
+                page_number = preceding // page_size + 1
+
+    if active_stage is not None and active_count:
+        # Only visible cards need scoring, attachments, history or notes.
+        leads = list(
+            queryset.filter(stage=active_stage)
+            .annotate(call_count=Count("calls", distinct=True))
+            .order_by("-created_at", "-pk")
+            .prefetch_related(
+                Prefetch("lead_notes", queryset=LeadNote.objects.order_by("-created_at")),
+                Prefetch("calls", queryset=LeadCall.objects.order_by("-called_at")),
+                Prefetch(
+                    "reminders",
+                    queryset=LeadReminder.objects.filter(status="pending").order_by("due_at"),
+                    to_attr="pending_reminders_for_card",
+                ),
+                Prefetch(
+                    "activities",
+                    queryset=LeadActivity.objects.select_related(
+                        "actor", "old_pipeline", "new_pipeline", "old_stage", "new_stage",
+                    ).order_by("-created_at"),
+                    to_attr="activities_for_card",
+                ),
+            )[(page_number - 1) * page_size:page_number * page_size]
+        )
+        attribute_definitions = list(public_attribute_definitions(user.organization))
+        from apps.ai_engagement.services.intent_score import prepare_intent_scores
+        prepare_intent_scores(leads)
+        from apps.shvya_calendar.services import attach_calendar_attachments_to_leads
+        attach_calendar_attachments_to_leads(leads, organization=user.organization)
+        now = timezone.now()
+        for lead in leads:
+            _prepare_lead(lead, attribute_definitions, now)
+        for group in stage_groups:
+            if group["stage"].id == active_stage.id:
+                group["leads"] = leads
+                break
+
+    context["lead_page"] = {
+        "number": page_number,
+        "total_pages": total_pages,
+        "start": (page_number - 1) * page_size + 1 if active_count else 0,
+        "end": min(page_number * page_size, active_count),
+        "total": active_count,
+        "previous_query": query_with(
+            request.GET, pipeline=current_pipeline.id, stage=active_stage_id,
+            filter_stage=None, page=page_number - 1,
+        ) if page_number > 1 else "",
+        "next_query": query_with(
+            request.GET, pipeline=current_pipeline.id, stage=active_stage_id,
+            filter_stage=None, page=page_number + 1, append=None,
+        ) if page_number < total_pages else "",
+    }
 
     matches = []
     if not has_current_matches and has_active_filters(request.GET):
@@ -197,6 +278,9 @@ def lead_table_partial(request):
             "selected_pipeline_id": str(current_pipeline.id),
             "active_stage_id": active_stage_id,
             "bulk_permissions": bulk_permissions(user, current_pipeline),
+            "pipeline_lead_count": Lead.objects.filter(
+                organization=user.organization, pipeline=current_pipeline,
+            ).count(),
             "bulk_campaign_available": bulk_campaign_available(user, current_pipeline),
             "cross_pipeline_matches": matches,
             "all_pipelines_query": query_with(
@@ -207,7 +291,48 @@ def lead_table_partial(request):
             ),
         }
     )
+    if request.GET.get("append") == "1":
+        if not request.GET.get("page") or active_stage is None:
+            return JsonResponse({"error": "Invalid lead page."}, status=400)
+        active_group = next(
+            group for group in stage_groups if group["stage"].id == active_stage.id
+        )
+        return render(request, "crm/partials/lead_cards_append.html", {
+            "leads": active_group["leads"],
+            "lead_page": context["lead_page"],
+        })
     return render(request, "crm/partials/lead_table_filtered.html", context)
+
+
+@crm_login_required
+@require_GET
+def lead_stage_counts(request):
+    """Current filtered stage totals after client-side card mutations."""
+    user = request.crm_user
+    try:
+        pipeline_id = UUID(str(request.GET.get("pipeline") or ""))
+    except (TypeError, ValueError, AttributeError):
+        return JsonResponse({"error": "Pipeline not found."}, status=404)
+    pipeline = accessible_pipelines(user).filter(id=pipeline_id).first()
+    if pipeline is None:
+        return JsonResponse({"error": "Pipeline not found."}, status=404)
+    stages = list(Stage.objects.filter(
+        pipeline=pipeline, is_active=True,
+    ).values_list("id", flat=True))
+    queryset = apply_lead_filters(
+        Lead.objects.filter(organization=user.organization, pipeline=pipeline),
+        request.GET, user=user, include_search=True,
+    )
+    counts = dict(
+        queryset.filter(stage_id__in=stages)
+        .order_by()
+        .values("stage_id")
+        .annotate(total=Count("pk", distinct=True))
+        .values_list("stage_id", "total")
+    )
+    return JsonResponse({
+        "counts": {str(stage_id): counts.get(stage_id, 0) for stage_id in stages},
+    })
 
 
 def _filter_surface(request):

@@ -34,3 +34,37 @@ Manual browser checks: day/week/month navigation, overlapping appointments, mobi
 Published Calendar pages are served below `/calendar/<public_id>/<slug>/`. The current public flow supports submission, scheduling, confirmation, token-bound reschedule and token-bound cancellation. Booking writes revalidate availability and tenant/page state on the server; the browser is not the authority for slot capacity.
 
 Google Calendar connect/disconnect stays in the authenticated Calendar workspace. Connection tokens are encrypted at rest and booking/reminder behavior remains tied to the organization and current CRM lead/pipeline state.
+
+## Organization bookings and CRM appointment time
+
+SHVYA owns the appointment independently of Google. A disconnected host does not
+hide SHVYA slots or prevent booking. Availability still enforces working hours,
+notice, buffers, blocks, and capacity. When connected, Google conflict checks
+remain required; provider failures are not interpreted as free time.
+
+`booked_at` is a fixed datetime attribute, separate from the 15 custom attributes.
+Migration 0004 installs it for existing organizations and maps active bookings;
+new organizations receive it automatically. Appointment time is stored in the
+calendar's local timezone as an ISO datetime and displayed with AM/PM on lead cards.
+
+- Public bookings and rescheduling update Booked at; cancelling the last active
+  appointment clears it.
+- Editing Booked at creates a booking on the single published booking page for
+  the lead's pipeline, or reschedules its existing active booking.
+- Multiple eligible pages or multiple active appointments require choosing the
+  appointment in Calendar. No organization or host is guessed across tenants.
+- Invalid, unavailable, or conflicting times reject the save without persisting
+  a mismatched CRM value. Cancel in Calendar before clearing an active booking.
+- Manual bookings use the page duration, timezone, meeting location and reminders.
+  Google event writes are queued after commit. Google Meet must be selected and
+  the organization's selected host must authorize Google Calendar.
+- Each booking has its own stable Google event ID and conference request ID.
+  Retries recover the original event; rescheduling keeps the appointment's link.
+- Reconnecting a host queues upcoming disconnected appointments. Beat recovers
+  pending creates and reschedules after broker outages. Reminder content is
+  rendered again at dispatch so newly generated links are included.
+
+Validation for this change: calendar service, workspace, provider throttling and
+attribute-sync regression tests. Local supplemental tests used SQLite without
+PostgreSQL-specific search indexes; PostgreSQL migrations/locking and live Google
+OAuth/Meet creation require CI and an authorized integration smoke test.

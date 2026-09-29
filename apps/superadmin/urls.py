@@ -37,6 +37,7 @@ from .views import (
     organization_user_toggle_active_view,
     organization_user_update_view,
     superadmin_login_view,
+    superadmin_logout_view,
 )
 
 from .plan_controls import organization_modules_view, organization_delete_view, organization_tag_manage_view
@@ -55,6 +56,11 @@ urlpatterns = [
         "login/",
         superadmin_login_view,
         name="superadmin-login",
+    ),
+    path(
+        "logout/",
+        superadmin_logout_view,
+        name="superadmin-logout",
     ),
 
     # =========================================================

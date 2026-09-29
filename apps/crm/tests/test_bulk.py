@@ -75,9 +75,146 @@ class BulkLeadTests(TestCase):
         self.assertContains(response, 'data-bulk-action="update"')
         self.assertContains(response, 'data-bulk-action="export"')
         self.assertContains(response, 'data-bulk-action="delete"')
-        self.assertContains(response, "Select all 1 leads in this stage")
+        self.assertContains(response, 'data-stage-count="3"')
+        self.assertContains(response, f"Select all 3 leads in {self.stage.name}")
+        self.assertNotContains(response, "data-page-select")
         self.assertContains(response, "search=Lead+0")
         self.assertContains(response, "data-lead-select", count=1)
+
+    def test_pipeline_selection_reaches_other_stages_and_pages(self):
+        extra = [
+            Lead.objects.create(
+                organization=self.organization, pipeline=self.pipeline,
+                stage=self.stage, name=f"Paged lead {index}",
+                phone=f"+9199000{index:05d}",
+            )
+            for index in range(42)
+        ]
+        other_stage = Lead.objects.create(
+            organization=self.organization, pipeline=self.pipeline,
+            stage=self.next_stage, name="Other stage",
+            phone="+919900099999",
+        )
+        page = self.client.get(reverse("crm-lead-table-partial"), {
+            "pipeline": self.pipeline.pk, "stage": self.stage.pk,
+        })
+        self.assertEqual(page.status_code, 200)
+        self.assertContains(page, 'data-stage-count="45"')
+        self.assertContains(page, f"Select all 45 leads in {self.stage.name}")
+        self.assertNotContains(page, "data-page-select")
+        self.assertContains(page, "data-auto-page")
+
+        response = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], 46)
+
+        response = self.post(
+            "export", selection_scope="pipeline", lead_ids=[],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        workbook = load_workbook(BytesIO(response.content), read_only=True)
+        self.assertEqual(workbook.active.max_row, 47)
+        workbook.close()
+        self.assertTrue(Lead.objects.filter(pk=extra[-1].pk).exists())
+        self.assertTrue(Lead.objects.filter(pk=other_stage.pk).exists())
+
+    def test_stage_selection_excludes_other_stages_and_unchecked_leads(self):
+        other = Lead.objects.create(
+            organization=self.organization, pipeline=self.pipeline,
+            stage=self.next_stage, name="Other stage", phone="+919977755551",
+        )
+        response = self.post(
+            "options", selection_scope="stage", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], 2)
+        exported = self.post(
+            "export", selection_scope="stage", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(exported.status_code, 200, exported.content)
+        workbook = load_workbook(BytesIO(exported.content), read_only=True)
+        names = [row[1] for row in list(workbook.active.values)[1:]]
+        workbook.close()
+        self.assertNotIn(other.name, names)
+        self.assertNotIn(self.leads[0].name, names)
+        self.assertIn(self.leads[1].name, names)
+        self.assertEqual(self.post(
+            "options", selection_scope="stage", lead_ids=[],
+            source_stage=str(self.next_stage.pk),
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        ).status_code, 400)
+
+    def test_pipeline_selection_can_exclude_a_visible_lead_without_losing_other_pages(self):
+        extra = Lead.objects.create(
+            organization=self.organization, pipeline=self.pipeline,
+            stage=self.next_stage, name="Elsewhere", phone="+919988877766",
+        )
+        response = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], 3)
+
+        exported = self.post(
+            "export", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(self.leads[0].pk)],
+        )
+        self.assertEqual(exported.status_code, 200, exported.content)
+        workbook = load_workbook(BytesIO(exported.content), read_only=True)
+        names = [row[1] for row in list(workbook.active.values)[1:]]
+        workbook.close()
+        self.assertNotIn(self.leads[0].name, names)
+        self.assertIn(extra.name, names)
+
+        invalid = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+            exclude_lead_ids=[str(uuid4())],
+        )
+        self.assertEqual(invalid.status_code, 400)
+
+    def test_pipeline_selection_is_tenant_scoped_and_requires_permission(self):
+        other = Organization.objects.create(package="dfy", name="Other bulk org")
+        foreign = Lead.objects.create(
+            organization=other, pipeline=other.pipelines.first(),
+            stage=other.pipelines.first().stages.first(),
+            name="Foreign", phone="+919999999995",
+        )
+        response = self.post(
+            "options", selection_scope="pipeline", lead_ids=[],
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["count"], len(self.leads))
+        self.assertEqual(self.post(
+            "options", selection_scope="pipeline",
+            lead_ids=[str(foreign.pk)],
+        ).status_code, 400)
+        self.assertEqual(self.post(
+            "options", selection_scope="pipeline",
+            lead_ids=[], pipeline=str(other.pipelines.first().pk),
+        ).status_code, 403)
+        self.assertEqual(
+            self.post("options", selection_scope="unexpected").status_code, 400
+        )
+
+        agent = User.objects.create_user(
+            email="pipeline-agent@example.com", name="Agent",
+            password="test", organization=self.organization, role=User.Role.AGENT,
+        )
+        self.pipeline.owner = agent
+        self.pipeline.save(update_fields=["owner"])
+        self.authenticate(agent)
+        response = self.post(
+            "delete", selection_scope="pipeline", lead_ids=[],
+            confirm_delete=True,
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(Lead.objects.filter(pk=foreign.pk).exists())
+        self.assertEqual(Lead.objects.filter(organization=self.organization).count(), 3)
 
     def api_campaign_account(self, *, connection_type="api", number="+919999999999"):
         return WhatsAppAccount.objects.create(

@@ -7,6 +7,7 @@ CONFIG_PATH = ROOT / "nginx" / "staging" / "default.conf"
 
 MCP_PUBLIC_PATHS = [
     "/operations/mcp/",
+    "/operations/capabilities",
     "/operations/oauth/register",
     "/operations/oauth/authorize",
     "/operations/oauth/token",

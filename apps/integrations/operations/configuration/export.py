@@ -206,6 +206,7 @@ def _portable_configuration(organization):
             organization=organization,
             is_active=True,
         )
+        .exclude(key="booked_at")
         .order_by("display_order", "key", "id")
     )
     accounts_list = list(

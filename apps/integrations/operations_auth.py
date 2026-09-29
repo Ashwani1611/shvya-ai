@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import logging
 import re
 import secrets
 from dataclasses import dataclass
@@ -48,10 +49,14 @@ ACCESS_TOKEN_TTL = timedelta(hours=4)
 REFRESH_TOKEN_TTL = timedelta(days=14)
 AUTH_CODE_TTL = timedelta(minutes=5)
 
+logger = logging.getLogger(__name__)
+
 CLAUDE_BROWSER_CLIENT_ID = "shvya_claude_browser"
 CLAUDE_BROWSER_REDIRECT_URIS = (
     "https://claude.ai/api/mcp/auth_callback",
     "https://claude.com/api/mcp/auth_callback",
+    "https://claude.ai/api/mcp/auth_callback/",
+    "https://claude.com/api/mcp/auth_callback/",
 )
 
 _PKCE_VERIFIER_RE = re.compile(r"^[A-Za-z0-9\-._~]{43,128}$")
@@ -61,7 +66,16 @@ User = get_user_model()
 
 
 class OperationsAuthError(ValueError):
-    pass
+    def __init__(
+        self,
+        message,
+        *,
+        code="OAUTH_REQUEST_INVALID",
+        stage="authorization_request",
+    ):
+        super().__init__(message)
+        self.code = code
+        self.stage = stage
 
 
 @dataclass(frozen=True)
@@ -95,7 +109,14 @@ def register_client(
     grant_types=None,
     response_types=None,
     application_type="web",
+    token_endpoint_auth_method="none",
 ):
+    if not isinstance(redirect_uris, list):
+        raise OperationsAuthError(
+            "redirect_uris must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     raw_redirects = [
         str(item or "").strip()
         for item in (redirect_uris or [])
@@ -103,30 +124,89 @@ def register_client(
     ]
     redirect_uris = list(dict.fromkeys(raw_redirects))
     if not redirect_uris:
-        raise OperationsAuthError("At least one redirect URI is required.")
+        raise OperationsAuthError(
+            "At least one redirect URI is required.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="dynamic_client_registration",
+        )
     if len(redirect_uris) > 8:
         raise OperationsAuthError("At most 8 redirect URIs may be registered.")
     if any(len(uri) > 2048 for uri in redirect_uris):
         raise OperationsAuthError("OAuth redirect URI is too long.")
     if any(not _allowed_redirect(uri) for uri in redirect_uris):
         raise OperationsAuthError(
-            "Operations MCP accepts secure HTTPS callbacks and RFC 8252 loopback callbacks for public PKCE clients."
+            "Operations MCP accepts secure HTTPS callbacks and RFC 8252 loopback callbacks for public PKCE clients.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="dynamic_client_registration",
         )
 
-    grant_types = list(grant_types or ["authorization_code", "refresh_token"])
-    response_types = list(response_types or ["code"])
+    client_name = str(client_name or "").strip()
+    if not client_name or len(client_name) > 200:
+        raise OperationsAuthError(
+            "client_name must contain 1-200 characters.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if grant_types is not None and not isinstance(grant_types, list):
+        raise OperationsAuthError(
+            "grant_types must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if response_types is not None and not isinstance(response_types, list):
+        raise OperationsAuthError(
+            "response_types must be a JSON array.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    grant_types = list(dict.fromkeys(grant_types or ["authorization_code", "refresh_token"]))
+    response_types = list(dict.fromkeys(response_types or ["code"]))
+    if any(not isinstance(item, str) or not item for item in grant_types):
+        raise OperationsAuthError(
+            "grant_types contains an invalid value.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if any(not isinstance(item, str) or not item for item in response_types):
+        raise OperationsAuthError(
+            "response_types contains an invalid value.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if not set(grant_types) <= {"authorization_code", "refresh_token"}:
-        raise OperationsAuthError("Unsupported OAuth grant type.")
+        raise OperationsAuthError(
+            "Unsupported OAuth grant type.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if "authorization_code" not in grant_types:
-        raise OperationsAuthError("authorization_code grant is required.")
+        raise OperationsAuthError(
+            "authorization_code grant is required.",
+            code="AUTHORIZATION_CODE_UNSUPPORTED",
+            stage="dynamic_client_registration",
+        )
     if set(response_types) != {"code"}:
-        raise OperationsAuthError("Only response_type=code is supported.")
+        raise OperationsAuthError(
+            "Only response_type=code is supported.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
     if str(application_type or "web") not in {"web", "native"}:
-        raise OperationsAuthError("Unsupported OAuth application_type.")
+        raise OperationsAuthError(
+            "Unsupported OAuth application_type.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
+    if token_endpoint_auth_method != "none":
+        raise OperationsAuthError(
+            "SHVYA Operations supports public PKCE clients only.",
+            code="INVALID_CLIENT_METADATA",
+            stage="dynamic_client_registration",
+        )
 
     return OperationsOAuthClient.objects.create(
         client_id="shvya_ops_" + secrets.token_urlsafe(24),
-        client_name=str(client_name or "External AI").strip()[:200],
+        client_name=client_name,
         application_type=str(application_type or "web"),
         redirect_uris=redirect_uris,
         grant_types=grant_types,
@@ -134,13 +214,21 @@ def register_client(
     )
 
 
-def _resolve_oauth_client(client_id: str):
+def _resolve_oauth_client(
+    client_id: str,
+    *,
+    refresh_remote_metadata=True,
+):
     client_id = str(client_id or "").strip()
     client = OperationsOAuthClient.objects.filter(
         client_id=client_id,
     ).first()
     if client is not None and not client.is_active:
-        raise OperationsAuthError("OAuth client is inactive.")
+        raise OperationsAuthError(
+            "OAuth client is inactive.",
+            code="CIMD_INVALID",
+            stage="client_validation",
+        )
 
     if client_id == CLAUDE_BROWSER_CLIENT_ID:
         canonical_redirects = list(CLAUDE_BROWSER_REDIRECT_URIS)
@@ -173,10 +261,22 @@ def _resolve_oauth_client(client_id: str):
         return client
 
     if is_allowed_operations_cimd_url(client_id):
-        try:
-            metadata = fetch_cimd_metadata(client_id)
-        except MCPClientMetadataError as exc:
-            raise OperationsAuthError(str(exc)) from exc
+        metadata = None
+        if client is None or refresh_remote_metadata:
+            try:
+                metadata = fetch_cimd_metadata(client_id)
+            except MCPClientMetadataError as exc:
+                raise OperationsAuthError(
+                    str(exc),
+                    code=getattr(exc, "code", "CIMD_INVALID"),
+                    stage="client_metadata_fetch",
+                ) from exc
+        # A consent POST may safely use the exact metadata persisted during
+        # its successful GET.  This avoids a second outbound fetch becoming a
+        # transient post-consent failure while preserving fresh validation on
+        # each new authorization GET.
+        if metadata is None:
+            return client
         if client is None:
             client = OperationsOAuthClient.objects.create(
                 client_id=client_id,
@@ -204,7 +304,11 @@ def _resolve_oauth_client(client_id: str):
         return client
 
     if client is None:
-        raise OperationsAuthError("Unknown OAuth client.")
+        raise OperationsAuthError(
+            "Unknown OAuth client.",
+            code="CIMD_INVALID",
+            stage="client_validation",
+        )
     return client
 
 
@@ -216,28 +320,50 @@ def validate_authorization_request(
     code_challenge,
     code_challenge_method,
     scope,
+    refresh_remote_metadata=True,
 ):
-    client = _resolve_oauth_client(client_id)
+    client = _resolve_oauth_client(
+        client_id,
+        refresh_remote_metadata=refresh_remote_metadata,
+    )
     if not operations_redirect_uri_matches_registered(
         client.redirect_uris,
         redirect_uri,
     ):
-        raise OperationsAuthError("OAuth redirect URI is not registered.")
+        raise OperationsAuthError(
+            "OAuth redirect URI is not registered.",
+            code="REDIRECT_NOT_REGISTERED",
+            stage="redirect_validation",
+        )
     if response_type != "code":
-        raise OperationsAuthError("Only response_type=code is supported.")
+        raise OperationsAuthError(
+            "Only response_type=code is supported.",
+            code="AUTHORIZATION_CODE_UNSUPPORTED",
+            stage="authorization_request",
+        )
     if (
         code_challenge_method != "S256"
         or not _PKCE_CHALLENGE_RE.fullmatch(str(code_challenge or ""))
     ):
         raise OperationsAuthError(
-            "PKCE S256 with a valid 43–128 character challenge is required."
+            "PKCE S256 with a valid 43–128 character challenge is required.",
+            code="PKCE_INVALID",
+            stage="pkce_validation",
         )
 
     scopes = set(str(scope or "").split())
     if OPERATIONS_READ_SCOPE not in scopes:
-        raise OperationsAuthError("operations.read scope is required.")
+        raise OperationsAuthError(
+            "operations.read scope is required.",
+            code="INVALID_SCOPE",
+            stage="scope_validation",
+        )
     if not scopes <= SUPPORTED_SCOPES:
-        raise OperationsAuthError("Unsupported OAuth scope requested.")
+        raise OperationsAuthError(
+            "Unsupported OAuth scope requested.",
+            code="INVALID_SCOPE",
+            stage="scope_validation",
+        )
     return client
 
 
@@ -263,20 +389,39 @@ def _session_user(request, area: str):
 
 def available_browser_identities(request):
     result = {}
+
     superadmin = _session_user(request, "superadmin")
     if superadmin is not None:
         result[ROLE_SUPERADMIN] = superadmin
+    else:
+        logger.debug(
+            "MCP authorize: no superadmin session found. "
+            "SESSION_KEY present in superadmin store: %s",
+            bool(get_session_store(request, "superadmin").get(SESSION_KEY)),
+        )
 
     org_user = _session_user(request, "dashboard")
-    if (
-        org_user is not None
-        and getattr(org_user, "role", None) == User.Role.ADMIN
-        and getattr(org_user, "organization_id", None)
-        and organization_is_active(org_user.organization)
-    ):
-        policy = policy_for(org_user.organization)
-        if policy.organization_admin_enabled:
-            result[ROLE_ORGANIZATION_ADMIN] = org_user
+    if org_user is not None:
+        if getattr(org_user, "role", None) != User.Role.ADMIN:
+            logger.debug(
+                "MCP authorize: org user found but role is %s, not ADMIN",
+                org_user.role,
+            )
+        elif not getattr(org_user, "organization_id", None):
+            logger.debug("MCP authorize: org user has no organization_id")
+        elif not organization_is_active(org_user.organization):
+            logger.debug("MCP authorize: org user's organization is inactive")
+        else:
+            policy = policy_for(org_user.organization)
+            if not policy.organization_admin_enabled:
+                logger.debug(
+                    "MCP authorize: org admin MCP access disabled by superadmin policy"
+                )
+            else:
+                result[ROLE_ORGANIZATION_ADMIN] = org_user
+    else:
+        logger.debug("MCP authorize: no dashboard session found")
+
     return result
 
 
@@ -292,7 +437,11 @@ def issue_authorization_code(
 ):
     if role == ROLE_SUPERADMIN:
         if not actor.is_active or not actor.is_superuser:
-            raise OperationsAuthError("Superadmin authorization is no longer valid.")
+            raise OperationsAuthError(
+                "Superadmin authorization is no longer valid.",
+                code="ACTOR_NOT_AUTHENTICATED",
+                stage="consent",
+            )
         organization = None
     elif role == ROLE_ORGANIZATION_ADMIN:
         if (
@@ -302,15 +451,25 @@ def issue_authorization_code(
             or actor.organization_id is None
             or not organization_is_active(actor.organization)
         ):
-            raise OperationsAuthError("Organization admin authorization is no longer valid.")
+            raise OperationsAuthError(
+                "Organization admin authorization is no longer valid.",
+                code="ACTOR_NOT_AUTHENTICATED",
+                stage="consent",
+            )
         policy = policy_for(actor.organization)
         if not policy.organization_admin_enabled:
             raise OperationsAuthError(
-                "External AI Operations access is disabled by SHVYA Superadmin."
+                "External AI Operations access is disabled by SHVYA Superadmin.",
+                code="ORG_POLICY_DISABLED",
+                stage="organization_policy",
             )
         organization = actor.organization
     else:
-        raise OperationsAuthError("Unsupported SHVYA Operations role.")
+        raise OperationsAuthError(
+            "Unsupported SHVYA Operations role.",
+            code="ACTOR_NOT_AUTHENTICATED",
+            stage="consent",
+        )
 
     requested = set(str(scope or "").split())
     if OPERATIONS_WRITE_SCOPE in requested:
@@ -322,9 +481,7 @@ def issue_authorization_code(
         capabilities_for_grant(
             role=role,
             organization=organization,
-            allow_writes=(
-                OPERATIONS_WRITE_SCOPE in requested
-            ),
+            allow_writes=(OPERATIONS_WRITE_SCOPE in requested),
         )
     )
 
@@ -394,7 +551,9 @@ def exchange_authorization_code(
                 or not organization_is_active(auth_code.organization)
                 or not policy_for(auth_code.organization).organization_admin_enabled
             ):
-                raise OperationsAuthError("Organization Operations permission has been revoked.")
+                raise OperationsAuthError(
+                    "Organization Operations permission has been revoked."
+                )
         else:
             raise OperationsAuthError("Unsupported SHVYA Operations role.")
 
@@ -408,9 +567,7 @@ def exchange_authorization_code(
             access_token_hash=token_hash(raw_access),
             refresh_token_hash=token_hash(raw_refresh),
             scope=auth_code.scope,
-            granted_capabilities=list(
-                auth_code.granted_capabilities or []
-            ),
+            granted_capabilities=list(auth_code.granted_capabilities or []),
             resource=auth_code.resource,
             expires_at=now + ACCESS_TOKEN_TTL,
             refresh_expires_at=now + REFRESH_TOKEN_TTL,
@@ -444,17 +601,12 @@ def _record_automatic_grant_revocation(
             reason=str(message or "")[:500],
             outcome=OperationsAuditEvent.Outcome.SUCCESS,
             request_fingerprint=token_hash(
-                "oauth_auto_revoke:"
-                + str(token.id)
-                + ":"
-                + str(message or "")
+                "oauth_auto_revoke:" + str(token.id) + ":" + str(message or "")
             ),
             change_summary={
                 "access": "revoked",
                 "reason_code": "live_authority_invalid",
-                "support_session_closed": (
-                    support_session is not None
-                ),
+                "support_session_closed": (support_session is not None),
             },
             duration_ms=0,
             error_code="",
@@ -499,9 +651,7 @@ def operations_grant_status(token, *, now=None):
             or actor.organization_id != token.organization_id
             or token.organization is None
             or not organization_is_active(token.organization)
-            or not policy_for(
-                token.organization
-            ).organization_admin_enabled
+            or not policy_for(token.organization).organization_admin_enabled
         ):
             return (
                 False,
@@ -517,12 +667,7 @@ def operations_grant_status(token, *, now=None):
     )
 
 
-def _deny_and_revoke_live_grant(
-    token,
-    message,
-    *,
-    revoke=True,
-):
+def _deny_and_revoke_live_grant(token, message, *, revoke=True):
     """Reject a grant whose live SHVYA authority is gone."""
 
     if revoke:
@@ -541,9 +686,7 @@ def _deny_and_revoke_live_grant(
             if organization is not None
             else None
         )
-        revoked = revoke_token_record(
-            token=token
-        )
+        revoked = revoke_token_record(token=token)
         if revoked is not None:
             _record_automatic_grant_revocation(
                 token=token,
@@ -554,22 +697,13 @@ def _deny_and_revoke_live_grant(
 
 
 def _validate_live_token(token, *, revoke_on_failure=True):
-    valid, _reason_code, message = operations_grant_status(
-        token
-    )
+    valid, _reason_code, message = operations_grant_status(token)
     if valid:
         return
-    _deny_and_revoke_live_grant(
-        token,
-        message,
-        revoke=revoke_on_failure,
-    )
+    _deny_and_revoke_live_grant(token, message, revoke=revoke_on_failure)
 
 
-def revoke_refresh_grant_if_live_authority_invalid(
-    *,
-    refresh_token,
-):
+def revoke_refresh_grant_if_live_authority_invalid(*, refresh_token):
     """Persist revocation after a failed refresh when live SHVYA authority is gone."""
 
     token = (
@@ -619,16 +753,10 @@ def refresh_access_token(*, refresh_token, client_id, resource=""):
 
         validation_error = None
         try:
-            _validate_live_token(
-                token,
-                revoke_on_failure=False,
-            )
+            _validate_live_token(token, revoke_on_failure=False)
         except OperationsAuthError as exc:
             validation_error = exc
-            _revoke_locked_token(
-                token,
-                now=now,
-            )
+            _revoke_locked_token(token, now=now)
 
         if validation_error is None:
             raw_access = secrets.token_urlsafe(48)
@@ -745,9 +873,7 @@ def revoke_token(*, raw_token: str):
     if token is None:
         return None
 
-    return revoke_token_record(
-        token=token
-    )
+    return revoke_token_record(token=token)
 
 
 def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
@@ -779,11 +905,7 @@ def authenticate_bearer(raw_bearer: str) -> OperationsIdentity:
     if OPERATIONS_READ_SCOPE not in scopes:
         raise OperationsAuthError("OAuth token is missing operations.read scope.")
 
-    granted_capabilities = frozenset(
-        expand_capabilities(
-            token.granted_capabilities
-        )
-    )
+    granted_capabilities = frozenset(expand_capabilities(token.granted_capabilities))
 
     OperationsOAuthToken.objects.filter(pk=token.pk).update(last_used_at=now)
     return OperationsIdentity(

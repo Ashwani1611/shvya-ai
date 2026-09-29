@@ -8,9 +8,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.http import require_POST
 
 from apps.accounts.models import OneTimeLoginToken, User
 from apps.accounts.session_utils import (
+    delete_session_cookie,
     get_session_store,
     save_session_cookie,
     set_authenticated_user,
@@ -210,6 +212,37 @@ def superadmin_login_view(request):
             "next": next_url,
         },
     )
+
+# ============================================================
+# SUPER ADMIN — LOGOUT
+# ============================================================
+
+
+@require_POST
+def superadmin_logout_view(request):
+    """End only the dedicated Superadmin browser session."""
+
+    superadmin_session = get_session_store(
+        request,
+        "superadmin",
+    )
+
+    # Flush the backing session so a copied/stale Superadmin cookie cannot
+    # continue to authenticate after logout. This intentionally leaves the
+    # Django Admin and CRM Dashboard sessions untouched.
+    try:
+        superadmin_session.flush()
+    except Exception:
+        # Cookie deletion below still fails closed for the current browser.
+        pass
+
+    response = redirect("superadmin-login")
+    delete_session_cookie(
+        response,
+        "superadmin",
+    )
+    return response
+
 
 # ============================================================
 # SUPER ADMIN — ORGANIZATION CONSOLE

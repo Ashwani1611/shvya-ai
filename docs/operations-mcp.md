@@ -89,7 +89,7 @@ An OAuth write scope does not bypass capability policy. Authenticated `tools/lis
 
 ## Current staging tool surface
 
-The staging implementation defines **70 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
+The staging implementation defines **75 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
 
 ### Context and inspection
 
@@ -123,6 +123,11 @@ The staging implementation defines **70 Operations-native tools** in addition to
 - `upsert_attribute_configuration`
 - `update_messaging_automation_settings`
 - `list_whatsapp_accounts`
+- `list_whatsapp_templates`
+- `get_whatsapp_template_status`
+- `create_whatsapp_template`
+- `submit_whatsapp_template`
+- `submit_whatsapp_templates`
 - `validate_whatsapp_routing`
 - `bind_whatsapp_account_to_pipeline`
 - `begin_whatsapp_connection`
@@ -222,6 +227,7 @@ Bounded mutation surfaces include:
 
 - qualification configuration read/validate/upsert and completion-target controls
 - Hosted/API WhatsApp discovery, connection start, pipeline binding and routing validation
+- Meta WhatsApp template discovery, draft creation, single submission, and batch submission (up to 50 templates per call) through each template's selected connected WABA; Meta validation/approval remains authoritative
 - saved Touchpoint and FAQ create/update/archive lifecycle
 - knowledge source/document create, upload, publish and archive lifecycle
 - Workflow schema discovery/validation plus Workflow/Cadence simulation
@@ -385,6 +391,21 @@ OAuth authorization-code issuance and successful token issue/refresh also commit
 ### Knowledge / RAG health
 
 `get_knowledge_health` provides organization-scoped metadata only: knowledge source type/name, URL hostname, document version/status/publication state, chunk counts, embedding coverage and timestamps. It deliberately does not return document/chunk text, file bytes, source keys, signed URL query strings or embedding vectors. Raw ingestion-error text, stored source-key/file values and share instructions are deferred from the MCP presentation query; only bounded status booleans are projected. The organization configuration summary includes the same bounded knowledge-health view so “understand my business” can distinguish complete grounded context from missing/failed knowledge without broad source retrieval.
+
+### Operations attachment transport
+
+Operations MCP keeps ordinary/public requests bounded to 1 MiB, while authenticated
+Operations requests may carry larger attachment payloads up to a 72 MiB JSON request
+body. The production/staging Nginx exception is scoped only to `/operations/mcp/`
+at 80 MiB; ordinary dashboard routes retain their existing 20 MiB request limit.
+
+- Hosted WhatsApp Cadence attachments use the canonical Hosted service limit of 50 MiB.
+- Email Cadence steps support up to 5 attachments with an 18 MiB combined decoded size.
+- Email attachment content is stored in SHVYA file storage and is not written into the
+  Operations audit ledger. Approval proposals include bounded filename/MIME/size/SHA-256
+  metadata so a reviewed binary cannot be silently replaced before execution.
+- Email attachment delivery reuses the organization's connected SMTP mailbox and the
+  existing `send_organization_email(..., attachments=...)` path.
 
 ### Messaging automation exposure
 

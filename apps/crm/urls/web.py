@@ -48,6 +48,7 @@ from apps.crm.views.lead_import import (
     lead_import_destination_modal,
     lead_import_destination_save,
     lead_import_execute,
+    lead_import_status,
     lead_import_mapping_modal,
     lead_import_mapping_save,
     lead_import_review_modal,
@@ -70,6 +71,7 @@ from apps.crm.views.filtering import (
     global_reminders_modal,
     lead_filters_modal,
     lead_table_partial,
+    lead_stage_counts,
 )
 
 from apps.crm.views.ai_setup import (
@@ -139,6 +141,11 @@ urlpatterns = [
         "leads/table/",
         lead_table_partial,
         name="crm-lead-table-partial",
+    ),
+    path(
+        "leads/stage-counts/",
+        lead_stage_counts,
+        name="crm-lead-stage-counts",
     ),
 
 
@@ -431,6 +438,12 @@ urlpatterns = [
         "leads/import/execute/",
         lead_import_execute,
         name="crm-lead-import-execute",
+    ),
+
+    path(
+        "leads/import/status/",
+        lead_import_status,
+        name="crm-lead-import-status",
     ),
 
 # ========================================================

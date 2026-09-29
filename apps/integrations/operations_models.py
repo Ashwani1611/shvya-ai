@@ -136,6 +136,16 @@ class OperationsOAuthAuthorizationCode(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["client", "used_at", "expires_at"],
+                name="ops_code_client_exp_idx",
+            ),
+            models.Index(
+                fields=["actor", "used_at", "expires_at"],
+                name="ops_code_actor_exp_idx",
+            ),
+        ]
 
 
 class OperationsOAuthToken(models.Model):
@@ -191,7 +201,19 @@ class OperationsOAuthToken(models.Model):
             models.Index(
                 fields=["actor", "revoked_at", "expires_at"],
                 name="ops_token_actor_access_idx",
-            )
+            ),
+            models.Index(
+                fields=["role", "revoked_at", "refresh_expires_at"],
+                name="ops_token_role_grant_idx",
+            ),
+            models.Index(
+                fields=["organization", "role", "revoked_at"],
+                name="ops_token_org_role_idx",
+            ),
+            models.Index(
+                fields=["client", "revoked_at", "refresh_expires_at"],
+                name="ops_token_client_exp_idx",
+            ),
         ]
 
 
@@ -225,7 +247,11 @@ class OperationsSupportSession(models.Model):
             models.Index(
                 fields=["organization", "ended_at", "-last_seen_at"],
                 name="ops_support_org_active_idx",
-            )
+            ),
+            models.Index(
+                fields=["token", "ended_at", "-last_seen_at"],
+                name="ops_support_token_idx",
+            ),
         ]
 
 
@@ -440,3 +466,103 @@ class OperationsConfigurationPlan(models.Model):
 
     def __str__(self):
         return f"Operations plan {self.id} — {self.organization_id} — {self.status}"
+
+
+class OperationsCommitment(models.Model):
+    """Tenant-scoped follow-up work captured from onboarding and audits.
+
+    This is deliberately an operational work item, not a provider task or
+    outbound message. It gives onboarding, unresolved integrations, and audit
+    findings one durable, auditable place to land without granting any send or
+    automation authority.
+    """
+
+    class Source(models.TextChoices):
+        ONBOARDING_CALL = "onboarding_call", "Onboarding call"
+        INTEGRATION = "integration", "Integration"
+        AUDIT = "audit", "Audit"
+        ACCEPTANCE = "acceptance", "Acceptance test"
+
+    class Status(models.TextChoices):
+        OPEN = "open", "Open"
+        IN_PROGRESS = "in_progress", "In progress"
+        BLOCKED = "blocked", "Blocked"
+        COMPLETED = "completed", "Completed"
+        CANCELLED = "cancelled", "Cancelled"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="operations_commitments",
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_operations_commitments",
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="owned_operations_commitments",
+    )
+    source = models.CharField(max_length=32, choices=Source.choices)
+    title = models.CharField(max_length=200)
+    description = models.TextField(blank=True)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.OPEN,
+        db_index=True,
+    )
+    due_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    source_reference = models.CharField(max_length=160, blank=True)
+    resolution = models.TextField(blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["status", "due_at", "-created_at"]
+        indexes = [
+            models.Index(
+                fields=["organization", "status", "due_at"],
+                name="ops_commit_org_status_due_idx",
+            ),
+        ]
+
+
+class OperationsAcceptanceRun(models.Model):
+    """Immutable result envelope for a no-send acceptance suite."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="operations_acceptance_runs",
+    )
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="operations_acceptance_runs",
+    )
+    suite = models.CharField(max_length=64)
+    status = models.CharField(max_length=20)
+    cases = models.JSONField(default=list, blank=True)
+    summary = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(
+                fields=["organization", "suite", "-created_at"],
+                name="ops_accept_org_suite_idx",
+            ),
+        ]

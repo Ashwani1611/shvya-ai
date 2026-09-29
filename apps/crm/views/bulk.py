@@ -63,22 +63,55 @@ def _uuid(value):
 
 
 def _selection(user, data, *, lock=False):
-    ids = data.get("lead_ids")
-    if not isinstance(ids, list) or not ids:
-        raise ValueError("Select at least one lead.")
-    ids = {_uuid(value) for value in ids}
+    """Resolve a tenant-scoped explicit selection or the whole pipeline."""
+    scope = data.get("selection_scope", "ids")
+    if scope not in ("ids", "pipeline", "stage"):
+        raise ValueError("Invalid lead selection scope.")
     pipeline = get_user_pipelines(user).filter(pk=_uuid(data.get("pipeline"))).first()
     if pipeline is None:
         raise PermissionDenied
+
     queryset = Lead.objects.filter(
-        pk__in=ids, organization=user.organization, pipeline=pipeline,
-        stage_id=_uuid(data.get("source_stage")),
+        organization=user.organization, pipeline=pipeline,
     ).select_related("pipeline", "stage", "organization").order_by("pk")
+    if scope in ("pipeline", "stage"):
+        if scope == "stage":
+            stage_id = _uuid(data.get("source_stage"))
+            if not pipeline.stages.filter(pk=stage_id, is_active=True).exists():
+                raise ValueError("The selected stage is no longer available.")
+            queryset = queryset.filter(stage_id=stage_id)
+        if data.get("lead_ids"):
+            raise ValueError("Do not combine pipeline selection with individual lead IDs.")
+        excluded_values = data.get("exclude_lead_ids", [])
+        if not isinstance(excluded_values, list):
+            raise ValueError("Invalid excluded lead selection.")
+        excluded_ids = {_uuid(value) for value in excluded_values}
+        if excluded_ids:
+            found = set(queryset.filter(pk__in=excluded_ids).values_list("pk", flat=True))
+            if found != excluded_ids:
+                raise ValueError("An excluded lead is no longer in this pipeline.")
+            queryset = queryset.exclude(pk__in=excluded_ids)
+        # Whole-stage or whole-pipeline selection includes every page,
+        # independently of current search filters.
+        ids = None
+    else:
+        values = data.get("lead_ids")
+        if not isinstance(values, list) or not values:
+            raise ValueError("Select at least one lead.")
+        ids = {_uuid(value) for value in values}
+        queryset = queryset.filter(
+            pk__in=ids, stage_id=_uuid(data.get("source_stage")),
+        )
     if lock:
         queryset = queryset.select_for_update(of=("self",))
     leads = list(queryset)
-    if len(leads) != len(ids):
-        raise ValueError("Some selected leads have moved, been deleted, or are no longer accessible. Refresh and select them again.")
+    if not leads:
+        raise ValueError("Select at least one lead.")
+    if ids is not None and len(leads) != len(ids):
+        raise ValueError(
+            "Some selected leads have moved, been deleted, or are no longer accessible. "
+            "Refresh and select them again."
+        )
     return pipeline, leads
 
 

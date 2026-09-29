@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const QRCode = require('qrcode');
 const { createClient: createRedisClient } = require('redis');
@@ -33,10 +34,17 @@ const LID_RESOLVE_BATCH_SIZE = 20;
 const LID_RESOLVE_TIMEOUT_MS = 10000;
 const LOCAL_SEND_MATCH_MS = 20000;
 
+// FIX 2: retry backoff constants
+const BASE_RETRY_MS = 30000;
+const MAX_RETRY_MS = 30 * 60 * 1000;
+const MAX_RESTORE_ATTEMPTS = 6;
+
 fs.mkdirSync(AUTH_PATH, { recursive: true });
 
 const sessions = new Map();
+const sessionFailureTrackers = new Map(); // FIX 2: track per-session failures
 let redis = null;
+let shuttingDown = false; // FIX 2: guard restoreSessions during shutdown
 const gatewayMetrics = {
   callbacksFailed: 0,
   historySyncFailures: 0,
@@ -170,8 +178,6 @@ async function renewLocks() {
     } catch (error) {
       state.leaseRenewFailures = Number(state.leaseRenewFailures || 0) + 1;
       console.warn(`Lease renewal failed for ${sessionId}:`, error.message);
-      // Two missed 30-second renewals leave a full interval before the
-      // 90-second lease can expire and be claimed elsewhere.
       if (state.leaseRenewFailures >= 2) {
         await fenceSession(sessionId, state, 'lease_renewal_failed');
       }
@@ -188,6 +194,19 @@ async function releaseLock(sessionId) {
       + "return redis.call('del', KEYS[1]) else return 0 end",
     { keys: [key], arguments: [INSTANCE_ID] },
   );
+}
+
+async function destroyClientBounded(sessionId, state, reason = 'destroy') {
+  if (!state || !state.client) return;
+  try {
+    await withTimeout(
+      Promise.resolve().then(() => state.client.destroy()),
+      8000,
+      reason + ' ' + sessionId,
+    );
+  } catch (error) {
+    console.warn('Could not ' + reason + ' client ' + sessionId + ':', error.message);
+  }
 }
 
 async function fenceSession(sessionId, state, reason) {
@@ -404,8 +423,6 @@ async function serializeMessage(message, chat = null, identity = null, client = 
   let from = serializedId(message.from) || String(message.from || '');
   let to = serializedId(message.to) || String(message.to || '');
 
-  // Direct chats may be represented by a privacy @lid. Django must receive
-  // the real phone identity when it can be resolved, never the LID digits.
   if (!resolvedIdentity.isGroup && resolvedIdentity.peerPhone) {
     const peerId = `${digits(resolvedIdentity.peerPhone)}@c.us`;
     if (fromMe) to = peerId;
@@ -435,7 +452,6 @@ async function serializeMessage(message, chat = null, identity = null, client = 
 }
 
 async function sendHistoryBatch(sessionId, messages) {
-  // Keep callbacks small: a partial timeout can safely replay message IDs.
   for (let offset = 0; offset < messages.length; offset += 20) {
     const delivered = await callback(sessionId, 'history_sync', {
       messages: messages.slice(offset, offset + 20),
@@ -481,7 +497,6 @@ async function syncOneChat(sessionId, chat, client) {
   const batch = [];
   let failed = 0;
   let remainingUnread = Math.max(0, Math.floor(Number(chat.unreadCount) || 0));
-  // Newest callbacks arrive first. Only incoming messages consume unread slots.
   const ordered = messages.slice().sort((a, b) => Number(b.timestamp || 0) - Number(a.timestamp || 0));
   for (const message of ordered) {
     if (!message || !serializedId(message.id)) continue;
@@ -499,7 +514,6 @@ async function syncOneChat(sessionId, chat, client) {
   if (batch.length) await sendHistoryBatch(sessionId, batch);
   if (failed) throw new Error(`Could not serialize ${failed} history messages`);
   return { chats: 1, messages: batch.length };
-
 }
 
 async function syncRecentHistory(sessionId, state) {
@@ -677,6 +691,8 @@ async function promoteRunningSession(sessionId, state, source = 'ready') {
     state.qr = null;
     state.qrGeneratedAt = 0;
     state.lastError = '';
+    // FIX 2: clear failure tracker on successful connect
+    sessionFailureTrackers.delete(sessionId);
     await callback(sessionId, 'ready', {
       phoneNumber: state.phoneNumber,
       source,
@@ -740,6 +756,23 @@ function isGatewayOriginatedOwnMessage(state, message) {
   return false;
 }
 
+// FIX 2: clean stale Chromium lock files before retrying
+async function cleanSessionChromiumLocks(sessionId) {
+  const profilePath = path.join(AUTH_PATH, 'session-' + sessionId);
+  const lockNames = ['SingletonCookie', 'SingletonLock', 'SingletonSocket'];
+  for (const lockName of lockNames) {
+    const lockPath = path.join(profilePath, lockName);
+    try {
+      await fs.promises.unlink(lockPath);
+      console.warn('Removed stale ' + lockName + ' for session ' + sessionId);
+    } catch (error) {
+      if (error && error.code !== 'ENOENT') {
+        console.warn('Could not remove ' + lockPath + ':', error.message);
+      }
+    }
+  }
+}
+
 function wireClientEvents(sessionId, state) {
   const client = state.client;
 
@@ -778,8 +811,6 @@ function wireClientEvents(sessionId, state) {
     }
   });
 
-  // Incoming messages arrive on `message`. Keep this separate from
-  // `message_create` to avoid delivering inbound events twice.
   client.on('message', async (message) => {
     if (message.fromMe) return;
     try {
@@ -793,9 +824,6 @@ function wireClientEvents(sessionId, state) {
     }
   });
 
-  // `message_create` includes messages sent from the linked phone and other
-  // companion devices. Suppress only messages that this gateway itself just
-  // sent through the HTTP API; their queued DB row is updated elsewhere.
   client.on('message_create', async (message) => {
     if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;
     try {
@@ -832,6 +860,11 @@ function wireClientEvents(sessionId, state) {
 
 async function createSession(sessionId, requestedPhone = '') {
   if (!/^[-_\w]+$/i.test(sessionId)) throw new Error('Invalid session id.');
+  if (shuttingDown) {
+    const error = new Error('Gateway is shutting down.');
+    error.statusCode = 503;
+    throw error;
+  }
 
   const existing = sessions.get(sessionId);
   if (existing) {
@@ -868,6 +901,7 @@ async function createSession(sessionId, requestedPhone = '') {
     readyPromise: null,
     localSendTokens: new Set(),
     localMessageIds: new Map(),
+    restoreRetryAt: 0, // FIX 2: used by restoreSessions backoff
   };
 
   const client = new Client({
@@ -877,6 +911,7 @@ async function createSession(sessionId, requestedPhone = '') {
     }),
     puppeteer: {
       headless: true,
+      protocolTimeout: 120000, // FIX 1: was defaulting to 30s, causing timeouts under load
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
       args: [
         '--no-sandbox',
@@ -897,7 +932,23 @@ async function createSession(sessionId, requestedPhone = '') {
     state.qr = null;
     state.qrGeneratedAt = 0;
     state.lastError = error.message || String(error);
+    console.warn('Hosted session ' + sessionId + ' failed to initialize:', state.lastError);
     await callback(sessionId, 'failed', { error: state.lastError });
+
+    // FIX 2: exponential backoff so a stuck session can't spawn Chromium every 30s
+    const tracker = sessionFailureTrackers.get(sessionId) || { attempts: 0 };
+    tracker.attempts += 1;
+    sessionFailureTrackers.set(sessionId, tracker);
+    const backoffMs = Math.min(BASE_RETRY_MS * 2 ** (tracker.attempts - 1), MAX_RETRY_MS);
+    state.restoreRetryAt = Date.now() + backoffMs;
+    if (tracker.attempts >= MAX_RESTORE_ATTEMPTS) {
+      console.error(
+        `Hosted session ${sessionId} failed ${tracker.attempts} times in a row `
+        + `(last error: ${state.lastError}); backing off to ${Math.round(MAX_RETRY_MS / 60000)}min `
+        + 'intervals. Needs manual investigation.',
+      );
+    }
+    await releaseLock(sessionId).catch(() => {});
   });
 
   return state;
@@ -922,19 +973,44 @@ async function logoutSession(sessionId) {
     await releaseLock(sessionId);
     return;
   }
-  try { await state.client.logout(); } catch (_) {}
-  try { await state.client.destroy(); } catch (_) {}
   sessions.delete(sessionId);
-  await releaseLock(sessionId);
+  sessionFailureTrackers.delete(sessionId); // FIX 2: clear tracker on logout
+  await releaseLock(sessionId).catch(() => {});
+  try { await state.client.logout(); } catch (_) {}
+  await destroyClientBounded(sessionId, state, 'destroy after logout');
   await callback(sessionId, 'logout');
 }
 
+// FIX 2: restoreSessions now respects backoff and cleans stale locks before retry
 async function restoreSessions() {
+  if (shuttingDown) return;
   const entries = await fs.promises.readdir(AUTH_PATH, { withFileTypes: true });
   for (const entry of entries) {
     if (!entry.isDirectory() || !entry.name.startsWith('session-')) continue;
     const sessionId = entry.name.slice('session-'.length);
     if (!sessionId) continue;
+
+    const existing = sessions.get(sessionId);
+    if (
+      existing &&
+      existing.status === 'failed' &&
+      existing.restoreRetryAt &&
+      existing.restoreRetryAt > Date.now()
+    ) {
+      // Still in backoff window — do not retry yet
+      continue;
+    }
+
+    if (existing && existing.status === 'failed') {
+      console.warn('Retrying failed persisted Hosted session ' + sessionId);
+      sessions.delete(sessionId);
+      await releaseLock(sessionId).catch(() => {});
+      await destroyClientBounded(sessionId, existing, 'retry failed restore');
+      await cleanSessionChromiumLocks(sessionId).catch((error) => {
+        console.warn('Could not clean Chromium locks for ' + sessionId + ':', error.message);
+      });
+    }
+
     try {
       await createSession(sessionId);
     } catch (error) {
@@ -956,6 +1032,11 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '6mb' }));
 
 app.get('/health', (_req, res) => {
+  const statuses = {};
+  for (const state of sessions.values()) {
+    const status = String((state && state.status) || 'unknown');
+    statuses[status] = (statuses[status] || 0) + 1;
+  }
   const memory = process.memoryUsage();
   const cpu = process.cpuUsage();
   res.json({
@@ -963,6 +1044,7 @@ app.get('/health', (_req, res) => {
     shard: GATEWAY_SHARD,
     owner: INSTANCE_ID,
     sessions: sessions.size,
+    statuses,
     maxSessions: MAX_HOSTED_SESSIONS,
     capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - sessions.size),
     memoryBytes: {
@@ -1042,7 +1124,6 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
   if (state.status !== 'running') {
     return res.status(409).json({ error: 'Session is not running.' });
   }
-  // The control request must not hold a Django worker while history imports.
   startHistorySync(req.params.sessionId, state, { force: true }).catch((error) => {
     console.warn(`Hosted history refresh failed for ${req.params.sessionId}:`, error.message);
   });
@@ -1138,11 +1219,24 @@ app.delete('/sessions/:sessionId', async (req, res) => {
 });
 
 async function shutdown() {
-  for (const [sessionId, state] of sessions.entries()) {
-    try { await state.client.destroy(); } catch (_) {}
-    await releaseLock(sessionId).catch(() => {});
+  if (shuttingDown) return;
+  shuttingDown = true;
+  const activeSessions = Array.from(sessions.entries());
+  sessions.clear();
+  await Promise.allSettled(
+    activeSessions.map(([sessionId]) => releaseLock(sessionId)),
+  );
+  await Promise.allSettled(
+    activeSessions.map(([sessionId, state]) => destroyClientBounded(sessionId, state, 'shutdown')),
+  );
+  if (redis) {
+    try {
+      await withTimeout(redis.quit(), 3000, 'Redis shutdown');
+    } catch (error) {
+      console.warn('Could not close Redis cleanly:', error.message);
+      try { redis.disconnect(); } catch (_) {}
+    }
   }
-  if (redis) await redis.quit().catch(() => {});
   process.exit(0);
 }
 process.on('SIGTERM', shutdown);
@@ -1152,6 +1246,13 @@ process.on('SIGINT', shutdown);
   try {
     await startRedis();
     await restoreSessions();
+    // FIX 2: poll every 30s to retry failed sessions with backoff respected
+    setInterval(() => {
+      if (shuttingDown) return;
+      restoreSessions().catch((error) => {
+        console.warn('Could not retry persisted Hosted sessions:', error.message);
+      });
+    }, 30000).unref();
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`SHVYA WhatsApp Web gateway listening on ${PORT}`);
     });
