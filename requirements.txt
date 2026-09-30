@@ -10,7 +10,7 @@ click-didyoumean==0.3.1
 click-plugins==1.1.1.2
 click-repl==0.3.0
 colorama==0.4.6
-Django==6.1
+Django==6.1.1
 django-storages[s3]==1.14.6
 boto3==1.43.100
 django-cors-headers==4.9.0
@@ -21,7 +21,7 @@ packaging==26.3
 prompt_toolkit==3.0.53
 psycopg==3.3.4
 psycopg-binary==3.3.4
-PyJWT==2.13.0
+PyJWT==2.15.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
 redis==8.1.0
