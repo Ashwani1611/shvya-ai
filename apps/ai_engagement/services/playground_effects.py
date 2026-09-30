@@ -9,10 +9,25 @@ def preview_effects(*, organization, visitor, decision, requirements, qualificat
     from apps.ai_engagement.models import Document
     from apps.ai_engagement.services.qualification_execution.config import _config, _mapped_value, _mapping_keys
     from apps.ai_engagement.services.qualification_execution.completion import _completion_target
-    from apps.ai_engagement.services.qualification_state import normalize_stage_name
+    from apps.ai_engagement.services.qualification_state import (
+        attributes_with_state,
+        normalize_stage_name,
+        state_after_stage_change,
+    )
     from apps.crm.models import AttributeDefinition, Stage
 
     events, files = [], []
+    # File eligibility is independent of CRM setup. A new organization can
+    # test a guided upload before it has created its first pipeline.
+    document_id = decision.file_document_id
+    if decision.should_engage and document_id:
+        document = Document.objects.filter(pk=document_id, organization=organization, is_active=True,
+                    processing_status=Document.ProcessingStatus.COMPLETED).exclude(file='').exclude(share_instruction='').first()
+        if document:
+            files.append({'id': document.pk, 'name': document.name or Path(document.file.name).name,
+                          'url': reverse('ai-playground-file', kwargs={'document_id': document.pk})})
+            if document.pk not in sent_files:
+                sent_files.append(document.pk)
     if visitor.pipeline_id is None:
         return events, files
     definitions = {item.key: item for item in AttributeDefinition.objects.filter(organization=organization, is_active=True)}
@@ -44,23 +59,25 @@ def preview_effects(*, organization, visitor, decision, requirements, qualificat
             continue
         # The shared graph already authorizes routing. Recheck qualification so
         # a preview can never show an unqualified move to Qualified.
-        if destination.name.casefold().strip() == 'qualified':
+        if normalize_stage_name(destination.name) == 'qualified':
             target = _completion_target(lead=visitor, state=qualification, config=config)
             if not target or str(target['id']) != str(destination.pk):
                 continue
         events.append({'type': 'stage_transition', 'from_stage': visitor.stage.name,
                        'stage': destination.name, 'pipeline': destination.pipeline.name})
+        old_stage_name = visitor.stage.name
         visitor.stage, visitor.stage_id = destination, destination.pk
         visitor.pipeline, visitor.pipeline_id = destination.pipeline, destination.pipeline_id
+        # Live stage writes invoke this same lifecycle via CRM signals. The
+        # preview has no model save/signal, so project it into session state.
+        visitor.attributes = attributes_with_state(
+            visitor,
+            state_after_stage_change(
+                lead=visitor,
+                old_stage_name=old_stage_name,
+                new_stage_name=destination.name,
+            ),
+        )
         break
 
-    document_id = decision.file_document_id
-    if decision.should_engage and document_id:
-        document = Document.objects.filter(pk=document_id, organization=organization, is_active=True,
-                    processing_status=Document.ProcessingStatus.COMPLETED).exclude(file='').exclude(share_instruction='').first()
-        if document:
-            files.append({'id': document.pk, 'name': document.name or Path(document.file.name).name,
-                          'url': reverse('ai-playground-file', kwargs={'document_id': document.pk})})
-            if document.pk not in sent_files:
-                sent_files.append(document.pk)
     return events, files

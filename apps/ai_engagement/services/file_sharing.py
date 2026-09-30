@@ -188,14 +188,15 @@ Rules for the fields:
         ID in this allow-list. Legacy unguided files still require retrieval or
         an explicit request.
         """
-        knowledge_items = context.as_dict().get("knowledge", [])
+        context_data = context.as_dict()
+        knowledge_items = context_data.get("knowledge", [])
         document_ids = {
             int(item["document_id"])
             for item in knowledge_items
             if item.get("document_id") is not None
         }
         latest_text = ""
-        conversation = context.as_dict().get("conversation", {})
+        conversation = context_data.get("conversation", {})
         for message in reversed(conversation.get("messages", []) or []):
             if isinstance(message, dict) and message.get("direction") == "inbound":
                 latest_text = str(message.get("body") or "").strip()
@@ -207,27 +208,21 @@ Rules for the fields:
             flags=re.IGNORECASE,
         ))
 
-        retrieved_documents = (
-            self.get_eligible_documents(
-                organization=organization,
-                document_ids=document_ids,
-            )
-            if document_ids
-            else []
-        )
-        documents = list(retrieved_documents)
+        shared_ids = {
+            int(value) for value in context_data.get("lead", {}).get("shared_document_ids") or []
+            if str(value).isdigit()
+        }
+        documents = []
         # Authored sharing conditions may trigger on an ordinary enquiry, not
         # an explicit file request. Expose guided files for model evaluation;
         # inclusion is not permission to send without satisfying the condition.
-        seen = {document.id for document in documents}
         for document in self.get_eligible_documents(organization=organization):
-            if not explicit_file_request and not str(document.share_instruction or "").strip():
+            if document.id in shared_ids and not explicit_file_request:
                 continue
-            if document.id not in seen:
-                documents.append(document)
-                seen.add(document.id)
-            if len(documents) >= 10:
-                break
+            if (document.id not in document_ids and not explicit_file_request
+                    and not str(document.share_instruction or "").strip()):
+                continue
+            documents.append(document)
 
         evidence_by_id: dict[int, dict[str, Any]] = {}
         for item in knowledge_items:
@@ -239,6 +234,19 @@ Rules for the fields:
             if existing is None or float(item.get("similarity", 0.0)) > float(existing.get("similarity", 0.0)):
                 evidence_by_id[document_id] = item
 
+        # Apply repeat suppression before the bounded candidate window. Rank
+        # authored relevance before recency so newer, unrelated uploads cannot
+        # permanently hide an older file whose sharing condition matches.
+        # This is candidate retrieval only, never authorization to send.
+        from apps.ai_engagement.services.engagement_instruction_runtime import _tokens
+
+        latest_tokens = _tokens(latest_text)
+        documents.sort(key=lambda document: (
+            document.id in document_ids,
+            len(latest_tokens & _tokens(f"{document.name} {document.share_instruction}")),
+            float(evidence_by_id.get(document.id, {}).get("similarity", 0.0)),
+        ), reverse=True)
+
         candidates = []
         for document in documents[:10]:
             item = evidence_by_id.get(document.id, {})
@@ -248,7 +256,7 @@ Rules for the fields:
                 "version": document.version,
                 "source_url": document.source_url,
                 "share_instruction": document.share_instruction,
-                "already_shared": document.id in (context.as_dict().get("lead", {}).get("shared_document_ids") or []),
+                "already_shared": document.id in shared_ids,
                 "relevance": float(item.get("similarity", 0.0)),
                 "evidence": str(item.get("content") or "").strip(),
             })

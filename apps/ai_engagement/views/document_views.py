@@ -306,17 +306,11 @@ class DocumentReindexAPIView(APIView):
             organization=request.user.organization,
         )
 
-        if document.processing_status != (
-            Document.ProcessingStatus.COMPLETED
-        ):
+        try:
+            KnowledgeSourceService.validate_reindex_document(document)
+        except KnowledgeSourceServiceError as exc:
             return Response(
-                {
-                    "message": (
-                        "Only a document with "
-                        "processing_status 'completed' "
-                        "can be re-indexed."
-                    )
-                },
+                {"message": str(exc)},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

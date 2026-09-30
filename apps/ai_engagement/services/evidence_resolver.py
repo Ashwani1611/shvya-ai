@@ -142,6 +142,11 @@ class EvidenceResolver:
                 lead=lead,
                 keys=keys,
             )
+            knowledge = self._knowledge_evidence(
+                organization=organization,
+                question=question,
+                guard=guard,
+            )
             if structured:
                 return EvidenceResolution(
                     category=GroundingCategory.STRUCTURED_ORG_DATA,
@@ -149,14 +154,11 @@ class EvidenceResolver:
                     question_type=question_type,
                     sensitive=True,
                     verified=True,
-                    evidence=structured,
+                    # Category settings can be general (for example a privacy
+                    # policy) while an FAQ/file answers the actual refund ask.
+                    # Preserve configured facts first without hiding that answer.
+                    evidence=(structured + knowledge)[:self.MAX_ITEMS],
                 )
-
-            knowledge = self._knowledge_evidence(
-                organization=organization,
-                question=question,
-                guard=guard,
-            )
             if knowledge:
                 return EvidenceResolution(
                     category=GroundingCategory.KNOWLEDGE_BASE,
@@ -214,8 +216,10 @@ class EvidenceResolver:
             knowledge = self._knowledge_evidence(organization=organization, question=question, guard=guard)
             if structured or knowledge:
                 return EvidenceResolution(
-                    category=GroundingCategory.STRUCTURED_ORG_DATA,
-                    information_class=InformationClass.STATIC_CONFIGURED,
+                    category=(GroundingCategory.STRUCTURED_ORG_DATA if structured
+                              else GroundingCategory.KNOWLEDGE_BASE),
+                    information_class=(InformationClass.STATIC_CONFIGURED if structured
+                                       else InformationClass.DYNAMIC_RETRIEVED),
                     question_type=question_type,
                     sensitive=False,
                     verified=True,
@@ -237,6 +241,19 @@ class EvidenceResolver:
                 category=GroundingCategory.STRUCTURED_ORG_DATA,
                 information_class=InformationClass.STATIC_CONFIGURED,
                 question_type="objection", sensitive=False, verified=True, evidence=approved)
+
+        # Follow-up/ambiguous intents may still carry an explicit knowledge
+        # requirement. Do not force these questions to depend on FAQ wording.
+        if isinstance(intent_decision, IntentDecision) and intent_decision.requires_knowledge:
+            knowledge = self._knowledge_evidence(organization=organization, question=question, guard=guard)
+            if knowledge:
+                return EvidenceResolution(
+                    category=GroundingCategory.KNOWLEDGE_BASE,
+                    information_class=InformationClass.DYNAMIC_RETRIEVED,
+                    question_type="product_or_service", sensitive=False,
+                    verified=True, evidence=knowledge,
+                )
+            return self._unknown(question_type="product_or_service", sensitive=False)
 
         from apps.ai_engagement.services.authored_knowledge import matching_authored_answers
         answers = matching_authored_answers(organization=organization, question=question, limit=self.MAX_ITEMS)

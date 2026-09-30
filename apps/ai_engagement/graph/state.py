@@ -18,6 +18,7 @@ class EngagementGraphState(TypedDict, total=False):
     requested_knowledge_query: str
     supplied_context: Any
     caller_supplied_context: bool
+    started_at: float
 
     context: Any
     profile: dict[str, Any]

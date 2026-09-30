@@ -90,56 +90,43 @@ def _nonqualified_evidence_matches(*, organization, destination, latest_text: st
     if not latest_text:
         return False
 
+    from types import SimpleNamespace
+
     from apps.ai_engagement.models import OrgInfo
+    from apps.ai_engagement.services.crm_routing_reliability import _stage_action_supported
     from apps.ai_engagement.services.engagement_instruction_policy import (
         compile_engagement_instruction_policy,
     )
-    from apps.ai_engagement.services.engagement_instruction_runtime import (
-        _condition_part,
-        _stage_rule_references_destination,
-        _strong_evidence_match,
-        _condition_evidence_match,
-    )
 
+    pipeline = dict(getattr(context, "pipeline", None) or {})
     destination_payload = {
         "id": str(destination.id),
         "name": destination.name,
         "description": destination.description,
         "pipeline_id": str(destination.pipeline_id),
         "pipeline_name": destination.pipeline.name,
+        "pipeline_description": destination.pipeline.description,
+        "is_current_pipeline": str(pipeline.get("id") or "") == str(destination.pipeline_id),
     }
     org_info = OrgInfo.objects.filter(organization=organization).first()
     policy = compile_engagement_instruction_policy(
         getattr(org_info, "ai_playbook", "") if org_info else ""
     )
-    rules = policy.get("stage_shifting") or []
-    matching_rule = False
-    for rule in rules:
-        if not _stage_rule_references_destination(rule, destination_payload):
-            continue
-        matching_rule = True
-        if "current pipeline" in rule.casefold() and context is not None:
-            if str((context.pipeline or {}).get("id")) != str(destination.pipeline_id):
-                continue
-        condition = _condition_part(rule, destination_payload)
-        if condition and (_condition_evidence_match(latest_text, condition, context) if context is not None
-                          else _strong_evidence_match(latest_text, condition)):
-            return True
-    # A broad stage description cannot override an unsatisfied explicit rule.
-    if matching_rule:
-        return False
-
-    description = str(destination.description or "").strip()
-    if description and _strong_evidence_match(latest_text, description):
-        return True
-
-    # For ordinary model-proposed routing without a deterministic completion
-    # rule, require explicit destination evidence when no description/rule matches.
-    from apps.ai_engagement.services.engagement_instruction_runtime import _tokens
-
-    stage_tokens = _tokens(destination.name)
-    latest_tokens = _tokens(latest_text)
-    return bool(stage_tokens and stage_tokens.issubset(latest_tokens))
+    # Recheck the same policy used by the graph. A second, narrower matcher used
+    # to discard accepted confirmations and pipeline-description routing here.
+    # Do not supply a current stage: retries must reach the executor's existing
+    # source/action receipt even when the first attempt already moved the lead.
+    return _stage_action_supported(
+        action={"type": "pipeline_transition", "stage_shift": {"stage_id": str(destination.id)}},
+        context=SimpleNamespace(
+            pipeline={**pipeline, "available_stages": [destination_payload]},
+            stage={},
+            conversation=getattr(context, "conversation", None) or {"messages": []},
+        ),
+        runtime_policy={"crm": policy},
+        qualification_state={},
+        latest_text=latest_text,
+    )
 
 
 def _filter_stage_actions(*, organization, lead, actions, source_message=None):
@@ -155,7 +142,11 @@ def _filter_stage_actions(*, organization, lead, actions, source_message=None):
                 Q(created_at=source_message.created_at, id__lte=source_message.pk))
             if getattr(source_message, "account_id", None):
                 messages = messages.filter(account_id=source_message.account_id)
-        context.conversation["messages"] = list(messages.order_by("-created_at", "-id").values("body", "direction", "status")[:40])
+        # Select the bounded recent window first, then restore chronological
+        # order, matching AIContext and its immediately-prior-reply contract.
+        context.conversation["messages"] = list(reversed(list(
+            messages.order_by("-created_at", "-id").values("body", "direction", "status")[:40]
+        )))
     for action in actions or []:
         if not isinstance(action, dict) or action.get("type") != "pipeline_transition":
             filtered.append(deepcopy(action))

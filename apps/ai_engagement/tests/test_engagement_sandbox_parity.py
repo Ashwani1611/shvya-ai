@@ -99,6 +99,8 @@ class EngagementParityTests(TestCase):
         service.engage.side_effect = [
             EngagementDecision(should_engage=True, message='How can I help with a demo?', file_document_id=None,
                 crm_actions=[{'type': 'pipeline_transition', 'stage_shift': {'stage_id': str(self.demo.pk)}}], reason='NORMAL_CONVERSATION', model='test'),
+            EngagementDecision(should_engage=True, message='What would you like to see in the demo?', file_document_id=None,
+                crm_actions=[], reason='NORMAL_CONVERSATION', model='test'),
             EngagementDecision(should_engage=True, message='Tell me what you would like to see.', file_document_id=None,
                 crm_actions=[], reason='NORMAL_CONVERSATION', model='test'),
         ]
@@ -115,7 +117,7 @@ class EngagementParityTests(TestCase):
         self.assertEqual(first.stage['id'], str(self.demo.pk))
         self.assertEqual(first.events[0]['stage'], self.demo.name)
         self.assertEqual(second.stage['id'], str(self.demo.pk))
-        self.assertEqual(seen, [self.qualified.pk, self.demo.pk])
+        self.assertEqual(seen, [self.qualified.pk, self.demo.pk, self.demo.pk])
         self.assertEqual(Lead.objects.count(), count)
 
     def test_sandbox_rejects_foreign_start_stage(self):
