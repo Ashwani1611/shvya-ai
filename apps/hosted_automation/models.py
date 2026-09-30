@@ -30,6 +30,7 @@ class HostedAutomationJob(models.Model):
     """Durable delayed work for hosted AI engagement."""
 
     class Kind(models.TextChoices):
+        WELCOME = "welcome", "Welcome"
         AI_ENGAGEMENT = "ai_engagement", "AI Engagement"
 
     class Status(models.TextChoices):
@@ -59,6 +60,8 @@ class HostedAutomationJob(models.Model):
         "channels.WhatsAppMessage",
         on_delete=models.CASCADE,
         related_name="hosted_automation_job",
+        null=True,
+        blank=True,
     )
     kind = models.CharField(
         max_length=24,
@@ -73,6 +76,9 @@ class HostedAutomationJob(models.Model):
     )
     available_at = models.DateTimeField(db_index=True)
     started_at = models.DateTimeField(null=True, blank=True)
+    lease_expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    claim_token = models.CharField(max_length=64, blank=True)
+    attempts = models.PositiveIntegerField(default=0)
     completed_at = models.DateTimeField(null=True, blank=True)
     result = models.JSONField(default=dict, blank=True)
     error = models.TextField(blank=True)
@@ -81,6 +87,13 @@ class HostedAutomationJob(models.Model):
 
     class Meta:
         ordering = ["available_at", "created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["account", "lead"],
+                condition=models.Q(kind="welcome"),
+                name="hosted_one_welcome_per_lead",
+            ),
+        ]
         indexes = [
             models.Index(
                 fields=["account", "status", "available_at"],

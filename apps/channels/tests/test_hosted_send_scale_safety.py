@@ -39,7 +39,7 @@ class HostedSendTaskScaleSafetyTests(TransactionTestCase):
         )
 
     @patch("services.channels.hosted_chat_service.queue_hosted_chat_refresh")
-    @patch("apps.channels.hosted_send_tasks.finalize_hosted_send")
+    @patch("services.channels.hosted_health_guard.finalize_hosted_send")
     @patch("apps.channels.hosted_gateway_routing.gateway_client_for_account")
     def test_provider_call_runs_after_atomic_claim(
         self,
@@ -73,7 +73,7 @@ class HostedSendTaskScaleSafetyTests(TransactionTestCase):
         HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE=10,
     )
     @patch("services.channels.hosted_chat_service.queue_hosted_chat_refresh")
-    @patch("apps.channels.hosted_send_tasks.finalize_hosted_send")
+    @patch("services.channels.hosted_health_guard.finalize_hosted_send")
     @patch("apps.channels.hosted_gateway_routing.gateway_client_for_account")
     def test_hosted_account_admission_defers_second_message(
         self,

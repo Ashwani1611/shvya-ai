@@ -151,6 +151,9 @@ class MultiTurnTransportRecoveryTests(TestCase):
             patch("apps.ai_engagement.services.engagement.EngagementGenerationLock") as lock,
             patch("apps.ai_engagement.background_signals.queue_background_enrichment"),
             patch("services.channels.hosted_whatsapp_transport.send_hosted_message", side_effect=deliver) as hosted_send,
+            # This test checks qualification continuity across six turns;
+            # sender pacing is covered with a clock in the send-gate tests.
+            patch("services.channels.ai_send_gate.next_ai_send_at", return_value=None),
             patch("apps.channels.tasks.send_whatsapp_message_task.delay") as api_send,
         ):
             lock.return_value.acquire.return_value = True
@@ -192,10 +195,7 @@ class MultiTurnTransportRecoveryTests(TestCase):
 
                 with self.captureOnCommitCallbacks(execute=True):
                     if transport == "hosted":
-                        job = HostedAutomationJob.objects.create(
-                            organization=org, account=account, lead=lead, source_message=inbound,
-                            available_at=timezone.now(),
-                        )
+                        job = HostedAutomationJob.objects.update_or_create(source_message=inbound, defaults={'organization': org, 'account': account, 'lead': lead, 'available_at': timezone.now()})[0]
                         result = process_hosted_ai_engagement_job_task.run(str(job.id))
                         job.refresh_from_db()
                         self.assertEqual(job.status, "completed", job.result)
@@ -226,6 +226,10 @@ class MultiTurnTransportRecoveryTests(TestCase):
                 self.assertEqual(
                     outbound.raw_payload["shvya_ai"]["source_inbound_message_id"],
                     str(inbound.id),
+                )
+                self.assertEqual(
+                    outbound.raw_payload["shvya_ai"]["queued_at"],
+                    inbound.created_at.isoformat(),
                 )
                 if transport == "api":
                     deliver(message=outbound)

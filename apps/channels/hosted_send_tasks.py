@@ -5,22 +5,14 @@ private whatsapp-web.js gateway so the two connection types cannot cross-route.
 """
 
 import logging
+import json
 
 from celery import shared_task
 from django.core.files.storage import default_storage
 from django.db import transaction
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.channels.providers.whatsapp_web import (
-    WhatsAppWebClient,
-    WhatsAppWebGatewayError,
-)
-from services.channels.hosted_health_guard import (
-    finalize_hosted_send,
-    message_is_hosted_automation,
-    release_hosted_automation_reservation,
-    reserve_hosted_automation_send,
-)
+from apps.channels.providers.whatsapp_web import WhatsAppWebGatewayError
 
 logger = logging.getLogger(__name__)
 
@@ -98,6 +90,12 @@ def send_hosted_whatsapp_message_task(self, message_id):
             return {"status": "skipped", "reason": "already_sent"}
         if message.status != WhatsAppMessage.Status.QUEUED:
             return {"status": "skipped", "reason": "message_not_queued"}
+        payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        if any(
+            isinstance(payload.get(key), dict) and payload[key].get("job_id")
+            for key in ("shvya_ai", "shvya_welcome")
+        ):
+            return {"status": "skipped", "reason": "durable_ai_job_owned"}
         if not account.is_active or account.status != WhatsAppAccount.Status.CONNECTED:
             message.status = WhatsAppMessage.Status.FAILED
             message.error = "Hosted WhatsApp session is not connected."
@@ -106,13 +104,18 @@ def send_hosted_whatsapp_message_task(self, message_id):
         else:
             from django.conf import settings
             from apps.core.fairness import admit_provider_start
+            from services.channels.ai_send_gate import is_ai_message
 
-            allowed, retry_after, scope = admit_provider_start(
-                provider="hosted_whatsapp",
-                account_id=account.id,
-                account_limit=settings.HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE,
-                global_limit=settings.HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE,
-            )
+            # AI admission belongs inside its shared 45-second send gate.
+            # Waiting legacy tasks must not consume every provider token.
+            allowed, retry_after, scope = True, None, "account"
+            if not is_ai_message(message):
+                allowed, retry_after, scope = admit_provider_start(
+                    provider="hosted_whatsapp",
+                    account_id=account.id,
+                    account_limit=settings.HOSTED_WHATSAPP_ACCOUNT_SENDS_PER_MINUTE,
+                    global_limit=settings.HOSTED_WHATSAPP_GLOBAL_SENDS_PER_MINUTE,
+                )
             if not allowed:
                 countdown = _hosted_retry_delay(
                     message_id=message.id,
@@ -138,201 +141,81 @@ def send_hosted_whatsapp_message_task(self, message_id):
         _cleanup_upload(message)
         return {"status": "failed", "reason": "session_not_connected"}
 
-    # This worker is also used by direct Hosted UI sends and by the AI-generated
-    # new-lead welcome path. Only SHVYA automation is subject to Account Health;
-    # human agent messages remain sendable while automation is paused.
-    is_automation = message_is_hosted_automation(message)
-    reservation_acquired = False
-    if is_automation:
-        try:
-            gate = reserve_hosted_automation_send(account=account)
-        except Exception as exc:
-            _set_message_state(
-                message.id,
-                status=WhatsAppMessage.Status.FAILED,
-                error=exc,
-            )
-            _cleanup_upload(message)
-            raise
-        blocked_until = gate.get("blocked_until")
-        if blocked_until:
-            _set_message_state(
-                message.id,
-                status=WhatsAppMessage.Status.QUEUED,
-            )
-            self.apply_async(args=[str(message.id)], eta=blocked_until)
-            return {
-                "status": "deferred",
-                "reason": "account_health_pause",
-                "available_at": blocked_until.isoformat(),
-            }
-        reservation_acquired = bool(gate.get("reserved"))
+    # All Hosted delivery uses the same final transport boundary. In particular,
+    # old ETA welcomes must not bypass live AI permissions or sender pacing.
+    from services.channels.ai_send_gate import next_ai_send_at
+    from services.channels.hosted_automation_service import HostedAutomationPaused
+    from services.channels.hosted_whatsapp_transport import send_hosted_message
+    from services.channels.whatsapp_service import WhatsAppSendError
 
-    provider_confirmed = False
+    def retry_gateway_error(exc, *, safe_replay=False):
+        try:
+            code = (json.loads(exc.response_body or "{}") or {}).get("code")
+        except (ValueError, TypeError, AttributeError):
+            code = None
+        if code in {"provider_outcome_uncertain", "request_payload_conflict"}:
+            _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+            _cleanup_upload(message)
+            return {"status": "failed", "reason": code, "error": str(exc)}
+        if safe_replay or exc.status_code in {404, 409, 425, 429, 503}:
+            if self.request.retries >= self.max_retries:
+                _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+                _cleanup_upload(message)
+                return {"status": "failed", "reason": "provider_retry_limit_reached", "error": str(exc)}
+            _set_message_state(message.id, status=WhatsAppMessage.Status.QUEUED)
+            countdown = _hosted_retry_delay(
+                message_id=message.id, retries=self.request.retries,
+                retry_after=getattr(exc, "retry_after", None),
+            )
+            if exc.status_code == 429:
+                from apps.core.observability import increment
+                increment("messaging.provider_throttled", labels={"provider": "hosted_whatsapp"})
+            raise self.retry(exc=exc, countdown=countdown)
+        uncertain = exc.status_code is None or exc.status_code >= 500
+        _set_message_state(
+            message.id, status=WhatsAppMessage.Status.FAILED,
+            error=f"Provider outcome is uncertain: {exc}" if uncertain else exc,
+        )
+        _cleanup_upload(message)
+        return {
+            "status": "failed",
+            "reason": "provider_outcome_uncertain" if uncertain else "gateway_rejected",
+            "error": str(exc),
+        }
+
     try:
-        try:
-            from apps.channels.hosted_gateway_routing import gateway_client_for_account
+        send_hosted_message(message=message)
+    except HostedAutomationPaused as exc:
+        # Provider retries keep their existing bounded retry budget. The
+        # canonical transport persists a stable request identity so an AI
+        # retry reconciles an uncertain send rather than issuing a duplicate.
+        if getattr(exc, "reason", "") == "provider_transient" and isinstance(exc.__cause__, WhatsAppWebGatewayError):
+            return retry_gateway_error(exc.__cause__, safe_replay=True)
+        _set_message_state(message.id, status=WhatsAppMessage.Status.QUEUED)
+        available_at = exc.paused_until
+        gate_at = next_ai_send_at(account)
+        if gate_at and gate_at > available_at:
+            available_at = gate_at
+        self.apply_async(args=[str(message.id)], eta=available_at)
+        return {
+            "status": "deferred",
+            "reason": getattr(exc, "reason", "account_health_pause"),
+            "available_at": available_at.isoformat(),
+        }
+    except WhatsAppSendError as exc:
+        if isinstance(exc.__cause__, WhatsAppWebGatewayError):
+            return retry_gateway_error(exc.__cause__)
+        _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+        _cleanup_upload(message)
+        return {"status": "failed", "error": str(exc)}
+    except (OSError, ValueError) as exc:
+        _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+        _cleanup_upload(message)
+        return {"status": "failed", "error": str(exc)}
+    except Exception as exc:
+        _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+        _cleanup_upload(message)
+        raise
 
-            client = gateway_client_for_account(
-                account,
-                client_class=WhatsAppWebClient,
-            )
-            if message.message_type == WhatsAppMessage.MessageType.TEXT:
-                result = client.send_message(
-                    session_id=account.id,
-                    to_number=message.to_number,
-                    body=message.body,
-                )
-            else:
-                payload = (
-                    message.media_payload
-                    if isinstance(message.media_payload, dict)
-                    else {}
-                )
-                if (
-                    payload.get("source") != "storage"
-                    or not payload.get("storage_path")
-                ):
-                    raise ValueError(
-                        "Hosted media message has no temporary upload."
-                    )
-                path = str(payload["storage_path"])
-                with default_storage.open(path, "rb") as file_obj:
-                    result = client.send_uploaded_media(
-                        session_id=account.id,
-                        to_number=message.to_number,
-                        file_obj=file_obj,
-                        message_type=message.message_type,
-                        mime_type=str(
-                            payload.get("mime_type")
-                            or "application/octet-stream"
-                        ),
-                        filename=str(
-                            payload.get("filename")
-                            or "attachment"
-                        ),
-                        caption=message.body,
-                    )
-
-            # A normal gateway return means the provider accepted the send.
-            # Keep the reservation if a later local DB operation fails because
-            # the realtime gateway callback/reconciliation will observe it.
-            provider_confirmed = True
-
-        except WhatsAppWebGatewayError as exc:
-            # These statuses are produced before the gateway can safely begin a
-            # WhatsApp send, so replay is safe. A network timeout or gateway
-            # 5xx/502 around sendMessage() is uncertain and must not be replayed.
-            if exc.status_code in {404, 409, 425, 429, 503}:
-                if self.request.retries >= self.max_retries:
-                    _set_message_state(
-                        message.id,
-                        status=WhatsAppMessage.Status.FAILED,
-                        error=exc,
-                    )
-                    _cleanup_upload(message)
-                    return {
-                        "status": "failed",
-                        "reason": "provider_retry_limit_reached",
-                        "error": str(exc),
-                    }
-                _set_message_state(
-                    message.id,
-                    status=WhatsAppMessage.Status.QUEUED,
-                )
-                countdown = _hosted_retry_delay(
-                    message_id=message.id,
-                    retries=self.request.retries,
-                    retry_after=getattr(exc, "retry_after", None),
-                )
-                if exc.status_code == 429:
-                    from apps.core.observability import increment
-
-                    increment(
-                        "messaging.provider_throttled",
-                        labels={"provider": "hosted_whatsapp"},
-                    )
-                raise self.retry(exc=exc, countdown=countdown)
-
-            uncertain = exc.status_code is None or exc.status_code >= 500
-            _set_message_state(
-                message.id,
-                status=WhatsAppMessage.Status.FAILED,
-                error=(
-                    f"Provider outcome is uncertain: {exc}"
-                    if uncertain
-                    else exc
-                ),
-            )
-            _cleanup_upload(message)
-            return {
-                "status": "failed",
-                "reason": (
-                    "provider_outcome_uncertain"
-                    if uncertain
-                    else "gateway_rejected"
-                ),
-                "error": str(exc),
-            }
-        except (OSError, ValueError) as exc:
-            _set_message_state(
-                message.id,
-                status=WhatsAppMessage.Status.FAILED,
-                error=exc,
-            )
-            _cleanup_upload(message)
-            return {"status": "failed", "error": str(exc)}
-        except Exception as exc:
-            _set_message_state(
-                message.id,
-                status=WhatsAppMessage.Status.FAILED,
-                error=exc,
-            )
-            _cleanup_upload(message)
-            raise
-    finally:
-        if reservation_acquired and not provider_confirmed:
-            release_hosted_automation_reservation(account=account)
-
-    raw_message_id = str(result.get("messageId") or "").strip()
-    existing_payload = (
-        message.raw_payload
-        if isinstance(message.raw_payload, dict)
-        else {}
-    )
-    message.status = WhatsAppMessage.Status.SENT
-    message.error = ""
-    if raw_message_id:
-        message.external_id = f"wweb:{raw_message_id}"
-    message.raw_payload = {
-        **existing_payload,
-        "gateway_send": result,
-    }
-    message.save(
-        update_fields=[
-            "status",
-            "external_id",
-            "raw_payload",
-            "error",
-            "updated_at",
-        ]
-    )
     _cleanup_upload(message)
-
-    # Reconcile immediately after every successful Hosted send. This keeps the
-    # Account Health counts current for both automation and manual linked-number
-    # activity instead of waiting for a later UI refresh or gateway callback.
-    finalize_hosted_send(account=account, message=message)
-
-    from services.channels.hosted_chat_service import queue_hosted_chat_refresh
-
-    queue_hosted_chat_refresh(
-        account_id=account.id,
-        reason=(
-            "sent_media"
-            if message.message_type != WhatsAppMessage.MessageType.TEXT
-            else "sent"
-        ),
-        chat_key=message.to_number,
-    )
     return {"status": "sent", "message_id": str(message.id)}

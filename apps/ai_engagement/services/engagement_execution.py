@@ -65,18 +65,42 @@ def _persist_engagement_answers(lead, decision, source_message_id):
 
 
 def _latest_whatsapp_message(*, lead):
-    """Return the latest WhatsApp message for this Lead."""
-    return (
-        lead.whatsapp_messages
-        .filter(
-            organization=lead.organization,
-        )
-        .order_by(
-            "-created_at",
-            "-id",
-        )
+    """Find the newest customer turn, preserving an actual human takeover.
+
+    Outbound welcome/reply drafts are queue state, not a customer response.
+    They must not hide an inbound turn while waiting for their send slot. Only
+    a successfully sent human reply on the same conversation supersedes it.
+    Source-bound AI duplicate protection remains in the execution finalizer.
+    """
+    from apps.channels.models import WhatsAppMessage
+
+    messages = lead.whatsapp_messages.filter(organization_id=lead.organization_id)
+    inbound = (
+        messages.filter(direction=WhatsAppMessage.Direction.INBOUND)
+        .select_related("account")
+        .order_by("-created_at", "-id")
         .first()
     )
+    if inbound is None:
+        return None
+    human_reply = (
+        messages.filter(
+            account_id=inbound.account_id,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            status__in=[
+                WhatsAppMessage.Status.SENT,
+                WhatsAppMessage.Status.DELIVERED,
+                WhatsAppMessage.Status.READ,
+            ],
+            created_at__gt=inbound.created_at,
+        )
+        .exclude(raw_payload__has_any_keys=[
+            "shvya_ai", "shvya_welcome", "shvya_auto_followup", "shvya_workflow",
+        ])
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    return human_reply or inbound
 
 
 def _has_existing_ai_response(
@@ -432,6 +456,26 @@ def _execute_ai_engagement_response_impl(
     source_inbound_message_id = (
         latest_message.id
     )
+    # A queued/failed/sent reply must not trigger another model call simply
+    # because inbound selection now ignores pending outbound transcript rows.
+    # Delivery recovery owns the persisted response; generation never replaces
+    # it or replays an uncertain provider outcome.
+    existing_response = WhatsAppMessage.objects.filter(
+        organization=organization,
+        lead=lead,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        raw_payload__shvya_ai__source_inbound_message_id=str(source_inbound_message_id),
+    ).order_by("created_at", "id").first()
+    if existing_response is not None:
+        failed = existing_response.status == WhatsAppMessage.Status.FAILED
+        return {
+            "status": "failed" if failed else "skipped",
+            "reason": "existing_ai_delivery_failed" if failed else "duplicate_ai_response",
+            "lead_id": str(lead.id),
+            "source_message_id": str(source_inbound_message_id),
+            "message_id": str(existing_response.id),
+            "delivery_status": existing_response.status,
+        }
 
     # --------------------------------------------------------
     # AI ENGAGEMENT GENERATION
@@ -977,6 +1021,9 @@ def _execute_ai_engagement_response_impl(
                             source_inbound_message_id
                         )
                     ),
+                    # Preserve arrival order even when concurrent generations
+                    # finish in a different order across leads.
+                    "queued_at": latest_final.created_at.isoformat(),
                     "model": decision.model,
                     "reason": decision.reason,
                     "next_requirement_id": decision.next_requirement_id,

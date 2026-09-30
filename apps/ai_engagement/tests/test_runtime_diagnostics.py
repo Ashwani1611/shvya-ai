@@ -79,16 +79,7 @@ class HostedRuntimeDiagnosticsTests(TestCase):
         )
 
     def _job(self, external_id, *, status, result=None, error="", available_at=None):
-        return HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=self.account,
-            lead=self.lead,
-            source_message=self._message(external_id),
-            status=status,
-            available_at=available_at or timezone.now(),
-            result=result or {},
-            error=error,
-        )
+        return HostedAutomationJob.objects.update_or_create(source_message=self._message(external_id), defaults={'organization': self.organization, 'account': self.account, 'lead': self.lead, 'status': status, 'available_at': available_at or timezone.now(), 'result': result or {}, 'error': error})[0]
 
     def test_hosted_diagnostics_report_status_reason_delivery_and_staleness(self):
         self._job(

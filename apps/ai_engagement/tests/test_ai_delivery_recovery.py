@@ -198,3 +198,155 @@ class ReplyStatusIsolationTests(TestCase):
         response = ai_reply_status.__wrapped__(request, lead_id=self.lead.pk)
         self.assertContains(response, 'Reply could not be completed')
         self.assertNotContains(response, 'raw_payload')
+
+
+class DurableBacklogRecoveryTests(TestCase):
+    setUp = controls.AIEngagementControlTests.setUp
+    _inbound = controls.AIEngagementControlTests._inbound
+
+    def _outbound(self, *, payload=None, age_hours=2):
+        from apps.channels.models import WhatsAppMessage
+
+        message = WhatsAppMessage.objects.create(
+            organization=self.organization, account=self.account, lead=self.lead,
+            direction='outbound', status='queued', body='Pending AI message',
+            raw_payload=payload or {'shvya_ai': {'origin': 'engagement'}},
+        )
+        WhatsAppMessage.objects.filter(pk=message.pk).update(
+            created_at=timezone.now() - timedelta(hours=age_hours),
+        )
+        message.refresh_from_db()
+        return message
+
+    @patch('apps.channels.tasks.send_whatsapp_message_task.delay')
+    def test_abandoned_inflight_head_is_failed_without_replay_and_queue_advances(self, send):
+        from apps.ai_engagement.services.execution_tracker import recover_api_engagement
+        from apps.channels.models import WhatsAppMessage
+
+        abandoned = self._outbound()
+        ready = self._outbound()
+        fresh = self._outbound()
+        WhatsAppMessage.objects.filter(pk=abandoned.pk).update(
+            status='sending', updated_at=timezone.now() - timedelta(minutes=11),
+        )
+        WhatsAppMessage.objects.filter(pk=fresh.pk).update(status='sending')
+        self.assertEqual(recover_api_engagement()['requeued'], 1)
+        abandoned.refresh_from_db()
+        fresh.refresh_from_db()
+        self.assertEqual(abandoned.status, 'failed')
+        self.assertEqual(abandoned.raw_payload['shvya_ai_delivery']['reason'], 'provider_outcome_uncertain')
+        self.assertIsNone(abandoned.sent_at)
+        self.assertEqual(fresh.status, 'sending')
+        send.assert_called_once_with(str(ready.pk))
+        from services.channels.ai_send_gate import _priority_wait
+        self.assertIsNone(_priority_wait(ready, timezone.now()))
+
+    @patch('apps.channels.tasks.send_whatsapp_message_task.delay')
+    def test_backlog_older_than_one_hour_and_without_source_is_recovered(self, send):
+        from apps.ai_engagement.services.execution_tracker import recover_api_engagement
+
+        welcome = self._outbound(payload={'shvya_welcome': {'origin': 'welcome'}})
+        bump = self._outbound(payload={'shvya_ai': {'origin': 'bump_up'}})
+        self.assertEqual(recover_api_engagement()['requeued'], 2)
+        self.assertEqual([call.args[0] for call in send.call_args_list], [str(welcome.pk), str(bump.pk)])
+        self.assertEqual(recover_api_engagement()['requeued'], 0)
+
+    @patch('apps.channels.tasks.send_whatsapp_message_task.delay')
+    def test_more_than_one_batch_drains_without_first_hundred_starvation(self, send):
+        from apps.ai_engagement.services.execution_tracker import recover_api_engagement
+
+        messages = [self._outbound() for _ in range(125)]
+        self.assertEqual(recover_api_engagement()['requeued'], 100)
+        self.assertEqual(recover_api_engagement()['requeued'], 25)
+        self.assertEqual(recover_api_engagement()['requeued'], 0)
+        self.assertEqual({call.args[0] for call in send.call_args_list}, {str(m.pk) for m in messages})
+
+    @patch('apps.channels.tasks.send_whatsapp_message_task.delay')
+    def test_future_gap_wait_does_not_hide_eligible_backlog(self, send):
+        from apps.ai_engagement.services.execution_tracker import recover_api_engagement
+
+        for _ in range(100):
+            self._outbound(payload={
+                'shvya_ai': {'origin': 'engagement'},
+                'shvya_ai_delivery': {'available_at': (timezone.now() + timedelta(minutes=5)).isoformat()},
+            })
+        due = self._outbound()
+        self.assertEqual(recover_api_engagement()['requeued'], 1)
+        send.assert_called_once_with(str(due.pk))
+
+    @patch('apps.channels.tasks.send_whatsapp_message_task.delay')
+    def test_job_owned_welcomes_and_replies_are_left_to_job_recovery(self, send):
+        from apps.ai_engagement.services.execution_tracker import recover_api_engagement
+
+        self._outbound(payload={'shvya_welcome': {'job_id': 'welcome-job'}})
+        self._outbound(payload={'shvya_ai': {'job_id': 'reply-job'}})
+        self.assertEqual(recover_api_engagement()['requeued'], 0)
+        send.assert_not_called()
+
+    @patch('apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async')
+    def test_old_tracked_inbound_is_not_abandoned_or_hidden_by_fresh_claims(self, publish):
+        from apps.channels.models import WhatsAppMessage
+        from apps.ai_engagement.services.execution_tracker import KEY, recover_api_engagement
+
+        now = timezone.now()
+        for index in range(100):
+            message = self._inbound(external_id=f'fresh-{index}')
+            WhatsAppMessage.objects.filter(pk=message.pk).update(raw_payload={
+                KEY: {'status': 'processing', 'updated_at': now.isoformat(), 'attempts': 1},
+            })
+        due = self._inbound(external_id='due-last')
+        # Keep this the latest inbound while making every row an old backlog.
+        WhatsAppMessage.objects.filter(lead=self.lead).update(created_at=now - timedelta(hours=3))
+        WhatsAppMessage.objects.filter(pk=due.pk).update(
+            created_at=now - timedelta(hours=2),
+            raw_payload={KEY: {'status': 'queued', 'updated_at': (now - timedelta(minutes=2)).isoformat()}},
+        )
+        self.assertEqual(recover_api_engagement()['requeued'], 1)
+        publish.assert_called_once_with(args=[str(self.lead.pk)], countdown=0)
+
+
+class ArrivalOrderFinalizerTests(TestCase):
+    setUp = controls.AIEngagementControlTests.setUp
+    _inbound = controls.AIEngagementControlTests._inbound
+
+    def test_reversed_generation_completion_preserves_customer_arrival_order(self):
+        from apps.ai_engagement.services.engagement_execution import _execute_ai_engagement_response_impl
+        from apps.channels.models import WhatsAppMessage
+        from apps.crm.models import Lead
+
+        first = self._inbound(external_id='arrival-first')
+        second_lead = Lead.objects.create(
+            organization=self.organization, pipeline=self.pipeline, stage=self.new_lead,
+            name='Second arrival', phone='+919111111112', ai_enabled=True,
+        )
+        second = WhatsAppMessage.objects.create(
+            organization=self.organization, account=self.account, lead=second_lead,
+            direction='inbound', body='Later arrival', status='received',
+        )
+        decision = SimpleNamespace(
+            should_engage=True, message='Your answer', model='test', reason='NORMAL_CONVERSATION',
+            file_document_id=None, crm_actions=[], next_requirement_id=None,
+        )
+        with (
+            patch('apps.ai_engagement.services.ai_permissions.AIPermissionService.evaluate',
+                  return_value=SimpleNamespace(allowed=True, reason='allowed')),
+            patch('apps.ai_engagement.services.engagement.EngagementService.engage', return_value=decision),
+            patch('services.channels.whatsapp_service.resolve_account_for_lead', return_value=self.account),
+            patch('apps.ai_engagement.services.engagement_execution._persist_engagement_answers', return_value=True),
+            patch('apps.ai_engagement.services.crm_executor.CRMActionExecutor.execute', return_value={}),
+            patch('apps.channels.tasks.send_whatsapp_message_task.delay'),
+        ):
+            later_result = _execute_ai_engagement_response_impl(task=Mock(), lead_id=second_lead.pk)
+            earlier_result = _execute_ai_engagement_response_impl(task=Mock(), lead_id=self.lead.pk)
+
+        self.assertEqual(later_result['status'], 'completed', later_result)
+        self.assertEqual(earlier_result['status'], 'completed', earlier_result)
+        later_reply = WhatsAppMessage.objects.get(pk=later_result['message_id'])
+        earlier_reply = WhatsAppMessage.objects.get(pk=earlier_result['message_id'])
+        self.assertLess(later_reply.created_at, earlier_reply.created_at)
+        self.assertEqual(earlier_reply.raw_payload['shvya_ai']['queued_at'], first.created_at.isoformat())
+        self.assertEqual(later_reply.raw_payload['shvya_ai']['queued_at'], second.created_at.isoformat())
+        self.assertLess(
+            earlier_reply.raw_payload['shvya_ai']['queued_at'],
+            later_reply.raw_payload['shvya_ai']['queued_at'],
+        )

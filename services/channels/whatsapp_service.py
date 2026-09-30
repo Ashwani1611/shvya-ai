@@ -14,6 +14,9 @@ from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
 
+from django.utils import timezone
+from services.channels.ai_send_gate import paced_ai_send
+
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers import whatsapp as whatsapp_provider
 from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
@@ -1055,6 +1058,7 @@ def _send_outbound_media_message(
     )
 
 
+@paced_ai_send
 def send_outbound_message(
     *,
     message: WhatsAppMessage,
@@ -1250,6 +1254,12 @@ def send_outbound_message(
             )
         )
 
+    if not external_id:
+        message.status = WhatsAppMessage.Status.FAILED
+        message.error = "WhatsApp provider returned no message id."
+        message.save(update_fields=["status", "error", "updated_at"])
+        raise WhatsAppSendError(message.error)
+
     # --------------------------------------------------------
     # PRESERVE SHVYA AI METADATA
     # --------------------------------------------------------
@@ -1301,6 +1311,7 @@ def send_outbound_message(
         WhatsAppMessage.Status.SENT
     )
 
+    message.sent_at = timezone.now()
     message.external_id = (
         external_id
     )
@@ -1313,6 +1324,7 @@ def send_outbound_message(
         update_fields=[
             "status",
             "external_id",
+            "sent_at",
             "raw_payload",
             "updated_at",
         ]

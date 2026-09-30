@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 from django.db import transaction
+from django.db.models import Q
 
 from apps.ai_engagement.services.ai_provider import (
     AIProviderTransientError,
@@ -42,6 +43,9 @@ class HostedAIContextBuilder(AIContextBuilder):
                 organization=organization,
                 account_id=self.account_id,
                 lead=lead,
+            ).exclude(
+                Q(direction=WhatsAppMessage.Direction.OUTBOUND)
+                & ~Q(status__in=[WhatsAppMessage.Status.SENT, WhatsAppMessage.Status.DELIVERED, WhatsAppMessage.Status.READ])
             ).order_by("-created_at", "-id")[:limit]
         )
         messages.reverse()
@@ -62,14 +66,26 @@ class HostedAIContextBuilder(AIContextBuilder):
 
 
 def _latest_for_account(*, lead, account):
-    return (
+    inbound = (
         lead.whatsapp_messages.filter(
             organization_id=lead.organization_id,
             account=account,
+            direction=WhatsAppMessage.Direction.INBOUND,
         )
         .order_by("-created_at", "-id")
         .first()
     )
+    if inbound is None:
+        return None
+    human_reply = lead.whatsapp_messages.filter(
+        organization_id=lead.organization_id, account=account,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        status__in=[WhatsAppMessage.Status.SENT, WhatsAppMessage.Status.DELIVERED, WhatsAppMessage.Status.READ],
+        created_at__gt=inbound.created_at,
+    ).exclude(raw_payload__has_any_keys=[
+        "shvya_ai", "shvya_welcome", "shvya_auto_followup", "shvya_workflow",
+    ]).order_by("-created_at", "-id").first()
+    return human_reply or inbound
 
 
 def _connected_hosted_account(*, account_id, organization_id):
@@ -199,6 +215,13 @@ def execute_hosted_ai_engagement(*, task, job):
             "lead_id": str(lead.id),
         }
 
+    # A redelivery must not pay for a second model turn while its first reply
+    # is waiting for the shared send slot. The job worker recovers and sends
+    # that exact row; direct execution callers simply observe the duplicate.
+    if _has_existing_response(lead=lead, account=account, inbound_message=source, body=""):
+        return {"status": "skipped", "reason": "duplicate_ai_response",
+                "lead_id": str(lead.pk), "source_message_id": str(source.pk)}
+
     latest = _latest_for_account(lead=lead, account=account)
     if latest is None or latest.id != source.id or latest.direction != WhatsAppMessage.Direction.INBOUND:
         return {
@@ -262,6 +285,12 @@ def execute_hosted_ai_engagement(*, task, job):
 
     try:
         with transaction.atomic():
+            from apps.hosted_automation.models import HostedAutomationJob
+            if job.claim_token and not HostedAutomationJob.objects.filter(
+                pk=job.pk, status=HostedAutomationJob.Status.PROCESSING,
+                claim_token=job.claim_token,
+            ).exists():
+                return {"status": "skipped", "reason": "job_lease_replaced"}
             locked_lead = (
                 Lead.objects.select_for_update()
                 .select_related("organization", "pipeline", "stage")
@@ -375,7 +404,9 @@ def execute_hosted_ai_engagement(*, task, job):
             )
             outbound.raw_payload = {
                 "shvya_ai": {
+                    "job_id": str(job.pk),
                     "source_inbound_message_id": str(source.id),
+                    "queued_at": source.created_at.isoformat(),
                     "model": decision.model,
                     "reason": decision.reason,
                     "next_requirement_id": decision.next_requirement_id,

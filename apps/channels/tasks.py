@@ -262,6 +262,7 @@ def send_whatsapp_message_task(self, message_id):
     """
     from apps.channels.models import WhatsAppMessage
     from apps.channels.providers.whatsapp import WhatsAppAPIError
+    from services.channels.ai_send_gate import AIMessageDeferred
     from services.channels.whatsapp_service import (
         WhatsAppSendError,
         send_outbound_message,
@@ -311,6 +312,39 @@ def send_whatsapp_message_task(self, message_id):
                     "message_id": str(message_id),
                 }
 
+            # Hosted AI creates the same durable WhatsAppMessage row, but its
+            # delivery is owned by HostedAutomationJob. Suppress only the AI
+            # finalizer's canonical sender call. Hosted agent/manual messages
+            # must keep flowing through the provider-aware canonical task.
+            payload = (
+                message.raw_payload
+                if isinstance(message.raw_payload, dict)
+                else {}
+            )
+            job_owned = any(
+                isinstance(payload.get(key), dict) and payload[key].get("job_id")
+                for key in ("shvya_ai", "shvya_welcome")
+            )
+            if job_owned or (
+                message.account.connection_type == "hosted"
+                and payload.get("shvya_ai")
+                and payload["shvya_ai"].get("origin") != "bump_up"
+            ):
+                logger.info(
+                    "send_whatsapp_message_task: "
+                    "message %s is Hosted AI; leaving delivery to "
+                    "Hosted automation",
+                    message_id,
+                )
+                return {
+                    "status": "skipped",
+                    "reason": (
+                        "ai_job_transport_managed_separately" if job_owned
+                        else "hosted_ai_transport_managed_separately"
+                    ),
+                    "message_id": str(message_id),
+                }
+
             from django.conf import settings
             from apps.core.fairness import admit_provider_start
 
@@ -330,12 +364,17 @@ def send_whatsapp_message_task(self, message_id):
                 if is_hosted_account
                 else settings.WHATSAPP_GLOBAL_SENDS_PER_MINUTE
             )
-            allowed, retry_after, scope = admit_provider_start(
-                provider=provider_name,
-                account_id=message.account_id,
-                account_limit=account_limit,
-                global_limit=global_limit,
-            )
+            # AI pacing waits can be numerous under a bulk queue. Admission
+            # belongs at the ready send gate so they do not consume provider
+            # quota before a network request is eligible to start.
+            allowed, retry_after, scope = (True, 0, "")
+            if not (payload.get("shvya_ai") or payload.get("shvya_welcome")):
+                allowed, retry_after, scope = admit_provider_start(
+                    provider=provider_name,
+                    account_id=message.account_id,
+                    account_limit=account_limit,
+                    global_limit=global_limit,
+                )
             if not allowed:
                 countdown = _whatsapp_retry_delay(
                     message_id=message_id,
@@ -351,32 +390,6 @@ def send_whatsapp_message_task(self, message_id):
                     "reason": f"{provider_name}_{scope}_fairness_limit",
                     "message_id": str(message_id),
                     "retry_after": countdown,
-                }
-
-            # Hosted AI creates the same durable WhatsAppMessage row, but its
-            # delivery is owned by HostedAutomationJob. Suppress only the AI
-            # finalizer's canonical sender call. Hosted agent/manual messages
-            # must keep flowing through the provider-aware canonical task.
-            payload = (
-                message.raw_payload
-                if isinstance(message.raw_payload, dict)
-                else {}
-            )
-            if (
-                message.account.connection_type == "hosted"
-                and payload.get("shvya_ai")
-                and payload["shvya_ai"].get("origin") != "bump_up"
-            ):
-                logger.info(
-                    "send_whatsapp_message_task: "
-                    "message %s is Hosted AI; leaving delivery to "
-                    "Hosted automation",
-                    message_id,
-                )
-                return {
-                    "status": "skipped",
-                    "reason": "hosted_ai_transport_managed_separately",
-                    "message_id": str(message_id),
                 }
 
             if "shvya_workflow" in payload:
@@ -417,6 +430,26 @@ def send_whatsapp_message_task(self, message_id):
 
     try:
         send_outbound_message(message=message)
+    except AIMessageDeferred as exc:
+        # Waiting for our account's mandatory gap/priority is normal queue
+        # progress, not a provider failure. Persist the due time before
+        # publication so Beat can recover a lost broker wake-up.
+        from apps.ai_engagement.services.execution_tracker import defer_ai_delivery
+
+        defer_ai_delivery(
+            message_id=message_id,
+            available_at=exc.available_at,
+            reason=exc.reason,
+        )
+        try:
+            self.apply_async(args=[str(message_id)], eta=exc.available_at)
+        except Exception:
+            logger.exception("AI send wake-up unavailable; message %s retained", message_id)
+        return {
+            "status": "deferred", "reason": exc.reason,
+            "message_id": str(message_id),
+            "available_at": exc.available_at.isoformat(),
+        }
     except WhatsAppSendError as exc:
         original = exc.__cause__
 
