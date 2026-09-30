@@ -63,6 +63,21 @@ class KnowledgeSourceService:
             or KnowledgeIngestionService()
         )
 
+    @staticmethod
+    def validate_reindex_document(document):
+        """Allow failed indexing recovery only when extraction left safe rows."""
+        if document.processing_status == Document.ProcessingStatus.COMPLETED:
+            return
+        chunks = document.chunks.filter(is_active=True)
+        if (document.processing_status == Document.ProcessingStatus.FAILED
+                and document.source_key
+                and chunks.filter(organization_id=document.organization_id).exists()
+                and not chunks.exclude(organization_id=document.organization_id).exists()):
+            return
+        raise KnowledgeSourceServiceError(
+            'Only completed documents or failed imports with extracted content can be re-indexed.'
+        )
+
     # ========================================================
     # CREATE URL SOURCE
     # ========================================================

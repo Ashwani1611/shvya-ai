@@ -229,7 +229,7 @@ def _resolve_state_before_response(
     response generator receives the resulting CRM/qualification/stage state.
     """
     from apps.ai_engagement.services.crm_executor import CRMActionExecutor
-    from apps.ai_engagement.services.qualification_state import state_for_lead
+    from apps.ai_engagement.services.qualification_state import normalize_stage_name, state_for_lead
     from apps.channels.models import WhatsAppMessage
     from apps.crm.models import Lead
 
@@ -299,20 +299,27 @@ def _resolve_state_before_response(
             lead=locked_lead,
             qualification_state=qualification_state,
         )
-        if str(qualification_state.get("qualification_status") or "").casefold() == "completed":
+        completed_in_qualification_stage = (
+            str(qualification_state.get("qualification_status") or "").casefold() == "completed"
+            and normalize_stage_name(getattr(locked_lead.stage, "name", "")) == "new lead"
+        )
+        if completed_in_qualification_stage:
+            # Completing the questionnaire is backend-owned while still in New
+            # Lead. A completed qualification remains recorded in later stages;
+            # that historical status must not suppress ordinary CRM routing.
             stage_actions = [completion_stage] if completion_stage else []
         else:
             stage_actions = proposed_stage_actions[:1]
         if stage_actions:
-            results.extend(
-                executor.execute(
-                    organization=organization,
-                    lead=locked_lead,
-                    actions=stage_actions,
-                    source_message=inbound,
-                )
+            stage_results = executor.execute(
+                organization=organization,
+                lead=locked_lead,
+                actions=stage_actions,
+                source_message=inbound,
             )
-            executed_types.append("pipeline_transition")
+            results.extend(stage_results)
+            if stage_results:
+                executed_types.append("pipeline_transition")
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
         if other_actions:

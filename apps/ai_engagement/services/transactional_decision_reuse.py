@@ -305,11 +305,19 @@ def install_transactional_decision_reuse() -> None:
         except (AttributeError, TypeError, ValueError):
             return raw
 
-        from apps.crm.models import LeadReminder
+        from apps.crm.models import Lead, LeadReminder
+
+        organization_id = (getattr(context, "organization", None) or {}).get("id")
+        persisted_lead = Lead.objects.filter(
+            pk=lead_id, organization_id=organization_id,
+        ).only("attributes").first()
+        if persisted_lead is None:
+            return raw
 
         reminders = list(
             LeadReminder.objects.filter(
                 lead_id=lead_id,
+                lead__organization_id=organization_id,
                 status="pending",
             )
             .order_by("due_at", "created_at")
@@ -320,10 +328,20 @@ def install_transactional_decision_reuse() -> None:
             if due_at is not None:
                 reminder["due_at"] = due_at.isoformat()
 
-        attributes = lead_data.get("attributes")
+        # Customer-safe context intentionally strips internal runtime attributes.
+        # Read the committed, tenant-scoped state and expose only these explicit
+        # operational fields, never the rest of the internal attribute payload.
+        attributes = persisted_lead.attributes
         attributes = attributes if isinstance(attributes, dict) else {}
         state = attributes.get(STATE_KEY)
         state = state if isinstance(state, dict) else {}
+        source_id = next((
+            str(message.get("id") or "")
+            for message in reversed((context.conversation or {}).get("messages") or [])
+            if isinstance(message, dict) and message.get("direction") == "inbound"
+        ), "")
+        if not source_id or str(state.get(runtime._PRE_RESOLVED_MESSAGE_KEY) or "") != source_id:
+            state = {}
         resolved_actions = {
             "source_message_id": state.get(runtime._PRE_RESOLVED_MESSAGE_KEY),
             "action_types": state.get(runtime._PRE_RESOLVED_ACTIONS_KEY) or [],

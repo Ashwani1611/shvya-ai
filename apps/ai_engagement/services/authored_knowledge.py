@@ -4,32 +4,34 @@ from __future__ import annotations
 import re
 
 from apps.ai_engagement.services.playbook import parse_playbook
-
-_STOP = frozenset('a an the is are do does can could you your me my i we what how about please tell and of to in for'.split())
+from apps.ai_engagement.services.retrieval import _query_tokens
 
 
 def _tokens(text):
-    return {word.casefold() for word in re.findall(r'[^\W_][\w\u0900-\u0dff]*', str(text))
-            if len(word) > 1 and word.casefold() not in _STOP}
+    return set(_query_tokens(text))
 
 
 def faq_pairs(raw):
-    """Accept Q:/A: and Question:/Answer:; never extract answers from Rules."""
+    """Accept plain/Markdown Q:/A: labels; never extract answers from Rules."""
     text = parse_playbook(raw).get('faq', '')
     pairs = []
     question, answer = '', []
     in_answer = False
+    private = False
     for line in text.splitlines():
-        q = re.match(r'^\s*(?:[-*]|\d+[.)])?\s*(?:Q(?:uestion)?\s*\d*)\s*[:.)-]\s*(.+)', line, re.I)
-        a = re.match(r'^\s*(?:[-*]\s*)?A(?:nswer)?\s*[:.)-]\s*(.*)', line, re.I)
+        # Authors commonly bold either the label or the entire Q/A line. Only
+        # interpret markers inside the parsed FAQ section, never Playbook Rules.
+        labeled = line.replace('**', '').replace('__', '')
+        q = re.match(r'^\s*(?:[-*•]|\d+[.)])?\s*(?:Q(?:uestion)?\s*\d*)\s*[:.)-]\s*(.+)', labeled, re.I)
+        a = re.match(r'^\s*(?:[-*•]\s*)?A(?:nswer)?\s*[:.)-]\s*(.*)', labeled, re.I)
         if q:
             if question and answer:
                 pairs.append((question, '\n'.join(answer).strip()))
-            question, answer, in_answer = q.group(1).strip(), [], False
-        elif a and question:
+            question, answer, in_answer, private = q.group(1).strip(), [], False, False
+        elif re.match(r'^\s*(?:[-*•]\s*)?(?:internal\s+|private\s+|confidential\s+)?(?:notes?|rules?|instructions?)\s*(?:[:.]|$)', labeled, re.I):
+            in_answer, private = False, True
+        elif a and question and not private:
             answer, in_answer = [a.group(1).strip()], True
-        elif re.match(r'^\s*(?:[-*]\s*)?(?:\*\*)?(?:internal\s+)?(?:notes?|rules?|instructions?)\s*(?:\*\*)?\s*:', line, re.I):
-            in_answer = False
         elif in_answer:
             answer.append(line)
     if question and answer:
@@ -59,6 +61,6 @@ def matching_authored_answers(*, organization, question, limit=4):
         overlap = query & tokens
         score = len(overlap) / max(len(query | tokens), 1)
         exact = ' '.join(question.casefold().split()).rstrip('?.') == ' '.join(item['question'].casefold().split()).rstrip('?.')
-        if exact or (overlap and score >= 0.4):
+        if exact or (overlap and (score >= 0.4 or query <= tokens)):
             scored.append({**item, 'score': 1.0 if exact else score})
     return sorted(scored, key=lambda item: -item['score'])[:limit]

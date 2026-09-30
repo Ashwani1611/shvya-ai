@@ -281,9 +281,6 @@
     async function getErrorMessage(response) {
         try {
             const payload = await response.json();
-            const stagePicker = document.querySelector("#playground-start-stage");
-            if (stagePicker) stagePicker.disabled = true;
-            renderEffects(payload);
             const detailText = firstErrorText(payload.detail);
             const messageText = firstErrorText(payload.message);
             const errorText = typeof payload.error === "string"

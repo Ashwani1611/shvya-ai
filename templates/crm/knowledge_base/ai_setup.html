@@ -105,6 +105,7 @@
                             <div class="brain-source-row" data-knowledge-row>
                                 <i class="ti ti-file-text" aria-hidden="true"></i><div><strong>{{ document.name }}</strong><span>{{ document.created_at|date:"j M Y" }}</span></div>
                                 <span class="brain-status">{{ document.get_processing_status_display }}</span>
+                                {% if document.processing_status == 'failed' and document.has_indexable_chunks %}<button type="submit" form="retry-knowledge-{{ document.id }}" class="brain-link-button">Retry</button>{% endif %}
                                 <button type="button" class="brain-icon-button" data-knowledge-delete data-delete-kind="document" data-delete-id="{{ document.id }}" data-delete-name="{{ document.name }}" aria-label="Delete {{ document.name }}"><i class="ti ti-trash" aria-hidden="true"></i></button>
                             </div>
                             {% endfor %}
@@ -114,6 +115,9 @@
                 </div>
                 <div class="brain-save-bar"><span class="brain-help" data-save-status role="status" aria-live="polite">Save your changes before testing in AI Sandbox.</span><button type="submit" class="brain-button brain-button-primary">Save Changes</button></div>
             </form>
+            {% for document in knowledge_documents %}{% if document.processing_status == 'failed' and document.has_indexable_chunks %}
+            <form id="retry-knowledge-{{ document.id }}" method="post" action="{% url 'crm-knowledge-base-ai-setup' %}" hidden>{% csrf_token %}<input type="hidden" name="action" value="reindex_document"><input type="hidden" name="document_id" value="{{ document.id }}"></form>
+            {% endif %}{% endfor %}
 
             <section class="brain-card brain-guided-files" aria-labelledby="guided-files-heading">
                 <div class="brain-section-heading"><h3 id="guided-files-heading">AI-Guided File Sharing</h3><p>Upload brochures, PDFs, forms, or documents and tell your AI when and why to send each file to a lead.</p></div>

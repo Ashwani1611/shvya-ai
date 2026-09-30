@@ -345,6 +345,18 @@ class AIContextBuilder:
         from apps.ai_engagement.services.qualification_state import state_for_lead
 
         from apps.ai_engagement.services.confidentiality import safe_attribute_values
+        from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+        attributes = lead.attributes if isinstance(lead.attributes, dict) else {}
+        runtime = attributes.get(STATE_KEY)
+        runtime = runtime if isinstance(runtime, dict) else {}
+        shared_document_ids = sorted({
+            int(item["document_id"])
+            for item in runtime.get("shared_files") or []
+            if isinstance(item, dict)
+            and str(item.get("document_id") or "").isdigit()
+            and item.get("status") in {"sent", "delivered", "read"}
+        })
 
         return {
             "id": str(
@@ -355,6 +367,7 @@ class AIContextBuilder:
             "email": lead.email,
             "notes": lead.notes,
             "attributes": safe_attribute_values(lead.attributes),
+            "shared_document_ids": shared_document_ids,
             "qualification": state_for_lead(lead),
             "lead_source": lead.lead_source,
             "stage_entered_at": (

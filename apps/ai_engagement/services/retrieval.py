@@ -4,7 +4,7 @@ import math
 import re
 from dataclasses import dataclass
 
-from django.db.models import Q, QuerySet
+from django.db.models import Case, IntegerField, Q, QuerySet, Value, When
 
 from pgvector.django import CosineDistance
 
@@ -16,6 +16,12 @@ class RetrievalError(Exception):
 
 
 _WORD_RE = re.compile(r"[^\W_][\w\u0900-\u0dff+.-]*", flags=re.IGNORECASE | re.UNICODE)
+_QUERY_STOP_WORDS = frozenset(
+    "a an the is are was were be been do does did can could would should you your "
+    "me my i we our us it its this that these those what how when where which who "
+    "about please tell explain and or of to in for on at with from have has "
+    "more know want need some information details".split()
+)
 
 
 def _normalized_text(value) -> str:
@@ -32,6 +38,17 @@ def _tokens(value) -> list[str]:
         seen.add(token)
         result.append(token)
     return result
+
+
+def _query_tokens(value) -> list[str]:
+    """Keep meaningful query terms so conversational filler cannot be evidence."""
+    return [token for token in _tokens(value) if token not in _QUERY_STOP_WORDS][:16]
+
+
+def _term_count(term: str, text: str) -> int:
+    # Unlike substring matching, a request for a plan cannot match "explanation".
+    # Indic combining marks remain part of a word, just as in _WORD_RE.
+    return len(re.findall(rf"(?<![\w\u0900-\u0dff]){re.escape(term)}(?![\w\u0900-\u0dff])", text))
 
 
 def _clamp_score(value: float) -> float:
@@ -162,16 +179,20 @@ class KnowledgeRetrievalService:
 
         limit = self._validate_limit(limit)
         query = _normalized_text(query_text)
-        query_tokens = _tokens(query)
+        query_tokens = _query_tokens(query)
         if not query or not query_tokens:
             return []
 
         candidate_filter = Q()
-        for token in query_tokens[:16]:
-            candidate_filter |= Q(content__icontains=token)
-            candidate_filter |= Q(document__name__icontains=token)
-            candidate_filter |= Q(document__source_key__icontains=token)
-            candidate_filter |= Q(document__source_url__icontains=token)
+        candidate_rank = Value(0, output_field=IntegerField())
+        for token in query_tokens:
+            content_match = Q(content__icontains=token)
+            title_match = (Q(document__name__icontains=token)
+                           | Q(document__source_key__icontains=token)
+                           | Q(document__source_url__icontains=token))
+            candidate_filter |= content_match | title_match
+            candidate_rank += Case(When(content_match, then=Value(2)), default=Value(0))
+            candidate_rank += Case(When(title_match, then=Value(1)), default=Value(0))
 
         candidate_limit = min(
             self.MAX_KEYWORD_CANDIDATES,
@@ -180,7 +201,10 @@ class KnowledgeRetrievalService:
         candidates = list(
             self._base_queryset(organization=organization)
             .filter(candidate_filter)
-            .order_by("document_id", "chunk_index")[:candidate_limit]
+            # Rank before applying the bound. Ordering by document age first
+            # previously made every newer source invisible behind common hits.
+            .annotate(keyword_candidate_rank=candidate_rank)
+            .order_by("-keyword_candidate_rank", "document_id", "chunk_index")[:candidate_limit]
         )
 
         scored: list[RetrievedChunk] = []
@@ -193,9 +217,9 @@ class KnowledgeRetrievalService:
             )
             searchable = f"{name} {source} {content}"
 
-            matched = sum(1 for token in query_tokens if token in searchable)
+            matched = sum(1 for token in query_tokens if _term_count(token, searchable))
             title_matched = sum(
-                1 for token in query_tokens if token in name or token in source
+                1 for token in query_tokens if _term_count(token, f"{name} {source}")
             )
             coverage = matched / token_count
             title_coverage = title_matched / token_count
@@ -211,7 +235,7 @@ class KnowledgeRetrievalService:
             # A single exact product/plan token should remain useful, while a
             # broad multi-token match outranks incidental mentions.
             frequency_bonus = min(
-                sum(min(content.count(token), 3) for token in query_tokens)
+                sum(min(_term_count(token, content), 3) for token in query_tokens)
                 / max(token_count * 12, 1),
                 0.10,
             )
@@ -221,7 +245,7 @@ class KnowledgeRetrievalService:
                 + phrase_bonus
                 + frequency_bonus
             )
-            if score <= 0:
+            if not matched or (coverage < 0.5 and not exact_content and not exact_title):
                 continue
             scored.append(
                 RetrievedChunk(
