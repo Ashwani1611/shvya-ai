@@ -218,6 +218,8 @@ def _patch_ai_permissions() -> None:
         try:
             guard = TenantGuard(organization)
             guard.validate_current_lead_context(lead)
+            if kwargs.get("account") is not None:
+                guard.validate_whatsapp_account(kwargs["account"])
             if latest_inbound is not None:
                 guard.validate_message(
                     latest_inbound,

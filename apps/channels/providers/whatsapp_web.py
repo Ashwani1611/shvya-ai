@@ -123,6 +123,8 @@ class WhatsAppWebClient:
         message_type="text",
         media_url=None,
         filename=None,
+        request_id=None,
+        request_is_retry=False,
     ):
         return self._request(
             "POST",
@@ -133,6 +135,8 @@ class WhatsAppWebClient:
                 "messageType": message_type,
                 "mediaUrl": media_url,
                 "filename": filename,
+                **({"requestId": str(request_id)} if request_id else {}),
+                **({"requestIsRetry": True} if request_is_retry else {}),
             },
             timeout=45,
         )
@@ -147,6 +151,8 @@ class WhatsAppWebClient:
         mime_type,
         filename,
         caption="",
+        request_id=None,
+        request_is_retry=False,
     ):
         """Stream one authenticated browser upload to the private gateway."""
         headers = {
@@ -162,6 +168,10 @@ class WhatsAppWebClient:
         }
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
+        if request_id:
+            headers["X-SHVYA-Request-Id"] = str(request_id)
+        if request_is_retry:
+            headers["X-SHVYA-Request-Retry"] = "1"
 
         try:
             response = requests.post(
@@ -186,6 +196,7 @@ class WhatsAppWebClient:
                 f"WhatsApp Web gateway returned {response.status_code}: {detail}",
                 status_code=response.status_code,
                 response_body=response.text,
+                retry_after=_retry_after_seconds(response),
             )
         try:
             return response.json()

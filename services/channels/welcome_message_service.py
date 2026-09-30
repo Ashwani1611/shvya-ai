@@ -7,17 +7,16 @@ fallback: a welcome must never leave from an unrelated number.
 """
 
 import logging
-from datetime import timedelta
 
 from django.db import transaction
 from django.utils import timezone
-from django.utils.dateparse import parse_datetime
 
 from apps.ai_engagement.models import OrgInfo
 from apps.ai_engagement.services.ai_provider import OpenAIProvider
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.crm.models import Lead
 from services.channels.hosted_whatsapp_service import (
+    account_ai_block_reason,
     normalize_whatsapp_number,
     pipeline_whatsapp_number,
 )
@@ -31,7 +30,6 @@ logger = logging.getLogger(__name__)
 
 NEW_LEAD_STAGE_NAMES = frozenset({"new lead", "new leads"})
 WELCOME_TRIGGER = "lead_created"
-HOSTED_WELCOME_GAP = timedelta(seconds=30)
 
 
 def _is_new_lead_stage(lead):
@@ -83,14 +81,14 @@ def _already_has_welcome(*, lead, account):
     ).exists()
 
 
-def _mark_welcome_message(*, message, source, scheduled_for=None):
+def _mark_welcome_message(*, message, source, job):
     payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
     welcome_payload = {
         "trigger": WELCOME_TRIGGER,
         "source": source,
+        "job_id": str(job.id),
+        "scheduled_for": job.available_at.isoformat(),
     }
-    if scheduled_for is not None:
-        welcome_payload["scheduled_for"] = scheduled_for.isoformat()
 
     message.raw_payload = {
         **payload,
@@ -98,39 +96,6 @@ def _mark_welcome_message(*, message, source, scheduled_for=None):
     }
     message.save(update_fields=["raw_payload", "updated_at"])
     return message
-
-
-def _last_hosted_welcome_slot(*, account):
-    """Return the most recently reserved Hosted welcome send time for an account."""
-    latest = (
-        WhatsAppMessage.objects.filter(
-            account=account,
-            direction=WhatsAppMessage.Direction.OUTBOUND,
-            raw_payload__shvya_welcome__trigger=WELCOME_TRIGGER,
-        )
-        .order_by("-created_at")
-        .first()
-    )
-    if not latest:
-        return None
-
-    payload = latest.raw_payload if isinstance(latest.raw_payload, dict) else {}
-    welcome_payload = payload.get("shvya_welcome") or {}
-    raw_scheduled_for = welcome_payload.get("scheduled_for")
-    if raw_scheduled_for:
-        scheduled_for = parse_datetime(str(raw_scheduled_for))
-        if scheduled_for is not None:
-            if timezone.is_naive(scheduled_for):
-                scheduled_for = timezone.make_aware(
-                    scheduled_for,
-                    timezone.get_current_timezone(),
-                )
-            return scheduled_for
-
-    # Backward-compatible fallback for Hosted welcomes created before the
-    # scheduling metadata existed. This prevents an immediate burst directly
-    # after deployment if a welcome was just queued by the previous code.
-    return latest.created_at
 
 
 def _generate_hosted_welcome(*, lead):
@@ -174,11 +139,10 @@ def _generate_hosted_welcome(*, lead):
     return str(result.text or "").strip().strip('"')
 
 
-def _queue_api_welcome(*, lead, account):
+def _approved_welcome_template(*, lead, account):
     template_name = str(account.welcome_message or "").strip()
     if not template_name:
-        return {"status": "skipped", "reason": "welcome_template_not_configured"}
-
+        return None, "welcome_template_not_configured"
     template = (
         WhatsAppTemplate.objects.filter(
             organization=lead.organization,
@@ -190,79 +154,22 @@ def _queue_api_welcome(*, lead, account):
         .exclude(meta_template_id="")
         .first()
     )
-    if not template:
-        return {"status": "skipped", "reason": "welcome_template_not_approved"}
-
-    try:
-        message = queue_template_message(template=template, lead=lead)
-    except WhatsAppTemplateSendError as exc:
-        logger.warning(
-            "Could not queue API welcome template %s for lead %s: %s",
-            template.id,
-            lead.id,
-            exc,
-        )
-        return {"status": "skipped", "reason": "welcome_template_invalid"}
-
-    _mark_welcome_message(message=message, source="whatsapp_api_template")
-
-    from apps.channels.tasks import send_whatsapp_message_task
-
-    send_whatsapp_message_task.delay(str(message.id))
-    return {"status": "queued", "message_id": str(message.id), "transport": "api"}
+    return template, "" if template else "welcome_template_not_approved"
 
 
-def _queue_hosted_welcome(*, lead, account):
-    body = _generate_hosted_welcome(lead=lead)
-    if not body:
-        return {"status": "skipped", "reason": "empty_ai_welcome"}
-
-    # Serialize reservations per Hosted account. Multiple workers can generate
-    # welcome copy concurrently, but only one can reserve the next send slot at
-    # a time, so a bulk lead import cannot collapse into a WhatsApp burst.
-    with transaction.atomic():
-        locked_account = WhatsAppAccount.objects.select_for_update().get(id=account.id)
-
-        # Re-check idempotency while holding the account lock. This closes the
-        # race where duplicate tasks for the same lead start at the same time.
-        if _already_has_welcome(lead=lead, account=locked_account):
-            return {"status": "skipped", "reason": "welcome_already_queued"}
-
-        now = timezone.now()
-        previous_slot = _last_hosted_welcome_slot(account=locked_account)
-        scheduled_for = now
-        if previous_slot is not None:
-            scheduled_for = max(now, previous_slot + HOSTED_WELCOME_GAP)
-
-        message = queue_outbound_message(
-            organization=lead.organization,
-            account=locked_account,
-            to_number=lead.phone,
-            body=body,
-            lead=lead,
-        )
-        _mark_welcome_message(
-            message=message,
-            source="organization_information_ai",
-            scheduled_for=scheduled_for,
-        )
-
-    from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
-
-    send_hosted_whatsapp_message_task.apply_async(
-        args=[str(message.id)],
-        eta=scheduled_for,
-    )
-    return {
-        "status": "queued",
-        "message_id": str(message.id),
-        "transport": "hosted",
-        "scheduled_for": scheduled_for.isoformat(),
-    }
+def _welcome_block_reason(*, lead, account):
+    if not _is_new_lead_stage(lead):
+        return "not_new_leads_stage"
+    linked = _linked_account_for_lead(lead)
+    if linked is None or linked.pk != account.pk:
+        return "pipeline_number_not_connected"
+    return account_ai_block_reason(account=account, lead=lead)
 
 
 def send_new_lead_welcome(*, lead_id):
-    """Queue the correct welcome transport for one newly-created lead."""
+    """Persist a welcome intent; generate and show it only when its turn is due."""
+    from services.channels.hosted_automation_service import enqueue_hosted_welcome
+
     lead = (
         Lead.objects.select_related("organization", "pipeline", "stage")
         .filter(id=lead_id)
@@ -272,16 +179,120 @@ def send_new_lead_welcome(*, lead_id):
         return {"status": "skipped", "reason": "lead_not_found"}
     if not _is_new_lead_stage(lead):
         return {"status": "skipped", "reason": "not_new_leads_stage"}
-
     account = _linked_account_for_lead(lead)
     if not account:
         return {"status": "skipped", "reason": "pipeline_number_not_connected"}
+    reason = _welcome_block_reason(lead=lead, account=account)
+    if reason:
+        return {"status": "skipped", "reason": reason}
     if _already_has_welcome(lead=lead, account=account):
         return {"status": "skipped", "reason": "welcome_already_queued"}
-
     if account.connection_type == WhatsAppAccount.ConnectionType.API:
-        return _queue_api_welcome(lead=lead, account=account)
-    if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
-        return _queue_hosted_welcome(lead=lead, account=account)
+        _, reason = _approved_welcome_template(lead=lead, account=account)
+        if reason:
+            return {"status": "skipped", "reason": reason}
+    elif account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+        return {"status": "skipped", "reason": "unsupported_connection_type"}
 
-    return {"status": "skipped", "reason": "unsupported_connection_type"}
+    job = enqueue_hosted_welcome(account=account, lead=lead)
+    if job is None:
+        return {"status": "skipped", "reason": "welcome_not_eligible"}
+    result = {
+        "status": job.status,
+        "job_id": str(job.id),
+        "transport": account.connection_type,
+        "scheduled_for": job.available_at.isoformat(),
+    }
+    if (job.result or {}).get("reason"):
+        result["reason"] = job.result["reason"]
+    return result
+
+
+def execute_queued_welcome(*, job):
+    """Materialize one due welcome, with live controls checked before and after AI.
+
+    The durable job worker persists this result before sending synchronously.
+    Retrying the same job reuses its exact message instead of generating another
+    welcome. Queued intents have no WhatsAppMessage row and cannot appear as
+    customer-facing chat history before processing reaches them.
+    """
+    from apps.hosted_automation.models import HostedAutomationJob
+
+    if (job.kind != HostedAutomationJob.Kind.WELCOME
+            or job.status != HostedAutomationJob.Status.PROCESSING
+            or job.available_at > timezone.now()):
+        return {"status": "skipped", "reason": "welcome_not_due"}
+    lead = (
+        Lead.objects.select_related("organization", "pipeline", "stage")
+        .filter(pk=job.lead_id, organization_id=job.organization_id)
+        .first()
+    )
+    account = WhatsAppAccount.objects.filter(
+        pk=job.account_id, organization_id=job.organization_id,
+    ).first()
+    if lead is None or account is None:
+        return {"status": "skipped", "reason": "welcome_context_missing"}
+    reason = _welcome_block_reason(lead=lead, account=account)
+    if reason:
+        return {"status": "skipped", "reason": reason}
+
+    existing = WhatsAppMessage.objects.filter(
+        organization_id=job.organization_id,
+        lead=lead,
+        account=account,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        raw_payload__shvya_welcome__trigger=WELCOME_TRIGGER,
+    ).first()
+    if existing is not None:
+        return {"status": "completed", "engaged": True, "message_id": str(existing.id)}
+
+    body = ""
+    if account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+        body = _generate_hosted_welcome(lead=lead)
+        if not body:
+            return {"status": "failed", "reason": "empty_ai_welcome"}
+
+    with transaction.atomic():
+        # Keep the welcome marker and chat row in one transaction; no observer
+        # should see an unmarked welcome or a duplicate created by a redelivery.
+        lead = Lead.objects.select_for_update().select_related(
+            "organization", "pipeline", "stage",
+        ).get(pk=lead.pk, organization_id=job.organization_id)
+        account = WhatsAppAccount.objects.get(
+            pk=account.pk, organization_id=job.organization_id,
+        )
+        reason = _welcome_block_reason(lead=lead, account=account)
+        if reason:
+            return {"status": "skipped", "reason": reason}
+        existing = WhatsAppMessage.objects.filter(
+            organization_id=job.organization_id,
+            lead=lead,
+            account=account,
+            direction=WhatsAppMessage.Direction.OUTBOUND,
+            raw_payload__shvya_welcome__trigger=WELCOME_TRIGGER,
+        ).first()
+        if existing is not None:
+            return {"status": "completed", "engaged": True, "message_id": str(existing.id)}
+        if account.connection_type == WhatsAppAccount.ConnectionType.API:
+            template, reason = _approved_welcome_template(lead=lead, account=account)
+            if reason:
+                return {"status": "skipped", "reason": reason}
+            try:
+                message = queue_template_message(template=template, lead=lead)
+            except WhatsAppTemplateSendError as exc:
+                logger.warning("Welcome template invalid for lead %s: %s", lead.id, exc)
+                return {"status": "failed", "reason": "welcome_template_invalid"}
+            source = "whatsapp_api_template"
+        elif account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+            message = queue_outbound_message(
+                organization=lead.organization,
+                account=account,
+                to_number=lead.phone,
+                body=body,
+                lead=lead,
+            )
+            source = "organization_information_ai"
+        else:
+            return {"status": "skipped", "reason": "unsupported_connection_type"}
+        _mark_welcome_message(message=message, source=source, job=job)
+    return {"status": "completed", "engaged": True, "message_id": str(message.id)}

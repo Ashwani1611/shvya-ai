@@ -2,7 +2,7 @@
 from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from django.db.models import Count, Q, Sum
+from django.db.models import Case, CharField, Count, Q, Sum, Value, When
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
 
@@ -13,6 +13,50 @@ from apps.crm.models.reminder import LeadReminder
 
 
 SUCCESS_MESSAGE_STATUSES = ("sent", "delivered", "read")
+
+
+def _ai_message_category():
+    """Mutually exclusive buckets, including older messages without origin."""
+    welcome = Q(raw_payload__shvya_welcome__trigger="lead_created") | Q(
+        raw_payload__shvya_ai__origin="welcome"
+    )
+    # CASE handles absent JSON keys without SQL NULL negation dropping legacy
+    # replies, and precedence prevents a dual-tagged welcome counting twice.
+    return Case(
+        When(welcome, then=Value("welcome")),
+        When(raw_payload__shvya_ai__origin="bump_up", then=Value("bumpup")),
+        When(raw_payload__shvya_ai=None, then=Value("")),
+        When(raw_payload__shvya_ai__isnull=False, then=Value("reply")),
+        default=Value(""), output_field=CharField(),
+    )
+
+
+def _sent_ai_messages(*, organization, pipeline_ids=None, date_from=None, date_to=None):
+    from apps.channels.models import WhatsAppMessage
+
+    messages = WhatsAppMessage.objects.filter(
+        organization=organization,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        status__in=SUCCESS_MESSAGE_STATUSES,
+    ).annotate(
+        activity_at=Coalesce("sent_at", "created_at"),
+        ai_category=_ai_message_category(),
+    ).exclude(ai_category="")
+    if pipeline_ids:
+        messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
+    return _date_scope(
+        messages, organization=organization, field="activity_at",
+        date_from=date_from, date_to=date_to,
+    )
+
+
+def _ai_message_counts():
+    return {
+        "ai_replies": Count("id", filter=Q(ai_category="reply")),
+        "ai_bumpups": Count("id", filter=Q(ai_category="bumpup")),
+        "welcome_messages": Count("id", filter=Q(ai_category="welcome")),
+        "total_ai": Count("id"),
+    }
 
 
 def organization_timezone(organization):
@@ -99,16 +143,10 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
     if pipeline_ids:
         messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
 
-    ai_messages = messages.filter(
-        direction=WhatsAppMessage.Direction.OUTBOUND,
-        status__in=SUCCESS_MESSAGE_STATUSES,
-        raw_payload__shvya_ai__isnull=False,
-    ).count()
-    welcome_messages = messages.filter(
-        direction=WhatsAppMessage.Direction.OUTBOUND,
-        status__in=SUCCESS_MESSAGE_STATUSES,
-        raw_payload__shvya_welcome__trigger="lead_created",
-    ).count()
+    ai_counts = _sent_ai_messages(
+        organization=organization, pipeline_ids=pipeline_ids,
+        date_from=date_from, date_to=date_to,
+    ).aggregate(**_ai_message_counts())
     failed_templates = messages.filter(
         direction=WhatsAppMessage.Direction.OUTBOUND,
         status=WhatsAppMessage.Status.FAILED,
@@ -124,8 +162,8 @@ def get_overview_metrics(*, organization, pipeline_ids=None, date_from=None, dat
         "total_leads": total_leads,
         "total_call_minutes": total_seconds // 60,
         "calls_done": call_totals["calls_done"] or 0,
-        "ai_messages": ai_messages,
-        "welcome_messages": welcome_messages,
+        "ai_messages": ai_counts["total_ai"],
+        **ai_counts,
         "whatsapp_automation_messages": executions.filter(step__step_type=FollowupStep.StepType.WHATSAPP).count(),
         "email_automation_messages": executions.filter(step__step_type=FollowupStep.StepType.EMAIL).count(),
         "failed_template_messages": failed_templates,
@@ -204,36 +242,16 @@ def get_leads_over_time(*, organization, date_from, date_to, pipeline_ids=None):
 
 
 def get_ai_welcome_trend(*, organization, date_from, date_to, pipeline_ids=None):
-    """Daily outbound AI and automatic welcome-message activity."""
-    from apps.channels.models import WhatsAppMessage
-
-    messages = WhatsAppMessage.objects.filter(
-        organization=organization,
-        direction=WhatsAppMessage.Direction.OUTBOUND,
-        status__in=SUCCESS_MESSAGE_STATUSES,
+    """Successful AI activity by send day; replies + bump-ups + welcomes = total."""
+    messages = _sent_ai_messages(
+        organization=organization, pipeline_ids=pipeline_ids,
+        date_from=date_from, date_to=date_to,
     )
-    messages = _date_scope(messages, organization=organization, date_from=date_from, date_to=date_to)
-    if pipeline_ids:
-        messages = messages.filter(lead__pipeline_id__in=pipeline_ids)
 
     rows = (
-        messages.annotate(day=TruncDate("created_at", tzinfo=organization_timezone(organization)))
+        messages.annotate(day=TruncDate("activity_at", tzinfo=organization_timezone(organization)))
         .values("day")
-        .annotate(
-            # Most normal AI replies predate the explicit `origin=engagement`
-            # marker and only carry `raw_payload.shvya_ai`. Count every AI
-            # message except bump-ups so historical data remains visible.
-            ai_replies=(
-                Count("id", filter=Q(raw_payload__shvya_ai__isnull=False))
-                - Count("id", filter=Q(raw_payload__shvya_ai__origin="bump_up"))
-            ),
-            ai_bumpups=Count("id", filter=Q(raw_payload__shvya_ai__origin="bump_up")),
-            welcome_messages=Count(
-                "id",
-                filter=Q(raw_payload__shvya_welcome__trigger="lead_created"),
-            ),
-            total_ai=Count("id", filter=Q(raw_payload__shvya_ai__isnull=False)),
-        )
+        .annotate(**_ai_message_counts())
         .order_by("day")
     )
     return list(rows)

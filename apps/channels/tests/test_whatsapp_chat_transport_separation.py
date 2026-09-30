@@ -92,6 +92,47 @@ class WhatsAppChatTransportSeparationTests(TestCase):
             is_read=False if direction == "inbound" else True,
         )
 
+    def test_pending_automatic_messages_do_not_appear_in_api_thread_or_preview(self):
+        from services.channels.whatsapp_api_chat_service import (
+            get_api_conversation_messages, list_api_conversations,
+        )
+        lead = self.make_lead("Queued AI Lead", "+919111111111")
+        inbound = self.make_message(account=self.api_account, lead=lead, body="Lead enquiry")
+        for marker in ({"shvya_ai": {"origin": "engagement"}}, {"shvya_welcome": {"trigger": "lead_created"}}):
+            for status in ("queued", "sending"):
+                msg = self.make_message(account=self.api_account, lead=lead, body="Hidden pending AI", direction="outbound")
+                WhatsAppMessage.objects.filter(pk=msg.pk).update(status=status, raw_payload=marker)
+        thread = get_api_conversation_messages(organization=self.org, lead=lead, account=self.api_account)
+        self.assertEqual(list(thread.values_list("pk", flat=True)), [inbound.pk])
+        conversation, = list_api_conversations(organization=self.org, account=self.api_account)
+        self.assertEqual(conversation.last_msg_body, "Lead enquiry")
+        self.assertEqual(conversation.last_message_at, inbound.created_at)
+
+    def test_pending_bulk_welcome_creates_api_chat_only_after_send(self):
+        from services.channels.whatsapp_api_chat_service import list_api_conversations
+        lead = self.make_lead("Welcome Lead", "+919111111112")
+        msg = self.make_message(account=self.api_account, lead=lead, body="Pending welcome", direction="outbound")
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(status="queued", raw_payload={"shvya_welcome": {"trigger": "lead_created"}})
+        self.assertFalse(list_api_conversations(organization=self.org, account=self.api_account).exists())
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(status="sent")
+        self.assertTrue(list_api_conversations(organization=self.org, account=self.api_account).exists())
+
+    def test_api_cancellation_does_not_create_chat_but_provider_failure_does(self):
+        from services.channels.whatsapp_api_chat_service import (
+            get_api_conversation_messages, list_api_conversations,
+        )
+        lead = self.make_lead("Cancelled Welcome Lead", "+919111111113")
+        msg = self.make_message(account=self.api_account, lead=lead, body="Cancelled welcome", direction="outbound")
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(status="failed",
+            error="AI send cancelled: stage_ai_off", raw_payload={"shvya_welcome": {"trigger": "lead_created"}})
+        self.assertFalse(list_api_conversations(organization=self.org, account=self.api_account).exists())
+        self.assertFalse(get_api_conversation_messages(organization=self.org, lead=lead, account=self.api_account).exists())
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(error="Provider request timed out")
+        conversation, = list_api_conversations(organization=self.org, account=self.api_account)
+        self.assertEqual(conversation.failed_count, 1)
+        self.assertEqual(conversation.last_msg_body, "Cancelled welcome")
+        self.assertTrue(get_api_conversation_messages(organization=self.org, lead=lead, account=self.api_account).exists())
+
     def test_api_inbox_excludes_hosted_only_conversation(self):
         api_lead = self.make_lead("API Lead", "+919111111111")
         hosted_lead = self.make_lead("Hosted Lead", "+919222222222")

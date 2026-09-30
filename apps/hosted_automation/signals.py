@@ -1,4 +1,7 @@
+import logging
+
 from celery import shared_task
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -6,6 +9,28 @@ from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
+
+logger = logging.getLogger(__name__)
+
+
+def schedule_hosted_ai_wakeup(available_at, account_id=None):
+    """Publishing is a hint; the committed job survives any broker failure."""
+    def publish():
+        try:
+            if account_id is not None:
+                # Bulk imports and inbound bursts need one wake-up for the
+                # sender, not thousands of duplicate dispatcher ETA tasks.
+                # Losing this optional hint is safe: Beat scans the DB every
+                # five seconds and no queue ownership depends on this key.
+                bucket = int(available_at.timestamp() // 5)
+                if not cache.add(f"shvya:ai-wakeup:{account_id}:{bucket}", "1", timeout=10):
+                    return
+            dispatch_due_hosted_ai.apply_async(
+                countdown=max(0.0, (available_at - timezone.now()).total_seconds()),
+            )
+        except Exception:
+            logger.exception("AI wake-up publish failed; the durable queue will recover")
+    transaction.on_commit(publish)
 
 
 @shared_task(name="hosted.dispatch_due_ai")
@@ -33,16 +58,7 @@ def hosted_automation_job_wakeup(sender, instance, created, update_fields=None, 
     # a second processing budget here; doing so makes a 5-second debounce execute
     # immediately. Generation/delivery time is separate from the intentional
     # pre-generation debounce.
-    delay_seconds = max(
-        0.0,
-        (instance.available_at - timezone.now()).total_seconds(),
-    )
-
-    transaction.on_commit(
-        lambda delay=delay_seconds: dispatch_due_hosted_ai.apply_async(
-            countdown=delay,
-        )
-    )
+    schedule_hosted_ai_wakeup(instance.available_at, getattr(instance, "account_id", None))
 
 
 def _queue_hosted_ai_from_persisted_message(message_id, *, allow_history=False):
@@ -97,9 +113,12 @@ def _queue_hosted_ai_from_persisted_message(message_id, *, allow_history=False):
             latest_inbound=message,
         )
     except AIPermissionError:
-        return
-    if not permission.allowed:
-        return
+        # A temporary configuration read failure must not lose the inbound
+        # turn. The durable worker rechecks every permission before sending.
+        logger.exception("Could not evaluate inbound AI permissions; deferring to worker")
+    else:
+        if not permission.allowed:
+            return
 
     # HostedAutomationJob.source_message is one-to-one, so repeated post-save
     # callbacks (initial save + LID identity repair) remain idempotent.
@@ -143,13 +162,10 @@ def hosted_message_state(sender, instance, created, update_fields=None, **kwargs
                 at=message.created_at,
             )
 
-        transaction.on_commit(apply_inbound_delay)
+        transaction.on_commit(apply_inbound_delay, robust=True)
 
-    # This signal is the single Hosted AI enqueue path. Always resolve and
-    # permission-check the exact committed inbound row so another connected
-    # number for the same Lead cannot steal this job's account context.
-    transaction.on_commit(
-        lambda message_id=instance.pk: _queue_hosted_ai_from_persisted_message(
-            message_id
-        )
-    )
+    # Commit the job in the same transaction as the inbound record. Deferring
+    # this database write until on_commit loses turns if a web worker exits
+    # after saving the message. Identity repair saves the same row again and
+    # the source-message uniqueness constraint makes that path idempotent.
+    _queue_hosted_ai_from_persisted_message(instance.pk)

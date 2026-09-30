@@ -6,6 +6,7 @@ const path = require('path');
 const express = require('express');
 const QRCode = require('qrcode');
 const { createClient: createRedisClient } = require('redis');
+const { idempotentSend } = require('./send-idempotency');
 const {
   Client,
   LocalAuth,
@@ -1153,10 +1154,14 @@ app.get('/sessions/:sessionId/existing-chats', async (req, res) => {
 
 app.post('/sessions/:sessionId/messages', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
-  if (!state) return res.status(404).json({ error: 'Session not found.' });
-  await reconcileClientState(req.params.sessionId, state);
-  if (state.status !== 'running') {
-    return res.status(409).json({ error: 'Session is not running.' });
+  // Known request IDs must be allowed to replay a completed result even when
+  // WhatsApp disconnected after the original send. Legacy errors stay stable.
+  if (!req.body.requestId) {
+    if (!state) return res.status(404).json({ error: 'Session not found.' });
+    await reconcileClientState(req.params.sessionId, state);
+    if (state.status !== 'running') {
+      return res.status(409).json({ error: 'Session is not running.' });
+    }
   }
 
   const to = String(req.body.to || '').trim();
@@ -1174,37 +1179,39 @@ app.post('/sessions/:sessionId/messages', async (req, res) => {
     startedAt: Date.now(),
     matched: false,
   };
-  state.localSendTokens.add(token);
-
   try {
-    let sent;
-    if (req.body.mediaUrl) {
-      const media = await MessageMedia.fromUrl(String(req.body.mediaUrl), {
+    if (!req.body.mediaUrl && !body.trim()) {
+      return res.status(400).json({ error: 'Message cannot be empty.' });
+    }
+    const outcome = await idempotentSend({
+      redis, journalRoot: path.join(AUTH_PATH, '_send_requests'),
+      sessionId: req.params.sessionId, requestId: req.body.requestId,
+      requestIsRetry: req.body.requestIsRetry === true,
+      payload: [chatId, body, req.body.messageType || 'text', req.body.mediaUrl || '', req.body.filename || ''],
+      prepare: async () => {
+        if (!state) throw new Error('Session not found.');
+        await reconcileClientState(req.params.sessionId, state);
+        if (state.status !== 'running') throw new Error('Session is not running.');
+        return req.body.mediaUrl ? MessageMedia.fromUrl(String(req.body.mediaUrl), {
         unsafeMime: false,
         filename: req.body.filename || undefined,
-      });
-      sent = await state.client.sendMessage(chatId, media, {
-        caption: body || undefined,
-      });
-    } else {
-      if (!body.trim()) {
-        state.localSendTokens.delete(token);
-        return res.status(400).json({ error: 'Message cannot be empty.' });
-      }
-      sent = await state.client.sendMessage(chatId, body);
-    }
-
-    const messageId = serializedId(sent.id);
-    if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
-    setTimeout(() => state.localSendTokens.delete(token), 5000).unref();
-
-    return res.status(201).json({
-      ok: true,
-      messageId,
-      timestamp: sent.timestamp,
+        }) : undefined;
+      },
+      send: async media => {
+        state.localSendTokens.add(token);
+        const sent = media
+          ? await state.client.sendMessage(chatId, media, { caption: body || undefined })
+          : await state.client.sendMessage(chatId, body);
+        const messageId = serializedId(sent.id);
+        if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
+        return { ok: true, messageId, timestamp: sent.timestamp };
+      },
     });
+    setTimeout(() => state?.localSendTokens.delete(token), 5000).unref();
+    if (outcome.retryAfter) res.set('Retry-After', String(outcome.retryAfter));
+    return res.status(outcome.status).json(outcome.body);
   } catch (error) {
-    state.localSendTokens.delete(token);
+    state?.localSendTokens.delete(token);
     return res.status(502).json({ error: error.message || String(error) });
   }
 });

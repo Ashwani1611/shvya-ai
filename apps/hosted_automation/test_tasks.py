@@ -18,6 +18,7 @@ class HostedAIContextBuilderTests(SimpleTestCase):
         lead = SimpleNamespace(pk="lead-1")
 
         queryset = MagicMock()
+        queryset.exclude.return_value = queryset
         ordered = MagicMock()
         ordered.__getitem__.return_value = ["newest", "oldest"]
         queryset.order_by.return_value = ordered

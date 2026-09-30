@@ -135,7 +135,7 @@ class InboundAccountPermissionRegressionTests(TestCase):
             self.assertFalse(decision.allowed)
             self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
-    def test_transactionally_resolved_inbound_survives_legitimate_pipeline_move(self):
+    def test_transactionally_resolved_inbound_cannot_override_current_pipeline_sender(self):
         inbound = WhatsAppMessage.objects.create(
             organization=self.organization,
             account=self.hosted_account,
@@ -169,4 +169,22 @@ class InboundAccountPermissionRegressionTests(TestCase):
             lead=self.lead,
             latest_inbound=inbound,
         )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
+
+    def test_qualified_stage_does_not_block_reply_when_all_ai_controls_are_enabled(self):
+        self.lead.stage = self.pipeline.stages.get(name="Qualified")
+        self.lead.save(update_fields=["stage", "updated_at"])
+        decision = AIPermissionService().evaluate(
+            organization=self.organization, lead=self.lead, account=self.hosted_account,
+        )
         self.assertTrue(decision.allowed)
+
+    def test_proactive_permission_validates_exact_account_without_an_inbound(self):
+        self.hosted_account.display_phone_number = "+917777777777"
+        self.hosted_account.save(update_fields=["display_phone_number", "updated_at"])
+        decision = AIPermissionService().evaluate(
+            organization=self.organization, lead=self.lead, account=self.hosted_account,
+        )
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")

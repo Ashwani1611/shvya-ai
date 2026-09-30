@@ -63,7 +63,7 @@
         <div class="ins-kpi">
             <div class="ins-kpi-label"><i class="ti ti-sparkles"></i> AI Messages</div>
             <div class="ins-kpi-value">{{ overview.ai_messages }}</div>
-            <div class="ins-kpi-meta">Successful AI replies</div>
+            <div class="ins-kpi-meta">Replies, bump-ups and welcomes sent</div>
         </div>
         <div class="ins-kpi">
             <div class="ins-kpi-label"><i class="ti ti-hand-wave"></i> Welcome Messages</div>
@@ -106,7 +106,7 @@
                 <h2 class="ins-card-title">AI &amp; Welcome Engagement</h2>
                 <p class="ins-card-copy">Track AI replies, bump-ups, total AI messages and automatic welcome messages. Hover any date for the complete breakdown.</p>
             </div>
-            <div class="ins-card-stat"><strong>{{ overview.ai_messages|add:overview.welcome_messages }}</strong><span>AI + welcome</span></div>
+            <div class="ins-card-stat"><strong>{{ overview.total_ai }}</strong><span>Total messages sent</span></div>
         </div>
         <div class="ins-chart-wrap"><canvas id="aiWelcomeChart"></canvas></div>
     </section>
