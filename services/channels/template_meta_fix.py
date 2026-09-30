@@ -113,6 +113,8 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
                     "updated_at",
                 ]
             )
+            from .template_media import save_delivery_media
+            save_delivery_media(template=template, field="header.media", kind=template.attachment_type, uploaded_file=attachment_file)
         header_handle = st.header_sample_handle
         if not header_handle:
             rule = base.MEDIA_RULES[template.attachment_type]

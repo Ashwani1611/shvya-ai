@@ -77,9 +77,10 @@ def campaign_account_for_pipeline(*, user, pipeline):
     ):
         return None
 
-    expected_number = pipeline_whatsapp_number(pipeline)
-    if not expected_number:
+    pipeline_number = str(pipeline.phone_number or "").strip()
+    if not pipeline_number:
         return None
+    expected_number = pipeline_whatsapp_number(pipeline)
 
     accounts = (
         WhatsAppAccount.objects.filter(
@@ -102,10 +103,14 @@ def campaign_account_for_pipeline(*, user, pipeline):
             "updated_at",
             "connected_at",
         )
-        .order_by("-updated_at", "-connected_at", "-pk")
+        .order_by("-connected_at", "-pk")
     )
     for account in accounts:
-        if normalize_whatsapp_number(phone_number=account.display_phone_number) == expected_number:
+        # Older pipeline records bind Meta's phone-number ID instead of the
+        # display number. An ID need not be a valid E.164 phone number.
+        if pipeline_number == account.phone_number_id:
+            return account
+        if expected_number and normalize_whatsapp_number(phone_number=account.display_phone_number) == expected_number:
             return account
     return None
 
