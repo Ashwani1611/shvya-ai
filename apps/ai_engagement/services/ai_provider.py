@@ -150,15 +150,15 @@ class OpenAIProvider:
         *,
         client: OpenAI | None = None,
         model: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
         api_key = getattr(settings, "OPENAI_API_KEY", "")
         if not api_key:
             raise AIProviderConfigurationError("OPENAI_API_KEY is not configured.")
 
         try:
-            timeout_seconds = float(
-                os.getenv("OPENAI_TIMEOUT_SECONDS", self.DEFAULT_TIMEOUT_SECONDS)
-            )
+            timeout_seconds = float(timeout_seconds if timeout_seconds is not None else
+                                    os.getenv("OPENAI_TIMEOUT_SECONDS", self.DEFAULT_TIMEOUT_SECONDS))
         except (TypeError, ValueError):
             timeout_seconds = self.DEFAULT_TIMEOUT_SECONDS
         timeout_seconds = min(max(timeout_seconds, 5.0), 60.0)

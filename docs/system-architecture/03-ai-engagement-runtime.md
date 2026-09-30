@@ -749,3 +749,17 @@ The final qualification answer is not merely stored as conversational state. The
 - `LeadSignal`: source-backed explainable observation; never stage/qualification authority.
 
 Safe dynamic attribute creation is allowed only through the validated `create_if_missing` path for explicit non-sensitive facts and supported field types. Credentials, secrets and sensitive/internal fields are rejected.
+
+### AI Brain runtime reliability (October 2026)
+
+Completed qualification remains historical state after the lead leaves New Lead. It must not suppress later, evidence-supported stage proposals. The graph and CRM executor use the same stage validator; executor evidence is chronological and bounded to the source message and sender account. Short confirmations cannot rely on failed or queued outgoing messages.
+
+Company information, configured languages, authored FAQs and processed knowledge are retained as distinct inputs. FAQs accept plain or Markdown Q/A labels; Notes and Rules are not answer content. Keyword candidates are ranked before the retrieval limit, with conversational filler excluded. Sensitive configured facts retain precedence while relevant FAQ/document answers remain available alongside them.
+
+Guided-file candidates are organization-owned. A pipeline is not required for candidate retrieval or Sandbox file previews. Successfully delivered files are excluded before the candidate limit unless the customer explicitly requests a resend. Selection still requires the configured sharing condition; candidate relevance does not authorize delivery.
+
+Sandbox applies the shared stage lifecycle only to session state. A stage-changing preview can perform one bounded language-only final composition using the resulting stage and original validated file selection. That pass cannot apply new effects or change real CRM data. Provider failures retain safe fallback behavior.
+
+The grounding gate can repair a language mismatch, leaked instruction, or unanswered question once, then independently validate the corrected reply. Unsupported facts/actions/files do not qualify for this repair. Repair calls have short timeouts, are skipped on slow turns and during final composition, and record bounded reason codes in AI Trace.
+
+Transient embedding failures retry the same extracted document version. The previous published version remains usable. Failed imports with extracted content can be retried from AI Brain or the reindex API; they become available only after successful indexing. A delayed retry cannot replace a newer published version. Extraction failures without usable chunks require correcting and re-uploading the source.

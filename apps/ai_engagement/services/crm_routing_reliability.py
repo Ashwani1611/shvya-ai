@@ -157,6 +157,8 @@ def _confirmation_context(context, latest_text: str) -> str:
             continue
         if item.get("direction") != "outbound":
             return ""
+        if item.get("status") and item["status"] not in {"sent", "delivered", "read"}:
+            return ""
         return f"{_clean(item.get('body'))} {latest_text}"
     return ""
 

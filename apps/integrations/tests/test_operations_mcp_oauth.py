@@ -446,6 +446,8 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
             [
                 "https://claude.ai/api/mcp/auth_callback",
                 "https://claude.com/api/mcp/auth_callback",
+                "https://claude.ai/api/mcp/auth_callback/",
+                "https://claude.com/api/mcp/auth_callback/",
             ],
         )
         self.assertEqual(client.application_type, "web")
