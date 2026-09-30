@@ -64,11 +64,17 @@ def _subscribe(account):
 def _record_account_failure(account, exc):
     from services.channels import instagram_service as provider
 
-    if exc.token_invalid or exc.status_code in (401, 403):
-        provider.mark_account_error(account, exc)
-    else:
-        account.last_error = str(exc)
-        account.save(update_fields=["last_error", "updated_at"])
+    with transaction.atomic():
+        try:
+            current = provider._lock_current_account(account)
+        except provider.InstagramOAuthSuperseded:
+            return False
+        if exc.token_invalid or exc.status_code in (401, 403):
+            provider.mark_account_error(current, exc)
+        else:
+            current.last_error = str(exc)
+            current.save(update_fields=["last_error", "updated_at"])
+    return True
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
@@ -87,10 +93,14 @@ def complete_instagram_oauth_task(self, attempt_id):
         # subscription for the freshly authorized account/token.
         _subscribe(account)
         provider.sync_account_conversations(account)
+    except provider.InstagramOAuthSuperseded as exc:
+        provider.fail_oauth_attempt(attempt.pk, exc)
+        return {"status": "superseded"}
     except Exception as original:
         exc = _safe_error(original, account)
         if account and account.status == InstagramAccount.Status.CONNECTED:
-            _record_account_failure(account, exc)
+            if not _record_account_failure(account, exc):
+                return {"status": "superseded"}
             if exc.transient and self.request.retries < self.max_retries:
                 raise self.retry(
                     exc=exc,
@@ -131,12 +141,15 @@ def sync_instagram_account_task(self, account_id):
             "reason": f"{scope}_fairness_limit",
         }
     try:
-        if not account.webhook_subscribed:
+        if not account.webhook_subscribed or not set(provider.WEBHOOK_FIELDS).issubset(account.subscribed_fields or []):
             _subscribe(account)
         count = provider.sync_account_conversations(account)
+    except provider.InstagramOAuthSuperseded:
+        return {"status": "superseded"}
     except Exception as original:
         exc = _safe_error(original, account)
-        _record_account_failure(account, exc)
+        if not _record_account_failure(account, exc):
+            return {"status": "superseded"}
         if exc.transient and self.request.retries < self.max_retries:
             raise self.retry(
                 exc=exc,
@@ -213,7 +226,10 @@ def send_instagram_message_task(self, message_id):
     return {"status": delivered.status, "message_id": str(delivered.pk)}
 
 
-@shared_task(bind=True, max_retries=3, default_retry_delay=15)
+@shared_task(
+    bind=True, max_retries=3, default_retry_delay=15,
+    acks_late=True, reject_on_worker_lost=True,
+)
 def process_instagram_webhook_delivery_task(self, delivery_id):
     from services.channels import instagram_service as provider
 
@@ -234,19 +250,60 @@ def process_instagram_webhook_delivery_task(self, delivery_id):
 
 
 @shared_task
+def recover_instagram_webhook_deliveries_task():
+    """Recover durable envelopes after lost publication or worker delivery.
+
+    Failed terminal work is left visible for review. Only pending envelopes and
+    expired processing leases are retried; row locks and event IDs serialize
+    concurrent dispatchers/processors without sending any outbound messages.
+    """
+    from datetime import timedelta
+
+    from django.db.models import Q
+    from django.utils import timezone
+
+    from .instagram_webhook import (
+        WEBHOOK_DISPATCH_LEASE_SECONDS, dispatch_instagram_delivery,
+    )
+
+    cutoff = timezone.now() - timedelta(seconds=WEBHOOK_DISPATCH_LEASE_SECONDS)
+    stale = Q(dispatched_at__lte=cutoff) | Q(
+        dispatched_at__isnull=True, received_at__lte=cutoff,
+    )
+    candidates = list(
+        InstagramWebhookDelivery.objects.filter(
+            Q(status=InstagramWebhookDelivery.Status.PENDING, received_at__lte=cutoff)
+            | (Q(status=InstagramWebhookDelivery.Status.PROCESSING) & stale)
+        ).order_by("received_at").values_list("pk", flat=True)[:100]
+    )
+    recovered = failed = 0
+    for delivery_id in candidates:
+        try:
+            recovered += bool(dispatch_instagram_delivery(delivery_id, recovery_only=True))
+        except Exception:
+            failed += 1
+            logger.warning("Instagram webhook recovery enqueue failed for %s", delivery_id)
+    return {"recovered": recovered, "failed": failed}
+
+
+@shared_task
 def refresh_instagram_tokens_task():
     from services.channels import instagram_service as provider
 
-    refreshed = failed = 0
+    refreshed = failed = skipped = 0
     for account in provider.accounts_due_for_token_refresh().iterator():
         try:
-            provider.refresh_account_token(account)
-            refreshed += 1
+            if provider.refresh_account_token(account) is None:
+                skipped += 1
+            else:
+                refreshed += 1
         except Exception as original:
-            failed += 1
-            _record_account_failure(account, _safe_error(original, account))
-            logger.warning("Instagram token refresh failed for account %s", account.pk)
-    return {"refreshed": refreshed, "failed": failed}
+            if _record_account_failure(account, _safe_error(original, account)):
+                failed += 1
+                logger.warning("Instagram token refresh failed for account %s", account.pk)
+            else:
+                skipped += 1
+    return {"refreshed": refreshed, "failed": failed, "skipped": skipped}
 
 
 @shared_task
