@@ -4,6 +4,7 @@ import re
 
 ROOT = Path(__file__).resolve().parents[1]
 CONFIG_PATH = ROOT / "nginx" / "staging" / "default.conf"
+STAGING_SETTINGS_PATH = ROOT / "config" / "settings" / "staging.py"
 
 MCP_PUBLIC_PATHS = [
     "/operations/mcp/",
@@ -80,3 +81,15 @@ def test_dashboard_and_superadmin_are_not_exempted_from_staging_basic_auth():
     ):
         assert f"location = {path}" not in config
         assert f"location {path}" not in config
+
+
+def test_staging_operations_origin_is_pinned_to_staging():
+    settings_text = STAGING_SETTINGS_PATH.read_text(encoding="utf-8")
+    assert (
+        'OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"'
+        in settings_text
+    )
+    assert (
+        'OPERATIONS_PUBLIC_ORIGIN = "https://staging.shvya-ai.com"'
+        in settings_text
+    )
