@@ -306,11 +306,14 @@ def _generate(state: EngagementGraphState) -> dict:
     # destroys explicit IDs, conditional rules and flow-version metadata.
     context = state["context"]
     from apps.ai_engagement.services.file_sharing import FileSharingService
+    from apps.organizations.models import Organization
     candidates = (context.organization or {}).get("_file_candidates")
     if candidates is None:
+        # Pure policy previews may use synthetic organizations; they have no
+        # document store. Real tenants can share guided files without a pipeline.
         candidates = FileSharingService().build_file_candidates(
             organization=state["organization"], context=context,
-        ) if (context.pipeline or {}).get("id") else []
+        ) if isinstance(state["organization"], Organization) and state["organization"].pk else []
     if candidates:
         context = replace(context, organization={**context.organization, "_file_candidates": candidates})
 
@@ -457,8 +460,10 @@ def run_engagement_graph(
     knowledge_query: str | None = None,
     context=None,
 ):
+    from time import monotonic
     final = ENGAGEMENT_GRAPH.invoke(
         {
+            "started_at": monotonic(),
             "service": service,
             "legacy_engage": legacy_engage,
             "organization": organization,

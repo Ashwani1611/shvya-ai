@@ -177,12 +177,10 @@ class KnowledgeIngestionService:
             # Extract source text.
             # ----------------------------------------------------
 
-            document.file.seek(0)
-
-            text = self.extract_file_text(
-                document.file,
-                filename=filename,
-            )
+            # The worker owns this storage handle only for extraction. Close it
+            # on both success and parse failure before retrying or publishing.
+            with document.file.open('rb') as source_file:
+                text = self.extract_file_text(source_file, filename=filename)
 
             if not text.strip():
                 raise KnowledgeExtractionError(
@@ -331,6 +329,8 @@ class KnowledgeIngestionService:
     def publish_document_version(
         self,
         document: Document,
+        *,
+        recover_failed: bool = False,
     ) -> Document:
         """
         Publish a successfully processed knowledge document version.
@@ -355,28 +355,39 @@ class KnowledgeIngestionService:
                 "Document source_key cannot be empty."
             )
 
-        if (
-            document.processing_status
-            != Document.ProcessingStatus.COMPLETED
-        ):
+        allowed_statuses = {Document.ProcessingStatus.COMPLETED}
+        if recover_failed:
+            allowed_statuses.add(Document.ProcessingStatus.FAILED)
+        if document.processing_status not in allowed_statuses:
             raise KnowledgeExtractionError(
                 "Only completed documents can be published."
             )
 
         with transaction.atomic():
+            # Serialize publication per tenant so an older delayed embedding
+            # retry cannot retire a more recent successfully published version.
+            from apps.organizations.models import Organization
+            Organization.objects.select_for_update().get(pk=document.organization_id)
             locked_document = (
                 Document.objects
                 .select_for_update()
-                .get(pk=document.pk)
+                .get(pk=document.pk, organization_id=document.organization_id)
             )
 
-            if (
-                locked_document.processing_status
-                != Document.ProcessingStatus.COMPLETED
-            ):
+            if locked_document.processing_status not in allowed_statuses:
                 raise KnowledgeExtractionError(
                     "Only completed documents can be published."
                 )
+
+            if recover_failed or locked_document.processing_error:
+                locked_document.processing_status = Document.ProcessingStatus.COMPLETED
+                locked_document.processing_error = ''
+                locked_document.save(update_fields=['processing_status', 'processing_error', 'updated_at'])
+
+            if Document.objects.filter(organization_id=locked_document.organization_id,
+                    source_key=locked_document.source_key, version__gt=locked_document.version,
+                    is_active=True, processing_status=Document.ProcessingStatus.COMPLETED).exists():
+                return locked_document
 
             Document.objects.filter(
                 organization=locked_document.organization,

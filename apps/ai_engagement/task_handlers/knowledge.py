@@ -7,6 +7,44 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+def _transient_index_failure(exc):
+    """Use provider error types/codes, never guess retryability from prose."""
+    from openai import APIConnectionError, APIStatusError
+
+    current = exc
+    for _ in range(8):
+        if current is None:
+            break
+        if isinstance(current, (APIConnectionError, TimeoutError, ConnectionError)):
+            return True
+        if isinstance(current, APIStatusError):
+            code = str(getattr(current, 'code', '') or '').casefold()
+            if code in {'insufficient_quota', 'billing_hard_limit_reached'}:
+                return False
+            return current.status_code in {408, 409, 429} or current.status_code >= 500
+        current = current.__cause__
+    return False
+
+
+def _retry_indexing(task, *, document, exc, kwargs):
+    if _transient_index_failure(exc) and task.request.retries < task.max_retries:
+        document.processing_error = 'Temporary embedding service failure. Retrying automatically.'
+        document.save(update_fields=['processing_error', 'updated_at'])
+        # Retain the extracted chunks and original document identity. A retry
+        # must not fetch a newer URL version or charge again for extraction.
+        raise task.retry(exc=exc, args=(), kwargs=kwargs,
+                         countdown=min(30 * (2 ** task.request.retries), 120))
+
+
+def _indexable_chunk_count(document):
+    from apps.ai_engagement.services.embedding_index import EmbeddingIndexError
+
+    chunks = document.chunks.filter(is_active=True)
+    if chunks.exclude(organization_id=document.organization_id).exists():
+        raise EmbeddingIndexError('Knowledge chunks do not match the document organization.')
+    return chunks.count()
+
+
 @shared_task(
     bind=True,
     max_retries=3,
@@ -102,13 +140,14 @@ def ingest_and_index_document(
 
     try:
 
-        chunk_count = (
-            KnowledgeIngestionService().ingest_document(
-                document
-            )
-        )
+        # A previous extraction can already have succeeded before indexing
+        # failed transiently. Reuse those rows so retries are idempotent.
+        chunk_count = (_indexable_chunk_count(document)
+                       if document.processing_status == Document.ProcessingStatus.COMPLETED else 0)
+        if not chunk_count:
+            chunk_count = KnowledgeIngestionService().ingest_document(document)
 
-    except KnowledgeExtractionError as exc:
+    except (KnowledgeExtractionError, EmbeddingIndexError) as exc:
 
         logger.error(
             "ingest_and_index_document: "
@@ -157,6 +196,9 @@ def ingest_and_index_document(
         )
 
     except EmbeddingIndexError as exc:
+
+        _retry_indexing(self, document=document, exc=exc,
+                        kwargs={'document_id': document.id, 'organization_id': document.organization_id})
 
         logger.error(
             "ingest_and_index_document: "
@@ -237,6 +279,7 @@ def ingest_and_index_url_source(
     self,
     source_id: int,
     organization_id: int,
+    document_id: int | None = None,
 ):
     """
     Fetch, chunk, and embed one URL KnowledgeSource.
@@ -287,14 +330,24 @@ def ingest_and_index_url_source(
 
     ingestion_service = KnowledgeIngestionService()
 
-    try:
-        chunk_count = (
-            ingestion_service.ingest_url(
-                source
-            )
-        )
+    if not source.is_active:
+        return {'status': 'skipped', 'reason': 'source_inactive', 'source_id': source_id}
 
-    except KnowledgeExtractionError as exc:
+    # A retry after extraction is bound to the exact unpublished version.
+    # Re-fetching the URL here used to create another document and more chunks.
+    document = None
+    if document_id is not None:
+        document = Document.objects.filter(pk=document_id, organization_id=organization_id,
+            source_key=str(source.url).strip(),
+            processing_status=Document.ProcessingStatus.COMPLETED).first()
+        if document is None:
+            return {'status': 'skipped', 'reason': 'retry_document_not_found', 'source_id': source_id}
+
+    try:
+        chunk_count = (_indexable_chunk_count(document) if document is not None
+                       else ingestion_service.ingest_url(source))
+
+    except (KnowledgeExtractionError, EmbeddingIndexError) as exc:
 
         logger.error(
             "ingest_and_index_url_source: "
@@ -322,13 +375,13 @@ def ingest_and_index_url_source(
             exc=exc,
         )
 
-    source_key = (
+    source_key = document.source_key if document is not None else (
         ingestion_service.normalize_url(
             source.url
         )
     )
 
-    document = (
+    document = document or (
         Document.objects
         .filter(
             organization=source.organization,
@@ -373,6 +426,10 @@ def ingest_and_index_url_source(
         )
 
     except EmbeddingIndexError as exc:
+
+        _retry_indexing(self, document=document, exc=exc,
+                        kwargs={'source_id': source_id, 'organization_id': organization_id,
+                                'document_id': document.pk})
 
         logger.error(
             "ingest_and_index_url_source: "
@@ -485,14 +542,27 @@ def reindex_document_embeddings(
         }
 
     try:
+        recovering = document.processing_status == Document.ProcessingStatus.FAILED
+        chunk_count = _indexable_chunk_count(document)
+        if recovering and (not document.source_key or not chunk_count):
+            return {'status': 'failed', 'reason': 'no_extracted_chunks', 'document_id': document_id}
+        if document.processing_status not in {Document.ProcessingStatus.COMPLETED,
+                                             Document.ProcessingStatus.FAILED}:
+            return {'status': 'skipped', 'reason': 'document_not_ready', 'document_id': document_id}
         indexed_count = (
             EmbeddingIndexService().index_document(
                 document,
                 only_missing=False,
             )
         )
+        if recovering:
+            from apps.ai_engagement.services.knowledge import KnowledgeIngestionService
+            KnowledgeIngestionService().publish_document_version(document, recover_failed=True)
 
     except EmbeddingIndexError as exc:
+
+        _retry_indexing(self, document=document, exc=exc,
+                        kwargs={'document_id': document.id, 'organization_id': organization_id})
 
         logger.error(
             "reindex_document_embeddings: "
