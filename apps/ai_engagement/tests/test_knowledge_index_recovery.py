@@ -189,6 +189,18 @@ class KnowledgeIndexRecoveryTests(TestCase):
             self.assertEqual(request(SimpleNamespace(is_authenticated=True,
                 organization=other, organization_id=other.pk)).status_code, 404)
 
+    def test_successful_completed_reindex_clears_temporary_error_without_republishing(self):
+        doc = self.document(status='completed', active=False)
+        self.chunk(doc)
+        doc.processing_error = 'Temporary embedding service failure. Retrying automatically.'
+        doc.save(update_fields=['processing_error'])
+        result = self.execute(reindex_document_embeddings, document_id=doc.pk,
+                              organization_id=self.organization.pk)
+        self.assertEqual(result['status'], 'completed')
+        doc.refresh_from_db()
+        self.assertEqual(doc.processing_error, '')
+        self.assertFalse(doc.is_active)
+
     def test_url_resume_rejects_foreign_document_and_inactive_source(self):
         source = KnowledgeSource.objects.create(organization=self.organization, name='Guide',
             source_type='url', url='https://93.184.216.34/guide', is_active=True)

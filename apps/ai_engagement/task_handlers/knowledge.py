@@ -558,6 +558,9 @@ def reindex_document_embeddings(
         if recovering:
             from apps.ai_engagement.services.knowledge import KnowledgeIngestionService
             KnowledgeIngestionService().publish_document_version(document, recover_failed=True)
+        elif document.processing_error:
+            document.processing_error = ''
+            document.save(update_fields=['processing_error', 'updated_at'])
 
     except EmbeddingIndexError as exc:
 
