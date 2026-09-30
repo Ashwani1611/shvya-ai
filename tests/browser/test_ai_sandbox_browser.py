@@ -29,6 +29,14 @@ def test_sandbox_stage_file_preview_and_restart():
             def intercept(route):
                 if route.request.url.endswith('/playground/'):
                     calls.append((route.request.method, json.loads(route.request.post_data)))
+                    if len(calls) == 1:
+                        route.fulfill(status=400, json={
+                            'error': 'Choose an active stage in your organization and restart the test.',
+                            'stage': {'name': 'Rejected stage', 'pipeline': 'Sales'},
+                            'events': [{'type': 'stage_transition', 'stage': 'Rejected stage', 'pipeline': 'Sales'}],
+                            'files': [{'name': 'Rejected.pdf', 'url': '/api/v1/ai-engagement/playground/files/13/'}],
+                        })
+                        return
                     route.fulfill(json={'response': 'Here is the guide.', 'stage': {'name': 'Demo Requested', 'pipeline': 'Sales'},
                         'events': [{'type': 'stage_transition', 'stage': 'Demo Requested', 'pipeline': 'Sales'}],
                         'files': [{'name': 'Guide.xlsx', 'url': '/api/v1/ai-engagement/playground/files/12/'},
@@ -39,6 +47,12 @@ def test_sandbox_stage_file_preview_and_restart():
             page.goto('http://sandbox.test/')
             page.add_script_tag(content=(ROOT / 'static/js/ai_setup_playground.js').read_text(encoding='utf-8'))
             page.locator('#playground-start-stage').select_option('stage-one')
+            page.locator('#playground-message-input').fill('I want a demo')
+            page.locator('#playground-send-message').click()
+            expect(page.locator('#playground-messages')).to_contain_text('Choose an active stage')
+            expect(page.locator('#playground-start-stage')).to_be_enabled()
+            expect(page.locator('#playground-current-stage')).not_to_contain_text('Rejected stage')
+            expect(page.get_by_role('link', name='Download Rejected.pdf')).to_have_count(0)
             page.locator('#playground-message-input').fill('I want a demo')
             page.locator('#playground-send-message').click()
             expect(page.locator('#playground-current-stage')).to_have_text('Sales / Demo Requested')

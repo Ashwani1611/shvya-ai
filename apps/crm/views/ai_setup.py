@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from django.contrib import messages
+from django.db.models import Exists, OuterRef
 from django.http import JsonResponse
 from django.shortcuts import redirect, render
 
-from apps.ai_engagement.models import Document, KnowledgeSource
+from apps.ai_engagement.models import Chunk, Document, KnowledgeSource
 from apps.ai_engagement.services.ai_brain_setup import save_ai_brain_configuration
 from apps.ai_engagement.services.knowledge_file_security import MAX_UPLOAD_BYTES
 from apps.ai_engagement.services.knowledge_source import (
@@ -41,6 +42,8 @@ def _get_knowledge_data(organization):
         .filter(
             organization=organization,
         )
+        .annotate(has_indexable_chunks=Exists(Chunk.objects.filter(
+            document_id=OuterRef('pk'), organization=organization, is_active=True)))
         .order_by(
             "-updated_at",
         )
@@ -368,13 +371,7 @@ def ai_setup_view(request):
                     )
                 )
 
-                if (
-                    document.processing_status
-                    != Document.ProcessingStatus.COMPLETED
-                ):
-                    raise KnowledgeSourceServiceError(
-                        "Only a completed document can be re-indexed."
-                    )
+                source_service.validate_reindex_document(document)
 
                 reindex_document_embeddings.delay(
                     document_id=document.id,

@@ -360,6 +360,8 @@ def install_playground_graph_recovery() -> None:
 
     def scoped_route_turn(state):
         """Keep Sandbox RAG focused on the current customer information request."""
+        if state.get("caller_supplied_context"):
+            return original_route_turn(state)
         if _is_playground_state(state):
             latest_text = str(state.get("latest_text") or "").strip()
             if latest_text and _has_interrupting_customer_intent(latest_text):
