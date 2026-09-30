@@ -12,6 +12,7 @@ from .prod import *  # noqa: F401,F403
 APP_ENV = "staging"
 DEBUG = False
 OPERATIONS_PUBLIC_BASE_URL = "https://staging.shvya-ai.com"
+OPERATIONS_PUBLIC_ORIGIN = "https://staging.shvya-ai.com"
 
 # Keep staging public binaries isolated from production even when both
 # environments use the same S3 bucket.
