@@ -155,11 +155,18 @@ async function acquireLock(sessionId) {
     { keys: [key], arguments: [INSTANCE_ID, String(LEASE_SECONDS)] },
   );
   if (Number(renewed) === 1) return true;
-  return (await redis.set(key, INSTANCE_ID, { NX: true, EX: LEASE_SECONDS })) === 'OK';
+  const result = await redis.set(key, INSTANCE_ID, { NX: true, EX: LEASE_SECONDS });
+  if (result === 'OK') return true;
+  const [owner, ttl] = await Promise.all([redis.get(key), redis.ttl(key)]);
+  console.warn(
+    'Hosted session ' + sessionId + ' lease conflict: local=' + INSTANCE_ID
+      + ' owner=' + (owner || 'unknown') + ' ttl=' + ttl + 's',
+  );
+  return false;
 }
 
 async function renewLocks() {
-  if (!redis) return;
+  if (!redis || shuttingDown) return;
   const heartbeatCallbacks = [];
   for (const [sessionId, state] of sessions.entries()) {
     const key = lockKey(sessionId);
@@ -962,9 +969,11 @@ async function refreshQr(sessionId) {
   if (current.status === 'running') return current;
 
   const requestedPhone = current.requestedPhone;
-  try { await current.client.destroy(); } catch (_) {}
+  // Stop lease renewal before browser teardown so a slow Chromium destroy
+  // cannot strand this gateway as the apparent owner of the session.
   sessions.delete(sessionId);
   await releaseLock(sessionId).catch(() => {});
+  await destroyClientBounded(sessionId, current, 'refresh');
   return createSession(sessionId, requestedPhone);
 }
 

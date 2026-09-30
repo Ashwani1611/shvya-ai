@@ -25,19 +25,10 @@ COPY src ./src
 # Harden SHVYA's gateway for current LID identities, larger searchable chat
 # indexes, resilient callbacks, and linked-device realtime message delivery.
 RUN node scripts/patch-hosted-chat-complete-sync.js
-# Recover persisted Hosted sessions automatically after stale Redis leases
-# expire, and release leases when Chromium initialization fails.
-RUN node scripts/patch-hosted-session-recovery.js
-# Every active in-memory session must continuously own a Redis lease. Recreate
-# missing leases safely, and fence the local client if a foreign owner appears.
+# Session recovery, bounded Chromium teardown, failed-session backoff and
+# stale Chromium lock cleanup are integrated directly in src/index.js.
+# Keep the lease-invariant verification patch as a build-time safety check.
 RUN node scripts/patch-hosted-lease-invariant.js
-# If a persisted profile itself fails Chromium initialization, retry that
-# failed in-memory state safely instead of treating it as already restored.
-RUN node scripts/patch-hosted-failed-session-retry.js
-# Clean stale Chromium SingletonLock/Cookie/Socket files before every retry
-# and cap runaway restart storms with exponential backoff (root cause of the
-# Sept 2026 zombie-Chromium incident: 8,520 procs from unbounded 30s retries).
-RUN node scripts/patch-hosted-chromium-lock-cleanup.js
 # Expire abandoned QR sessions, clean their unpaired LocalAuth profile, release
 # their lease, and expose per-state counts from the gateway health endpoint.
 RUN node scripts/patch-hosted-qr-expiry.js

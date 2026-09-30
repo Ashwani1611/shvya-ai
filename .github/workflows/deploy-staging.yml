@@ -17,11 +17,9 @@ concurrency:
 jobs:
   deploy:
     name: Deploy staging to isolated Docker stack
-    # TEMPORARY PAUSE: staging deployment is intentionally disabled while the
-    # staging Git branch remains active. Change only the leading `false` to
-    # `true` to resume the existing automatic/manual deployment conditions.
+    # Deploy only through the existing successful-CI or explicit dispatch gates.
     if: >-
-      false &&
+      true &&
       (
         github.event_name == 'workflow_dispatch' ||
         (
