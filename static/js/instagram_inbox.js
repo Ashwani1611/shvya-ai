@@ -50,10 +50,13 @@
     root.querySelectorAll('img,video,audio').forEach(media => {
       if (media.dataset.igBound) return;
       media.dataset.igBound = '1';
-      media.addEventListener('error', () => {
+      const showUnavailable = () => {
         const fallback = media.closest('.ig-media')?.querySelector('.ig-media-fallback');
         if (fallback) fallback.hidden = false;
-      });
+      };
+      media.addEventListener('error', showUnavailable);
+      // Cached failures may complete before this deferred script can listen.
+      if ((media.tagName === 'IMG' && media.complete && media.naturalWidth === 0) || media.error) showUnavailable();
       media.addEventListener('load', () => { if (following) bottom(); });
       media.addEventListener('loadedmetadata', () => { if (following) bottom(); });
     });
@@ -155,7 +158,7 @@
         if (active?.lead_url) { const link = document.createElement('a'); link.className = 'contact-link p-5'; link.href = active.lead_url; link.textContent = 'Link to a CRM lead'; contactHost.appendChild(link); }
       }
     }
-    byId('ig-chat-username').textContent = active ? '@' + active.participant_username : '';
+    byId('ig-chat-username').textContent = active?.participant_username ? '@' + active.participant_username : '';
     if (active) {
       form.action = active.send_url;
       if (reset) { input.value = drafts.get(active.id) || ''; before = active.before; following = true; }
@@ -194,7 +197,9 @@
     requestRunning = true;
     const currentController = new AbortController();
     controller = currentController;
-    const epoch = generation, timeout = setTimeout(() => currentController.abort(), 12000);
+    const epoch = generation;
+    let timedOut = false;
+    const timeout = setTimeout(() => { timedOut = true; currentController.abort(); }, 12000);
     try {
       const data = await jsonFetch(requestURL(), {signal:controller.signal});
       if (epoch !== generation) return;
@@ -205,7 +210,10 @@
       failures = 0;
       report(data.instagram_inbox_ready ? 'Inbox updates connected' : 'Connection needs attention — open settings');
     } catch (error) {
-      if (epoch === generation && error.name !== 'AbortError') { failures += 1; report(error.message); }
+      if (!stopped && epoch === generation && (error.name !== 'AbortError' || timedOut)) {
+        failures += 1;
+        report(timedOut ? 'Instagram updates are taking longer than expected. Retrying…' : error.message);
+      }
     } finally {
       clearTimeout(timeout); requestRunning = false; if (epoch === generation) schedule();
     }
@@ -218,7 +226,8 @@
     clearTimeout(timer); controller?.abort();
     controller = new AbortController();
     const signal = controller.signal;
-    const timeout = setTimeout(() => { if (epoch === generation) controller.abort(); }, 12000);
+    let timedOut = false;
+    const timeout = setTimeout(() => { if (epoch === generation) { timedOut = true; controller.abort(); } }, 12000);
     report('Loading conversation…');
     try {
       const url = requestURL(path);
@@ -228,7 +237,9 @@
       sendError(''); report('Inbox updates connected');
       if (push) history.pushState({}, '', url);
     } catch (error) {
-      if (epoch === generation && error.name !== 'AbortError') report(error.message);
+      if (!stopped && epoch === generation && (error.name !== 'AbortError' || timedOut)) {
+        report(timedOut ? 'This conversation took too long to load. Select it again to retry.' : error.message);
+      }
     } finally { clearTimeout(timeout); if (epoch === generation) { navigationRunning = false; schedule(); } }
   }
   list.addEventListener('click', event => {
@@ -304,8 +315,16 @@
     // the next polling interval.
     if (active?.url) navigate(active.url, false);
   });
-  const policyTimer = setInterval(policy, 1000);
-  addEventListener('pagehide', () => { stopped = true; controller?.abort(); clearTimeout(timer); clearTimeout(searchTimer); clearInterval(policyTimer); }, {once:true});
+  let policyTimer = setInterval(policy, 1000);
+  addEventListener('pagehide', () => { stopped = true; controller?.abort(); clearTimeout(timer); clearTimeout(searchTimer); clearInterval(policyTimer); });
+  addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    stopped = false; failures = 0;
+    clearInterval(policyTimer);
+    policyTimer = setInterval(policy, 1000);
+    policy();
+    schedule();
+  });
   formatTimes(shell); bindMedia(shell); policy();
   list.querySelectorAll('[data-conversation-id]').forEach(node => node.setAttribute('aria-current', String(node.dataset.conversationId === active?.id)));
   if (active) requestAnimationFrame(bottom);

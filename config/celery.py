@@ -65,6 +65,10 @@ app.conf.beat_schedule = {
         "task": "apps.channels.instagram_tasks.refresh_instagram_tokens_task",
         "schedule": 21600.0,
     },
+    "recover-instagram-webhooks-every-minute": {
+        "task": "apps.channels.instagram_tasks.recover_instagram_webhook_deliveries_task",
+        "schedule": 60.0,
+    },
     # Support work uses the existing general worker, never the realtime AI lanes.
     "support-email-outbox": {
         "task": "support.deliver_notifications",

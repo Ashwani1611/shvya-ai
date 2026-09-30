@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 
 import requests
 from django.conf import settings
-from django.db import IntegrityError, transaction
+from django.db import transaction
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -36,7 +36,7 @@ INSTAGRAM_SCOPES = (
     "instagram_business_basic",
     "instagram_business_manage_messages",
 )
-WEBHOOK_FIELDS = ("messages", "messaging_postbacks")
+WEBHOOK_FIELDS = ("messages", "messaging_postbacks", "messaging_seen")
 TOKEN_REFRESH_WINDOW_DAYS = 10
 
 
@@ -65,6 +65,10 @@ class InstagramAPIError(RuntimeError):
     @property
     def token_invalid(self) -> bool:
         return str(self.code or "") == "190"
+
+
+class InstagramOAuthSuperseded(InstagramAPIError):
+    """A queued/retried authorization no longer owns this connection."""
 
 
 def graph_api_version() -> str:
@@ -187,7 +191,9 @@ def _request(method: str, url: str, *, label: str, **kwargs) -> dict:
         ) from exc
     except requests.RequestException as exc:
         raise InstagramAPIError(
-            f"{label}: Meta request failed: {exc}", transient=True
+            # Requests exceptions may include the complete token-exchange URL,
+            # including its client_secret/access_token query parameters.
+            f"{label}: Could not reach Meta. Please try again.", transient=True
         ) from exc
     return _raise_for_meta(response, label)
 
@@ -358,13 +364,43 @@ def create_oauth_attempt(*, organization, user, code: str, redirect_uri: str) ->
     )
 
 
-def _exchange_authorization_code(*, code: str, redirect_uri: str) -> tuple[str, int | None, dict]:
+def _instagram_login_result(payload: dict) -> dict:
+    """Normalize Instagram Login's single-account response envelope.
+
+    The code exchange and /me endpoints can both return ``data: [{...}]``;
+    older responses expose fields at the top level. An ambiguous or malformed
+    envelope must not silently choose an account.
+    """
+    if "data" not in payload:
+        return payload
+    data = payload.get("data")
+    if isinstance(data, list) and len(data) == 1 and isinstance(data[0], dict):
+        return data[0]
+    return {}
+
+
+def _long_lived_token(payload: dict, *, label: str) -> tuple[str, int]:
+    token = payload.get("access_token")
+    try:
+        raw_expiry = payload.get("expires_in")
+        expires_in = int(raw_expiry) if not isinstance(raw_expiry, bool) else 0
+    except (TypeError, ValueError, OverflowError):
+        expires_in = 0
+    if not isinstance(token, str) or not token.strip() or expires_in <= 0:
+        raise InstagramAPIError(
+            f"{label}: Meta did not return a valid long-lived access token and expiry. "
+            "Please connect Instagram again."
+        )
+    return token.strip(), expires_in
+
+
+def _exchange_authorization_code(*, code: str, redirect_uri: str) -> tuple[str, int, dict]:
     app_id = instagram_app_id()
     app_secret = instagram_app_secret()
     if not app_id or not app_secret:
         raise InstagramAPIError("Instagram Meta app credentials are not configured.")
 
-    short_payload = _request(
+    token_response = _request(
         "POST",
         OAUTH_TOKEN_URL,
         label="Instagram login failed",
@@ -376,9 +412,20 @@ def _exchange_authorization_code(*, code: str, redirect_uri: str) -> tuple[str, 
             "code": code,
         },
     )
-    short_token = str(short_payload.get("access_token") or "").strip()
-    if not short_token:
+    short_payload = _instagram_login_result(token_response)
+    short_token = short_payload.get("access_token")
+    if not isinstance(short_token, str) or not short_token.strip():
         raise InstagramAPIError("Instagram login did not return an access token.")
+    short_token = short_token.strip()
+    if "permissions" in short_payload:
+        granted = short_payload["permissions"]
+        if isinstance(granted, str):
+            granted = [permission.strip() for permission in granted.split(",")]
+        if not isinstance(granted, list) or not all(scope in granted for scope in INSTAGRAM_SCOPES):
+            raise InstagramAPIError(
+                "Instagram did not grant the required profile and messaging permissions. "
+                "Connect again and approve both permissions."
+            )
 
     long_payload = _request(
         "GET",
@@ -390,9 +437,10 @@ def _exchange_authorization_code(*, code: str, redirect_uri: str) -> tuple[str, 
             "access_token": short_token,
         },
     )
-    access_token = str(long_payload.get("access_token") or short_token)
-    expires_in = long_payload.get("expires_in")
-    return access_token, int(expires_in) if expires_in else None, short_payload
+    access_token, expires_in = _long_lived_token(
+        long_payload, label="Instagram token upgrade failed"
+    )
+    return access_token, expires_in, short_payload
 
 
 def _fetch_profile(access_token: str, short_payload: dict | None = None) -> dict:
@@ -405,32 +453,54 @@ def _fetch_profile(access_token: str, short_payload: dict | None = None) -> dict
         )
     except InstagramAPIError as exc:
         # Some app/account combinations expose a narrower profile field set.
-        if exc.status_code != 400:
+        if exc.status_code != 400 or exc.token_invalid:
             raise
         profile = _graph_get(
             "me",
             access_token=access_token,
-            params={"fields": "id,user_id,username"},
+            params={"fields": "user_id,username"},
         )
-    ig_user_id = profile.get("id") or profile.get("user_id") or short_payload.get("user_id")
-    if not ig_user_id:
+    # `id` can be the app-scoped login ID. Messaging, webhook subscriptions,
+    # and incoming entry IDs use the Instagram professional account user_id.
+    profile = _instagram_login_result(profile)
+    ig_user_id = profile.get("user_id") or short_payload.get("user_id")
+    if not profile or not ig_user_id:
         raise InstagramAPIError("Instagram profile ID was not returned by Meta.")
     profile["resolved_ig_user_id"] = str(ig_user_id)
     return profile
 
 
+def _lock_current_account(account: InstagramAccount) -> InstagramAccount:
+    """Call within a transaction before persisting work for a token snapshot."""
+    current = InstagramAccount.objects.select_for_update().filter(pk=account.pk).first()
+    if (
+        not current or current.status != InstagramAccount.Status.CONNECTED
+        or current.ig_user_id != account.ig_user_id
+        or current.connected_at != account.connected_at
+        or current.access_token != account.access_token
+    ):
+        raise InstagramOAuthSuperseded("Instagram authorization changed while this operation was running.")
+    return current
+
+
 def subscribe_account_webhooks(account: InstagramAccount) -> dict:
-    payload = _graph_post(
-        f"{account.ig_user_id}/subscribed_apps",
-        access_token=account.access_token,
-        params={"subscribed_fields": ",".join(WEBHOOK_FIELDS)},
-    )
-    account.webhook_subscribed = bool(payload.get("success", True))
-    account.subscribed_fields = list(WEBHOOK_FIELDS)
-    account.last_error = ""
-    account.save(
-        update_fields=["webhook_subscribed", "subscribed_fields", "last_error", "updated_at"]
-    )
+    with transaction.atomic():
+        _lock_current_account(account)
+        payload = _graph_post(
+            f"{account.ig_user_id}/subscribed_apps",
+            access_token=account.access_token,
+            params={"subscribed_fields": ",".join(WEBHOOK_FIELDS)},
+        )
+        account.webhook_subscribed = payload.get("success") is True
+        account.subscribed_fields = list(WEBHOOK_FIELDS) if account.webhook_subscribed else []
+        account.last_error = ""
+        account.save(
+            update_fields=["webhook_subscribed", "subscribed_fields", "last_error", "updated_at"]
+        )
+    if not account.webhook_subscribed:
+        raise InstagramAPIError(
+            "Meta did not confirm the Instagram webhook subscription. Retry inbox setup."
+        )
     return payload
 
 
@@ -445,13 +515,23 @@ def unsubscribe_account_webhooks(account: InstagramAccount) -> None:
 
 @transaction.atomic
 def complete_oauth_attempt(attempt: InstagramOAuthAttempt) -> InstagramAccount:
-    locked = InstagramOAuthAttempt.objects.select_for_update().select_related(
+    locked = InstagramOAuthAttempt.objects.select_for_update(of=("self",)).select_related(
         "organization", "created_by"
     ).get(pk=attempt.pk)
+    _assert_current_oauth_attempt(locked)
     if locked.status == InstagramOAuthAttempt.Status.CONNECTED:
         account = get_account(locked.organization)
-        if account:
+        if (
+            account and account.access_token and locked.completed_at
+            and account.connected_at == locked.completed_at
+        ):
             return account
+        raise InstagramOAuthSuperseded(
+            "This Instagram connection has changed or been disconnected. "
+            "Use the latest connection request."
+        )
+    if locked.status == InstagramOAuthAttempt.Status.FAILED:
+        raise InstagramOAuthSuperseded("This Instagram authorization is no longer active. Connect again.")
     if locked.expires_at and locked.expires_at <= timezone.now():
         raise InstagramAPIError("Instagram authorization expired. Please connect again.")
     code = locked.authorization_code
@@ -469,7 +549,29 @@ def complete_oauth_attempt(attempt: InstagramOAuthAttempt) -> InstagramAccount:
     profile = _fetch_profile(access_token, short_payload)
     ig_user_id = profile["resolved_ig_user_id"]
 
-    foreign_owner = InstagramAccount.objects.filter(ig_user_id=ig_user_id).exclude(
+    # Serialize account replacement checks for concurrent attempts in the same
+    # workspace. Never reassign an existing inbox's history to another account.
+    # Permit concurrent FK checks while serializing account replacement;
+    # FOR UPDATE on the organization conflicts with sync's FK key-share locks.
+    Organization.objects.select_for_update(no_key=True).get(pk=locked.organization_id)
+    _assert_current_oauth_attempt(locked)
+    existing_account = InstagramAccount.objects.filter(organization=locked.organization).first()
+    validated_ids = {
+        str(value)
+        for value in (ig_user_id, profile.get("id"), short_payload.get("user_id"))
+        if value
+    }
+    if (
+        existing_account
+        and existing_account.ig_user_id not in validated_ids
+        and (existing_account.conversations.exists() or existing_account.messages.exists())
+    ):
+        raise InstagramAPIError(
+            "This workspace already has conversation history for another Instagram account. "
+            "Reconnect the original account, or use a separate workspace for this account."
+        )
+
+    foreign_owner = InstagramAccount.objects.filter(ig_user_id__in=validated_ids).exclude(
         organization=locked.organization
     ).first()
     if foreign_owner:
@@ -493,6 +595,9 @@ def complete_oauth_attempt(attempt: InstagramOAuthAttempt) -> InstagramAccount:
             "status": InstagramAccount.Status.CONNECTED,
             "connected_by": locked.created_by,
             "connected_at": now,
+            "webhook_subscribed": False,
+            "subscribed_fields": [],
+            "last_sync_at": None,
             "last_error": "",
         },
     )
@@ -515,8 +620,22 @@ def complete_oauth_attempt(attempt: InstagramOAuthAttempt) -> InstagramAccount:
     return account
 
 
+def _assert_current_oauth_attempt(attempt: InstagramOAuthAttempt) -> None:
+    latest_id = InstagramOAuthAttempt.objects.filter(
+        organization_id=attempt.organization_id,
+    ).order_by("-created_at", "-pk").values_list("pk", flat=True).first()
+    if latest_id != attempt.pk:
+        raise InstagramOAuthSuperseded(
+            "A newer Instagram connection request replaced this authorization. "
+            "Use the latest connection request."
+        )
+
+
 def fail_oauth_attempt(attempt_id, error: Exception) -> None:
-    InstagramOAuthAttempt.objects.filter(pk=attempt_id).update(
+    InstagramOAuthAttempt.objects.filter(
+        pk=attempt_id,
+        status__in=[InstagramOAuthAttempt.Status.QUEUED, InstagramOAuthAttempt.Status.PROCESSING],
+    ).update(
         status=InstagramOAuthAttempt.Status.FAILED,
         authorization_code="",
         error_message=str(error)[:2000],
@@ -525,9 +644,22 @@ def fail_oauth_attempt(attempt_id, error: Exception) -> None:
     )
 
 
-def refresh_account_token(account: InstagramAccount) -> InstagramAccount:
+@transaction.atomic
+def refresh_account_token(account: InstagramAccount) -> InstagramAccount | None:
+    # A worker's queryset may predate a disconnect/reconnect or another refresh.
+    # Hold the account lock across provider I/O so old tokens cannot overwrite
+    # new credentials or resurrect a disconnected account afterward.
+    account = InstagramAccount.objects.select_for_update().get(pk=account.pk)
+    now = timezone.now()
+    refreshed_at = account.token_refreshed_at or account.connected_at
+    if account.status != InstagramAccount.Status.CONNECTED:
+        return None
+    if refreshed_at and refreshed_at > now - timedelta(hours=24):
+        return None
     if not account.access_token:
         raise InstagramAPIError("Instagram access token is missing. Reconnect Instagram.")
+    if account.token_expires_at and account.token_expires_at <= now:
+        raise InstagramAPIError("Instagram access token expired. Reconnect Instagram.", code=190)
     payload = _request(
         "GET",
         REFRESH_TOKEN_URL,
@@ -537,13 +669,11 @@ def refresh_account_token(account: InstagramAccount) -> InstagramAccount:
             "access_token": account.access_token,
         },
     )
-    token = str(payload.get("access_token") or account.access_token)
-    expires_in = payload.get("expires_in")
+    token, expires_in = _long_lived_token(payload, label="Instagram token refresh failed")
     now = timezone.now()
     account.access_token = token
     account.token_refreshed_at = now
-    if expires_in:
-        account.token_expires_at = now + timedelta(seconds=int(expires_in))
+    account.token_expires_at = now + timedelta(seconds=expires_in)
     account.status = InstagramAccount.Status.CONNECTED
     account.last_error = ""
     account.save(
@@ -560,11 +690,13 @@ def refresh_account_token(account: InstagramAccount) -> InstagramAccount:
 
 
 def accounts_due_for_token_refresh():
-    cutoff = timezone.now() + timedelta(days=TOKEN_REFRESH_WINDOW_DAYS)
-    oldest_refresh = timezone.now() - timedelta(hours=24)
+    now = timezone.now()
+    cutoff = now + timedelta(days=TOKEN_REFRESH_WINDOW_DAYS)
+    oldest_refresh = now - timedelta(hours=24)
     return InstagramAccount.objects.filter(
         status=InstagramAccount.Status.CONNECTED,
         token_expires_at__isnull=False,
+        token_expires_at__gt=now,
         token_expires_at__lte=cutoff,
     ).filter(
         models_q_token_refresh(oldest_refresh)
@@ -574,7 +706,10 @@ def accounts_due_for_token_refresh():
 def models_q_token_refresh(oldest_refresh):
     from django.db.models import Q
 
-    return Q(token_refreshed_at__isnull=True) | Q(token_refreshed_at__lte=oldest_refresh)
+    return Q(token_refreshed_at__lte=oldest_refresh) | (
+        Q(token_refreshed_at__isnull=True)
+        & (Q(connected_at__isnull=True) | Q(connected_at__lte=oldest_refresh))
+    )
 
 
 def mark_account_error(account: InstagramAccount, exc: InstagramAPIError) -> None:
@@ -738,10 +873,12 @@ def sync_account_conversations(account: InstagramAccount, *, max_conversations: 
             access_token=account.access_token,
             params=params,
         )
-        data = payload.get("data") or []
+        data = payload.get("data")
         if not isinstance(data, list):
-            data = []
+            raise InstagramAPIError("Meta did not return a valid Instagram conversation list. Retry inbox setup.")
         for summary in data:
+            if not isinstance(summary, dict):
+                raise InstagramAPIError("Meta returned an invalid Instagram conversation. Retry inbox setup.")
             if synced >= max_conversations:
                 break
             conversation_id = str(summary.get("id") or "")
@@ -765,6 +902,7 @@ def sync_account_conversations(account: InstagramAccount, *, max_conversations: 
             if not participant:
                 continue
             with transaction.atomic():
+                _lock_current_account(account)
                 conversation = _upsert_conversation(
                     account=account,
                     participant=participant,
@@ -808,9 +946,11 @@ def sync_account_conversations(account: InstagramAccount, *, max_conversations: 
             break
         after = next_after
 
-    account.last_sync_at = timezone.now()
-    account.last_error = ""
-    account.save(update_fields=["last_sync_at", "last_error", "updated_at"])
+    with transaction.atomic():
+        _lock_current_account(account)
+        account.last_sync_at = timezone.now()
+        account.last_error = ""
+        account.save(update_fields=["last_sync_at", "last_error", "updated_at"])
     return synced
 
 
@@ -952,6 +1092,13 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     # If an outbound echo reached the webhook first, never violate unique external_id.
     duplicate = InstagramMessage.objects.filter(external_id=external_id).exclude(pk=message.pk).first()
     if duplicate:
+        if (
+            duplicate.organization_id != message.organization_id
+            or duplicate.account_id != message.account_id
+            or duplicate.conversation_id != message.conversation_id
+            or duplicate.direction != InstagramMessage.Direction.OUTBOUND
+        ):
+            raise InstagramAPIError("Instagram send returned a message ID belonging to another conversation.")
         message.delete()
         return duplicate
 
@@ -1011,8 +1158,41 @@ def _webhook_message_type(message_payload: dict) -> str:
     return InstagramMessage.MessageType.UNKNOWN
 
 
+def _webhook_objects(value):
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def _webhook_time(value):
+    try:
+        return _parse_meta_datetime(value)
+    except (ValueError, TypeError, OverflowError, OSError):
+        return None
+
+
+def _refresh_webhook_conversation(conversation):
+    from django.db.models.functions import Coalesce
+
+    scoped = conversation.messages.filter(
+        organization_id=conversation.organization_id, account_id=conversation.account_id,
+    )
+    latest = scoped.annotate(event_at=Coalesce("sent_at", "created_at")).order_by(
+        "-event_at", "-id",
+    ).first()
+    if latest:
+        conversation.last_message_text = latest.body
+        conversation.last_message_at = latest.sent_at or latest.created_at
+        conversation.last_direction = latest.direction
+    conversation.unread_count = scoped.filter(
+        direction=InstagramMessage.Direction.INBOUND, is_read=False,
+    ).count()
+    conversation.save(update_fields=[
+        "last_message_text", "last_message_at", "last_direction", "unread_count", "updated_at",
+    ])
+
+
+@transaction.atomic
 def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
-    """Persist signed Meta messaging events exactly once."""
+    """Persist signed, account-scoped Meta messaging events idempotently."""
     delivery = InstagramWebhookDelivery.objects.select_for_update().get(pk=delivery.pk)
     if delivery.status in {
         InstagramWebhookDelivery.Status.PROCESSED,
@@ -1023,7 +1203,7 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
     delivery.error_message = ""
     delivery.save(update_fields=["status", "error_message"])
 
-    payload = delivery.raw_payload or {}
+    payload = delivery.raw_payload if isinstance(delivery.raw_payload, dict) else {}
     if payload.get("object") not in {"instagram", None}:
         delivery.status = InstagramWebhookDelivery.Status.IGNORED
         delivery.processed_at = timezone.now()
@@ -1031,118 +1211,150 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
         return 0
 
     processed = 0
-    for entry in payload.get("entry", []) or []:
+    for entry in _webhook_objects(payload.get("entry")):
         own_id = str(entry.get("id") or "")
         account = InstagramAccount.objects.filter(
-            ig_user_id=own_id,
-            status=InstagramAccount.Status.CONNECTED,
+            ig_user_id=own_id, status=InstagramAccount.Status.CONNECTED,
         ).select_related("organization").first()
         if not account:
             continue
         account.last_webhook_at = timezone.now()
         account.save(update_fields=["last_webhook_at", "updated_at"])
 
-        for event in entry.get("messaging", []) or []:
-            sender_id = str((event.get("sender") or {}).get("id") or "")
-            recipient_id = str((event.get("recipient") or {}).get("id") or "")
+        for event in _webhook_objects(entry.get("messaging")):
+            sender = event.get("sender")
+            recipient = event.get("recipient")
+            if not isinstance(sender, dict) or not isinstance(recipient, dict):
+                continue
+            sender_id = str(sender.get("id") or "")
+            recipient_id = str(recipient.get("id") or "")
+            # The signed envelope alone does not establish an event's route.
+            # Exactly one endpoint must be this professional account.
+            if not sender_id or not recipient_id or (sender_id == own_id) == (recipient_id == own_id):
+                continue
             participant_id = recipient_id if sender_id == own_id else sender_id
-            if not participant_id or participant_id == own_id:
+            direction = (
+                InstagramMessage.Direction.OUTBOUND if sender_id == own_id
+                else InstagramMessage.Direction.INBOUND
+            )
+            message_payload = event.get("message")
+            message_payload = message_payload if isinstance(message_payload, dict) else {}
+            postback = event.get("postback")
+            postback = postback if isinstance(postback, dict) else {}
+            if message_payload.get("is_echo") and direction != InstagramMessage.Direction.OUTBOUND:
                 continue
 
-            conversation = _upsert_conversation(
-                account=account,
-                participant={"id": participant_id, "name": "Instagram user"},
-                raw_payload={},
-            )
-
+            conversation = InstagramConversation.objects.select_for_update().filter(
+                organization=account.organization, account=account, participant_id=participant_id,
+            ).first()
             read_event = event.get("read") or event.get("seen")
-            if read_event and sender_id != own_id:
-                watermark = _parse_meta_datetime(read_event.get("watermark"))
+            if isinstance(read_event, dict):
+                if not conversation or direction != InstagramMessage.Direction.INBOUND:
+                    continue
                 outbound = conversation.messages.filter(
+                    organization=account.organization, account=account,
                     direction=InstagramMessage.Direction.OUTBOUND,
-                    status__in=[InstagramMessage.Status.SENT, InstagramMessage.Status.READ],
+                    status=InstagramMessage.Status.SENT,
                 )
-                if watermark:
+                read_mid = str(read_event.get("mid") or "").strip()
+                watermark = _webhook_time(read_event.get("watermark"))
+                if read_mid:
+                    # Instagram receipts name a message. Without a watermark,
+                    # never mark newer replies read merely because they exist.
+                    outbound = outbound.filter(external_id=read_mid)
+                elif watermark:
                     outbound = outbound.filter(sent_at__lte=watermark)
-                outbound.update(status=InstagramMessage.Status.READ, is_read=True)
+                else:
+                    continue
+                if outbound.update(status=InstagramMessage.Status.READ, is_read=True):
+                    processed += 1
+                continue
+
+            external_id = str(message_payload.get("mid") or postback.get("mid") or "").strip()
+            if not external_id or len(external_id) > 300:
+                continue
+            existing = InstagramMessage.objects.select_for_update().filter(external_id=external_id).first()
+            if existing and (
+                existing.organization_id != account.organization_id
+                or existing.account_id != account.pk
+                or not conversation or existing.conversation_id != conversation.pk
+                or existing.direction != direction
+            ):
+                continue
+
+            deleted = message_payload.get("is_deleted") is True
+            if direction == InstagramMessage.Direction.OUTBOUND and not deleted:
+                # A known echo confirms this account's message; it cannot
+                # downgrade a read receipt or mutate a different workspace.
+                if existing and existing.status != InstagramMessage.Status.READ:
+                    existing.status = InstagramMessage.Status.SENT
+                    existing.save(update_fields=["status", "updated_at"])
+                    processed += 1
+                continue
+            if direction == InstagramMessage.Direction.OUTBOUND and not existing:
+                continue
+
+            if not conversation:
+                conversation, _ = InstagramConversation.objects.select_for_update().get_or_create(
+                    account=account, participant_id=participant_id,
+                    defaults={"organization": account.organization, "participant_name": "Instagram user"},
+                )
+                if conversation.organization_id != account.organization_id:
+                    continue
+
+            if deleted:
+                # Keep a tombstone so an out-of-order original or Graph sync
+                # cannot restore removed text/media. Unknown originals have no
+                # sent_at: an unsend event must not open a fresh reply window.
+                tombstone = {
+                    "sender": {"id": sender_id}, "recipient": {"id": recipient_id},
+                    "message": {"mid": external_id, "is_deleted": True},
+                }
+                message, _ = InstagramMessage.objects.get_or_create(
+                    external_id=external_id,
+                    defaults={
+                        "organization": account.organization, "account": account,
+                        "conversation": conversation, "direction": direction,
+                        "status": InstagramMessage.Status.RECEIVED,
+                        "sender_id": sender_id, "recipient_id": recipient_id,
+                        "is_read": True,
+                    },
+                )
+                if (message.organization_id != account.organization_id or message.account_id != account.pk
+                        or message.conversation_id != conversation.pk or message.direction != direction):
+                    continue
+                message.body = "Message deleted on Instagram"
+                message.attachments = []
+                message.raw_payload = tombstone
+                message.is_read = True
+                message.save(update_fields=["body", "attachments", "raw_payload", "is_read", "updated_at"])
+                _refresh_webhook_conversation(conversation)
                 processed += 1
                 continue
 
-            message_payload = event.get("message") or {}
-            postback = event.get("postback") or {}
-            external_id = str(
-                message_payload.get("mid") or postback.get("mid") or ""
-            ).strip()
-            if not external_id:
-                continue
-
-            direction = (
-                InstagramMessage.Direction.OUTBOUND
-                if sender_id == own_id
-                else InstagramMessage.Direction.INBOUND
+            message, created = InstagramMessage.objects.get_or_create(
+                external_id=external_id,
+                defaults={
+                    "organization": account.organization, "account": account,
+                    "conversation": conversation, "direction": InstagramMessage.Direction.INBOUND,
+                    "status": InstagramMessage.Status.RECEIVED,
+                    "message_type": InstagramMessage.MessageType.POSTBACK if postback else _webhook_message_type(message_payload),
+                    "sender_id": sender_id, "recipient_id": recipient_id,
+                    "body": str(message_payload.get("text") or postback.get("title") or ""),
+                    "attachments": _normalize_attachments(message_payload.get("attachments")),
+                    "raw_payload": event, "is_read": False,
+                    "sent_at": _webhook_time(event.get("timestamp")) or timezone.now(),
+                },
             )
-            # SHVYA-created outbound rows get their Meta ID from the Send API.
-            # Ignore fresh outbound echoes to avoid a race/duplicate row.
-            if direction == InstagramMessage.Direction.OUTBOUND:
-                existing = InstagramMessage.objects.filter(external_id=external_id).first()
-                if existing:
-                    existing.status = InstagramMessage.Status.SENT
-                    existing.save(update_fields=["status", "updated_at"])
+            if (message.organization_id != account.organization_id or message.account_id != account.pk
+                    or message.conversation_id != conversation.pk or message.direction != direction):
                 continue
-
-            body = str(message_payload.get("text") or postback.get("title") or "")
-            attachments = _normalize_attachments(message_payload.get("attachments"))
-            event_time = _parse_meta_datetime(event.get("timestamp")) or timezone.now()
-            try:
-                message, created = InstagramMessage.objects.get_or_create(
-                    external_id=external_id,
-                    defaults={
-                        "organization": account.organization,
-                        "account": account,
-                        "conversation": conversation,
-                        "direction": InstagramMessage.Direction.INBOUND,
-                        "status": InstagramMessage.Status.RECEIVED,
-                        "message_type": (
-                            InstagramMessage.MessageType.POSTBACK
-                            if postback
-                            else _webhook_message_type(message_payload)
-                        ),
-                        "sender_id": sender_id,
-                        "recipient_id": recipient_id,
-                        "body": body,
-                        "attachments": attachments,
-                        "raw_payload": event,
-                        "is_read": False,
-                        "sent_at": event_time,
-                    },
-                )
-            except IntegrityError:
-                message = InstagramMessage.objects.get(external_id=external_id)
-                created = False
-            if message.organization_id != account.organization_id:
-                raise InstagramAPIError("Instagram webhook message tenant mismatch detected.")
             if created:
-                conversation.last_message_text = body
-                conversation.last_message_at = event_time
-                conversation.last_direction = InstagramMessage.Direction.INBOUND
-                conversation.unread_count = conversation.messages.filter(
-                    direction=InstagramMessage.Direction.INBOUND,
-                    is_read=False,
-                ).count()
-                conversation.save(
-                    update_fields=[
-                        "last_message_text",
-                        "last_message_at",
-                        "last_direction",
-                        "unread_count",
-                        "updated_at",
-                    ]
-                )
+                _refresh_webhook_conversation(conversation)
                 processed += 1
 
     delivery.status = (
-        InstagramWebhookDelivery.Status.PROCESSED
-        if processed
+        InstagramWebhookDelivery.Status.PROCESSED if processed
         else InstagramWebhookDelivery.Status.IGNORED
     )
     delivery.processed_at = timezone.now()
@@ -1151,7 +1363,14 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
 
 
 def fail_webhook_delivery(delivery_id, error: Exception) -> None:
-    InstagramWebhookDelivery.objects.filter(pk=delivery_id).update(
+    InstagramWebhookDelivery.objects.filter(
+        pk=delivery_id,
+        status__in=[
+            InstagramWebhookDelivery.Status.PENDING,
+            InstagramWebhookDelivery.Status.PROCESSING,
+            InstagramWebhookDelivery.Status.FAILED,
+        ],
+    ).update(
         status=InstagramWebhookDelivery.Status.FAILED,
         error_message=str(error)[:2000],
         processed_at=timezone.now(),
