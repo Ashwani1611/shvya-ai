@@ -174,17 +174,19 @@ class InstagramServiceTests(TestCase):
         self.assertTrue(self.account.webhook_subscribed)
         self.assertEqual(
             self.account.subscribed_fields,
-            ["messages", "messaging_postbacks"],
+            ["messages", "messaging_postbacks", "messaging_seen"],
         )
         call = request.call_args
         self.assertIn("/ig-business-1/subscribed_apps", call.args[1])
         self.assertEqual(
             call.kwargs["params"]["subscribed_fields"],
-            "messages,messaging_postbacks",
+            "messages,messaging_postbacks,messaging_seen",
         )
 
     @patch("services.channels.instagram_service.requests.request")
     def test_refresh_long_lived_token_updates_expiry(self, request):
+        self.account.token_refreshed_at = timezone.now() - timedelta(days=2)
+        self.account.save(update_fields=["token_refreshed_at"])
         request.return_value = meta_response(
             {"access_token": "refreshed-token", "expires_in": 5_184_000}
         )

@@ -1,42 +1,101 @@
 {% extends "base.html" %}
+{% load static %}
 {% block title %}SHVYA AI — Connect Instagram{% endblock %}
 {% block header %}Instagram{% endblock %}
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/instagram_connect.css' %}">
+<script src="{% static 'js/instagram_connect.js' %}" defer></script>
+{% endblock %}
 {% block content %}
-<div class="mx-auto max-w-5xl pb-12">
-  <header class="py-10 text-center"><span class="text-sm font-semibold text-[#0071e3]">Instagram for SHVYA</span><h1 class="mt-4 text-4xl font-semibold tracking-tight sm:text-5xl">Your DMs. One workspace.</h1><p class="mx-auto mt-4 max-w-2xl text-[#6e6e73]">Connect your professional Instagram account through Meta. Authorization and inbox setup are checked separately.</p></header>
-  <section class="rounded-3xl border border-black/5 bg-white p-6 shadow-sm sm:p-9" data-ig-connect-state="{{ instagram_connection_state }}">
-    <h2 class="text-xl font-semibold" id="ig-setup-state">{% if instagram_oauth_pending %}Completing authorization…{% elif instagram_inbox_ready %}Instagram inbox ready{% elif instagram_connected %}Authorized — inbox setup needs attention{% else %}Connect a Business or Creator account{% endif %}</h2>
-    <p class="mt-3 text-sm text-red-700" role="alert" id="ig-setup-error" {% if not instagram_connection_error %}hidden{% endif %}>{{ instagram_connection_error }}</p>
-    <div class="mt-6 grid gap-3 text-sm sm:grid-cols-3"><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>1. Authorization</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connected %}Account authorized{% elif instagram_oauth_pending %}Worker is completing sign-in{% else %}Not connected{% endif %}</p></div><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>2. Webhook subscription</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connection.webhook_subscribed %}Confirmed by Meta{% else %}Not confirmed{% endif %}</p></div><div class="rounded-2xl bg-[#f5f5f7] p-4"><strong>3. Initial inbox sync</strong><p class="mt-2 text-[#6e6e73]">{% if instagram_connection.last_sync_at %}Sync completed{% else %}Not completed{% endif %}</p></div></div>
-    <div class="mt-7 flex flex-wrap items-center gap-3">{% if instagram_meta_ready %}<a href="{% url 'crm-instagram-oauth-start' %}" class="rounded-full bg-[#0071e3] px-6 py-3 text-sm font-semibold text-white">{% if instagram_connected %}Reconnect Instagram{% else %}Continue with Instagram{% endif %}</a>{% else %}<p class="text-sm text-red-700">Dedicated Instagram App ID or App Secret is not loaded by the server.</p>{% endif %}{% if instagram_connection %}<a href="{% url 'crm-instagram-chats' %}" class="rounded-full bg-[#f5f5f7] px-5 py-3 text-sm font-medium">Open Instagram Chats</a>{% endif %}{% if instagram_connected %}<form method="post">{% csrf_token %}<button class="rounded-full bg-[#f5f5f7] px-5 py-3 text-sm font-medium" type="submit">Retry inbox setup</button></form><form method="post" action="{% url 'crm-instagram-disconnect' %}">{% csrf_token %}<button class="px-3 py-2 text-sm text-red-700" type="submit">Disconnect</button></form>{% endif %}</div>
-    <p class="mt-4 text-xs text-[#6e6e73]" id="ig-setup-poll" role="status">{% if instagram_oauth_pending %}Checking connection status. This page will update when the worker finishes.{% endif %}</p>
-  </section>
-  <details class="mt-6 rounded-3xl border border-black/5 bg-white p-6"><summary class="cursor-pointer font-semibold">Connection diagnostics and Meta app setup</summary><div class="mt-5 space-y-4 text-sm text-[#6e6e73]"><p>Dedicated Instagram credentials loaded: <strong>{% if instagram_meta_ready %}Yes{% else %}No{% endif %}</strong>. Webhook verify token loaded: <strong>{% if instagram_verify_ready %}Yes{% else %}No{% endif %}</strong>. Values are never displayed.</p><p>Use the Instagram App ID and App Secret from <strong>Instagram API with Instagram Login</strong>, not WhatsApp Embedded Signup credentials. Grant <code>instagram_business_basic</code> and <code>instagram_business_manage_messages</code>.</p><p>Register this exact OAuth redirect URI in Meta, including its HTTPS scheme and trailing slash:</p><code class="block break-all rounded-xl bg-[#f5f5f7] p-3">{{ instagram_redirect_uri }}</code><p>Register this webhook callback with the same value as <code>META_INSTAGRAM_VERIFY_TOKEN</code>:</p><code class="block break-all rounded-xl bg-[#f5f5f7] p-3">{{ instagram_webhook_uri }}</code><p>Enable access to messages in the Instagram professional account. In development mode, use an authorized app tester who has accepted the invitation. Customer accounts require the applicable Meta App Review and access approvals. Having credentials in the environment alone does not grant these approvals.</p><p>An authorization timeout can indicate a stopped Celery worker or broker. A webhook warning indicates inbox setup needs attention, not that the password is wrong.</p><a href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login/" target="_blank" rel="noopener noreferrer" class="text-[#0071e3] underline">Meta Instagram Login documentation</a></div></details>
-  <section class="mt-6 rounded-3xl bg-[#f5f5f7] p-6 text-sm leading-6 text-[#6e6e73]"><h3 class="mb-2 font-semibold text-[#1d1d1f]">Customer-started conversations</h3><p>The standard reply window is 24 hours from the customer's latest message. SHVYA checks the window before queueing and again before sending. This inbox does not claim the HUMAN_AGENT exception. Story and shared-media availability is controlled by Meta.</p><a href="{{ instagram_policy_url }}" target="_blank" rel="noopener noreferrer" class="text-[#0071e3] underline">Instagram messaging rules</a></section>
+<div class="ig-connect-page">
+  <div class="ig-connect-shell">
+    <header class="ig-connect-heading">
+      <div class="ig-connect-eyebrow"><span class="ig-brand-small"><i class="ti ti-brand-instagram" aria-hidden="true"></i></span> Instagram for SHVYA</div>
+      <h1>Your DMs.<br>Connected to SHVYA.</h1>
+      <p>Bring Instagram conversations, your team and your CRM together. One secure connection through Meta.</p>
+    </header>
+
+    <section class="ig-connect-card" aria-labelledby="ig-setup-state" data-ig-connect-state="{{ instagram_connection_state }}" data-status-url="{% url 'crm-instagram-connect' %}">
+      <div class="ig-connect-main">
+        <div class="ig-connect-intro">
+          <div class="ig-connect-icon"><i class="ti ti-plug-connected" aria-hidden="true"></i></div>
+          <span class="ig-status-badge {% if instagram_oauth_pending %}ig-status-pending{% elif instagram_inbox_ready %}ig-status-ready{% elif instagram_connected or instagram_connection_error %}ig-status-warning{% endif %}" id="ig-status-badge">
+            <span class="ig-status-dot" aria-hidden="true"></span>
+            <span id="ig-status-label">{% if instagram_oauth_pending %}Connecting{% elif instagram_inbox_ready %}Connected{% elif instagram_connected %}Setup needs attention{% elif instagram_connection_error %}Connection needs attention{% else %}Official Meta connection{% endif %}</span>
+          </span>
+        </div>
+        <div class="ig-connect-copy">
+          <p class="ig-section-label">{% if instagram_connected %}Your Instagram workspace{% else %}A simple, guided setup{% endif %}</p>
+          <h2 id="ig-setup-state">{% if instagram_oauth_pending %}Finishing your connection.{% elif instagram_inbox_ready %}Your inbox is ready.{% elif instagram_connected %}Account connected.<br>Let’s finish inbox setup.{% elif instagram_connection_error %}Let’s get you connected.{% else %}Connect in a few<br>simple steps.{% endif %}</h2>
+          <p id="ig-setup-description">{% if instagram_oauth_pending %}Your approval was received. SHVYA is securely connecting your account and preparing your inbox. Stay on this page to see the result.{% elif instagram_inbox_ready %}Your professional account is connected. Open your inbox to manage customer conversations with your team.{% elif instagram_connected %}Instagram authorized your account. Review the status below and retry inbox setup to complete the connection.{% else %}Sign in to your Business or Creator account, approve access and return here. We’ll confirm when your connection is ready.{% endif %}</p>
+        </div>
+
+        {% if instagram_connected %}
+        <div class="ig-connected-account">
+          <span class="ig-account-avatar">{% if instagram_connection.profile_picture_url %}<img src="{{ instagram_connection.profile_picture_url }}" alt="" referrerpolicy="no-referrer">{% else %}<i class="ti ti-brand-instagram" aria-hidden="true"></i>{% endif %}</span>
+          <div><strong>{% if instagram_connection.username %}@{{ instagram_connection.username }}{% else %}Instagram professional account{% endif %}</strong><span>{{ instagram_connection.display_name|default:"Connected to your SHVYA workspace" }}</span></div>
+        </div>
+        {% endif %}
+
+        <div class="ig-connect-alert" role="alert" id="ig-setup-error" {% if not instagram_connection_error %}hidden{% endif %}>{{ instagram_connection_error }}</div>
+        {% for message in messages %}{% if message.level >= 30 %}<div class="ig-connect-alert" role="alert">{{ message }}</div>{% endif %}{% endfor %}
+        {% if not instagram_meta_ready %}<div class="ig-connect-alert" role="alert">Instagram connection is currently unavailable. Ask your SHVYA administrator to check the Instagram app configuration below.</div>{% endif %}
+
+        <div class="ig-connect-actions">
+          {% if instagram_meta_ready %}
+          <div class="ig-pending-action" id="ig-pending-action" {% if not instagram_oauth_pending %}hidden{% endif %}><span class="ig-spinner" aria-hidden="true"></span> Completing connection…</div>
+          <a href="{% url 'crm-instagram-oauth-start' %}" class="ig-button {% if instagram_inbox_ready %}ig-button-secondary{% else %}ig-button-primary{% endif %}" id="ig-start-connect" {% if instagram_oauth_pending %}hidden{% endif %}><i class="ti ti-brand-instagram" aria-hidden="true"></i> <span>{% if instagram_connected %}Reconnect Instagram{% else %}Continue with Instagram{% endif %}</span> <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
+          {% endif %}
+          {% if instagram_connected %}
+          {% if instagram_inbox_ready %}<a href="{% url 'crm-instagram-chats' %}" class="ig-button ig-button-primary"><i class="ti ti-messages" aria-hidden="true"></i> Open Instagram Chats</a>{% else %}<form method="post" class="ig-retry-form">{% csrf_token %}<button class="ig-button ig-button-secondary" type="submit" {% if instagram_oauth_pending %}disabled{% endif %}><i class="ti ti-refresh" aria-hidden="true"></i> Retry inbox setup</button></form>{% endif %}
+          {% endif %}
+        </div>
+        <p class="ig-connect-helper" id="ig-setup-poll" role="status" aria-live="polite">{% if instagram_oauth_pending %}Checking your connection automatically. You do not need to sign in again.{% elif instagram_connected and not instagram_inbox_ready %}Checking for inbox setup updates.{% elif not instagram_connected %}<i class="ti ti-lock" aria-hidden="true"></i> Sign-in happens on Instagram. SHVYA never sees your password.{% endif %}</p>
+        <noscript><p class="ig-connect-helper">After approving access, refresh this page to check your connection status.</p></noscript>
+      </div>
+
+      <aside class="ig-connect-visual" aria-label="Instagram conversations in SHVYA">
+        <div class="ig-visual-top"><span class="ig-meta-logo"><i class="ti ti-brand-meta" aria-hidden="true"></i></span><span>MADE FOR CONVERSATIONS</span></div>
+        <div class="ig-visual-art" aria-hidden="true"><div class="ig-visual-orbit ig-visual-orbit-outer"></div><div class="ig-visual-orbit ig-visual-orbit-inner"></div><div class="ig-visual-logo"><i class="ti ti-brand-instagram"></i></div><span class="ig-visual-chip ig-chip-left"><i class="ti ti-message-circle"></i> Direct messages</span><span class="ig-visual-chip ig-chip-right"><i class="ti ti-photo"></i> Story replies</span></div>
+        <div class="ig-visual-copy"><p>LESS SWITCHING. MORE CONNECTION.</p><h3>Your conversations.<br>One workspace.</h3><span>Keep customer DMs close to your leads, so your team can pick up the conversation with context.</span></div>
+      </aside>
+
+      <div class="ig-progress-panel">
+        <div class="ig-progress-heading"><h3>Connection status</h3><span>Every step, clearly confirmed.</span></div>
+        <ol class="ig-progress-steps">
+          <li class="{% if instagram_connected %}ig-step-complete{% elif instagram_oauth_pending %}ig-step-active{% endif %}"><span class="ig-step-number" aria-hidden="true">{% if instagram_connected %}<i class="ti ti-check"></i>{% else %}1{% endif %}</span><div><strong>Account authorization</strong><p>{% if instagram_connected %}Your account is authorized{% elif instagram_oauth_pending %}Completing your approved sign-in{% else %}Sign in and approve access{% endif %}</p></div></li>
+          <li class="{% if instagram_connection.webhook_subscribed and instagram_connected %}ig-step-complete{% endif %}"><span class="ig-step-number" aria-hidden="true">{% if instagram_connection.webhook_subscribed and instagram_connected %}<i class="ti ti-check"></i>{% else %}2{% endif %}</span><div><strong>Message connection</strong><p>{% if instagram_connection.webhook_subscribed and instagram_connected %}Confirmed by Meta{% elif instagram_connected %}Waiting for confirmation{% else %}Enable incoming messages{% endif %}</p></div></li>
+          <li class="{% if instagram_connection.last_sync_at and instagram_connected %}ig-step-complete{% endif %}"><span class="ig-step-number" aria-hidden="true">{% if instagram_connection.last_sync_at and instagram_connected %}<i class="ti ti-check"></i>{% else %}3{% endif %}</span><div><strong>Inbox sync</strong><p>{% if instagram_connection.last_sync_at and instagram_connected %}Initial sync complete{% elif instagram_connected %}Preparing your conversations{% else %}Bring conversations into SHVYA{% endif %}</p></div></li>
+        </ol>
+      </div>
+      {% if instagram_connected %}<div class="ig-account-management"><span>You control your Instagram connection.</span><form method="post" action="{% url 'crm-instagram-disconnect' %}">{% csrf_token %}<button class="ig-disconnect-button" type="submit">Disconnect account</button></form></div>{% endif %}
+    </section>
+
+    {% if not instagram_inbox_ready %}
+    <section class="ig-before-connect" aria-labelledby="ig-before-title">
+      <p class="ig-section-label">Before you connect</p><h2 id="ig-before-title">Ready for a smooth start.</h2>
+      <div class="ig-requirement-grid">
+        <article><span class="ig-requirement-icon ig-purple"><i class="ti ti-user-check" aria-hidden="true"></i></span><h3>A professional account</h3><p>Connect an Instagram Business or Creator account that you manage.</p></article>
+        <article><span class="ig-requirement-icon ig-pink"><i class="ti ti-message-circle" aria-hidden="true"></i></span><h3>Access to messages</h3><p>Allow connected tools to access messages in your Instagram account settings.</p></article>
+        <article><span class="ig-requirement-icon ig-blue"><i class="ti ti-shield-check" aria-hidden="true"></i></span><h3>Approve the connection</h3><p>Grant SHVYA the requested account and messaging permissions during sign-in.</p></article>
+      </div>
+    </section>
+    {% endif %}
+
+    <details class="ig-connect-diagnostics" {% if not instagram_meta_ready %}open{% endif %}>
+      <summary><span><i class="ti ti-settings" aria-hidden="true"></i> Connection diagnostics and Meta app setup</span><i class="ti ti-chevron-down" aria-hidden="true"></i></summary>
+      <div class="ig-diagnostics-content">
+        <p>Dedicated Instagram credentials loaded: <strong>{% if instagram_meta_ready %}Yes{% else %}No{% endif %}</strong>. Webhook verify token loaded: <strong>{% if instagram_verify_ready %}Yes{% else %}No{% endif %}</strong>. Values are never displayed.</p>
+        <p>Use the Instagram App ID and App Secret from <strong>Instagram API with Instagram Login</strong>. Required permissions: <code>instagram_business_basic</code> and <code>instagram_business_manage_messages</code>.</p>
+        <div class="ig-diagnostics-uris"><div><strong>OAuth redirect URI</strong><p>Register this exact HTTPS URI in Meta, including the trailing slash.</p><code>{{ instagram_redirect_uri }}</code></div><div><strong>Webhook callback</strong><p>Use the verify token configured for this Instagram integration.</p><code>{{ instagram_webhook_uri }}</code></div></div>
+        <p>In development mode, use an authorized app tester who has accepted the invitation. Customer accounts require the applicable Meta App Review and access approvals.</p>
+        <p>If authorization remains pending, check the background worker and broker. If account authorization succeeds but the message connection or sync fails, retry inbox setup after resolving the reported error.</p>
+        <a href="https://developers.facebook.com/docs/instagram-platform/instagram-api-with-instagram-login/business-login/" target="_blank" rel="noopener noreferrer">Meta Instagram Login documentation <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
+      </div>
+    </details>
+
+    <section class="ig-messaging-note" aria-labelledby="ig-messaging-title"><i class="ti ti-info-circle" aria-hidden="true"></i><div><h3 id="ig-messaging-title">Built for customer-started conversations.</h3><p>The standard reply window is 24 hours from the customer’s latest message. SHVYA checks this window before queueing and sending. This inbox does not use the HUMAN_AGENT exception. Availability of stories and shared media depends on Meta.</p><a href="{{ instagram_policy_url }}" target="_blank" rel="noopener noreferrer">Instagram messaging rules <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a></div></section>
+  </div>
 </div>
-<script>
-(() => {
-  const root = document.querySelector('[data-ig-connect-state]');
-  if (!root || root.dataset.igConnectState !== 'authorizing') return;
-  let timer, failures = 0;
-  const started = Date.now();
-  async function check() {
-    if (document.hidden) { timer = setTimeout(check, 5000); return; }
-    if (Date.now() - started > 660000) { document.getElementById('ig-setup-poll').textContent = 'Authorization did not finish. Start Connect again and check the background worker.'; return; }
-    try {
-      const response = await fetch(location.href, {headers:{Accept:'application/json'}, credentials:'same-origin', cache:'no-store', signal:AbortSignal.timeout(12000)});
-      if (response.redirected || !response.ok || !response.headers.get('content-type')?.includes('application/json')) throw new Error();
-      const data = await response.json();
-      failures = 0;
-      if (!data.instagram_oauth_pending) { location.reload(); return; }
-    } catch (_) {
-      failures += 1;
-      document.getElementById('ig-setup-poll').textContent = 'Status updates are temporarily unavailable. Your authorization request has not been resubmitted.';
-    }
-    timer = setTimeout(check, Math.min(30000, 3000 * 2 ** Math.min(failures, 3)));
-  }
-  timer = setTimeout(check, 1500);
-  addEventListener('pagehide', () => clearTimeout(timer), {once:true});
-})();
-</script>
 {% endblock %}

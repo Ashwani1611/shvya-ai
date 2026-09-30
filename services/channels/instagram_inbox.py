@@ -200,7 +200,7 @@ A timeout/crash after submission is ambiguous. A redelivered Celery task must
 not send it again. A durable marker survives failures, unlike a short cache lock.
 """
     with transaction.atomic():
-        message = InstagramMessage.objects.select_for_update().select_related(
+        message = InstagramMessage.objects.select_for_update(of=("self",)).select_related(
             "account", "conversation", "conversation__account",
         ).filter(pk=message_id).first()
         if not message or message.status != InstagramMessage.Status.QUEUED:

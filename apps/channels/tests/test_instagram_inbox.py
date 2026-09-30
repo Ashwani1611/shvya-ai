@@ -73,6 +73,16 @@ class InstagramInboxTests(TestCase):
         with self.assertRaises(InstagramAPIError):
             inbox_thread(self.org, self.conversation.pk, before=cursor)
 
+    def test_loading_older_messages_marks_only_the_displayed_pages_read(self):
+        base = timezone.now() - timedelta(days=2)
+        for i in range(60):
+            self.add_message(sent_at=base + timedelta(minutes=i), is_read=False)
+        first = self.detail().json()["active_conversation"]
+        self.assertEqual(self.conversation.messages.filter(is_read=False).count(), 11)
+        older = self.detail(before=first["before"])
+        self.assertEqual(older.status_code, 200)
+        self.assertEqual(self.conversation.messages.filter(is_read=False).count(), 0)
+
     def test_outbound_does_not_extend_customer_window(self):
         self.inbound.sent_at = timezone.now()-timedelta(hours=25)
         self.inbound.save(update_fields=["sent_at"])

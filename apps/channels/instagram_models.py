@@ -240,6 +240,7 @@ class InstagramWebhookDelivery(models.Model):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
     error_message = models.TextField(blank=True)
     received_at = models.DateTimeField(auto_now_add=True)
+    dispatched_at = models.DateTimeField(null=True, blank=True)
     processed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:

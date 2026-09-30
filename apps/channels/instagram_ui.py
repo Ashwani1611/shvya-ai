@@ -66,8 +66,10 @@ def _connection_context(organization):
         InstagramOAuthAttempt.Status.QUEUED, InstagramOAuthAttempt.Status.PROCESSING,
     ))
     expired = bool(pending and latest.expires_at and latest.expires_at <= now)
-    connected = bool(account and account.status == InstagramAccount.Status.CONNECTED)
     token_expired = bool(account and account.token_expires_at and account.token_expires_at <= now)
+    connected = bool(
+        account and account.status == InstagramAccount.Status.CONNECTED and not token_expired
+    )
     error = account.last_error if account else ""
     if latest and latest.status == InstagramOAuthAttempt.Status.FAILED:
         error = latest.error_message
@@ -79,7 +81,11 @@ def _connection_context(organization):
     if connection:
         connection["last_error"] = connection_error(error, account)
         connection["profile_picture_url"] = safe_url(connection.get("profile_picture_url"))
-    ready = bool(connected and not token_expired and account.webhook_subscribed and account.last_sync_at)
+    # A failed reconnect is still worth displaying, but it does not invalidate
+    # a healthy existing connection or a subsequently successful setup retry.
+    ready = bool(
+        connected and account.webhook_subscribed and account.last_sync_at and not account.last_error
+    )
     return {
         "instagram_connection": connection,
         "instagram_connected": connected,
@@ -90,8 +96,10 @@ def _connection_context(organization):
         "instagram_inbox_ready": ready,
         "instagram_connection_state": (
             "authorizing" if pending and not expired else "ready" if ready else
-            "authorized_with_warning" if connected and not token_expired else
-            "expired" if expired or token_expired else account.status if account else "not_connected"
+            "authorized_with_warning" if connected else
+            "expired" if expired or token_expired else
+            "failed" if latest and latest.status == InstagramOAuthAttempt.Status.FAILED else
+            account.status if account else "not_connected"
         ),
     }
 
@@ -152,9 +160,9 @@ def instagram_oauth_start_view(request):
         "user_id": str(request.crm_user.pk),
         "nonce": secrets.token_urlsafe(24), "redirect_uri": redirect_uri,
     }, salt=OAUTH_STATE_SALT, compress=True)
-    return redirect(provider.build_authorize_url(
+    return _private(redirect(provider.build_authorize_url(
         app_id=provider.instagram_app_id(), redirect_uri=redirect_uri, state=state,
-    ))
+    )))
 
 
 @crm_login_required
@@ -261,8 +269,7 @@ def _chat_response(request, conversation_id=None):
     if conversation_id:
         try:
             active = _present_thread(inbox_thread(organization, conversation_id, before=request.GET.get("before", "")), organization)
-            if not request.GET.get("before"):
-                mark_loaded_read(organization, conversation_id, [message["id"] for message in active["messages"]])
+            mark_loaded_read(organization, conversation_id, [message["id"] for message in active["messages"]])
         except provider.InstagramAPIError as exc:
             if _json_requested(request):
                 return _private(JsonResponse({"error": connection_error(exc, account)}, status=404))
