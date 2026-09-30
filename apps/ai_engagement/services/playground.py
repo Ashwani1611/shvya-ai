@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from copy import deepcopy
 from contextlib import nullcontext
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 
@@ -102,9 +103,13 @@ class _SandboxContextBuilder:
         if pipeline is None:
             return {}
 
+        from apps.ai_engagement.services.confidentiality import (
+            is_sensitive_attribute_definition,
+        )
+
         try:
             attribute_definitions = list(
-                self.organization.crm_attribute_definitions.values(
+                self.organization.crm_attribute_definitions.exclude(key="booked_at").values(
                     "key",
                     "name",
                     "field_type",
@@ -139,7 +144,10 @@ class _SandboxContextBuilder:
             "phone_number": pipeline.phone_number,
             "is_active": pipeline.is_active,
             "available_stages": stages,
-            "attribute_definitions": attribute_definitions,
+            "attribute_definitions": [
+                item for item in attribute_definitions
+                if not is_sensitive_attribute_definition(item)
+            ],
         }
 
     def _stage_context(self) -> dict[str, Any]:
@@ -157,13 +165,12 @@ class _SandboxContextBuilder:
         }
 
     def _attribute_context(self) -> list[dict[str, Any]]:
-        attributes = self.visitor.attributes
-        if not isinstance(attributes, dict):
-            return []
+        from apps.ai_engagement.services.confidentiality import safe_attribute_values
+
+        attributes = safe_attribute_values(self.visitor.attributes)
         return [
             {"name": str(name), "value": value}
             for name, value in attributes.items()
-            if not str(name).startswith("_shvya_ai_")
         ]
 
     def _retrieve_knowledge(
@@ -353,6 +360,7 @@ class PlaygroundService:
         history: list[dict[str, Any]] | None = None,
         stage_id: str | None = None,
     ) -> PlaygroundResult:
+        started_at = monotonic()
         if organization is None:
             raise PlaygroundError("Organization is required.")
 
@@ -457,16 +465,6 @@ class PlaygroundService:
             if self.engagement_service is not None:
                 service.context_builder = previous_builder
 
-        # The live WhatsApp wrapper detects the first inbound from persisted
-        # WhatsApp rows. Sandbox has no rows by design, so pass the equivalent
-        # first-turn fact explicitly while reusing the exact same welcome helper.
-        decision = apply_first_inbound_welcome(
-            decision=decision,
-            organization=organization,
-            lead=visitor,
-            first_turn=(turn == 1),
-        )
-
         profile = compile_org_ai_profile_from_context(
             context_builder.organization_context()
         )
@@ -501,11 +499,33 @@ class PlaygroundService:
             )
 
         qualification = state_for_lead(visitor, requirements=requirements)
+        from apps.ai_engagement.services.playground_effects import preview_effects
+        sent_files = list(saved.get("sent_files") or [])
+        events, files = preview_effects(organization=organization, visitor=visitor, decision=decision,
+            requirements=requirements, qualification=qualification, sent_files=sent_files)
+
+        # Previewed stage changes update the same qualification lifecycle used
+        # by live CRM stage changes. Persist the contract for the resulting stage.
+        qualification = state_for_lead(visitor, requirements=requirements)
         visitor.attributes[STATE_KEY] = contract(
             qualification=qualification,
             requirements=requirements,
             saved=visitor.attributes.get(STATE_KEY),
             organization_id=organization.id,
+        )
+        if events and decision.should_engage and monotonic() - started_at < 15:
+            decision = self._compose_after_preview(
+                organization=organization, visitor=visitor, message=message,
+                service=service, context_builder=context_builder,
+                decision=decision, files=files,
+            )
+
+        # Apply the live welcome helper only to the final customer-facing copy.
+        decision = apply_first_inbound_welcome(
+            decision=decision,
+            organization=organization,
+            lead=visitor,
+            first_turn=(turn == 1),
         )
         visitor.attributes[STATE_KEY].update(
             message_id=conversation[-1]["id"],
@@ -513,10 +533,6 @@ class PlaygroundService:
             response_hash=response_hash(decision.message),
         )
 
-        from apps.ai_engagement.services.playground_effects import preview_effects
-        sent_files = list(saved.get("sent_files") or [])
-        events, files = preview_effects(organization=organization, visitor=visitor, decision=decision,
-            requirements=requirements, qualification=qualification, sent_files=sent_files)
         response_text = decision.message if decision.should_engage else ""
         updated_history = list(source_history)
         updated_history.extend(
@@ -544,6 +560,82 @@ class PlaygroundService:
                    "pipeline": getattr(visitor.pipeline, "name", "")},
             events=events, files=files,
         )
+
+    def _compose_after_preview(
+        self, *, organization, visitor, message, service, context_builder,
+        decision, files,
+    ):
+        """Reuse live final composition after one in-memory stage transition.
+
+        The first validated pass owns every effect. This one language-only pass
+        sees the resulting stage, but cannot change preview state or file choice.
+        """
+        from apps.ai_engagement.services.file_sharing import FileSharingService
+        from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
+        from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+
+        attributes = deepcopy(visitor.attributes)
+        previous_builder = service.context_builder
+        previous_provider = service.provider
+        token = _FINAL_LANGUAGE_ONLY.set(True)
+        try:
+            context_builder.pipeline, context_builder.stage = visitor.pipeline, visitor.stage
+            knowledge = list(context_builder.last_knowledge)
+            context = context_builder.build(organization=organization, lead=visitor)
+            selected_ids = {item["id"] for item in files}
+            candidates = [
+                item for item in FileSharingService().build_file_candidates(
+                    organization=organization, context=context,
+                )
+                if item["document_id"] in selected_ids
+            ] if selected_ids else []
+            resolved = {
+                "action_types": ["pipeline_transition"],
+                "stage": {"id": str(visitor.stage_id), "name": visitor.stage.name},
+            }
+            if files:
+                resolved["action_types"].append("file_share")
+                resolved["file_share"] = {
+                    "status": "resolved_pending_send",
+                    "document_id": files[0]["id"],
+                    "document_name": files[0]["name"],
+                }
+            context = replace(
+                context,
+                organization={**context.organization, "_file_candidates": candidates},
+                lead={**context.lead, "operational_state": {
+                    "execution_mode": "sandbox_preview", "resolved_actions": resolved,
+                }},
+                knowledge=knowledge,
+            )
+            service.context_builder = context_builder
+            service.provider = previous_provider or OpenAIProvider(timeout_seconds=5)
+            evidence_scope = (
+                sandbox_evidence_context(
+                    organization=organization, lead=visitor, message=message,
+                    provider=service.provider,
+                )
+                if hasattr(organization, "_meta") else nullcontext()
+            )
+            with evidence_scope:
+                final = service.engage(organization=organization, lead=visitor, context=context)
+            return replace(
+                final, crm_actions=[], qualification_updates=[],
+                file_document_id=decision.file_document_id,
+            )
+        except Exception as exc:
+            logger.exception(
+                "AI Sandbox post-transition composition failed for organization %s",
+                getattr(organization, "id", ""),
+            )
+            return self._fallback_decision(
+                organization=organization, visitor=visitor, message=message, cause=exc,
+            )
+        finally:
+            visitor.attributes = attributes
+            service.context_builder = previous_builder
+            service.provider = previous_provider
+            _FINAL_LANGUAGE_ONLY.reset(token)
 
     def _fallback_decision(
         self,
