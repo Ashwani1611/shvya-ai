@@ -10,6 +10,7 @@ from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead
+from services.channels.message_visibility import pending_ai_message_q
 
 
 API_CONNECTION_TYPE = WhatsAppAccount.ConnectionType.API
@@ -181,13 +182,13 @@ def list_api_conversations(*, organization, account=None, tab="all"):
             account=account,
         ),
         lead__isnull=False,
-    )
+    ).exclude(pending_ai_message_q())
 
     acc_q = _visible_message_account_q(
         organization=organization,
         account=account,
         prefix="whatsapp_messages__",
-    )
+    ) & ~pending_ai_message_q(prefix="whatsapp_messages__")
 
     lead_ids = base_msg_qs.values_list("lead_id", flat=True).distinct()
     last_msg_qs = base_msg_qs.filter(lead=OuterRef("pk")).order_by(
@@ -252,7 +253,7 @@ def get_api_conversation_messages(*, organization, lead, account=None):
         ),
         lead=lead,
     )
-    return queryset.order_by("created_at", "pk")
+    return queryset.exclude(pending_ai_message_q()).order_by("created_at", "pk")
 
 
 def mark_api_conversation_read(*, organization, lead, account=None):

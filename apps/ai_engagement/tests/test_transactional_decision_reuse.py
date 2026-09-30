@@ -53,7 +53,7 @@ class TransactionalDecisionReuseTests(TestCase):
             str(cached["revision"]).startswith("post-state-regenerate:")
         )
 
-    def test_exact_transitioning_message_can_finish_after_destination_stage_disables_ai(self):
+    def test_exact_transitioning_message_respects_destination_stage_ai_off(self):
         inbound = self._inbound("transition-finalization")
         self.qualified.ai_on = False
         self.qualified.save(update_fields=["ai_on", "updated_at"])
@@ -68,11 +68,8 @@ class TransactionalDecisionReuseTests(TestCase):
             lead=self.lead,
             latest_inbound=inbound,
         )
-        self.assertTrue(permission.allowed)
-        self.assertEqual(
-            permission.reason,
-            "same_turn_stage_transition_finalization",
-        )
+        self.assertFalse(permission.allowed)
+        self.assertEqual(permission.reason, "stage_ai_disabled")
 
         # The destination stage still blocks every later turn.
         later = self._inbound("later-after-transition")
@@ -84,10 +81,8 @@ class TransactionalDecisionReuseTests(TestCase):
         self.assertFalse(permission.allowed)
         self.assertEqual(permission.reason, "stage_ai_disabled")
 
-    def test_same_turn_stage_exception_does_not_bypass_lead_ai_control(self):
+    def test_same_turn_marker_does_not_bypass_lead_ai_control(self):
         inbound = self._inbound("transition-lead-disabled")
-        self.qualified.ai_on = False
-        self.qualified.save(update_fields=["ai_on", "updated_at"])
         self.lead.stage = self.qualified
         self.lead.ai_enabled = False
         self.lead.save(update_fields=["stage", "ai_enabled", "updated_at"])

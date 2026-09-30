@@ -857,7 +857,7 @@ def account_ai_block_reason(*, account, lead, bump_up_number=None):
     ).first()
     if lead is None:
         return "lead_organization_mismatch"
-    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead)
+    decision = AIPermissionService().evaluate(organization=lead.organization, lead=lead, account=account)
     if not decision.allowed:
         return decision.reason
     controls = get_session_settings(account=account)

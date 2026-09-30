@@ -216,15 +216,18 @@ class HostedQueueSourceOfTruthTests(TestCase):
             status=WhatsAppMessage.Status.RECEIVED,
             raw_payload={},
         )
-        return HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=self.account,
-            lead=self.lead,
+        job, _ = HostedAutomationJob.objects.update_or_create(
             source_message=inbound,
-            status=status,
-            started_at=started_at,
-            available_at=timezone.now() - timedelta(seconds=1),
+            defaults={
+                "organization": self.organization,
+                "account": self.account,
+                "lead": self.lead,
+                "status": status,
+                "started_at": started_at,
+                "available_at": timezone.now() - timedelta(seconds=1),
+            },
         )
+        return job
 
     def test_dispatcher_keeps_job_queued_until_processing_task_claims_it(self):
         from services.channels.hosted_automation_service import (
@@ -252,7 +255,8 @@ class HostedQueueSourceOfTruthTests(TestCase):
         self.assertEqual(result["status"], "dispatched")
         self.assertEqual(job.status, HostedAutomationJob.Status.QUEUED)
         self.assertIsNone(job.started_at)
-        self.assertGreater(job.available_at, timezone.now())
+        self.assertGreater(job.lease_expires_at, timezone.now())
+        self.assertLess(job.available_at, timezone.now())
         publish.assert_called_once_with(str(job.id))
 
     def test_stale_processing_job_returns_to_queue_and_is_dispatched(self):
@@ -350,12 +354,14 @@ class HostedQueueSourceOfTruthTests(TestCase):
             body="Tell me more",
             status=WhatsAppMessage.Status.RECEIVED,
         )
-        job = HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=self.account,
-            lead=self.lead,
+        job, _ = HostedAutomationJob.objects.update_or_create(
             source_message=inbound,
-            available_at=now + timedelta(minutes=2),
+            defaults={
+                "organization": self.organization,
+                "account": self.account,
+                "lead": self.lead,
+                "available_at": now + timedelta(minutes=2),
+            },
         )
 
         sequence = FollowupSequence.objects.create(
@@ -415,9 +421,80 @@ class HostedQueueSourceOfTruthTests(TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertEqual(len(payload["items"]), 2)
-        self.assertEqual(payload["items"][0]["id"], str(state.id))
-        self.assertEqual(payload["items"][0]["next_step"], "First follow-up")
-        self.assertEqual(payload["items"][0]["available_at"], next_send.isoformat())
+        self.assertEqual(payload["items"][1]["id"], str(state.id))
+        self.assertEqual(payload["items"][1]["next_step"], "First follow-up")
+        self.assertEqual(payload["items"][1]["available_at"], next_send.isoformat())
         self.assertEqual(payload["next_execution_at"], next_send.isoformat())
-        self.assertEqual(payload["items"][1]["id"], str(job.id))
-        self.assertIn("AI reply to: Tell me more", payload["items"][1]["body"])
+        self.assertEqual(payload["items"][0]["id"], str(job.id))
+        self.assertIn("AI reply to: Tell me more", payload["items"][0]["body"])
+
+    def _queue(self):
+        response = self.client.get(reverse("whatsapp-hosted-session-queue", args=[self.account.id]))
+        self.assertEqual(response.status_code, 200)
+        return response.json()
+
+    def test_queue_welcome_without_inbound_is_first_even_during_backoff(self):
+        reply = self._ai_job()
+        welcome = HostedAutomationJob.objects.create(
+            organization=self.organization, account=self.account, lead=self.lead,
+            kind=HostedAutomationJob.Kind.WELCOME,
+            available_at=timezone.now() + timedelta(seconds=30),
+        )
+        payload = self._queue()
+        self.assertEqual([row["id"] for row in payload["items"]], [str(welcome.pk), str(reply.pk)])
+        self.assertEqual(payload["items"][0]["message_type"], "Welcome message")
+        self.assertEqual(payload["pending_ai_count"], 2)
+        self.assertEqual(payload["ai_min_send_gap_seconds"], 45)
+
+    def test_queue_stale_processing_lease_is_reported_as_recovering(self):
+        job = self._ai_job(status=HostedAutomationJob.Status.PROCESSING, started_at=timezone.now())
+        HostedAutomationJob.objects.filter(pk=job.pk).update(lease_expires_at=timezone.now()-timedelta(seconds=1))
+        row, = self._queue()["items"]
+        self.assertEqual(row["status"], "processing")
+        self.assertEqual(row["effective_status"], "recovering")
+        self.assertIn("Waiting for worker recovery", row["origin"])
+        self.assertNotIn("Processing now", row["origin"])
+
+    def test_queued_publication_does_not_claim_processing_in_ui(self):
+        job = self._ai_job()
+        HostedAutomationJob.objects.filter(pk=job.pk).update(lease_expires_at=timezone.now()+timedelta(seconds=30))
+        row, = self._queue()["items"]
+        self.assertEqual(row["effective_status"], "queued")
+        self.assertIn("waiting for worker", row["origin"])
+
+    def test_queue_uses_durable_sender_gap_and_reports_disabled_stage(self):
+        from apps.channels.models import AIMessageSendState
+        self._ai_job()
+        next_send = timezone.now() + timedelta(seconds=45)
+        AIMessageSendState.objects.create(account=self.account, next_send_at=next_send)
+        row, = self._queue()["items"]
+        self.assertEqual(row["available_at"], next_send.isoformat())
+        self.assertIn("45-second minimum gap", row["origin"])
+        self.stage.ai_on = False
+        self.stage.save(update_fields=["ai_on"])
+        row, = self._queue()["items"]
+        self.assertEqual(row["effective_status"], "blocked")
+        self.assertEqual(row["available_at"], "")
+        self.assertIn("stage", row["block_reason"])
+
+    def test_queue_shows_pending_bumpup_without_job_and_deduplicates_owned_welcome(self):
+        welcome = HostedAutomationJob.objects.create(
+            organization=self.organization, account=self.account, lead=self.lead,
+            kind=HostedAutomationJob.Kind.WELCOME, available_at=timezone.now(),
+        )
+        for metadata, body in (
+            ({"shvya_welcome": {"trigger": "lead_created"}}, "Prepared welcome"),
+            ({"shvya_ai": {"origin": "bump_up", "number": 1}}, "Pending bump-up"),
+        ):
+            WhatsAppMessage.objects.create(
+                organization=self.organization, account=self.account, lead=self.lead,
+                direction="outbound", from_number=self.account.display_phone_number,
+                to_number=self.lead.phone, body=body, status="queued", raw_payload=metadata,
+            )
+        payload = self._queue()
+        self.assertEqual(payload["pending_ai_count"], 2)
+        self.assertEqual(payload["shown_ai_count"], 2)
+        self.assertEqual(len(payload["items"]), 2)
+        self.assertEqual(payload["items"][0]["id"], str(welcome.pk))
+        self.assertEqual(payload["items"][1]["message_type"], "Bump-up message")
+        self.assertEqual(payload["items"][1]["body"], "Pending bump-up")

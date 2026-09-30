@@ -5,7 +5,7 @@ from django.test import TestCase
 from apps.accounts.models import User
 from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
 from apps.channels.models import WhatsAppMessage
-from apps.crm.models import Pipeline, Stage
+from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.hosted_health_guard import (
     message_is_hosted_automation,
@@ -48,6 +48,11 @@ class HostedAccountHealthHardCapTests(TestCase):
         )
         self.account.status = self.account.Status.CONNECTED
         self.account.save(update_fields=["status", "updated_at"])
+        self.lead = Lead.objects.create(
+            organization=self.org, pipeline=self.pipeline,
+            stage=self.pipeline.stages.get(name="New leads"),
+            name="Welcome Prospect", phone="+919999999999", ai_enabled=True,
+        )
 
     def _create_sent_messages(self, count):
         WhatsAppMessage.objects.bulk_create(
@@ -74,6 +79,7 @@ class HostedAccountHealthHardCapTests(TestCase):
         return WhatsAppMessage.objects.create(
             organization=self.org,
             account=self.account,
+            lead=self.lead,
             direction=WhatsAppMessage.Direction.OUTBOUND,
             from_number="+918700274739",
             to_number="+919999999999",
@@ -113,7 +119,7 @@ class HostedAccountHealthHardCapTests(TestCase):
         self.assertEqual(repaired.window_messages_sent, 3)
 
     @patch("services.channels.hosted_chat_service.queue_hosted_chat_refresh")
-    @patch("apps.channels.hosted_send_tasks.WhatsAppWebClient.send_message")
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.send_message")
     def test_welcome_is_not_sent_after_250_limit(self, provider_send, _refresh):
         self._create_sent_messages(250)
         health = sync_hosted_health_from_messages(account=self.account)
@@ -142,7 +148,7 @@ class HostedAccountHealthHardCapTests(TestCase):
 
     @patch("services.channels.hosted_chat_service.queue_hosted_chat_refresh")
     @patch(
-        "apps.channels.hosted_send_tasks.WhatsAppWebClient.send_message",
+        "apps.channels.providers.whatsapp_web.WhatsAppWebClient.send_message",
         return_value={"messageId": "MANUAL-AFTER-LIMIT"},
     )
     def test_manual_agent_message_is_not_blocked_by_automation_pause(

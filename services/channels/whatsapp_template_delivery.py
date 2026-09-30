@@ -2,6 +2,9 @@
 
 from functools import wraps
 
+from django.utils import timezone
+from services.channels.ai_send_gate import paced_ai_send
+
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.channels.providers.whatsapp import WhatsAppAPIError
 
@@ -256,6 +259,7 @@ def queue_template_message(*, template, lead, user=None):
     )
 
 
+@paced_ai_send
 def _send_template_transport(message):
     account = message.account
     if account.organization_id != message.organization_id:
@@ -296,6 +300,12 @@ def _send_template_transport(message):
     messages = response.get("messages") or [] if isinstance(response, dict) else []
     external_id = messages[0].get("id") if messages else None
 
+    if not external_id:
+        message.status = WhatsAppMessage.Status.FAILED
+        message.error = "WhatsApp provider returned no message id."
+        message.save(update_fields=["status", "error", "updated_at"])
+        raise base.WhatsAppSendError(message.error)
+
     existing_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
     ai_metadata = existing_payload.get("shvya_ai")
     final_payload = dict(response) if isinstance(response, dict) else {}
@@ -312,11 +322,12 @@ def _send_template_transport(message):
             final_payload[key] = existing_payload[key]
 
     message.status = WhatsAppMessage.Status.SENT
+    message.sent_at = timezone.now()
     message.external_id = external_id
     message.raw_payload = final_payload
     message.error = ""
     message.save(
-        update_fields=["status", "external_id", "raw_payload", "error", "updated_at"]
+        update_fields=["status", "external_id", "sent_at", "raw_payload", "error", "updated_at"]
     )
     return message
 

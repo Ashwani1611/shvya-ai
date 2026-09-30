@@ -174,9 +174,9 @@ def install_transactional_decision_reuse() -> None:
 
     # ------------------------------------------------------------
     # Resolve file eligibility before any state mutation, run the transactional
-    # mutation pass, then mark the canonical pass as FORCE REGENERATE. We keep a
-    # one-turn marker for the destination-stage permission exception, but never
-    # cache/reuse the pre-mutation response candidate.
+    # mutation pass, then mark the canonical pass as FORCE REGENERATE. Never
+    # cache/reuse the pre-mutation response candidate; current AI controls still
+    # govern whether the resulting customer message may be sent.
     # ------------------------------------------------------------
     current_resolve = runtime._resolve_state_before_response
 
@@ -353,69 +353,9 @@ def install_transactional_decision_reuse() -> None:
 
     EngagementService._build_input = build_input_with_operational_state
 
-    # ------------------------------------------------------------
-    # A deterministic transition can land on a stage whose AI is disabled. That
-    # stage blocks future turns, but not the fresh final acknowledgement for the
-    # exact inbound message that caused the transition.
-    # ------------------------------------------------------------
-    from apps.ai_engagement.services.ai_permissions import AIPermissionService
-
-    current_permission_evaluate = AIPermissionService.evaluate
-
-    def evaluate_permission(self, *, organization, lead, latest_inbound=None):
-        permission = current_permission_evaluate(
-            self,
-            organization=organization,
-            lead=lead,
-            latest_inbound=latest_inbound,
-        )
-        if permission.allowed or permission.reason != "stage_ai_disabled":
-            return permission
-
-        cached = runtime._PRECOMPUTED_DECISION.get()
-        if (
-            not isinstance(cached, dict)
-            or not cached.get("force_regenerate")
-            or cached.get("lead_id") != str(getattr(lead, "pk", ""))
-        ):
-            return permission
-
-        if latest_inbound is None:
-            latest_inbound = self._latest_inbound_message(
-                organization=organization,
-                lead=lead,
-            )
-        source_message_id = str(cached.get("source_message_id") or "")
-        if not source_message_id or str(getattr(latest_inbound, "pk", "") or "") != source_message_id:
-            return permission
-
-        if not getattr(lead, "ai_enabled", True):
-            return self._decision(
-                allowed=False,
-                reason="lead_ai_disabled",
-                organization=organization,
-                lead=lead,
-            )
-        mapping_allowed, mapping_reason = self._conversation_uses_pipeline_number(
-            organization=organization,
-            lead=lead,
-            latest_message=latest_inbound,
-        )
-        if not mapping_allowed:
-            return self._decision(
-                allowed=False,
-                reason=mapping_reason,
-                organization=organization,
-                lead=lead,
-            )
-        return self._decision(
-            allowed=True,
-            reason="same_turn_stage_transition_finalization",
-            organization=organization,
-            lead=lead,
-        )
-
-    AIPermissionService.evaluate = evaluate_permission
+    # Stage/lead/pipeline/organization controls remain authoritative after a
+    # state transition. Completing the triggering turn must not create a
+    # one-message exception to a destination stage whose AI is disabled.
 
     # ------------------------------------------------------------
     # Finalization previously replaced shvya_ai_processing wholesale, erasing

@@ -1,10 +1,12 @@
 import json
+from datetime import timedelta
 from unittest.mock import patch
 
 from celery.exceptions import Retry
 from django.core.cache import cache
 from django.db import transaction
 from django.test import TransactionTestCase, override_settings
+from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.channels.providers.whatsapp import WhatsAppAPIError
@@ -201,3 +203,52 @@ class WhatsAppSendTaskLifecycleTests(TransactionTestCase):
         message.refresh_from_db()
         self.assertEqual(message.status, WhatsAppMessage.Status.FAILED)
         self.assertIn("unexpected provider wrapper failure", message.error)
+
+    @patch("services.channels.whatsapp_service.send_outbound_message")
+    def test_ai_pacing_wait_is_durable_and_does_not_consume_retry_budget(self, send):
+        from services.channels.ai_send_gate import AIMessageDeferred
+
+        message = self._message()
+        message.raw_payload = {"shvya_ai": {"origin": "engagement"}}
+        message.save(update_fields=["raw_payload"])
+        available_at = timezone.now() + timedelta(seconds=45)
+        send.side_effect = AIMessageDeferred(available_at)
+        with patch.object(send_whatsapp_message_task, "apply_async") as publish, patch.object(
+            send_whatsapp_message_task, "retry"
+        ) as retry, patch("apps.core.fairness.admit_provider_start") as admit:
+            result = send_whatsapp_message_task.run(str(message.pk))
+
+        message.refresh_from_db()
+        self.assertEqual(result["status"], "deferred")
+        self.assertEqual(message.status, "queued")
+        self.assertEqual(message.error, "")
+        self.assertEqual(message.raw_payload["shvya_ai_delivery"]["available_at"], available_at.isoformat())
+        publish.assert_called_once_with(args=[str(message.pk)], eta=available_at)
+        retry.assert_not_called()
+        admit.assert_not_called()
+
+    @patch("services.channels.whatsapp_service.send_outbound_message")
+    def test_failed_pacing_wakeup_retains_queued_message_for_recovery(self, send):
+        from services.channels.ai_send_gate import AIMessageDeferred
+
+        message = self._message()
+        send.side_effect = AIMessageDeferred(timezone.now() + timedelta(seconds=45))
+        with patch.object(send_whatsapp_message_task, "apply_async", side_effect=RuntimeError("broker offline")):
+            result = send_whatsapp_message_task.run(str(message.pk))
+
+        message.refresh_from_db()
+        self.assertEqual(result["status"], "deferred")
+        self.assertEqual(message.status, "queued")
+
+    @patch("services.channels.whatsapp_service.send_outbound_message")
+    def test_api_welcome_owned_by_durable_job_is_not_sent_independently(self, send):
+        message = self._message()
+        message.raw_payload = {"shvya_welcome": {"job_id": "test-job"}}
+        message.save(update_fields=["raw_payload"])
+
+        result = send_whatsapp_message_task.run(str(message.pk))
+
+        self.assertEqual(result["reason"], "ai_job_transport_managed_separately")
+        message.refresh_from_db()
+        self.assertEqual(message.status, "queued")
+        send.assert_not_called()

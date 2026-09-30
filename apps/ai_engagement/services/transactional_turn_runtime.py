@@ -535,6 +535,14 @@ def install_transactional_turn_runtime() -> None:
         source = _latest_inbound(lead)
         if source is None or _message_state_resolved(lead=lead, source_message_id=source.pk):
             return original_execute(task=task, lead_id=lead_id)
+        # A durable reply already owns this source. Let canonical execution
+        # report its delivery state before the transactional prepass calls AI.
+        if lead.whatsapp_messages.filter(
+            organization_id=lead.organization_id,
+            direction="outbound",
+            raw_payload__shvya_ai__source_inbound_message_id=str(source.pk),
+        ).exists():
+            return original_execute(task=task, lead_id=lead_id)
 
         try:
             permission = AIPermissionService().evaluate(

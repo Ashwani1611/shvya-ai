@@ -1,288 +1,270 @@
+"""Durable, account-serialized welcome/reply execution.
+
+Database leases own work. Celery messages only wake it, so a broker restart,
+redelivery, rate-limit, or provider retry cannot leave a job processing forever.
+"""
 import logging
+from datetime import timedelta
+from types import SimpleNamespace
+from uuid import uuid4
 
 from celery import shared_task
 from django.db import transaction
 from django.utils import timezone
 
-from apps.channels.models import WhatsAppMessage
+from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.hosted_automation.models import HostedAutomationJob
 from services.channels.hosted_automation_service import (
+    HOSTED_AI_PROCESSING_STALE_SECONDS,
     HostedAutomationPaused,
     hosted_ai_block_reason,
     hosted_job_allows_history,
+    ordered_ai_jobs,
 )
 from services.channels.hosted_health_guard import hosted_health_pause_until
 
-
 logger = logging.getLogger(__name__)
+SENT_STATUSES = {WhatsAppMessage.Status.SENT, WhatsAppMessage.Status.DELIVERED, WhatsAppMessage.Status.READ}
+
+
+class _DurableRetry(Exception):
+    def __init__(self, exc=None, countdown=30):
+        self.cause = exc
+        self.countdown = countdown or 30
+        super().__init__(str(exc or "AI generation retry"))
+
+
+class _DurableTask:
+    """Translate provider retry requests into durable queue state, not ETA tasks."""
+    def __init__(self, job):
+        self.request = SimpleNamespace(retries=int((job.result or {}).get("retry_count", 0)))
+
+    def retry(self, exc=None, countdown=30, **kwargs):
+        raise _DurableRetry(exc=exc, countdown=countdown)
+
+
+def _owned(job):
+    return HostedAutomationJob.objects.filter(
+        pk=job.pk, status=HostedAutomationJob.Status.PROCESSING, claim_token=job.claim_token,
+    )
+
+
+def _finish(job, status, result, error=""):
+    changed = _owned(job).update(
+        status=status, completed_at=timezone.now(), result=result, error=str(error)[:2000],
+        lease_expires_at=None, claim_token="", updated_at=timezone.now(),
+    )
+    if changed and status in {HostedAutomationJob.Status.FAILED, HostedAutomationJob.Status.SKIPPED}:
+        message_id = (result or {}).get("message_id")
+        if message_id:
+            WhatsAppMessage.objects.filter(pk=message_id, status=WhatsAppMessage.Status.QUEUED).update(
+                status=WhatsAppMessage.Status.FAILED,
+                error=str(error or result.get("reason") or "AI job did not complete delivery")[:2000],
+            )
+    return result if changed else {"status": "skipped", "reason": "job_lease_replaced"}
+
+
+def _defer(job, available_at, reason, error="", retry=False):
+    result = {**(job.result or {}), "defer_reason": reason, "available_at": available_at.isoformat()}
+    result.pop("_processing_task_id", None)
+    if retry:
+        result["retry_count"] = int(result.get("retry_count", 0)) + 1
+        if result["retry_count"] > 8:
+            return _finish(job, HostedAutomationJob.Status.FAILED,
+                           {**result, "status": "failed", "reason": "retry_limit_exceeded"}, error)
+    _owned(job).update(
+        status=HostedAutomationJob.Status.QUEUED, available_at=available_at,
+        started_at=None, completed_at=None, lease_expires_at=None, claim_token="",
+        result=result, error=str(error)[:2000], updated_at=timezone.now(),
+    )
+    # Beat also wakes this database row if the broker is unavailable now.
+    from apps.hosted_automation.signals import schedule_hosted_ai_wakeup
+    schedule_hosted_ai_wakeup(available_at, job.account_id)
+    return {"status": "deferred", "reason": reason, "available_at": available_at.isoformat()}
 
 
 def _requeue_for_health(job, paused_until):
-    job.status = HostedAutomationJob.Status.QUEUED
-    job.available_at = paused_until
-    job.started_at = None
-    job.save(update_fields=["status", "available_at", "started_at", "updated_at"])
-    return {
-        "status": "deferred",
-        "reason": "account_health_pause",
-        "available_at": paused_until.isoformat(),
-    }
+    return _defer(job, paused_until, "account_health_pause")
 
 
 def _cancel_generated_message(job):
-    message_id = (job.result or {}).get("message_id")
-    if not message_id:
-        return
-    WhatsAppMessage.objects.filter(
-        id=message_id,
-        status=WhatsAppMessage.Status.QUEUED,
-    ).update(
-        status=WhatsAppMessage.Status.FAILED,
-        error="Superseded by a newer lead message before Hosted AI delivery.",
-    )
+    from services.channels.hosted_automation_service import cancel_job_outbound
+    cancel_job_outbound(job=job, reason="source_or_controls_changed")
 
 
 def _send_generated_ai_message(job):
     message_id = (job.result or {}).get("message_id")
-    if not message_id:
-        return None
-    try:
-        message = WhatsAppMessage.objects.select_related("account", "lead").get(
-            id=message_id,
-            organization=job.organization,
-            account=job.account,
-        )
-    except WhatsAppMessage.DoesNotExist:
+    message = WhatsAppMessage.objects.select_related("account", "lead").filter(
+        id=message_id, organization=job.organization, account=job.account,
+    ).first() if message_id else None
+    if message is None:
         return {"status": "failed", "reason": "generated_message_missing"}
-    if message.status in {
-        WhatsAppMessage.Status.SENT,
-        WhatsAppMessage.Status.DELIVERED,
-        WhatsAppMessage.Status.READ,
-    }:
-        return {"status": "sent", "message_id": str(message.id)}
+    if message.status in SENT_STATUSES:
+        return {"status": "sent", "message_id": str(message.pk)}
     if message.status != WhatsAppMessage.Status.QUEUED:
-        return {
-            "status": "failed",
-            "reason": "generated_message_not_queued",
-            "message_id": str(message.id),
-        }
+        return {"status": "failed", "reason": "generated_message_not_queued", "message_id": str(message.pk)}
 
-    from services.channels.hosted_whatsapp_transport import send_hosted_message
-    from services.channels.whatsapp_service import WhatsAppSendError
+    # Upgrade pre-change/orphaned rows with their durable owner before the send
+    # gate compares queue priority. A message must never block its own job.
+    payload = dict(message.raw_payload or {})
+    metadata_key = "shvya_welcome" if job.kind == HostedAutomationJob.Kind.WELCOME else "shvya_ai"
+    payload[metadata_key] = {**(payload.get(metadata_key) or {}), "job_id": str(job.pk)}
+    message.raw_payload = payload
+    message.save(update_fields=["raw_payload", "updated_at"])
 
+    from services.channels.whatsapp_service import WhatsAppSendError, send_outbound_message
     try:
-        send_hosted_message(message=message, defer_on_pause=True)
+        if job.account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+            from services.channels.hosted_whatsapp_transport import send_hosted_message
+            send_hosted_message(message=message, defer_on_pause=True)
+        else:
+            send_outbound_message(message=message)
     except WhatsAppSendError as exc:
-        return {"status": "failed", "reason": str(exc), "message_id": str(message.id)}
-    return {"status": "sent", "message_id": str(message.id)}
-
-
-@shared_task(
-    bind=True,
-    max_retries=3,
-    default_retry_delay=30,
-    name="apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task",
-)
-def process_hosted_ai_engagement_job_task(self, job_id):
-    """Execute one durable Hosted Account AI job with explicit account context."""
-    request_id = str(getattr(self.request, "id", "") or "")
-    try:
-        with transaction.atomic():
-            job = (
-                HostedAutomationJob.objects.select_for_update()
-                .select_related("account", "organization", "lead", "source_message")
-                .get(id=job_id)
+        cause = exc.__cause__
+        status_code = getattr(cause, "status_code", None)
+        if cause is not None and status_code is not None and (status_code == 429 or status_code >= 500):
+            WhatsAppMessage.objects.filter(pk=message.pk).exclude(status__in=SENT_STATUSES).update(
+                status=WhatsAppMessage.Status.QUEUED,
             )
-            if job.status not in {
-                HostedAutomationJob.Status.PROCESSING,
-                HostedAutomationJob.Status.QUEUED,
-            }:
-                return {"status": "skipped", "reason": "job_already_finished"}
+            raise _DurableRetry(exc=exc, countdown=30) from exc
+        return {"status": "failed", "reason": str(exc), "message_id": str(message.pk)}
+    return {"status": "sent", "message_id": str(message.pk)}
 
-            result = dict(job.result or {})
-            processing_task_id = str(result.get("_processing_task_id") or "")
-            if (
-                job.status == HostedAutomationJob.Status.PROCESSING
-                and processing_task_id
-                and request_id
-                and processing_task_id != request_id
-            ):
-                return {"status": "skipped", "reason": "job_processing_elsewhere"}
 
-            job.status = HostedAutomationJob.Status.PROCESSING
-            job.started_at = timezone.now()
-            if request_id:
-                result["_processing_task_id"] = request_id
-                job.result = result
-                job.save(
-                    update_fields=[
-                        "status",
-                        "started_at",
-                        "result",
-                        "updated_at",
-                    ]
-                )
-            else:
-                job.save(update_fields=["status", "started_at", "updated_at"])
-    except HostedAutomationJob.DoesNotExist:
-        return {"status": "skipped", "reason": "job_not_found"}
+def _claim(job_id):
+    from services.channels.ai_send_gate import next_ai_send_at
+    row = HostedAutomationJob.objects.filter(pk=job_id).values("account_id").first()
+    if row is None:
+        return None, {"status": "skipped", "reason": "job_not_found"}
+    with transaction.atomic():
+        account = WhatsAppAccount.objects.select_for_update(skip_locked=True).filter(pk=row["account_id"]).first()
+        if account is None:
+            return None, {"status": "deferred", "reason": "account_busy"}
+        job = HostedAutomationJob.objects.select_for_update(of=("self",)).select_related(
+            "account", "organization", "lead", "source_message",
+        ).filter(pk=job_id).first()
+        if job is None or job.status != HostedAutomationJob.Status.QUEUED:
+            return None, {"status": "skipped", "reason": "job_already_claimed_or_finished"}
+        pending = HostedAutomationJob.objects.filter(account=account, status__in=["queued", "processing"])
+        if pending.filter(status="processing").exists():
+            HostedAutomationJob.objects.filter(pk=job.pk).update(lease_expires_at=None)
+            return None, {"status": "deferred", "reason": "account_processing"}
+        first = ordered_ai_jobs(pending).first()
+        if first is not None and first.pk != job.pk:
+            HostedAutomationJob.objects.filter(pk=job.pk).update(lease_expires_at=None)
+            return None, {"status": "deferred", "reason": "ai_queue_priority"}
+        now = timezone.now()
+        send_at = next_ai_send_at(account=account)
+        ready_at = max(value for value in [job.available_at, send_at] if value is not None)
+        if ready_at > now:
+            HostedAutomationJob.objects.filter(pk=job.pk).update(available_at=ready_at, lease_expires_at=None)
+            return None, {"status": "deferred", "reason": "not_due", "available_at": ready_at.isoformat()}
+        job.status = HostedAutomationJob.Status.PROCESSING
+        job.started_at = now
+        job.lease_expires_at = now + timedelta(seconds=HOSTED_AI_PROCESSING_STALE_SECONDS)
+        job.claim_token = uuid4().hex
+        job.attempts += 1
+        job.save(update_fields=["status", "started_at", "lease_expires_at", "claim_token", "attempts", "updated_at"])
+        return job, None
 
-    source_payload = (
-        job.source_message.raw_payload
-        if isinstance(job.source_message.raw_payload, dict)
-        else {}
+
+def _recover_message(job):
+    if (job.result or {}).get("message_id"):
+        return
+    messages = WhatsAppMessage.objects.filter(
+        organization=job.organization, account=job.account, lead=job.lead,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
     )
-    if source_payload.get("isHistory") is True and not hosted_job_allows_history(job):
-        _cancel_generated_message(job)
-        job.status = HostedAutomationJob.Status.SKIPPED
-        job.completed_at = timezone.now()
-        job.result = {**(job.result or {}), "reason": "source_message_is_history"}
-        job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-        return {"status": "skipped", "reason": "source_message_is_history"}
+    if job.kind == HostedAutomationJob.Kind.WELCOME:
+        messages = messages.filter(raw_payload__shvya_welcome__job_id=str(job.pk))
+    else:
+        messages = messages.filter(raw_payload__shvya_ai__source_inbound_message_id=str(job.source_message_id))
+    recovered = messages.order_by("-created_at", "-id").first()
+    if recovered is not None:
+        job.result = {**(job.result or {}), "status": "completed", "engaged": True,
+                      "message_id": str(recovered.pk), "recovered_generated_message": True}
+        _owned(job).update(result=job.result)
 
-    latest = (
-        job.lead.whatsapp_messages.filter(
-            organization=job.organization,
-            account=job.account,
-            direction=WhatsAppMessage.Direction.INBOUND,
-        )
-        .order_by("-created_at", "-id")
-        .first()
-    )
-    if not latest or latest.id != job.source_message_id:
-        _cancel_generated_message(job)
-        job.status = HostedAutomationJob.Status.SKIPPED
-        job.completed_at = timezone.now()
-        job.result = {**(job.result or {}), "reason": "superseded_by_newer_lead_message"}
-        job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-        return {"status": "skipped", "reason": "superseded_by_newer_lead_message"}
 
-    reason = hosted_ai_block_reason(account=job.account, lead=job.lead)
+def _execute(job):
+    _recover_message(job)
+    message_id = (job.result or {}).get("message_id")
+    if message_id and WhatsAppMessage.objects.filter(pk=message_id, status__in=SENT_STATUSES).exists():
+        return _finish(job, HostedAutomationJob.Status.COMPLETED,
+                       {**job.result, "delivery": {"status": "sent", "message_id": message_id}})
+
+    if job.kind != HostedAutomationJob.Kind.WELCOME:
+        if job.source_message is None:
+            reason = "source_message_missing"
+        else:
+            source_payload = job.source_message.raw_payload or {}
+            latest = job.lead.whatsapp_messages.filter(
+                organization=job.organization, account=job.account,
+                direction=WhatsAppMessage.Direction.INBOUND,
+            ).order_by("-created_at", "-id").first()
+            reason = ""
+            if source_payload.get("isHistory") is True and not hosted_job_allows_history(job):
+                reason = "source_message_is_history"
+            elif latest is None or latest.pk != job.source_message_id:
+                reason = "superseded_by_newer_lead_message"
+            if not reason:
+                reason = hosted_ai_block_reason(account=job.account, lead=job.lead)
+    else:
+        from services.channels.hosted_whatsapp_service import account_ai_block_reason
+        reason = account_ai_block_reason(account=job.account, lead=job.lead)
     if reason:
         _cancel_generated_message(job)
-        job.status = HostedAutomationJob.Status.SKIPPED
-        job.completed_at = timezone.now()
-        job.result = {**(job.result or {}), "reason": reason}
-        job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-        return {"status": "skipped", "reason": reason}
+        finished = _finish(job, HostedAutomationJob.Status.SKIPPED, {**(job.result or {}), "status": "skipped", "reason": reason})
+        return {"status": "skipped", "reason": reason} if finished.get("reason") == reason else finished
 
-    # Reconcile the durable health row with all realtime outbound messages from
-    # this linked number before generating AI text. This includes messages sent
-    # directly from WhatsApp/WhatsApp Business, not only SHVYA transport sends.
-    pause_until = hosted_health_pause_until(account=job.account)
-    if pause_until:
-        return _requeue_for_health(job, pause_until)
-
-    # A worker can crash after committing the source-bound outbound row but
-    # before copying its id into HostedAutomationJob.result. Recover that exact
-    # message instead of generating a second AI response.
-    if not (job.result or {}).get("message_id"):
-        recovered_message = (
-            WhatsAppMessage.objects.filter(
-                organization=job.organization,
-                account=job.account,
-                lead=job.lead,
-                direction=WhatsAppMessage.Direction.OUTBOUND,
-                raw_payload__shvya_ai__source_inbound_message_id=str(
-                    job.source_message_id
-                ),
-            )
-            .order_by("-created_at", "-id")
-            .first()
-        )
-        if recovered_message is not None:
-            job.result = {
-                **(job.result or {}),
-                "status": "completed",
-                "engaged": True,
-                "message_id": str(recovered_message.id),
-                "source_message_id": str(job.source_message_id),
-                "recovered_generated_message": True,
-            }
-            job.save(update_fields=["result", "updated_at"])
-
-    # A previous run may already have generated the outbound message before
-    # Account Health paused. Resume that exact queued message instead of
-    # regenerating AI text after the 12-hour cooldown.
-    if (job.result or {}).get("message_id"):
-        try:
-            send_result = _send_generated_ai_message(job)
-        except HostedAutomationPaused as exc:
-            return _requeue_for_health(job, exc.paused_until)
-        if send_result and send_result.get("status") == "sent":
-            job.status = HostedAutomationJob.Status.COMPLETED
-            job.completed_at = timezone.now()
-            job.result = {**(job.result or {}), "delivery": send_result}
-            job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-            return job.result
-        job.status = HostedAutomationJob.Status.FAILED
-        job.completed_at = timezone.now()
-        job.error = str((send_result or {}).get("reason") or "Hosted AI delivery failed")
-        job.save(update_fields=["status", "completed_at", "error", "updated_at"])
-        return send_result
-
-    from apps.hosted_automation.execution import execute_hosted_ai_engagement
-
-    try:
-        result = execute_hosted_ai_engagement(task=self, job=job)
-    except Exception as exc:
-        from celery.exceptions import Retry
-
-        if isinstance(exc, Retry):
-            # Keep the processing lease fresh while Celery owns a scheduled
-            # retry so Beat does not mistake a legitimate retry delay for a
-            # crashed worker.
-            HostedAutomationJob.objects.filter(
-                pk=job.pk,
-                status=HostedAutomationJob.Status.PROCESSING,
-            ).update(started_at=timezone.now())
-            raise
-        logger.exception("Hosted AI engagement job %s failed", job_id)
-        job.status = HostedAutomationJob.Status.FAILED
-        job.completed_at = timezone.now()
-        job.error = str(exc)
-        job.save(update_fields=["status", "completed_at", "error", "updated_at"])
-        return {"status": "failed", "error": str(exc)}
-
-    result = {**(job.result or {}), **(result or {})}
-    result.pop("_processing_task_id", None)
-    # Persist the generated message id before attempting delivery. If health
-    # flips to paused at the limit, this exact message survives the cooldown.
-    job.result = result
-    job.save(update_fields=["result", "updated_at"])
-
-    final_status = str(result.get("status") or "failed")
-    if final_status == "completed" and result.get("engaged") and result.get("message_id"):
-        try:
-            send_result = _send_generated_ai_message(job)
-        except HostedAutomationPaused as exc:
-            return _requeue_for_health(job, exc.paused_until)
-        if send_result and send_result.get("status") == "sent":
-            result = {**result, "delivery": send_result}
-            model_status = HostedAutomationJob.Status.COMPLETED
+    if job.account.connection_type == WhatsAppAccount.ConnectionType.coexisted:
+        pause_until = hosted_health_pause_until(account=job.account)
+        if pause_until:
+            return _requeue_for_health(job, pause_until)
+    if not message_id:
+        if job.kind == HostedAutomationJob.Kind.WELCOME:
+            from services.channels.welcome_message_service import execute_queued_welcome
+            result = execute_queued_welcome(job=job)
         else:
-            result = {**result, "delivery": send_result or {}}
-            model_status = HostedAutomationJob.Status.FAILED
-    elif final_status == "completed":
-        model_status = HostedAutomationJob.Status.COMPLETED
-    elif final_status == "skipped":
-        model_status = HostedAutomationJob.Status.SKIPPED
+            from apps.hosted_automation.execution import execute_hosted_ai_engagement
+            result = execute_hosted_ai_engagement(task=_DurableTask(job), job=job)
+        job.result = {**(job.result or {}), **(result or {})}
+        if not _owned(job).update(result=job.result):
+            return {"status": "skipped", "reason": "job_lease_replaced"}
+    result = job.result or {}
+    if result.get("message_id"):
+        delivery = _send_generated_ai_message(job)
+        result = {**result, "delivery": delivery}
+        status = HostedAutomationJob.Status.COMPLETED if delivery.get("status") == "sent" else HostedAutomationJob.Status.FAILED
+    elif result.get("status") == "completed":
+        status = HostedAutomationJob.Status.COMPLETED
+    elif result.get("status") == "skipped":
+        status = HostedAutomationJob.Status.SKIPPED
     else:
-        model_status = HostedAutomationJob.Status.FAILED
+        status = HostedAutomationJob.Status.FAILED
+    error = str(result.get("error") or result.get("reason") or (result.get("delivery") or {}).get("reason") or "") if status == HostedAutomationJob.Status.FAILED else ""
+    return _finish(job, status, result, error)
 
-    with transaction.atomic():
-        locked = HostedAutomationJob.objects.select_for_update().get(id=job.id)
-        locked.status = model_status
-        locked.completed_at = timezone.now()
-        locked.result = result
-        if model_status == HostedAutomationJob.Status.FAILED:
-            locked.error = str(
-                result.get("error")
-                or result.get("reason")
-                or (result.get("delivery") or {}).get("reason")
-                or "AI engagement failed"
-            )
-        locked.save(
-            update_fields=["status", "completed_at", "result", "error", "updated_at"]
-        )
-    return result
+
+@shared_task(bind=True, acks_late=True, reject_on_worker_lost=True,
+             soft_time_limit=240, time_limit=270,
+             name="apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task")
+def process_hosted_ai_engagement_job_task(self, job_id):
+    job, result = _claim(job_id)
+    if job is None:
+        return result
+    try:
+        return _execute(job)
+    except HostedAutomationPaused as exc:
+        reason = getattr(exc, "reason", "account_health_pause")
+        return _defer(job, exc.paused_until, reason,
+                      str(exc.__cause__ or exc) if reason == "provider_transient" else "",
+                      retry=reason == "provider_transient")
+    except _DurableRetry as exc:
+        return _defer(job, timezone.now() + timedelta(seconds=max(1, min(float(exc.countdown), 900))),
+                      "retry_scheduled", str(exc), retry=True)
+    except Exception as exc:
+        logger.exception("AI job %s failed temporarily", job.pk)
+        retries = int((job.result or {}).get("retry_count", 0))
+        return _defer(job, timezone.now() + timedelta(seconds=min(300, 30 * (2 ** retries))),
+                      "retry_scheduled", str(exc), retry=True)

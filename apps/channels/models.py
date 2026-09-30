@@ -387,6 +387,10 @@ class WhatsAppMessage(models.Model):
         auto_now_add=True,
     )
 
+    # First successful provider send. Receipt updates must not move activity
+    # between analytics days; legacy rows fall back to created_at.
+    sent_at = models.DateTimeField(null=True, blank=True, db_index=True)
+
     updated_at = models.DateTimeField(
         auto_now=True,
     )
@@ -805,3 +809,16 @@ class WhatsAppTemplate(models.Model):
         return (
             f"{self.name} ({self.account})"
         )
+
+
+class AIMessageSendState(models.Model):
+    """Database-backed pacing shared by every AI sender on one WhatsApp account."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    account = models.OneToOneField(
+        WhatsAppAccount, on_delete=models.CASCADE, related_name="ai_send_state",
+    )
+    next_send_at = models.DateTimeField(null=True, blank=True)
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    claim_token = models.UUIDField(null=True, blank=True)
+    claimed_until = models.DateTimeField(null=True, blank=True)

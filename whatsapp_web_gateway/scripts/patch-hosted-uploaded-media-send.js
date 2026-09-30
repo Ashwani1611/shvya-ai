@@ -29,10 +29,12 @@ app.post(
   express.raw({ type: '*/*', limit: '25mb' }),
   async (req, res) => {
     const state = sessions.get(req.params.sessionId);
-    if (!state) return res.status(404).json({ error: 'Session not found.' });
-    await reconcileClientState(req.params.sessionId, state);
-    if (state.status !== 'running') {
-      return res.status(409).json({ error: 'Session is not running.' });
+    if (!req.get('X-SHVYA-Request-Id')) {
+      if (!state) return res.status(404).json({ error: 'Session not found.' });
+      await reconcileClientState(req.params.sessionId, state);
+      if (state.status !== 'running') {
+        return res.status(409).json({ error: 'Session is not running.' });
+      }
     }
 
     const to = String(req.get('X-SHVYA-To') || '').trim();
@@ -74,25 +76,35 @@ app.post(
       startedAt: Date.now(),
       matched: false,
     };
-    state.localSendTokens.add(token);
-
     try {
-      const media = new MessageMedia(contentType, data.toString('base64'), filename);
-      const sent = await state.client.sendMessage(chatId, media, {
-        caption: caption || undefined,
-        sendMediaAsDocument: messageType === 'document',
+      const outcome = await idempotentSend({
+        redis, journalRoot: path.join(AUTH_PATH, '_send_requests'),
+        sessionId: req.params.sessionId, requestId: req.get('X-SHVYA-Request-Id'),
+        requestIsRetry: req.get('X-SHVYA-Request-Retry') === '1',
+        payload: [chatId, caption, messageType, contentType, filename,
+          crypto.createHash('sha256').update(data).digest('hex')],
+        prepare: async () => {
+          if (!state) throw new Error('Session not found.');
+          await reconcileClientState(req.params.sessionId, state);
+          if (state.status !== 'running') throw new Error('Session is not running.');
+          return new MessageMedia(contentType, data.toString('base64'), filename);
+        },
+        send: async media => {
+          state.localSendTokens.add(token);
+          const sent = await state.client.sendMessage(chatId, media, {
+            caption: caption || undefined,
+            sendMediaAsDocument: messageType === 'document',
+          });
+          const messageId = serializedId(sent.id);
+          if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
+          return { ok: true, messageId, timestamp: sent.timestamp, messageType };
+        },
       });
-      const messageId = serializedId(sent.id);
-      if (messageId) state.localMessageIds.set(messageId, Date.now() + 30000);
-      setTimeout(() => state.localSendTokens.delete(token), 5000).unref();
-      return res.status(201).json({
-        ok: true,
-        messageId,
-        timestamp: sent.timestamp,
-        messageType,
-      });
+      setTimeout(() => state?.localSendTokens.delete(token), 5000).unref();
+      if (outcome.retryAfter) res.set('Retry-After', String(outcome.retryAfter));
+      return res.status(outcome.status).json(outcome.body);
     } catch (error) {
-      state.localSendTokens.delete(token);
+      state?.localSendTokens.delete(token);
       return res.status(502).json({ error: error.message || String(error) });
     }
   },

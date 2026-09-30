@@ -119,8 +119,7 @@ def test_conversation_scenario(scenario, transport, record_property):
             else:
                 from apps.hosted_automation.models import HostedAutomationJob
                 from apps.hosted_automation import execution
-                job = HostedAutomationJob.objects.create(organization=org, account=account, lead=lead,
-                                                        source_message=source, available_at=timezone.now())
+                job = HostedAutomationJob.objects.update_or_create(source_message=source, defaults={'organization': org, 'account': account, 'lead': lead, 'available_at': timezone.now()})[0]
                 def run():
                     return execution.execute_hosted_ai_engagement(task=NoRetry(), job=job)
             result = run()
