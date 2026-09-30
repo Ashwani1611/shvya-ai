@@ -88,7 +88,8 @@ def template_fields(spec):
             if kind == "header" and fmt != "text":
                 if fmt not in {"image", "video", "document"}:
                     raise CampaignInputError(f"{fmt.title()} headers are not supported by Bulk Campaigns.")
-                fields.append({"key": f"{prefix}header.media", "label": f"{label_prefix}{fmt.title()} header", "kind": fmt, "source": ""})
+                key = f"{prefix}header.media"
+                fields.append({"key": key, "label": f"{label_prefix}{fmt.title()} header", "kind": fmt, "source": "", "default": (spec.get("media_defaults") or {}).get(key, "")})
             else:
                 for token in _tokens(component.get("text")):
                     source = str(mapping.get(token, token)) if kind == "body" else ""
@@ -140,6 +141,12 @@ def render_message(spec, bindings, values, allowed_sources):
     if not isinstance(bindings, dict) or set(bindings) - valid_keys:
         raise CampaignInputError("Template parameter mapping is invalid.")
     resolved = {}
+    def resolved_media(key, value, kind):
+        if value.startswith("asset:"):
+            if (spec.get("media_defaults") or {}).get(key) != value:
+                raise CampaignInputError("This attachment does not belong to the selected template.")
+            return {"type": kind, kind: {"shvya_asset": value[6:]}}
+        return media_parameter(value, kind)
     for field in fields:
         binding = bindings.get(field["key"], {})
         if not isinstance(binding, dict):
@@ -153,12 +160,14 @@ def render_message(spec, bindings, values, allowed_sources):
         if isinstance(value, (dict, list)):
             raise CampaignInputError(f"{field['label']} requires a single value, not an object or list.")
         value = str(value if value is not None else "").strip()
+        if not value and field["kind"] != "text":
+            value = field.get("default", "")
         if not value:
             raise CampaignInputError(f"Missing value for {field['label']}. Map a populated field or enter a fallback.")
         if len(value) > 2048:
             raise CampaignInputError(f"{field['label']} exceeds 2,048 characters.")
         if field["kind"] != "text":
-            media_parameter(value, field["kind"])
+            resolved_media(field["key"], value, field["kind"])
         resolved[field["key"]] = value
 
     def build(components, prefix=""):
@@ -175,7 +184,8 @@ def render_message(spec, bindings, values, allowed_sources):
             elif kind in {"header", "body", "footer"}:
                 fmt = str(component.get("format", "TEXT")).lower()
                 if kind == "header" and fmt != "text":
-                    payload.append({"type": "header", "parameters": [media_parameter(resolved[f"{prefix}header.media"], fmt)]})
+                    key = f"{prefix}header.media"
+                    payload.append({"type": "header", "parameters": [resolved_media(key, resolved[key], fmt)]})
                     preview.append(f"[{fmt.title()} attachment]")
                     continue
                 text = str(component.get("text") or "")

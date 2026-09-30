@@ -9,7 +9,9 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTempl
 from apps.channels.providers.whatsapp import WhatsAppAPIError
 
 from . import whatsapp_service as base
-from .template_service import render_template_body, state_for
+from .template_service import TemplateError, state_for
+from .campaign_policy import CampaignInputError
+from .template_rendering import render_for_lead
 
 _INSTALLED = False
 
@@ -18,38 +20,32 @@ class WhatsAppTemplateSendError(Exception):
     pass
 
 
-def _lead_values(*, lead, user=None):
-    values = {
-        "lead_name": lead.name or "",
-        "lead_first_name": (lead.name or "").split(" ")[0],
-        "phone": lead.phone or "",
-        "email": lead.email or "",
-        "lead_source": getattr(lead, "lead_source", "") or "",
-        "org_name": lead.organization.name or "",
-        "user_name": getattr(user, "name", "") or getattr(user, "email", "") or "",
-        "pipeline_name": lead.pipeline.name if lead.pipeline_id else "",
-        "stage_name": lead.stage.name if lead.stage_id else "",
-    }
-    values.update(getattr(lead, "attributes", None) or {})
-    return values
+class TemplatePreparationError(CampaignInputError):
+    """The message endpoint was never called; delivery is known not to occur."""
 
 
-def _body_components(*, template, lead, user=None):
-    state = state_for(template)
-    mapping = state.placeholder_mapping if isinstance(state.placeholder_mapping, dict) else {}
-    if not mapping:
-        return []
+def validate_template_sender(*, template, lead, account):
+    from services.followup_service import resolve_linked_whatsapp_account
 
-    values = _lead_values(lead=lead, user=user)
-    ordered_numbers = sorted(mapping, key=lambda value: int(value))
-    parameters = [
-        {
-            "type": "text",
-            "text": str(values.get(mapping[number], "") or ""),
-        }
-        for number in ordered_numbers
-    ]
-    return [{"type": "body", "parameters": parameters}]
+    if template.organization_id != lead.organization_id or account.organization_id != lead.organization_id:
+        raise TemplatePreparationError("Template, sender and lead must belong to the same organization.")
+    if template.account_id != account.pk or account.connection_type != WhatsAppAccount.ConnectionType.API:
+        raise TemplatePreparationError("Select the API or Coexistence sender belonging to this template.")
+    linked = resolve_linked_whatsapp_account(lead=lead, connection_type=WhatsAppAccount.ConnectionType.API)
+    if linked is None or linked.pk != account.pk:
+        raise TemplatePreparationError("The template sender does not match this lead's current pipeline. Select its linked WhatsApp number.")
+
+
+def _record_failure(message, exc):
+    from .whatsapp_error_service import merge_api_error_payload, describe_whatsapp_failure, failure_summary
+
+    message.status = WhatsAppMessage.Status.FAILED
+    message.error = str(exc)
+    if isinstance(exc, WhatsAppAPIError):
+        message.raw_payload = merge_api_error_payload(message.raw_payload, exc.response_body)
+        message.error = failure_summary(describe_whatsapp_failure(raw_payload=message.raw_payload, error_text=str(exc)))
+    message.save(update_fields=["status", "error", "raw_payload", "updated_at"])
+
 
 
 def _template_button_snapshot(button):
@@ -226,16 +222,14 @@ def queue_template_message(*, template, lead, user=None):
     ):
         raise WhatsAppTemplateSendError("The WhatsApp account for this template is not connected.")
 
-    # Media-header templates need an actual message-time media parameter. The
-    # template-creation sample handle cannot be reused as delivered media.
-    if template.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
-        raise WhatsAppTemplateSendError(
-            "This template requires a media header. Sending media-header templates from Chats is not supported yet."
-        )
-
     state = state_for(template)
-    body = render_template_body(template=template, lead=lead, user=user)
-    components = _body_components(template=template, lead=lead, user=user)
+    try:
+        validate_template_sender(template=template, lead=lead, account=account)
+        rendered = render_for_lead(template=template, lead=lead, user=user)
+        components = rendered["components"]
+        body = rendered["body_text"]
+    except (CampaignInputError, TemplateError) as exc:
+        raise WhatsAppTemplateSendError(str(exc)) from exc
 
     return base.queue_outbound_message(
         organization=lead.organization,
@@ -261,44 +255,53 @@ def queue_template_message(*, template, lead, user=None):
 
 @paced_ai_send
 def _send_template_transport(message):
+    from apps.crm.models import Lead
+    from .template_media import resolve_delivery_media
+
     account = message.account
-    if account.organization_id != message.organization_id:
-        raise base.WhatsAppSendError(
-            "WhatsApp account does not belong to the message organization."
-        )
-    if not account.is_active:
-        raise base.WhatsAppSendError("WhatsApp account is inactive.")
-    if account.status != WhatsAppAccount.Status.CONNECTED:
-        raise base.WhatsAppSendError("WhatsApp account is not connected.")
-
     payload = message.media_payload if isinstance(message.media_payload, dict) else {}
-    template_name = str(payload.get("template_name") or "").strip()
-    language_code = str(payload.get("language_code") or "en_US").strip() or "en_US"
-    components = payload.get("components") or []
-    if not template_name:
-        raise base.WhatsAppSendError("Queued WhatsApp template name is missing.")
-    if not isinstance(components, list):
-        raise base.WhatsAppSendError("Queued WhatsApp template components are invalid.")
+    try:
+        if account.organization_id != message.organization_id or not account.is_active or account.status != WhatsAppAccount.Status.CONNECTED or not account.phone_number_id or not account.access_token:
+            raise TemplatePreparationError("The selected WhatsApp account is unavailable.")
+        template_name = str(payload.get("template_name") or "").strip()
+        language_code = str(payload.get("language_code") or "en_US").strip() or "en_US"
+        components = payload.get("components") or []
+        if not template_name or not isinstance(components, list):
+            raise TemplatePreparationError("Queued WhatsApp template parameters are invalid.")
+        template = WhatsAppTemplate.objects.filter(
+            pk=payload.get("template_id"), organization_id=message.organization_id, account=account,
+        ).first()
+        if template is None or template.status != WhatsAppTemplate.Status.APPROVED or template.name != template_name:
+            raise TemplatePreparationError("The selected template is no longer available or approved.")
+        lead = Lead.objects.select_related("pipeline", "organization").filter(
+            pk=message.lead_id, organization_id=message.organization_id,
+        ).first()
+        if lead is None or lead.phone != message.to_number:
+            raise TemplatePreparationError("The original recipient was removed or changed. Review before sending.")
+        validate_template_sender(template=template, lead=lead, account=account)
+        client = base.WhatsAppClient(phone_number_id=account.phone_number_id, access_token=account.access_token)
+        components = resolve_delivery_media(components=components, template=template, client=client)
+    except Exception as exc:
+        # Storage/cache/upload errors happen before /messages and must not be
+        # confused with a network timeout after a potentially accepted send.
+        error = exc if isinstance(exc, CampaignInputError) else TemplatePreparationError(
+            "Unable to prepare the template attachment or sender. Check the attachment and connected account, then retry."
+        )
+        _record_failure(message, exc if isinstance(exc, WhatsAppAPIError) else error)
+        raise base.WhatsAppSendError(str(error)) from error
 
-    client = base.WhatsAppClient(
-        phone_number_id=account.phone_number_id,
-        access_token=account.access_token,
-    )
     try:
         response = client.send_template_message(
-            to=message.to_number,
-            template_name=template_name,
-            language_code=language_code,
-            components=components,
+            to=message.to_number, template_name=template_name,
+            language_code=language_code, components=components,
         )
+        messages = response.get("messages") if isinstance(response, dict) else None
+        external_id = messages[0].get("id") if isinstance(messages, list) and messages and isinstance(messages[0], dict) else None
+        if not external_id:
+            raise WhatsAppAPIError("Meta returned no message ID. Check delivery before retrying.")
     except WhatsAppAPIError as exc:
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = str(exc)
-        message.save(update_fields=["status", "error", "updated_at"])
+        _record_failure(message, exc)
         raise base.WhatsAppSendError(str(exc)) from exc
-
-    messages = response.get("messages") or [] if isinstance(response, dict) else []
-    external_id = messages[0].get("id") if messages else None
 
     if not external_id:
         message.status = WhatsAppMessage.Status.FAILED

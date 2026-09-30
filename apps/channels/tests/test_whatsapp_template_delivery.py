@@ -278,11 +278,11 @@ class WhatsAppTemplateDeliveryTests(TestCase):
         self.assertNotContains(response, "This chat is marked as expired")
         self.assertContains(response, 'id="composer-form"')
 
-    def test_media_header_template_is_rejected_before_queue(self):
+    def test_missing_media_header_is_rejected_before_queue(self):
         self.template.attachment_type = WhatsAppTemplate.AttachmentType.IMAGE
         self.template.save(update_fields=["attachment_type", "updated_at"])
 
-        with self.assertRaisesRegex(WhatsAppTemplateSendError, "requires a media header"):
+        with self.assertRaisesRegex(WhatsAppTemplateSendError, "Missing value for Image header"):
             queue_template_message(
                 template=self.template,
                 lead=self.lead,

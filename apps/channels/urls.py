@@ -19,6 +19,7 @@ from . import hosted_send_ui
 from . import hosted_ui
 from . import template_action_ui
 from . import template_ui
+from . import template_delivery_ui
 from . import views_flat
 from . import welcome_ui
 from . import whatsapp_api_chat_ui
@@ -84,6 +85,7 @@ urlpatterns = [
     path("campaigns/uploads/<uuid:upload_id>/review/", campaign_ui.review, name="whatsapp-campaign-upload-review"),
     path("campaigns/uploads/<uuid:upload_id>/errors/", campaign_ui.upload_errors, name="whatsapp-campaign-upload-errors"),
     path("campaigns/templates/", campaign_ui.templates, name="whatsapp-campaign-templates"),
+    path("campaigns/media/", campaign_ui.media, name="whatsapp-campaign-media"),
     path("campaigns/preview/", campaign_ui.preview, name="whatsapp-campaign-preview"),
     path("campaigns/confirm/", campaign_ui.confirm, name="whatsapp-campaign-confirm"),
     path("campaigns/<uuid:campaign_id>/", campaign_ui.workspace, name="whatsapp-campaign-detail"),
@@ -96,6 +98,7 @@ urlpatterns = [
     path("templates/analytics-summary/", template_ui.template_analytics_summary, name="whatsapp-template-analytics-summary"),
     path("templates/new/", template_action_ui.template_create, name="whatsapp-template-create"),
     path("templates/<uuid:template_id>/edit/", template_action_ui.template_edit, name="whatsapp-template-edit"),
+    path("templates/<uuid:template_id>/sending/", template_delivery_ui.template_delivery_setup, name="whatsapp-template-delivery-setup"),
     path("templates/<uuid:template_id>/analytics/", template_ui.template_analytics, name="whatsapp-template-analytics"),
     path("templates/<uuid:template_id>/submit/", template_ui.template_submit, name="whatsapp-template-submit"),
     path("templates/<uuid:template_id>/copy/", template_ui.template_copy, name="whatsapp-template-copy"),

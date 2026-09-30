@@ -11,7 +11,7 @@ from django.test import TestCase, TransactionTestCase, override_settings, skipUn
 from django.utils import timezone
 
 from apps.ai_engagement.models import OrgInfo
-from apps.channels.models import AIMessageSendState, WhatsAppAccount, WhatsAppMessage
+from apps.channels.models import AIMessageSendState, WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
 from apps.crm.models import Lead, Pipeline
 from apps.hosted_automation.models import HostedAutomationJob
 from apps.organizations.models import Organization
@@ -418,9 +418,17 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
     def test_template_and_meta_text_transports_share_actual_send_cooldown(self):
         from services.channels.whatsapp_service import send_outbound_message
 
+        self.account.access_token = "test-token"
+        self.account.save(update_fields=["access_token"])
+        template = WhatsAppTemplate.objects.create(
+            organization=self.organization, account=self.account, name="test_welcome",
+            category=WhatsAppTemplate.Category.UTILITY,
+            status=WhatsAppTemplate.Status.APPROVED,
+            body="Welcome", meta_template_id="test-approved-template",
+        )
         welcome = self._message(kind="welcome")
         welcome.media_payload = {
-            "transport": "template", "template_name": "test_welcome",
+            "transport": "template", "template_id": str(template.pk), "template_name": template.name,
             "language_code": "en_US", "components": [],
         }
         welcome.save(update_fields=["media_payload"])

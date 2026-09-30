@@ -109,7 +109,10 @@
     function refreshNext() {
         const next = $('bc-next');
         next.textContent = state.busy ? 'Working…' : state.step === 4 ? $('bc-schedule').checked ? 'Schedule campaign' : 'Send now' : 'Continue';
-        next.disabled = state.busy || (state.step === 1 && !state.upload) || (state.step === 3 && !state.template) || (state.step === 4 && (!state.preview?.ready || !$('bc-consent').checked || (!$('bc-exclusions-label').hidden && !$('bc-exclusions').checked)));
+        const reason = state.step === 4 ? (!$('bc-name').value.trim() ? 'Enter a campaign name.' : !state.preview?.ready ? 'Resolve the recipient preview errors.' : !$('bc-consent').checked ? 'Confirm permission to contact these recipients.' : (!$('bc-exclusions-label').hidden && !$('bc-exclusions').checked) ? 'Confirm the excluded recipients.' : '') : '';
+        next.disabled = state.busy || (state.step === 1 && !state.upload) || (state.step === 3 && !state.template) || Boolean(reason);
+        next.title = reason;
+        if (state.step === 4) $('bc-step-summary').textContent = reason || `${number(state.audience?.stats.eligible)} eligible recipients`;
         $('bc-back').hidden = state.step === 1 || (state.crmSeed && state.step === 3);
     }
     function setStep(step) {
@@ -196,9 +199,19 @@
         if (data.truncated) $('bc-templates').insertAdjacentHTML('beforeend','<p class="bc-help">Showing the first 200 matching templates. Refine your search to find another template.</p>');
         refreshNext();
     }
+    function bindingMarkup(field) {
+        if (field.kind !== 'text') {
+            const accept = field.kind === 'image' ? 'image/jpeg,image/png' : field.kind === 'video' ? 'video/mp4,video/3gpp' : '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt';
+            const upload = state.meta.can_manage_template_media
+                ? `<label class="bc-field">${field.default ? 'Replace attachment' : 'Upload attachment'}<input type="file" data-template-media="${h(field.key)}" accept="${accept}"></label><small class="bc-help">Saved to this template for future broadcasts and sequences.</small>`
+                : '<small class="bc-help">Ask an organization admin to upload or replace the template attachment.</small>';
+            return `<div class="bc-binding"><strong>${h(field.label)}</strong><p class="bc-help">${field.default ? 'Template attachment selected. It will be included for every recipient.' : 'Attach the template media once to use it for every recipient.'}</p>${upload}</div>`;
+        }
+        return `<div class="bc-binding"><strong>${h(field.label)}</strong><div class="bc-two-col"><label class="bc-field">CRM value<select data-binding="${h(field.key)}" data-binding-kind="source">${options(state.meta.sources,state.bindings[field.key]?.source || '','Use fallback only')}</select></label><label class="bc-field">Fallback value<input type="text" maxlength="2048" data-binding="${h(field.key)}" data-binding-kind="default" value="${h(state.bindings[field.key]?.default || '')}" placeholder="Only when the CRM value is missing"></label></div></div>`;
+    }
     function preparePersonalization() {
         state.bindings = JSON.parse(JSON.stringify(state.template.bindings)); resetPreview();
-        $('bc-bindings').innerHTML = state.template.fields.length ? state.template.fields.map((field) => `<div class="bc-binding"><strong>${h(field.label)}</strong><div class="bc-two-col"><label class="bc-field">CRM value<select data-binding="${h(field.key)}" data-binding-kind="source">${options(state.meta.sources,state.bindings[field.key]?.source || '','Use fallback only')}</select></label><label class="bc-field">Fallback ${field.kind !== 'text' ? '(HTTPS URL or id:…)' : 'value'}<input type="text" maxlength="2048" data-binding="${h(field.key)}" data-binding-kind="default" value="${h(state.bindings[field.key]?.default || '')}" placeholder="${field.kind !== 'text' ? 'https://… or id:123456' : 'Only when the CRM value is missing'}"></label></div></div>`).join('') : '<p class="bc-help">This template does not require variable values.</p>';
+        $('bc-bindings').innerHTML = state.template.fields.length ? state.template.fields.map(bindingMarkup).join('') : '<p class="bc-help">This template does not require variable values.</p>';
         const account = state.meta.accounts.find((item) => item.id === $('bc-account').value);
         $('bc-preview-account').textContent = account?.business_name || 'WhatsApp Business'; $('bc-preview-number').textContent = account?.phone || '';
         $('bc-final-summary').textContent = `${number(state.audience.stats.eligible)} recipients · ${state.template.category} · ${state.template.language}. This account is fixed for the campaign. No verified price estimate is available.`;
@@ -213,7 +226,7 @@
         state.preview = data;
         $('bc-preview-recipient').innerHTML = options(data.previews.map((item,index) => ({id:String(index),name:`${item.name} · row ${item.row}`})),'');
         $('bc-preview-message').textContent = data.previews[0]?.body || 'No complete recipient preview is available yet.';
-        $('bc-preview-status').textContent = data.ready ? `All ${number(data.recipient_count)} recipients have complete parameters. Previewing up to five actual audience rows.` : `${number(data.missing_count)} recipients need values. ${data.errors.slice(0,3).map((item) => `Row ${item.row}: ${item.reason}`).join(' ')}`;
+        $('bc-preview-status').textContent = data.ready ? `All ${number(data.recipient_count)} recipients have complete parameters. Previewing up to five actual audience rows.` : `${number(data.missing_count)} recipients need attention. ${data.errors.slice(0,3).map((item) => `Row ${item.row}: ${item.reason}`).join(' ')}`;
         $('bc-preview-status').classList.toggle('bc-error-text',!data.ready); refreshNext();
     }
     async function confirmCampaign() {
@@ -307,6 +320,7 @@
         }
     });
     $('bc-next').addEventListener('click',nextStep);
+    $('bc-name').addEventListener('input',refreshNext);
     $('bc-back').addEventListener('click',() => { if (!state.busy) setStep(Math.max(1,state.step-1)); });
     composer.addEventListener('cancel',(event) => { if (state.busy) event.preventDefault(); });
     $('bc-file').addEventListener('change',(event) => uploadFile(event.target.files[0]));
@@ -323,6 +337,21 @@
         const node=event.target.closest('[data-template]'); if (!node || node.disabled) return;
         state.template=state.templates.find((item) => item.id === node.dataset.template); resetPreview();
         $('bc-templates').querySelectorAll('[data-template]').forEach((item) => item.setAttribute('aria-checked',String(item.dataset.template === state.template.id))); refreshNext();
+    });
+    $('bc-bindings').addEventListener('change',async (event) => {
+        const field = event.target.dataset.templateMedia, file = event.target.files?.[0];
+        if (!field || !file || state.busy) return;
+        const previous = JSON.parse(JSON.stringify(state.bindings));
+        busy(true); resetPreview(); builderError('');
+        $('bc-bindings').querySelectorAll('input,select').forEach((node) => { node.disabled=true; });
+        try {
+            const data = new FormData(); data.append('template_id',state.template.id); data.append('field',field); data.append('file',file);
+            const result = await api(config.urls.media,data);
+            state.template.fields=result.fields;
+            state.template.bindings={...previous,[field]:result.bindings[field]};
+            preparePersonalization(); await updatePreview();
+        } catch (error) { builderError(error.message); }
+        finally { $('bc-bindings').querySelectorAll('input,select').forEach((node) => { node.disabled=false; }); busy(false); }
     });
     $('bc-bindings').addEventListener('input',(event) => {
         if (!event.target.dataset.binding) return;
