@@ -251,16 +251,7 @@ class TestOperationsMCPDiagnostics(OperationsMCPBase):
             to_number="+919000000050",
             body="hosted source",
         )
-        corrupted_hosted = HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=foreign_account,
-            lead=self.lead,
-            source_message=hosted_source,
-            available_at=timezone.now(),
-            status=HostedAutomationJob.Status.FAILED,
-            result={"reason": "foreign_account_relation"},
-            error="foreign hosted relation",
-        )
+        corrupted_hosted = HostedAutomationJob.objects.update_or_create(source_message=hosted_source, defaults={'organization': self.organization, 'account': foreign_account, 'lead': self.lead, 'available_at': timezone.now(), 'status': HostedAutomationJob.Status.FAILED, 'result': {"reason": "foreign_account_relation"}, 'error': "foreign hosted relation"})[0]
         bearer = self._token(
             actor=self.admin,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -1101,23 +1092,12 @@ class TestOperationsMCPDiagnostics(OperationsMCPBase):
             to_number="+919000000061",
             body="hello",
         )
-        job = HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=account,
-            lead=self.lead,
-            source_message=inbound,
-            available_at=timezone.now(),
-            status=HostedAutomationJob.Status.FAILED,
-            result={
+        job = HostedAutomationJob.objects.update_or_create(source_message=inbound, defaults={'organization': self.organization, 'account': account, 'lead': self.lead, 'available_at': timezone.now(), 'status': HostedAutomationJob.Status.FAILED, 'result': {
                 "reason": "pipeline_whatsapp_account_mismatch",
                 "delivery": {"status": "blocked"},
                 "internal_detail": "private hosted result",
-            },
-            error=(
-                "access_token=recent-hosted-provider-secret "
-                "customer body should not be returned"
-            ),
-        )
+            }, 'error': "access_token=recent-hosted-provider-secret "
+                "customer body should not be returned"})[0]
         bearer = self._token(
             actor=self.admin,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -1225,21 +1205,12 @@ class TestOperationsMCPDiagnostics(OperationsMCPBase):
                 },
             },
         )
-        HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=account,
-            lead=self.lead,
-            source_message=inbound,
-            available_at=timezone.now(),
-            status=HostedAutomationJob.Status.FAILED,
-            result={
+        HostedAutomationJob.objects.update_or_create(source_message=inbound, defaults={'organization': self.organization, 'account': account, 'lead': self.lead, 'available_at': timezone.now(), 'status': HostedAutomationJob.Status.FAILED, 'result': {
                 "reason": "lead_ai_disabled",
                 "delivery": {"status": "blocked"},
                 "internal_prompt": "private system prompt",
                 "free_text": "password: hosted-result-secret",
-            },
-            error="access_token=hosted-provider-secret",
-        )
+            }, 'error': "access_token=hosted-provider-secret"})[0]
         bearer = self._token(
             actor=self.admin,
             role=ROLE_ORGANIZATION_ADMIN,
@@ -2131,16 +2102,7 @@ class TestOperationsMCPDiagnostics(OperationsMCPBase):
             to_number="+919000000070",
             body="source",
         )
-        HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=foreign_account,
-            lead=self.lead,
-            source_message=source,
-            available_at=timezone.now(),
-            status=HostedAutomationJob.Status.FAILED,
-            result={"reason": "foreign_account_relation"},
-            error="corrupt hosted failure",
-        )
+        HostedAutomationJob.objects.update_or_create(source_message=source, defaults={'organization': self.organization, 'account': foreign_account, 'lead': self.lead, 'available_at': timezone.now(), 'status': HostedAutomationJob.Status.FAILED, 'result': {"reason": "foreign_account_relation"}, 'error': "corrupt hosted failure"})[0]
 
         workflow = SmartTrigger.objects.create(
             organization=self.organization,

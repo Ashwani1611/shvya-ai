@@ -102,7 +102,7 @@ class AIEngagementControlTests(TestCase):
         self.assertEqual(state["qualification_result"], RESULT_QUALIFIED)
         self.assertEqual(state["engagement_mode"], MODE_CONVERSATION)
 
-    def test_established_ai_transport_survives_crm_pipeline_number_change(self):
+    def test_established_ai_transport_cannot_override_current_pipeline_number(self):
         inbound = self._inbound()
         decision = AIPermissionService().evaluate(
             organization=self.organization,
@@ -126,8 +126,8 @@ class AIEngagementControlTests(TestCase):
             },
         )
 
-        # The CRM classification may move after a conversation starts. The
-        # established organization-owned account remains the reply route.
+        # A pipeline change revokes the old sender even when AI replied there
+        # previously; only the current pipeline's linked account may send.
         self.pipeline.phone_number = "8888888888"
         self.pipeline.save(update_fields=["phone_number", "updated_at"])
         self.lead.refresh_from_db()
@@ -135,7 +135,8 @@ class AIEngagementControlTests(TestCase):
             organization=self.organization,
             lead=self.lead,
         )
-        self.assertTrue(decision.allowed)
+        self.assertFalse(decision.allowed)
+        self.assertEqual(decision.reason, "pipeline_whatsapp_account_mismatch")
 
     def test_organization_ai_toggle_blocks_active_whatsapp_inbound(self):
         self._inbound()
@@ -300,13 +301,15 @@ class AIEngagementControlTests(TestCase):
                 "shvya_ai": {"source_inbound_message_id": str(inbound.pk)}
             },
         )
-        job = HostedAutomationJob.objects.create(
-            organization=self.organization,
-            account=self.account,
-            lead=self.lead,
+        job, _ = HostedAutomationJob.objects.update_or_create(
             source_message=inbound,
-            available_at=timezone.now(),
-            result={"message_id": str(outbound.pk)},
+            defaults={
+                "organization": self.organization,
+                "account": self.account,
+                "lead": self.lead,
+                "available_at": timezone.now(),
+                "result": {"message_id": str(outbound.pk)},
+            },
         )
         self.new_lead.ai_on = False
         self.new_lead.save(update_fields=["ai_on", "updated_at"])

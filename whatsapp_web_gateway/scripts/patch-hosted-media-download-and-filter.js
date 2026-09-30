@@ -29,8 +29,8 @@ replaceOnce(
 );
 
 replaceOnce(
-  "      sent = await state.client.sendMessage(chatId, media, {\n        caption: body || undefined,\n      });",
-  "      sent = await state.client.sendMessage(chatId, media, {\n        caption: body || undefined,\n        sendMediaAsDocument: String(req.body.messageType || '').toLowerCase() === 'document',\n      });",
+  "          ? await state.client.sendMessage(chatId, media, { caption: body || undefined })",
+  "          ? await state.client.sendMessage(chatId, media, {\n              caption: body || undefined,\n              sendMediaAsDocument: String(req.body.messageType || '').toLowerCase() === 'document',\n            })",
   'preserve document send semantics for URL-backed follow-ups',
 );
 

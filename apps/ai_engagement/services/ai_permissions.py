@@ -48,11 +48,8 @@ class AIPermissionService:
 
         Organization AI -> Pipeline AI -> Stage AI -> Lead AI
 
-    New WhatsApp conversations remain bound to the number configured for the
-    lead's current pipeline. An already-established conversation may continue on
-    its original authenticated organization account after a legitimate CRM
-    pipeline move; this prevents classification changes from stranding the chat
-    without allowing a brand-new message on an unrelated number to bypass routing.
+    Every WhatsApp send remains bound to the number configured for the lead's
+    current pipeline. Historical messages never authorize a different sender.
     """
 
     WHATSAPP_AUTOMATION_CONNECTION_TYPES = {"api", "hosted"}
@@ -86,68 +83,26 @@ class AIPermissionService:
             .first()
         )
 
-    def _has_established_ai_transport(self, *, organization, lead, account) -> bool:
-        """Return whether this exact account has already carried a SHVYA AI reply."""
-        return lead.whatsapp_messages.filter(
-            organization=organization,
-            account=account,
-            direction="outbound",
-            raw_payload__shvya_ai__isnull=False,
-        ).exists()
-
-    def _has_established_conversation_transport(
-        self,
-        *,
-        organization,
-        lead,
-        account,
-        latest_message,
-    ) -> bool:
-        """Return whether this account has a trusted conversation binding.
-
-        A prior rejected inbound message is not a binding. Trust is established
-        by an outbound message on this organization-owned account, or by the
-        exact current inbound having already crossed the transactional AI state
-        boundary before a legitimate pipeline move.
-        """
-        history = lead.whatsapp_messages.filter(
-            organization=organization,
-            account=account,
-            direction="outbound",
-        )
-        if getattr(latest_message, "pk", None):
-            history = history.exclude(pk=latest_message.pk)
-        if history.exists():
-            return True
-
-        from apps.ai_engagement.services.runtime_state import STATE_KEY
-
-        attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
-        runtime = attributes.get(STATE_KEY)
-        return bool(
-            isinstance(runtime, dict)
-            and str(runtime.get("pre_resolved_message_id") or "")
-            == str(getattr(latest_message, "pk", "") or "")
-        )
-
     def _conversation_uses_pipeline_number(
         self,
         *,
         organization,
         lead,
         latest_message=None,
+        account=None,
     ):
         """Validate the customer-facing WhatsApp transport for this conversation."""
-        if latest_message is None:
+        if latest_message is None and account is None:
             latest_message = self._latest_inbound_message(
                 organization=organization,
                 lead=lead,
             )
 
-        if latest_message is None:
+        if latest_message is None and account is None:
             return True, "no_conversation_yet"
 
-        account = getattr(latest_message, "account", None)
+        if account is None:
+            account = getattr(latest_message, "account", None)
         if account is None or account.organization_id != organization.id:
             return False, "whatsapp_account_organization_mismatch"
         if not getattr(account, "is_active", False):
@@ -175,18 +130,6 @@ class AIPermissionService:
         if expected_number and actual_number == expected_number:
             return True, "pipeline_whatsapp_account_match"
 
-        if self._has_established_conversation_transport(
-            organization=organization,
-            lead=lead,
-            account=account,
-            latest_message=latest_message,
-        ) or self._has_established_ai_transport(
-            organization=organization,
-            lead=lead,
-            account=account,
-        ):
-            return True, "conversation_whatsapp_account_bound"
-
         if not expected_number:
             return False, "pipeline_whatsapp_number_missing"
         return False, "pipeline_whatsapp_account_mismatch"
@@ -197,12 +140,15 @@ class AIPermissionService:
         organization,
         lead,
         latest_inbound=None,
+        account=None,
     ) -> AIPermissionDecision:
         """Evaluate current, non-cached AI permission state for one Lead.
 
         ``latest_inbound`` lets durable provider-specific jobs bind permission
         evaluation to the exact authenticated message they own rather than a
         newer message on a different connected number for the same Lead.
+        ``account`` binds proactive welcomes and final sends without requiring
+        an inbound message to exist.
         """
 
         if organization is None:
@@ -259,7 +205,7 @@ class AIPermissionService:
                 lead=lead,
             )
 
-        if latest_inbound is None:
+        if latest_inbound is None and account is None:
             latest_inbound = self._latest_inbound_message(
                 organization=organization,
                 lead=lead,
@@ -268,6 +214,7 @@ class AIPermissionService:
             organization=organization,
             lead=lead,
             latest_message=latest_inbound,
+            account=account,
         )
         if not mapping_allowed:
             return self._decision(

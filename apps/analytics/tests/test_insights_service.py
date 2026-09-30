@@ -92,10 +92,64 @@ class InsightsAnalyticsServiceTests(TestCase):
 
         self.assertEqual(len(rows), 1)
         row = rows[0]
-        self.assertEqual(row["total_ai"], 3)
+        self.assertEqual(row["total_ai"], 4)
         self.assertEqual(row["ai_bumpups"], 1)
         self.assertEqual(row["ai_replies"], 2)
         self.assertEqual(row["welcome_messages"], 1)
+
+    def test_engagement_categories_are_disjoint_and_include_welcomes_in_total(self):
+        self._outbound(body="Reply", raw_payload={"shvya_ai": {"origin": "engagement"}})
+        self._outbound(body="Bump", raw_payload={"shvya_ai": {"origin": "bump_up"}})
+        self._outbound(body="Welcome", raw_payload={
+            "shvya_ai": {"origin": "engagement"},
+            "shvya_welcome": {"trigger": "lead_created"},
+        })
+        self._outbound(body="Manual reply", raw_payload={})
+        self._outbound(body="Null marker", raw_payload={"shvya_ai": None})
+        today = timezone.localdate().isoformat()
+        kwargs = dict(organization=self.organization, date_from=today, date_to=today)
+        row, = get_ai_welcome_trend(**kwargs)
+        overview = get_overview_metrics(**kwargs)
+        for key in ("ai_replies", "ai_bumpups", "welcome_messages"):
+            self.assertEqual(row[key], 1)
+            self.assertEqual(overview[key], row[key])
+        self.assertEqual(row["total_ai"], 3)
+        self.assertEqual(overview["ai_messages"], row["total_ai"])
+        self.assertEqual(overview["total_ai"], row["total_ai"])
+
+    def test_welcome_and_bumpups_exclude_queued_failed_and_inbound_messages(self):
+        for category in (
+            {"shvya_welcome": {"trigger": "lead_created"}},
+            {"shvya_ai": {"origin": "bump_up"}},
+        ):
+            for status in ("queued", "failed", "sent", "delivered", "read"):
+                msg = self._outbound(body=status, raw_payload=category)
+                WhatsAppMessage.objects.filter(pk=msg.pk).update(status=status)
+            msg = self._outbound(body="Inbound", raw_payload=category)
+            WhatsAppMessage.objects.filter(pk=msg.pk).update(direction="inbound")
+        today = timezone.localdate().isoformat()
+        kwargs = dict(organization=self.organization, date_from=today, date_to=today)
+        row, = get_ai_welcome_trend(**kwargs)
+        self.assertEqual(row["welcome_messages"], 3)
+        self.assertEqual(row["ai_bumpups"], 3)
+        self.assertEqual(row["ai_replies"], 0)
+        self.assertEqual(row["total_ai"], 6)
+        self.assertEqual(get_overview_metrics(**kwargs)["ai_messages"], 6)
+
+    def test_ai_activity_uses_send_day_not_queue_or_later_receipt_day(self):
+        msg = self._outbound(body="Delayed welcome", raw_payload={
+            "shvya_welcome": {"trigger": "lead_created"},
+        })
+        WhatsAppMessage.objects.filter(pk=msg.pk).update(
+            created_at=datetime(2026, 1, 1, 15, tzinfo=dt_timezone.utc),
+            sent_at=datetime(2026, 1, 1, 19, tzinfo=dt_timezone.utc),
+            updated_at=datetime(2026, 1, 3, 19, tzinfo=dt_timezone.utc),
+            status=WhatsAppMessage.Status.READ,
+        )
+        for day, expected in (("2026-01-01", 0), ("2026-01-02", 1), ("2026-01-04", 0)):
+            kwargs = dict(organization=self.organization, date_from=day, date_to=day)
+            self.assertEqual(get_overview_metrics(**kwargs)["welcome_messages"], expected)
+            self.assertEqual(sum(row["total_ai"] for row in get_ai_welcome_trend(**kwargs)), expected)
 
     def test_local_midnight_is_shared_by_cards_and_lead_chart(self):
         # 19:00 UTC on Jan 1 is Jan 2 in the organization's timezone.

@@ -9,6 +9,7 @@ an account-health circuit breaker.
 from __future__ import annotations
 
 import hashlib
+import logging
 import mimetypes
 import os
 from datetime import timedelta
@@ -19,6 +20,7 @@ from decouple import config
 from django.core.cache import cache
 from django.core.signing import TimestampSigner
 from django.db import transaction
+from django.db.models import Case, Exists, IntegerField, OuterRef, Q, Subquery, Value, When
 from django.urls import reverse
 from django.utils import timezone
 
@@ -34,6 +36,8 @@ from apps.hosted_automation.models import (
     HostedFollowupStepConfig,
 )
 
+
+logger = logging.getLogger(__name__)
 
 HOSTED_CONNECTION_TYPE = "hosted"
 EXPLICIT_LEAD_CREATION_AI_ACTIVATION = "explicit_lead_creation"
@@ -64,7 +68,7 @@ MEDIA_TOKEN_MAX_AGE_SECONDS = 15 * 60
 
 HOSTED_AI_LOCK = "shvya:hosted-ai:dispatcher"
 HOSTED_AI_DISPATCH_LEASE_SECONDS = 30
-HOSTED_AI_PROCESSING_STALE_SECONDS = 180
+HOSTED_AI_PROCESSING_STALE_SECONDS = 300
 HOSTED_FOLLOWUP_LOCK = "shvya:hosted-followup:dispatcher"
 API_FOLLOWUP_LOCK = "shvya:api-followup:dispatcher"
 
@@ -452,6 +456,51 @@ def enqueue_ai_engagement(*, account, lead, source_message, activation=""):
     return job
 
 
+@transaction.atomic
+def enqueue_hosted_welcome(*, account, lead):
+    """Persist a welcome intent; no transcript row or AI work happens here."""
+    if account.organization_id != lead.organization_id:
+        raise HostedAutomationError("Welcome account and lead organizations differ.")
+    job, _ = HostedAutomationJob.objects.get_or_create(
+        account=account,
+        lead=lead,
+        kind=HostedAutomationJob.Kind.WELCOME,
+        defaults={"organization": lead.organization, "available_at": timezone.now()},
+    )
+    return job
+
+
+def ordered_ai_jobs(queryset):
+    """Welcomes precede replies; each class is FIFO, independently of retries."""
+    return queryset.annotate(
+        _ai_priority=Case(
+            When(kind=HostedAutomationJob.Kind.WELCOME, then=Value(0)),
+            default=Value(1), output_field=IntegerField(),
+        ),
+    ).order_by("_ai_priority", "created_at", "id")
+
+
+def job_ai_block_reason(*, job):
+    if job.kind == HostedAutomationJob.Kind.WELCOME:
+        from services.channels.hosted_whatsapp_service import account_ai_block_reason
+        return account_ai_block_reason(account=job.account, lead=job.lead)
+    return hosted_ai_block_reason(account=job.account, lead=job.lead)
+
+
+def cancel_job_outbound(*, job, reason):
+    """Remove obsolete drafts, including a row created before result was saved."""
+    owner = Q(raw_payload__shvya_ai__job_id=str(job.pk)) | Q(raw_payload__shvya_welcome__job_id=str(job.pk))
+    if (job.result or {}).get("message_id"):
+        owner |= Q(pk=job.result["message_id"])
+    if job.source_message_id:
+        owner |= Q(raw_payload__shvya_ai__source_inbound_message_id=str(job.source_message_id))
+    WhatsAppMessage.objects.filter(
+        owner, organization_id=job.organization_id, account_id=job.account_id,
+        lead_id=job.lead_id, direction=WhatsAppMessage.Direction.OUTBOUND,
+        status=WhatsAppMessage.Status.QUEUED,
+    ).update(status=WhatsAppMessage.Status.FAILED, error=f"AI send cancelled: {reason}")
+
+
 def _latest_hosted_inbound(*, job):
     return (
         WhatsAppMessage.objects.filter(
@@ -511,21 +560,36 @@ def hosted_ai_block_reason(*, account, lead):
 
 
 def has_pending_ai(*, account):
-    pending = False
-    jobs = HostedAutomationJob.objects.filter(
+    """Give cadence a bounded answer, without scanning a bulk AI backlog."""
+    pending = HostedAutomationJob.objects.filter(
         account=account,
         status__in=[HostedAutomationJob.Status.QUEUED, HostedAutomationJob.Status.PROCESSING],
-    ).select_related("lead")
-    for job in jobs:
-        reason = hosted_ai_block_reason(account=account, lead=job.lead)
-        if reason:
-            HostedAutomationJob.objects.filter(pk=job.pk, status=job.status).update(
-                status=HostedAutomationJob.Status.SKIPPED,
-                completed_at=timezone.now(), result={**(job.result or {}), "reason": reason},
-            )
+    )
+    # A worker owns PROCESSING state and rechecks controls at delivery. Cadence
+    # must neither mutate its lease nor compete with an in-flight send.
+    if pending.filter(status=HostedAutomationJob.Status.PROCESSING).exists():
+        return True
+    jobs = ordered_ai_jobs(pending.filter(status=HostedAutomationJob.Status.QUEUED))
+    for job in jobs.select_related("lead", "account")[:100]:
+        reason = job_ai_block_reason(job=job)
+        if not reason:
+            return True
+        # A worker may have claimed the row since it was read. Only cancel the
+        # draft if this helper successfully transitioned the still-queued job.
+        changed = HostedAutomationJob.objects.filter(
+            pk=job.pk, status=HostedAutomationJob.Status.QUEUED,
+        ).update(
+            status=HostedAutomationJob.Status.SKIPPED, completed_at=timezone.now(),
+            result={**(job.result or {}), "reason": reason},
+            lease_expires_at=None, claim_token="",
+        )
+        if changed:
+            cancel_job_outbound(job=job, reason=reason)
         else:
-            pending = True
-    return pending
+            return True
+    # Be conservative when more than 100 blocked rows remain: future scans
+    # clean them in bounded batches before allowing cadence to overtake AI.
+    return pending.exists()
 
 
 def _next_ai_time(*, account):
@@ -541,130 +605,131 @@ def _next_ai_time(*, account):
 
 
 def _recover_stale_hosted_ai_jobs(*, now):
-    """Return abandoned PROCESSING jobs to the durable queue.
-
-    PROCESSING is a lease, not a terminal state. If a worker crashes after
-    claiming a job, or the broker loses the processing task, Beat must be able
-    to retry the same source-bound job. Existing source-message and outbound
-    idempotency guards prevent duplicate customer messages.
-    """
+    """Recover lost worker/broker leases without trusting Redis cache locks."""
     stale_before = now - timedelta(seconds=HOSTED_AI_PROCESSING_STALE_SECONDS)
-    stale_ids = list(
-        HostedAutomationJob.objects.filter(
-            status=HostedAutomationJob.Status.PROCESSING,
-            started_at__isnull=False,
-            started_at__lte=stale_before,
-            account__connection_type=HOSTED_CONNECTION_TYPE,
-            account__is_active=True,
-            account__status=WhatsAppAccount.Status.CONNECTED,
-        )
-        .order_by("started_at", "created_at")
-        .values_list("id", flat=True)[:20]
-    )
+    expired = Q(lease_expires_at__lte=now) | Q(
+        lease_expires_at__isnull=True, started_at__lte=stale_before,
+    ) | Q(lease_expires_at__isnull=True, started_at__isnull=True, updated_at__lte=stale_before)
+    stale_ids = list(HostedAutomationJob.objects.filter(
+        expired, status=HostedAutomationJob.Status.PROCESSING,
+    ).values_list("pk", flat=True)[:100])
     recovered = 0
     for job_id in stale_ids:
         with transaction.atomic():
-            job = (
-                HostedAutomationJob.objects.select_for_update()
-                .filter(
-                    id=job_id,
-                    status=HostedAutomationJob.Status.PROCESSING,
-                    started_at__lte=stale_before,
-                )
-                .first()
-            )
+            job = HostedAutomationJob.objects.select_for_update().filter(
+                expired, pk=job_id, status=HostedAutomationJob.Status.PROCESSING,
+            ).first()
             if job is None:
                 continue
             result = dict(job.result or {})
             result.pop("_processing_task_id", None)
             result["recovery_count"] = int(result.get("recovery_count", 0)) + 1
             result["recovery_reason"] = "stale_processing_lease"
-            job.status = HostedAutomationJob.Status.QUEUED
-            job.available_at = now
-            job.started_at = None
-            job.completed_at = None
-            job.error = ""
-            job.result = result
-            job.save(
-                update_fields=[
-                    "status",
-                    "available_at",
-                    "started_at",
-                    "completed_at",
-                    "error",
-                    "result",
-                    "updated_at",
-                ]
+            HostedAutomationJob.objects.filter(pk=job.pk).update(
+                status=HostedAutomationJob.Status.QUEUED, available_at=now,
+                started_at=None, completed_at=None, lease_expires_at=None,
+                claim_token="", error="", result=result, updated_at=now,
             )
             recovered += 1
     return recovered
 
 
-def dispatch_one_hosted_ai_job():
-    """Claim one due AI job. Hosted AI always gets first dispatch priority."""
-    if not cache.add(HOSTED_AI_LOCK, "1", timeout=18):
-        return {"status": "locked"}
+def _publish_hosted_job(job_id):
+    from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
     try:
-        now = timezone.now()
-        _recover_stale_hosted_ai_jobs(now=now)
-        candidate_ids = list(
-            HostedAutomationJob.objects.filter(
-                status=HostedAutomationJob.Status.QUEUED,
-                available_at__lte=now,
-                account__connection_type=HOSTED_CONNECTION_TYPE,
-                account__is_active=True,
-                account__status=WhatsAppAccount.Status.CONNECTED,
-            )
-            .order_by("available_at", "created_at")
-            .values_list("id", flat=True)[:20]
-        )
-        for job_id in candidate_ids:
-            with transaction.atomic():
-                job = (
-                    HostedAutomationJob.objects.select_for_update()
-                    .select_related("account", "organization", "lead", "source_message")
-                    .filter(id=job_id, status=HostedAutomationJob.Status.QUEUED)
-                    .first()
-                )
-                if not job:
-                    continue
-                latest = _latest_hosted_inbound(job=job)
-                if not latest or latest.id != job.source_message_id:
-                    job.status = HostedAutomationJob.Status.SKIPPED
-                    job.completed_at = now
-                    job.result = {"reason": "superseded_by_newer_lead_message"}
-                    job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-                    continue
-                reason = hosted_ai_block_reason(account=job.account, lead=job.lead)
-                if reason:
-                    job.status = HostedAutomationJob.Status.SKIPPED
-                    job.completed_at = now
-                    job.result = {**(job.result or {}), "reason": reason}
-                    job.save(update_fields=["status", "completed_at", "result", "updated_at"])
-                    continue
-                pause_until = automation_pause_until(account=job.account)
-                if pause_until:
-                    job.available_at = pause_until
-                    job.save(update_fields=["available_at", "updated_at"])
-                    continue
-                # Do not mark PROCESSING until the processing task itself has
-                # actually claimed the durable job. A short DB lease prevents
-                # Beat from publishing duplicates; if broker publication is lost,
-                # the still-QUEUED row becomes due again automatically.
-                lease_until = now + timedelta(seconds=HOSTED_AI_DISPATCH_LEASE_SECONDS)
-                HostedAutomationJob.objects.filter(
-                    pk=job.pk,
-                    status=HostedAutomationJob.Status.QUEUED,
-                ).update(available_at=lease_until)
-                from apps.hosted_automation.tasks import process_hosted_ai_engagement_job_task
+        process_hosted_ai_engagement_job_task.delay(str(job_id))
+    except Exception:
+        # The database remains the outbox. Beat retries after this short lease,
+        # including when Redis is unavailable during the inbound transaction.
+        logger.exception("Could not publish AI job %s; durable recovery will retry", job_id)
+        HostedAutomationJob.objects.filter(
+            pk=job_id, status=HostedAutomationJob.Status.QUEUED,
+        ).update(lease_expires_at=None)
 
-                transaction.on_commit(
-                    lambda value=str(job.id): process_hosted_ai_engagement_job_task.delay(value)
+
+def dispatch_one_hosted_ai_job():
+    """Dispatch one ready head per account under database serialization.
+
+    A batch prevents a busy account from starving other organizations. The
+    function name is retained for older callers; actual delivery remains one
+    active job per account and the final transport enforces the 45 second gap.
+    """
+    from services.channels.ai_send_gate import next_ai_send_at
+
+    now = timezone.now()
+    recovered = _recover_stale_hosted_ai_jobs(now=now)
+    account_jobs = HostedAutomationJob.objects.filter(account_id=OuterRef("pk"))
+    head = ordered_ai_jobs(account_jobs.filter(status=HostedAutomationJob.Status.QUEUED))
+    account_ids = list(WhatsAppAccount.objects.filter(
+        is_active=True, status=WhatsAppAccount.Status.CONNECTED,
+    ).annotate(
+        _ai_head_due=Subquery(head.values("available_at")[:1]),
+        _ai_processing=Exists(account_jobs.filter(status=HostedAutomationJob.Status.PROCESSING)),
+        _ai_dispatched=Exists(account_jobs.filter(status=HostedAutomationJob.Status.QUEUED, lease_expires_at__gt=now)),
+    ).filter(
+        _ai_head_due__lte=now, _ai_processing=False, _ai_dispatched=False,
+    ).order_by("_ai_head_due", "pk").values_list("pk", flat=True)[:100])
+    dispatched = []
+    for account_id in account_ids:
+        with transaction.atomic():
+            account = WhatsAppAccount.objects.select_for_update(skip_locked=True).filter(pk=account_id).first()
+            if account is None:
+                continue
+            pending = HostedAutomationJob.objects.filter(
+                account=account,
+                status__in=[HostedAutomationJob.Status.QUEUED, HostedAutomationJob.Status.PROCESSING],
+            )
+            if pending.filter(status=HostedAutomationJob.Status.PROCESSING).exists():
+                continue
+            if pending.filter(lease_expires_at__gt=now).exists():
+                continue
+            # Inspect the FIFO head, including its retry backoff, so lower
+            # priority/fresher jobs cannot jump past a delayed welcome/reply.
+            for job in ordered_ai_jobs(pending).select_related(
+                "account", "organization", "lead", "source_message",
+            )[:100]:
+                if job.kind != HostedAutomationJob.Kind.WELCOME:
+                    latest = _latest_hosted_inbound(job=job)
+                    if latest is None or latest.pk != job.source_message_id:
+                        cancel_job_outbound(job=job, reason="superseded_by_newer_lead_message")
+                        HostedAutomationJob.objects.filter(pk=job.pk).update(
+                            status=HostedAutomationJob.Status.SKIPPED, completed_at=now,
+                            result={**(job.result or {}), "reason": "superseded_by_newer_lead_message"},
+                        )
+                        continue
+                try:
+                    reason = job_ai_block_reason(job=job)
+                except Exception:
+                    logger.exception("Could not evaluate AI controls for job %s", job.pk)
+                    HostedAutomationJob.objects.filter(pk=job.pk).update(
+                        available_at=now + timedelta(seconds=30),
+                        error="AI permissions temporarily unavailable; retrying.",
+                    )
+                    break
+                if reason:
+                    cancel_job_outbound(job=job, reason=reason)
+                    HostedAutomationJob.objects.filter(pk=job.pk).update(
+                        status=HostedAutomationJob.Status.SKIPPED, completed_at=now,
+                        result={**(job.result or {}), "reason": reason},
+                    )
+                    continue
+                gap_until = next_ai_send_at(account=account)
+                pause_until = automation_pause_until(account=account) if account.connection_type == HOSTED_CONNECTION_TYPE else None
+                ready_at = max(value for value in [job.available_at, gap_until, pause_until] if value is not None)
+                if ready_at > now:
+                    if ready_at != job.available_at:
+                        HostedAutomationJob.objects.filter(pk=job.pk).update(available_at=ready_at)
+                    break
+                # Do not show PROCESSING before a worker actually starts.
+                HostedAutomationJob.objects.filter(pk=job.pk).update(
+                    lease_expires_at=now + timedelta(seconds=HOSTED_AI_DISPATCH_LEASE_SECONDS),
                 )
-                return {"status": "dispatched", "job_id": str(job.id)}
-        return {"status": "idle"}
-    finally:
-        cache.delete(HOSTED_AI_LOCK)
+                transaction.on_commit(lambda value=job.pk: _publish_hosted_job(value))
+                dispatched.append(str(job.pk))
+                break
+    if dispatched:
+        return {"status": "dispatched", "job_id": dispatched[0], "job_ids": dispatched, "recovered": recovered}
+    return {"status": "idle", "recovered": recovered}
 
 
 def _delay_from_session_settings(settings):
@@ -1062,12 +1127,12 @@ def hosted_queue_items(*, account):
                 "id": str(job.id),
                 "to": job.lead.phone,
                 "lead": job.lead.name,
-                "body": "AI response to the latest lead message",
-                "message_type": "AI Engagement",
+                "body": "Welcome message waiting for its send slot" if job.kind == HostedAutomationJob.Kind.WELCOME else "AI response to the latest lead message",
+                "message_type": "Welcome" if job.kind == HostedAutomationJob.Kind.WELCOME else "AI Engagement",
                 "created_at": job.created_at.isoformat(),
                 "available_at": job.available_at.isoformat(),
                 "origin": "AI Engagement",
-                "priority": 1,
+                "priority": 0 if job.kind == HostedAutomationJob.Kind.WELCOME else 1,
             }
         )
 

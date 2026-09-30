@@ -1,8 +1,11 @@
 """Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
-from datetime import timedelta
+import json
+from datetime import datetime, timedelta, timezone as datetime_timezone
 
 from django.utils import timezone
+
+from services.channels.ai_send_gate import paced_ai_send
 
 from apps.channels.models import WhatsAppMessage
 from apps.channels.providers.whatsapp_web import (
@@ -14,6 +17,19 @@ from apps.channels.providers.whatsapp_web import (
 _INSTALLED = False
 _ORIGINAL_SEND = None
 TRANSIENT_AUTOMATION_RETRY_SECONDS = 15
+
+
+def _provider_sent_at(response):
+    """A replay confirms the original provider send time, not the retry time."""
+    now = timezone.now()
+    raw_timestamp = response.get("timestamp") if isinstance(response, dict) else None
+    try:
+        if isinstance(raw_timestamp, bool) or float(raw_timestamp) <= 0:
+            return now
+        sent_at = datetime.fromtimestamp(float(raw_timestamp), tz=datetime_timezone.utc)
+    except (TypeError, ValueError, OverflowError, OSError):
+        return now
+    return min(sent_at, now)
 
 
 def _push_chat_refresh(message, reason):
@@ -29,6 +45,21 @@ def _push_chat_refresh(message, reason):
     )
 
 
+def _mark_send_attempt(message):
+    """Persist retry identity before gateway I/O, including across worker death."""
+    payload = dict(message.raw_payload or {})
+    previous = payload.get("shvya_hosted_request") or {}
+    retry = bool(previous.get("attempted_at"))
+    payload["shvya_hosted_request"] = {
+        "request_id": str(message.pk),
+        "attempted_at": previous.get("attempted_at") or timezone.now().isoformat(),
+    }
+    message.raw_payload = payload
+    message.save(update_fields=["raw_payload", "updated_at"])
+    return retry
+
+
+@paced_ai_send
 def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,
@@ -53,16 +84,16 @@ def send_hosted_message(*, message, defer_on_pause=True):
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
     raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
-    if raw_payload.get("shvya_ai"):
+    if raw_payload.get("shvya_ai") or raw_payload.get("shvya_welcome"):
         reason = (
             hosted_ai_block_reason(account=account, lead=message.lead)
-            if message.lead_id
-            else "lead_missing"
+            if message.lead_id and not raw_payload.get("shvya_welcome")
+            else ("" if message.lead_id else "lead_missing")
         )
         if not reason:
             from services.channels.hosted_whatsapp_service import account_ai_block_reason
 
-            ai_metadata = raw_payload["shvya_ai"]
+            ai_metadata = raw_payload.get("shvya_ai") or {}
             reason = account_ai_block_reason(
                 account=account, lead=message.lead,
                 bump_up_number=(ai_metadata.get("number", 1) if ai_metadata.get("origin") == "bump_up" else None),
@@ -89,6 +120,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
     media_url = None
     filename = None
     document = None
+    storage_path = None
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
         media_payload = message.media_payload or {}
         if media_payload.get("source") == "document":
@@ -105,8 +137,10 @@ def send_hosted_message(*, message, defer_on_pause=True):
         elif media_payload.get("source") == "url" and media_payload.get("url"):
             media_url = media_payload["url"]
             filename = media_payload.get("filename")
+        elif media_payload.get("source") == "storage" and media_payload.get("storage_path"):
+            storage_path = str(media_payload["storage_path"])
         else:
-            raise WhatsAppSendError("Hosted WhatsApp media requires a document or URL-backed source.")
+            raise WhatsAppSendError("Hosted WhatsApp media requires a document, uploaded file, or URL-backed source.")
 
     is_automation = message_is_hosted_automation(message)
     reservation_acquired = False
@@ -124,25 +158,43 @@ def send_hosted_message(*, message, defer_on_pause=True):
         reservation_acquired = bool(gate.get("reserved"))
 
     provider_confirmed = False
+    request_is_retry = False
     try:
         from apps.channels.hosted_gateway_routing import gateway_client_for_account
 
         client = gateway_client_for_account(account, client_class=WhatsAppWebClient)
-        if document is not None:
+        if storage_path is not None:
+            from django.core.files.storage import default_storage
+
+            with default_storage.open(storage_path, "rb") as file_obj:
+                request_is_retry = _mark_send_attempt(message)
+                response = client.send_uploaded_media(
+                    session_id=account.id, to_number=message.to_number, file_obj=file_obj,
+                    message_type=message.message_type,
+                    mime_type=str(media_payload.get("mime_type") or "application/octet-stream"),
+                    filename=str(media_payload.get("filename") or "attachment"),
+                    caption=message.body, request_id=str(message.pk),
+                    request_is_retry=request_is_retry,
+                )
+        elif document is not None:
             import mimetypes
             from pathlib import Path
             filename = Path(document.file.name).name
             with document.file.open("rb") as file_obj:
+                request_is_retry = _mark_send_attempt(message)
                 response = client.send_uploaded_media(
                     session_id=account.id, to_number=message.to_number, file_obj=file_obj,
                     message_type=WhatsAppMessage.MessageType.DOCUMENT,
                     mime_type=mimetypes.guess_type(filename)[0] or "application/octet-stream",
-                    filename=filename, caption=message.body,
+                    filename=filename, caption=message.body, request_id=str(message.pk),
+                    request_is_retry=request_is_retry,
                 )
         else:
+            request_is_retry = _mark_send_attempt(message)
             response = client.send_message(
                 session_id=account.id, to_number=message.to_number, body=message.body,
                 message_type=message.message_type, media_url=media_url, filename=filename,
+                request_id=str(message.pk), request_is_retry=request_is_retry,
             )
 
         raw_id = response.get("messageId")
@@ -158,6 +210,17 @@ def send_hosted_message(*, message, defer_on_pause=True):
         # fails; the gateway callback/reconciliation will account for it.
         provider_confirmed = True
     except WhatsAppWebGatewayError as exc:
+        try:
+            error_code = (json.loads(exc.response_body or "{}") or {}).get("code")
+        except (ValueError, TypeError, AttributeError):
+            error_code = None
+        if not request_is_retry and error_code == "send_claim_unavailable":
+            # Gateway explicitly confirms it did not call WhatsApp. A later
+            # first attempt is safe when its claim storage recovers.
+            payload = dict(message.raw_payload or {})
+            payload.pop("shvya_hosted_request", None)
+            message.raw_payload = payload
+            message.save(update_fields=["raw_payload", "updated_at"])
         transient = exc.status_code is None or exc.status_code >= 500
 
         # AI, welcome, and follow-up automation must survive temporary Hosted
@@ -168,9 +231,11 @@ def send_hosted_message(*, message, defer_on_pause=True):
             message.error = f"Temporary Hosted gateway failure; retry scheduled: {exc}"
             message.save(update_fields=["error", "updated_at"])
             _push_chat_refresh(message, "retrying")
-            raise HostedAutomationPaused(
+            paused = HostedAutomationPaused(
                 timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
-            ) from exc
+            )
+            paused.reason = "provider_transient"
+            raise paused from exc
 
         message.status = WhatsAppMessage.Status.FAILED
         message.error = str(exc)
@@ -189,6 +254,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         "shvya_ai",
         "shvya_welcome",
         "shvya_hosted",
+        "shvya_hosted_request",
         "shvya_auto_followup",
         "shvya_workflow",
         "shvya_sales",
@@ -204,6 +270,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
             final_payload[key] = existing_payload[key]
 
     message.status = WhatsAppMessage.Status.SENT
+    message.sent_at = _provider_sent_at(response)
     message.external_id = f"wweb:{raw_id}"
     message.raw_payload = final_payload
     message.error = ""
@@ -211,6 +278,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         update_fields=[
             "status",
             "external_id",
+            "sent_at",
             "raw_payload",
             "error",
             "updated_at",

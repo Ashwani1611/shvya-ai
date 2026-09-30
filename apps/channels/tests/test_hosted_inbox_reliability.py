@@ -72,6 +72,49 @@ class HostedInboxReliabilityTests(TestCase):
             account=self.account, selected_chat=self.phone, **kwargs,
         )
 
+    def test_pending_ai_messages_stay_in_queue_until_successful_send(self):
+        inbound = self.message(1, status="received")
+        for marker in (
+            {"shvya_welcome": {"trigger": "lead_created"}},
+            {"shvya_ai": {"origin": "engagement"}},
+        ):
+            for status in ("queued", "sending"):
+                self.message(2, outbound=True, status=status, raw_payload=marker)
+        snapshot = self.snapshot()
+        self.assertEqual([msg.pk for msg in snapshot["thread"]], [inbound.pk])
+        self.assertEqual(snapshot["conversations"][0]["last_message"], inbound.body)
+
+        sent = self.message(3, outbound=True, status="sent", raw_payload={
+            "shvya_welcome": {"trigger": "lead_created"},
+        })
+        snapshot = self.snapshot()
+        self.assertEqual([msg.pk for msg in snapshot["thread"]], [inbound.pk, sent.pk])
+        self.assertEqual(snapshot["conversations"][0]["last_message"], sent.body)
+
+    def test_bulk_pending_welcomes_do_not_create_ghost_chats(self):
+        for index in range(5):
+            self.message(index, phone=f"+91980000000{index}", outbound=True,
+                         status="queued", raw_payload={"shvya_welcome": {"trigger": "lead_created"}})
+        self.assertEqual(self.snapshot()["conversations"], [])
+
+    def test_manual_queued_message_remains_visible(self):
+        manual = self.message(1, outbound=True, status="queued")
+        snapshot = self.snapshot()
+        self.assertEqual([msg.pk for msg in snapshot["thread"]], [manual.pk])
+        self.assertEqual(snapshot["conversations"][0]["last_message"], manual.body)
+
+    def test_cancelled_ai_drafts_stay_hidden_but_provider_failures_remain_visible(self):
+        marker = {"shvya_ai": {"origin": "engagement"}}
+        for index, error in enumerate(("AI send cancelled: stage_ai_off", "Superseded by newer lead message")):
+            self.message(index, outbound=True, status="failed", error=error, raw_payload=marker)
+        self.assertEqual(self.snapshot()["conversations"], [])
+        failed = self.message(3, outbound=True, status="failed", error="Provider request timed out", raw_payload=marker)
+        accepted = self.message(4, outbound=True, status="failed", external_id="accepted-before-cancellation",
+                                error="AI send cancelled: stage_ai_off", raw_payload=marker)
+        snapshot = self.snapshot()
+        self.assertEqual([msg.pk for msg in snapshot["thread"]], [failed.pk, accepted.pk])
+        self.assertEqual(snapshot["conversations"][0]["last_message"], accepted.body)
+
     def event(self, event="message", **kwargs):
         return {
             "sessionId": str(self.account.pk), "event": event,

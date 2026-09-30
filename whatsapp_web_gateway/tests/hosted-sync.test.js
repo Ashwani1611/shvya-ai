@@ -49,6 +49,54 @@ function context(names, overrides = {}) {
   return sandbox;
 }
 
+for (const route of ['messages', 'uploaded-media']) {
+  test(`completed ${route} retry is replayable without a live WhatsApp session`, async () => {
+    const marker = route === 'messages'
+      ? "app.post('/sessions/:sessionId/messages', async (req, res) => {"
+      : "app.post(\n  '/sessions/:sessionId/uploaded-media',";
+    const start = source.indexOf(marker);
+    assert.ok(start >= 0);
+    const end = source.indexOf(route === 'messages' ? '\n});' : '\n);', start);
+    let handler;
+    let response;
+    let status;
+    const requestId = 'f4a6da38-d672-46e3-a93b-bf5f74141896';
+    vm.runInNewContext(source.slice(start, end + (route === 'messages' ? 4 : 3)), {
+      app: { post: (...args) => { handler = args.at(-1); } },
+      express: { raw: () => () => {} },
+      sessions: new Map(), path, AUTH_PATH: '/test/session-volume', redis: {}, Buffer,
+      crypto: require('node:crypto'),
+      digits: value => String(value).replace(/\D/g, ''),
+      decodeHostedHeader: value => value ? Buffer.from(value, 'base64url').toString() : '',
+      setTimeout: () => ({ unref() {} }),
+      reconcileClientState: async () => assert.fail('cached result needs no live session'),
+      idempotentSend: async options => {
+        assert.equal(options.requestId, requestId);
+        assert.equal(options.requestIsRetry, true);
+        // The real helper's completed replay is tested separately; this checks
+        // that both production routes reach it before session/preparation I/O.
+        return { status: 201, body: { messageId: 'already-sent' } };
+      },
+    });
+    const headers = {
+      'X-SHVYA-Request-Id': requestId, 'X-SHVYA-Request-Retry': '1',
+      'X-SHVYA-To': '+919999999999', 'X-SHVYA-Media-Type': 'document',
+      'Content-Type': 'application/pdf',
+    };
+    await handler({
+      params: { sessionId: 'offline-account' }, get: key => headers[key],
+      body: route === 'messages'
+        ? { requestId, requestIsRetry: true, to: '+919999999999', body: 'hello' }
+        : Buffer.from('document'),
+    }, {
+      status(value) { status = value; return this; },
+      json(value) { response = value; return this; }, set() { return this; },
+    });
+    assert.equal(status, 201);
+    assert.equal(response.messageId, 'already-sent');
+  });
+}
+
 test('production patch chain applies and sync orders before truncating the chat index', async () => {
   const visited = [];
   const identities = [];

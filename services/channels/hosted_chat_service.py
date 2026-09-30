@@ -23,6 +23,7 @@ from django.utils.dateparse import parse_datetime
 
 from apps.channels.models import HostedChatReadState, WhatsAppMessage
 from apps.crm.models import Lead
+from services.channels.message_visibility import pending_ai_message_q
 from services.channels.hosted_whatsapp_service import (
     handle_gateway_event as legacy_handle_gateway_event,
     normalize_whatsapp_number,
@@ -463,10 +464,7 @@ def _search_matches(row, query):
 
 
 def _selected_thread_queryset(account, selected, raw_chat_ids=None):
-    base = WhatsAppMessage.objects.filter(
-        organization=account.organization,
-        account=account,
-    ).select_related("lead", "account")
+    base = _visible_hosted_messages(account).select_related("lead", "account")
 
     raw_chat_ids = [value for value in (raw_chat_ids or []) if value]
 
@@ -494,6 +492,14 @@ def _selected_thread_queryset(account, selected, raw_chat_ids=None):
     return base.none()
 
 
+def _visible_hosted_messages(account):
+    """Pending automatic messages belong to the queue, never to the inbox."""
+    return WhatsAppMessage.objects.filter(
+        organization=account.organization,
+        account=account,
+    ).exclude(pending_ai_message_q())
+
+
 def _conversation_heads(account):
     """One representative per identity/name, with exact SQL unread counts.
 
@@ -507,9 +513,7 @@ def _conversation_heads(account):
             Value(""), output_field=TextField(),
         )
 
-    base = WhatsAppMessage.objects.filter(
-        organization_id=account.organization_id, account=account,
-    ).annotate(
+    base = _visible_hosted_messages(account).annotate(
         _peer=Case(
             When(direction=WhatsAppMessage.Direction.INBOUND, then=F("from_number")),
             default=F("to_number"), output_field=TextField(),
