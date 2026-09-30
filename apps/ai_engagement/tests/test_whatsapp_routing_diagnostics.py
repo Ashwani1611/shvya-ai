@@ -11,6 +11,7 @@ from apps.ai_engagement.services.ai_permissions import AIPermissionService
 from apps.ai_engagement.services.diagnostics import diagnose_engagement
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
+from apps.hosted_automation.models import HostedAutomationJob
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message, resolve_pipeline
 
@@ -121,6 +122,14 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
         self.stage.ai_on = False
         self.stage.save(update_fields=["ai_on"])
         lead.refresh_from_db()
+        report = diagnose_engagement(lead=lead)
+        self.assertIn("stage_ai_disabled", report["blockers"])
+        job = HostedAutomationJob.objects.get(source_message__lead=lead)
+        self.assertEqual(report["hosted_job"]["id"], str(job.id))
+        self.assertNotIn(
+            "no_hosted_ai_job_check_live_inbound_and_lead_mapping", report["blockers"]
+        )
+        job.delete()
         report = diagnose_engagement(lead=lead)
         self.assertIn("stage_ai_disabled", report["blockers"])
         self.assertIn(
