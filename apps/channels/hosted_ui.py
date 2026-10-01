@@ -24,9 +24,7 @@ from services.channels.hosted_whatsapp_service import (
 )
 
 from .hosted_tasks import (
-    initialize_hosted_session_task,
     logout_hosted_session_task,
-    refresh_hosted_qr_task,
     sync_hosted_history_task,
 )
 from .models import WhatsAppAccount, WhatsAppMessage
@@ -116,6 +114,37 @@ def _reconcile_gateway_status(account, result):
     return raw_status
 
 
+def _start_gateway_session(account, *, client=None):
+    """Ensure an active Hosted account has a live gateway session.
+
+    User-driven QR flows must not depend on Celery delivery. The gateway's
+    create-session endpoint is idempotent for an existing session, so it is
+    safe to call while repairing a DB/gateway drift after a gateway restart.
+    """
+    client = client or gateway_client_for_account(
+        account, client_class=WhatsAppWebClient
+    )
+    result = client.create_session(
+        session_id=account.id,
+        phone_number=account.display_phone_number or account.phone_number_id,
+    )
+    _reconcile_gateway_status(account, result)
+    return result
+
+
+def _recover_missing_gateway_session(account, *, client, error):
+    if (
+        error.status_code == 404
+        and account.status
+        in {
+            WhatsAppAccount.Status.PENDING,
+            WhatsAppAccount.Status.CONNECTED,
+        }
+    ):
+        return _start_gateway_session(account, client=client)
+    raise error
+
+
 @crm_login_required
 def whatsapp_connect_hosted_view(request):
     organization = _organization(request)
@@ -164,7 +193,19 @@ def hosted_session_create_view(request):
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
-    initialize_hosted_session_task.delay(str(account.id))
+    try:
+        result = _start_gateway_session(account)
+    except WhatsAppWebGatewayError as exc:
+        return JsonResponse(
+            {
+                "ok": False,
+                "account_id": str(account.id),
+                "error": str(exc),
+            },
+            status=503,
+        )
+
+    raw_status = str(result.get("status") or "initializing").lower()
     return JsonResponse(
         {
             "ok": True,
@@ -172,7 +213,7 @@ def hosted_session_create_view(request):
             "account_id": str(account.id),
             "phone_number": account.display_phone_number,
             "pipeline": pipeline.name,
-            "status": "Connecting",
+            "status": raw_status,
         },
         status=201 if created else 200,
     )
@@ -184,10 +225,18 @@ def hosted_session_status_view(request, account_id):
     account = _hosted_account(request, account_id)
     if not account:
         raise Http404
+    client = gateway_client_for_account(
+        account, client_class=WhatsAppWebClient
+    )
     try:
-        result = gateway_client_for_account(
-            account, client_class=WhatsAppWebClient
-        ).get_session(session_id=account.id)
+        try:
+            result = client.get_session(session_id=account.id)
+        except WhatsAppWebGatewayError as exc:
+            result = _recover_missing_gateway_session(
+                account,
+                client=client,
+                error=exc,
+            )
         raw_status = _reconcile_gateway_status(account, result)
         return JsonResponse(
             {
@@ -219,19 +268,29 @@ def hosted_session_qr_view(request, account_id):
     account = _hosted_account(request, account_id)
     if not account:
         raise Http404
+    client = gateway_client_for_account(
+        account, client_class=WhatsAppWebClient
+    )
     try:
-        result = gateway_client_for_account(
-            account, client_class=WhatsAppWebClient
-        ).get_qr(session_id=account.id)
+        try:
+            result = client.get_qr(session_id=account.id)
+        except WhatsAppWebGatewayError as exc:
+            result = _recover_missing_gateway_session(
+                account,
+                client=client,
+                error=exc,
+            )
     except WhatsAppWebGatewayError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+
+    raw_status = _reconcile_gateway_status(account, result)
     return JsonResponse(
         {
             "ok": True,
-            "status": result.get("status"),
+            "status": raw_status,
             "label": SESSION_LABELS.get(
-                str(result.get("status") or ""),
-                str(result.get("status") or "").replace("_", " ").title(),
+                raw_status,
+                raw_status.replace("_", " ").title(),
             ),
             "qr": result.get("qr"),
             "expires_in": result.get("expiresIn", 60),
@@ -246,8 +305,29 @@ def hosted_session_qr_refresh_view(request, account_id):
     account = _hosted_account(request, account_id)
     if not account:
         raise Http404
-    refresh_hosted_qr_task.delay(str(account.id))
-    return JsonResponse({"ok": True, "status": "Connecting"})
+    client = gateway_client_for_account(
+        account, client_class=WhatsAppWebClient
+    )
+    try:
+        result = client.refresh_qr(
+            session_id=account.id,
+            phone_number=account.display_phone_number or account.phone_number_id,
+        )
+    except WhatsAppWebGatewayError as exc:
+        return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+
+    raw_status = _reconcile_gateway_status(account, result)
+    return JsonResponse(
+        {
+            "ok": True,
+            "status": raw_status,
+            "label": SESSION_LABELS.get(
+                raw_status,
+                raw_status.replace("_", " ").title(),
+            ),
+            "error": result.get("lastError") or "",
+        }
+    )
 
 
 @crm_login_required
