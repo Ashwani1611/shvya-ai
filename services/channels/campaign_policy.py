@@ -163,6 +163,8 @@ def render_message(spec, bindings, values, allowed_sources):
         if not value and field["kind"] != "text":
             value = field.get("default", "")
         if not value:
+            if field["kind"] in {"image", "video", "document"}:
+                raise CampaignInputError(f"Missing attachment for {field['label']}. Open Templates → Sending setup and upload the original file, then review this send again.")
             raise CampaignInputError(f"Missing value for {field['label']}. Map a populated field or enter a fallback.")
         if len(value) > 2048:
             raise CampaignInputError(f"{field['label']} exceeds 2,048 characters.")
