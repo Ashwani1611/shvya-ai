@@ -29,7 +29,29 @@ class TemplateMediaDeliveryTests(SimpleTestCase):
         components = [{"type": "HEADER", "format": "IMAGE", "example": {"header_handle": ["4::opaque-sample"]}}]
         self.assertEqual(media_defaults(self.state, components), {})
         components[0]["example"]["header_handle"] = ["https://example.com/image.png"]
-        self.assertEqual(media_defaults(self.state, components), {"header.media": "https://example.com/image.png"})
+        self.assertEqual(media_defaults(self.state, components), {})
+
+    def test_queued_preview_url_uses_saved_attachment(self):
+        url = "https://example.com/expired-preview.png"
+        self.state.components[0]["example"] = {"header_handle": [url]}
+        components = [{"type": "header", "parameters": [{"type": "image", "image": {"link": url}}]}]
+        client = Mock()
+        client.upload_media.return_value = {"id": "123456"}
+        with patch("services.channels.template_service.state_for", return_value=self.state), patch("services.channels.template_media.default_storage.open", return_value=BytesIO(b"image")):
+            result = resolve_delivery_media(components=components, template=self.template, client=client)
+        self.assertEqual(result[0]["parameters"][0]["image"], {"id": "123456"})
+        self.assertEqual(components[0]["parameters"][0]["image"], {"link": url})
+
+    def test_queued_preview_without_saved_attachment_blocks_before_send(self):
+        url = "https://example.com/expired-preview.png"
+        self.state.components[0]["example"] = {"header_handle": [url]}
+        self.state.delivery_media = {}
+        components = [{"type": "header", "parameters": [{"type": "image", "image": {"link": url}}]}]
+        client = Mock()
+        with patch("services.channels.template_service.state_for", return_value=self.state):
+            with self.assertRaisesRegex(CampaignInputError, "upload the original file"):
+                resolve_delivery_media(components=components, template=self.template, client=client)
+        client.upload_media.assert_not_called()
 
     def test_uploaded_media_and_named_body_render_for_inbox_and_sequences(self):
         with patch("services.channels.template_rendering.state_for", return_value=self.state):
