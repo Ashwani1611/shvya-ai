@@ -423,8 +423,8 @@ def execute_instagram_ai_engagement(*, task, message_id):
     try:
         with transaction.atomic():
             locked_conversation = (
-                InstagramConversation.objects.select_for_update()
-                .select_related("account", "lead")
+                InstagramConversation.objects.select_for_update(of=("self",))
+                .select_related("account")
                 .get(
                     pk=conversation.pk,
                     organization=source.organization,
