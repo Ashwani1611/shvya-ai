@@ -1,39 +1,234 @@
-"""Explicit Instagram identity linking; names and provider IDs are never phone numbers."""
+"""Instagram CRM lead linking, auto-creation, and phone capture.
+
+Instagram participant IDs are the conversation identity. A phone number is an
+optional CRM attribute and must never be required to create or engage an
+Instagram lead.
+"""
+from __future__ import annotations
+
+import re
+
 from django.core.exceptions import ValidationError
 from django.db import transaction
+
 from apps.channels.instagram_models import InstagramConversation
-from apps.crm.models import Lead
+from apps.crm.models import Lead, Pipeline
 from apps.crm.models.lead import normalize_phone
 from services.crm.lead_filter_service import accessible_pipelines
 from services.crm_activity_service import record_lead_created
 
 
-@transaction.atomic
-def link_instagram_lead(*, user, conversation_id, phone, name="", pipeline_id=""):
-    conversation = InstagramConversation.objects.select_for_update().get(
-        pk=conversation_id, organization=user.organization, account__organization=user.organization,
+_PHONE_CANDIDATE = re.compile(r"(?<!\\w)(\\+?\\d[\\d\\s().-]{6,}\\d)(?!\\w)")
+
+
+def _preferred_pipeline_stage(organization):
+    pipelines = Pipeline.objects.filter(
+        organization=organization,
+        is_active=True,
     )
-    phone = normalize_phone(phone)
+    pipeline = (
+        pipelines.filter(name__iexact="Leads").order_by("created_at", "id").first()
+        or pipelines.filter(name__iexact="Lead").order_by("created_at", "id").first()
+        or pipelines.order_by("created_at", "id").first()
+    )
+    if pipeline is None:
+        return None, None
+
+    stages = pipeline.stages.filter(is_active=True)
+    stage = (
+        stages.filter(name__iexact="New Lead").order_by("display_order", "id").first()
+        or stages.filter(name__iexact="New Leads").order_by("display_order", "id").first()
+        or stages.order_by("display_order", "id").first()
+    )
+    return pipeline, stage
+
+
+def _lead_name(conversation, supplied=""):
+    return (
+        str(supplied or "").strip()
+        or str(conversation.participant_name or "").strip()
+        or str(conversation.participant_username or "").strip()
+        or "Instagram user"
+    )[:150]
+
+
+def normalize_instagram_phone(value, *, country_code=""):
+    """Normalize an explicitly shared phone without guessing a country.
+
+    Numbers already carrying a plus prefix are accepted directly. A local-format
+    number is accepted only when the lead pipeline has a country code configured.
+    """
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+
+    if raw.startswith("+"):
+        normalized = normalize_phone(raw)
+    else:
+        digits = "".join(character for character in raw if character.isdigit())
+        country_digits = "".join(
+            character for character in str(country_code or "") if character.isdigit()
+        )
+        if not country_digits:
+            raise ValidationError(
+                {"phone": "Add the country code, for example +91 9876543210."}
+            )
+        if digits.startswith(country_digits):
+            normalized = normalize_phone(f"+{digits}")
+        else:
+            normalized = normalize_phone(f"+{country_digits}{digits}")
+
+    if len("".join(character for character in normalized if character.isdigit())) > 15:
+        raise ValidationError({"phone": "Phone number is too long."})
+    return normalized
+
+
+def extract_instagram_phone(text, *, country_code=""):
+    """Return the first safely normalizable phone explicitly present in text."""
+    for match in _PHONE_CANDIDATE.finditer(str(text or "")):
+        try:
+            return normalize_instagram_phone(
+                match.group(1),
+                country_code=country_code,
+            )
+        except ValidationError:
+            continue
+    return ""
+
+
+@transaction.atomic
+def ensure_instagram_lead(*, conversation_id):
+    """Auto-create and link a phone-optional CRM lead for a live Instagram DM."""
+    conversation = (
+        InstagramConversation.objects.select_for_update()
+        .select_related("organization", "lead", "account")
+        .get(pk=conversation_id)
+    )
+    if conversation.lead_id:
+        return conversation, conversation.lead
+
+    pipeline, stage = _preferred_pipeline_stage(conversation.organization)
+    if pipeline is None or stage is None:
+        # The DM remains visible in the Instagram inbox. AI cannot engage until
+        # the workspace has an active CRM pipeline/stage to own the lead.
+        return conversation, None
+
+    lead = Lead(
+        organization=conversation.organization,
+        pipeline=pipeline,
+        stage=stage,
+        name=_lead_name(conversation),
+        phone="",
+        lead_source="instagram",
+    )
+    lead.full_clean()
+    lead.save()
+    record_lead_created(lead=lead, actor=None)
+
+    conversation.lead = lead
+    conversation.save(update_fields=["lead", "updated_at"])
+
+    from apps.ai_engagement.services.intent_score import persist_intent_score
+
+    persist_intent_score(lead=lead)
+    return conversation, lead
+
+
+@transaction.atomic
+def map_instagram_phone_from_message(*, lead_id, text):
+    """Map a phone explicitly shared in an Instagram DM onto its CRM lead."""
+    lead = (
+        Lead.objects.select_for_update()
+        .select_related("pipeline")
+        .filter(pk=lead_id, lead_source="instagram")
+        .first()
+    )
+    if lead is None:
+        return ""
+
+    phone = extract_instagram_phone(
+        text,
+        country_code=getattr(lead.pipeline, "country_code", ""),
+    )
+    if not phone or phone == lead.phone:
+        return phone
+
+    # Never steal a phone already owned by another CRM lead. The Instagram
+    # participant ID remains the authoritative identity for this conversation.
+    if Lead.objects.filter(
+        organization_id=lead.organization_id,
+        phone=phone,
+    ).exclude(pk=lead.pk).exists():
+        return ""
+
+    lead.phone = phone
+    lead.full_clean()
+    lead.save(update_fields=["phone", "updated_at"])
+    return phone
+
+
+@transaction.atomic
+def link_instagram_lead(*, user, conversation_id, phone="", name="", pipeline_id=""):
+    """Manually link/create an Instagram lead; phone is optional."""
+    conversation = (
+        InstagramConversation.objects.select_for_update()
+        .select_related("lead")
+        .get(
+            pk=conversation_id,
+            organization=user.organization,
+            account__organization=user.organization,
+        )
+    )
+    if conversation.lead_id:
+        return conversation
+
     allowed = accessible_pipelines(user)
-    lead = Lead.objects.filter(organization=user.organization, phone=phone).first()
-    if lead and not allowed.filter(pk=lead.pipeline_id).exists():
-        raise ValidationError("This lead is not in an accessible pipeline.")
-    if conversation.lead_id and (not lead or conversation.lead_id != lead.pk):
-        raise ValidationError("This conversation is already linked to another lead. Its identity cannot be overwritten here.")
-    if not lead:
-        pipeline = allowed.filter(pk=pipeline_id).first() if pipeline_id else None
-        if not pipeline or not name.strip():
-            raise ValidationError("No lead has this phone number. Enter a name and choose a pipeline to create one.")
-        stage = pipeline.stages.filter(is_active=True).order_by("display_order").first()
+    pipeline = allowed.filter(pk=pipeline_id).first() if pipeline_id else None
+
+    raw_phone = str(phone or "").strip()
+    normalized_phone = ""
+    if raw_phone:
+        normalized_phone = normalize_instagram_phone(
+            raw_phone,
+            country_code=getattr(pipeline, "country_code", "") if pipeline else "",
+        )
+
+    lead = None
+    if normalized_phone:
+        lead = Lead.objects.filter(
+            organization=user.organization,
+            phone=normalized_phone,
+        ).first()
+        if lead and not allowed.filter(pk=lead.pipeline_id).exists():
+            raise ValidationError("This lead is not in an accessible pipeline.")
+
+    if lead is None:
+        if not pipeline or not str(name or "").strip():
+            raise ValidationError(
+                "Choose a pipeline and enter a name to create this Instagram lead."
+            )
+        stage = pipeline.stages.filter(is_active=True).order_by(
+            "display_order", "id"
+        ).first()
         if not stage:
             raise ValidationError("This pipeline has no active stage.")
-        lead = Lead(organization=user.organization, pipeline=pipeline, stage=stage,
-                    name=name.strip(), phone=phone, lead_source="instagram")
+
+        lead = Lead(
+            organization=user.organization,
+            pipeline=pipeline,
+            stage=stage,
+            name=_lead_name(conversation, name),
+            phone=normalized_phone,
+            lead_source="instagram",
+        )
         lead.full_clean()
         lead.save()
         record_lead_created(lead=lead, actor=user)
+
     conversation.lead = lead
     conversation.save(update_fields=["lead", "updated_at"])
+
     from apps.ai_engagement.services.intent_score import persist_intent_score
+
     persist_intent_score(lead=lead)
     return conversation
