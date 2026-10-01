@@ -49,6 +49,7 @@ let shuttingDown = false; // FIX 2: guard restoreSessions during shutdown
 const gatewayMetrics = {
   callbacksFailed: 0,
   historySyncFailures: 0,
+  chatBridgeRecoveries: 0,
   leaseConflicts: 0,
   reconnects: 0,
   sessionsCreated: 0,
@@ -524,9 +525,89 @@ async function syncOneChat(sessionId, chat, client) {
   return { chats: 1, messages: batch.length };
 }
 
+function isRecoverableChatBridgeError(error) {
+  const message = String((error && error.message) || error || '');
+  return /WWebJS|getChats|Execution context|Cannot find context|detached Frame|Target closed|Protocol error/i.test(message);
+}
+
+async function waitForChatBridge(client, timeoutMs = 15000) {
+  if (!client || typeof client.getChats !== 'function') {
+    throw new Error('WhatsApp Web client is not ready for chat access.');
+  }
+  // Test doubles and future provider adapters may expose getChats without a
+  // Puppeteer page. In that case use the provider method directly; bridge
+  // probing/reinjection only applies to whatsapp-web.js browser clients.
+  if (!client.pupPage || typeof client.pupPage.evaluate !== 'function') return;
+
+  const hasBridge = async () => {
+    try {
+      return await client.pupPage.evaluate(
+        () => Boolean(window.WWebJS && typeof window.WWebJS.getChats === 'function'),
+      );
+    } catch (_) {
+      return false;
+    }
+  };
+
+  if (await hasBridge()) return;
+
+  try {
+    await client.pupPage.waitForFunction(
+      'typeof window.WWebJS !== "undefined" && typeof window.WWebJS.getChats === "function"',
+      { timeout: timeoutMs, polling: 250 },
+    );
+    return;
+  } catch (_) {
+    // whatsapp-web.js can briefly lose its injected bridge during a Web
+    // navigation/reload even after the client reported ready. Re-inject once
+    // before treating the session as broken.
+  }
+
+  if (typeof client.inject !== 'function') {
+    throw new Error('WhatsApp Web chat bridge is not available.');
+  }
+
+  await client.inject();
+  await client.pupPage.waitForFunction(
+    'typeof window.WWebJS !== "undefined" && typeof window.WWebJS.getChats === "function"',
+    { timeout: timeoutMs, polling: 250 },
+  );
+}
+
+async function getChatsWithBridgeRecovery(client, timeoutMs, label) {
+  await waitForChatBridge(client);
+
+  try {
+    return await withTimeout(
+      client.getChats(),
+      timeoutMs,
+      label,
+    );
+  } catch (error) {
+    if (!isRecoverableChatBridgeError(error)) throw error;
+
+    gatewayMetrics.chatBridgeRecoveries += 1;
+    console.warn(
+      `Hosted WhatsApp chat bridge failed during ${label}; re-injecting once:`,
+      error.message || String(error),
+    );
+
+    if (typeof client.inject === 'function') {
+      await client.inject();
+    }
+    await waitForChatBridge(client);
+
+    return await withTimeout(
+      client.getChats(),
+      timeoutMs,
+      `${label} retry`,
+    );
+  }
+}
+
 async function syncRecentHistory(sessionId, state) {
-  const chats = await withTimeout(
-    state.client.getChats(),
+  const chats = await getChatsWithBridgeRecovery(
+    state.client,
     HISTORY_GET_CHATS_TIMEOUT_MS,
     'getChats',
   );
@@ -561,8 +642,8 @@ async function syncRecentHistory(sessionId, state) {
 }
 
 async function listExistingDirectChats(state) {
-  const chats = await withTimeout(
-    state.client.getChats(),
+  const chats = await getChatsWithBridgeRecovery(
+    state.client,
     EXISTING_CHATS_TIMEOUT_MS,
     'getChats for existing-chat snapshot',
   );
