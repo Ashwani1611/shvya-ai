@@ -114,8 +114,7 @@ class HostedWhatsAppTests(TestCase):
         self.assertContains(response, "Hosted Account")
         self.assertContains(response, reverse("whatsapp-connect-hosted"))
 
-    @patch("apps.channels.hosted_ui.initialize_hosted_session_task.delay")
-    def test_hosted_routes_are_blocked_when_feature_disabled(self, delay):
+    def test_hosted_routes_are_blocked_when_feature_disabled(self):
         settings = dict(self.org.settings)
         settings["hosted_account_enabled"] = False
         self.org.settings = settings
@@ -132,10 +131,13 @@ class HostedWhatsAppTests(TestCase):
 
         self.assertEqual(page_response.status_code, 404)
         self.assertEqual(create_response.status_code, 404)
-        delay.assert_not_called()
-
-    @patch("apps.channels.hosted_ui.initialize_hosted_session_task.delay")
-    def test_create_endpoint_queues_gateway_initialization(self, delay):
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
+    def test_create_endpoint_starts_gateway_initialization(self, create_session):
+        create_session.return_value = {
+            "status": "initializing",
+            "phoneNumber": "",
+            "lastError": "",
+        }
         response = self.client.post(
             reverse("whatsapp-hosted-session-create"),
             data={
@@ -147,10 +149,13 @@ class HostedWhatsAppTests(TestCase):
         payload = response.json()
         self.assertTrue(payload["ok"])
         account = WhatsAppAccount.objects.get(id=payload["account_id"])
-        delay.assert_called_once_with(str(account.id))
+        create_session.assert_called_once_with(
+            session_id=account.id,
+            phone_number="+918700274739",
+        )
 
-    @patch("apps.channels.hosted_ui.initialize_hosted_session_task.delay")
-    def test_create_endpoint_rejects_number_not_mapped_to_pipeline(self, delay):
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
+    def test_create_endpoint_rejects_number_not_mapped_to_pipeline(self, create_session):
         response = self.client.post(
             reverse("whatsapp-hosted-session-create"),
             data={
@@ -160,7 +165,7 @@ class HostedWhatsAppTests(TestCase):
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("not linked", response.json()["error"])
-        delay.assert_not_called()
+        create_session.assert_not_called()
 
     def test_hosted_page_has_exact_five_actions_in_required_order(self):
         account = self.create_account()
