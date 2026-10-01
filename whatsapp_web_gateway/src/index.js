@@ -531,9 +531,13 @@ function isRecoverableChatBridgeError(error) {
 }
 
 async function waitForChatBridge(client, timeoutMs = 15000) {
-  if (!client || !client.pupPage || typeof client.getChats !== 'function') {
+  if (!client || typeof client.getChats !== 'function') {
     throw new Error('WhatsApp Web client is not ready for chat access.');
   }
+  // Test doubles and future provider adapters may expose getChats without a
+  // Puppeteer page. In that case use the provider method directly; bridge
+  // probing/reinjection only applies to whatsapp-web.js browser clients.
+  if (!client.pupPage || typeof client.pupPage.evaluate !== 'function') return;
 
   const hasBridge = async () => {
     try {
