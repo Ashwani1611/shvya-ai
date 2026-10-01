@@ -172,12 +172,34 @@ def sync_instagram_account_task(self, account_id):
 )
 def generate_instagram_ai_engagement_task(self, message_id):
     """Run one exact Instagram inbound turn through SHVYA AI Brain."""
+    from apps.ai_engagement.services.execution_tracker import (
+        record_instagram_execution,
+    )
     from services.channels.instagram_ai import execute_instagram_ai_engagement
 
-    return execute_instagram_ai_engagement(
+    record_instagram_execution(
+        message_id,
+        status="processing",
+        increment=True,
+    )
+    result = execute_instagram_ai_engagement(
         task=self,
         message_id=message_id,
     )
+
+    result_status = str(result.get("status") or "").strip().casefold()
+    if result_status == "completed":
+        record_instagram_execution(message_id, status="completed")
+    elif result_status == "queued":
+        record_instagram_execution(message_id, status="queued")
+    elif result_status in {"skipped", "failed"}:
+        reason = str(result.get("reason") or "").strip().casefold()
+        record_instagram_execution(
+            message_id,
+            status=result_status,
+            reason=reason,
+        )
+    return result
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
