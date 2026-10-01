@@ -47,6 +47,25 @@ def _lead_initials(lead):
     return "".join([p[0] for p in (lead.name or "").split()[:2]]).upper() or "?"
 
 
+def _attach_inbound_reply_display(chat_messages):
+    """Recover visible labels for historical blank Meta button replies.
+
+    This is render-only compatibility for rows saved before the webhook fix.
+    New button replies are persisted with their visible text by
+    handle_inbound_message.
+    """
+    from services.channels.whatsapp_service import extract_inbound_message_body
+
+    for message in chat_messages:
+        if message.direction != WhatsAppMessage.Direction.INBOUND:
+            continue
+        if str(message.body or "").strip():
+            continue
+        recovered = extract_inbound_message_body(message.raw_payload)
+        if recovered:
+            message.body = recovered
+
+
 def _attach_template_display(chat_messages, *, organization):
     """Attach durable/full template presentation data to chat messages.
 
@@ -405,7 +424,9 @@ def unlinked_chat_view(request, account_id, message_id):
     if lead:
         from django.urls import reverse
         return redirect(reverse("whatsapp-chat-detail", args=[lead.pk]) + f"?account={account.pk}")
+    chat_messages = list(chat_messages.order_by("created_at"))
+    _attach_inbound_reply_display(chat_messages)
     context = _chat_sidebar_context(request, request.crm_user)
     context.update({"selected_account": account, "unlinked_contact": {"id": message_id, "name": name, "phone": phone},
-                    "chat_messages": chat_messages.order_by("created_at")})
+                    "chat_messages": chat_messages})
     return _inject_chat_ui(render(request, "channels/whatsapp_chat_list.html", context))
