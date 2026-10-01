@@ -420,6 +420,7 @@ def recover_api_engagement():
             status=InstagramMessage.Status.QUEUED,
             created_at__lte=now - timedelta(seconds=10),
             raw_payload__has_key="shvya_ai",
+            raw_payload__shvya_send_claimed_at__isnull=True,
         )
         .order_by("created_at", "id")[:100]
     )
