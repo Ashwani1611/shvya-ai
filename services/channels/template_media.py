@@ -7,7 +7,7 @@ from django.core.files.storage import default_storage
 from django.core.cache import cache
 from django.db import transaction
 
-from .campaign_policy import CampaignInputError, _groups, media_parameter
+from .campaign_policy import CampaignInputError, _groups
 
 logger = logging.getLogger(__name__)
 
@@ -79,17 +79,8 @@ def media_defaults(state, components):
         if asset.get("kind") == fmt and asset.get("asset"):
             result[key] = f"asset:{asset['asset']}"
             continue
-        # Synced templates can expose an HTTPS sample, but opaque resumable
-        # upload handles must never be treated as a URL or /media ID.
-        handles = (component.get("example") or {}).get("header_handle") or []
-        if isinstance(handles, list) and handles:
-            try:
-                value = str(handles[0])
-                if value.startswith("https://"):
-                    media_parameter(value, fmt)
-                    result[key] = value
-            except CampaignInputError:
-                pass
+        # Meta approval/preview URLs may expire or reject the message fetcher
+        # with 403. They are not reusable delivery attachments.
     return result
 
 
@@ -98,7 +89,8 @@ def resolve_delivery_media(*, components, template, client):
     from .template_service import state_for
 
     output = deepcopy(components)
-    stored = state_for(template).delivery_media or {}
+    state = state_for(template)
+    stored = state.delivery_media or {}
     uploaded = {}
 
     def visit(parts, prefix=""):
@@ -112,9 +104,19 @@ def resolve_delivery_media(*, components, template, client):
                     continue
                 media = parameter.get(kind, {})
                 asset_id = media.get("shvya_asset")
+                asset = stored.get(f"{prefix}header.media", {})
+                # Older queued messages froze the approval preview URL. Only
+                # replace that exact template sample, never a custom URL.
+                samples = []
+                for group_prefix, group_kind, definition in _groups(state.components):
+                    if group_prefix == prefix and group_kind == "header":
+                        samples.extend((definition.get("example") or {}).get("header_handle") or [])
+                if media.get("link") and media["link"] in samples:
+                    if asset.get("kind") != kind or not asset.get("asset"):
+                        raise CampaignInputError("Template preview media is not a delivery attachment. Open Templates → Sending setup and upload the original file, then send again.")
+                    asset_id = asset["asset"]
                 if not asset_id:
                     continue
-                asset = stored.get(f"{prefix}header.media", {})
                 if asset.get("asset") != asset_id or asset.get("kind") != kind:
                     raise CampaignInputError("Template attachment changed. Review the template and campaign again.")
                 if asset_id not in uploaded:
