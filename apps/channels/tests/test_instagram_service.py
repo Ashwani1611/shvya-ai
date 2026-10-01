@@ -287,8 +287,8 @@ class InstagramServiceTests(TestCase):
         self.assertEqual(raised.exception.subcode, 463)
         self.assertEqual(raised.exception.fbtrace_id, "trace-1")
 
-    @patch("apps.channels.instagram_tasks.generate_instagram_ai_engagement_task.delay")
-    def test_live_instagram_dm_creates_phone_optional_lead_maps_phone_and_queues_ai(self, ai_delay):
+    @patch("apps.ai_engagement.services.execution_tracker.publish_instagram_engagement")
+    def test_live_instagram_dm_creates_phone_optional_lead_maps_phone_and_queues_ai(self, ai_publish):
         pipeline = Pipeline.objects.create(
             organization=self.org,
             name="Leads",
@@ -336,12 +336,15 @@ class InstagramServiceTests(TestCase):
         self.assertEqual(conversation.lead.lead_source, "instagram")
         self.assertEqual(conversation.lead.phone, "+919876543210")
         message = conversation.messages.get(external_id="webhook-ai-message-1")
-        ai_delay.assert_called_once_with(str(message.pk))
+        ai_publish.assert_called_once_with(str(message.pk))
+        message.refresh_from_db()
+        execution = (message.raw_payload or {}).get("shvya_ai_execution") or {}
+        self.assertEqual(execution.get("status"), "queued")
 
         # Redelivery remains idempotent and cannot enqueue another AI turn.
         with self.captureOnCommitCallbacks(execute=True):
             self.assertEqual(process_webhook_delivery(delivery), 0)
-        ai_delay.assert_called_once_with(str(message.pk))
+        ai_publish.assert_called_once_with(str(message.pk))
         self.assertEqual(
             Lead.objects.filter(
                 organization=self.org,
