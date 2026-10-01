@@ -116,7 +116,10 @@ def refresh_hosted_qr_task(self, account_id):
         return {"status": "skipped", "reason": "account_not_found"}
 
     try:
-        result = gateway_client_for_account(account).refresh_qr(session_id=account.id)
+        result = gateway_client_for_account(account).refresh_qr(
+            session_id=account.id,
+            phone_number=account.display_phone_number or account.phone_number_id,
+        )
     except WhatsAppWebGatewayError as exc:
         if exc.status_code is None or exc.status_code >= 500:
             raise self.retry(exc=exc)
