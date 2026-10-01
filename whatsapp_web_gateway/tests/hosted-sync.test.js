@@ -97,6 +97,58 @@ for (const route of ['messages', 'uploaded-media']) {
   });
 }
 
+test('logout purges an orphaned persisted LocalAuth profile with no live session', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hosted-orphan-profile-'));
+  const profile = path.join(root, 'session-orphan-session');
+  fs.mkdirSync(profile, { recursive: true });
+  fs.writeFileSync(path.join(profile, 'marker'), 'stale');
+
+  const ctx = context(
+    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession'],
+    {
+      fs,
+      path,
+      AUTH_PATH: root,
+      sessions: new Map(),
+      sessionFailureTrackers: new Map(),
+      releaseLock: async () => {},
+      destroyClientBounded: async () => {},
+      callback: async () => true,
+    },
+  );
+
+  await ctx.logoutSession('orphan-session');
+
+  assert.equal(fs.existsSync(profile), false);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
+test('logout rejects unsafe session ids before touching the profile filesystem', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'hosted-orphan-safe-'));
+  const outside = path.join(path.dirname(root), 'escape-profile');
+  fs.mkdirSync(outside, { recursive: true });
+
+  const ctx = context(
+    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession'],
+    {
+      fs,
+      path,
+      AUTH_PATH: root,
+      sessions: new Map(),
+      sessionFailureTrackers: new Map(),
+      releaseLock: async () => {},
+      destroyClientBounded: async () => {},
+      callback: async () => true,
+    },
+  );
+
+  await assert.rejects(ctx.logoutSession('../escape-profile'), /Invalid session id/);
+  assert.equal(fs.existsSync(outside), true);
+
+  fs.rmSync(root, { recursive: true, force: true });
+  fs.rmSync(outside, { recursive: true, force: true });
+});
+
 test('getChats recovers once when the WhatsApp Web bridge disappears after ready', async () => {
   let injected = 0;
   let getChatsCalls = 0;

@@ -846,8 +846,21 @@ function isGatewayOriginatedOwnMessage(state, message) {
 }
 
 // FIX 2: clean stale Chromium lock files before retrying
+function sessionProfilePath(sessionId) {
+  const value = String(sessionId || '').trim();
+  if (!/^[-_\w]+$/i.test(value)) {
+    throw new Error('Invalid session id.');
+  }
+  return path.join(AUTH_PATH, 'session-' + value);
+}
+
+async function removeSessionProfile(sessionId) {
+  const profilePath = sessionProfilePath(sessionId);
+  await fs.promises.rm(profilePath, { recursive: true, force: true });
+}
+
 async function cleanSessionChromiumLocks(sessionId) {
-  const profilePath = path.join(AUTH_PATH, 'session-' + sessionId);
+  const profilePath = sessionProfilePath(sessionId);
   const lockNames = ['SingletonCookie', 'SingletonLock', 'SingletonSocket'];
   for (const lockName of lockNames) {
     const lockPath = path.join(profilePath, lockName);
@@ -1060,16 +1073,26 @@ async function refreshQr(sessionId, requestedPhone = '') {
 }
 
 async function logoutSession(sessionId) {
+  // Validate before using the id in the LocalAuth profile path.
+  sessionProfilePath(sessionId);
+
   const state = sessions.get(sessionId);
-  if (!state) {
-    await releaseLock(sessionId);
-    return;
-  }
   sessions.delete(sessionId);
   sessionFailureTrackers.delete(sessionId); // FIX 2: clear tracker on logout
   await releaseLock(sessionId).catch(() => {});
+
+  if (!state) {
+    // A deleted/recreated SHVYA account can leave a persisted LocalAuth
+    // profile behind when its browser session is no longer in memory. Purge
+    // that profile as part of logout so it cannot be restored on the next
+    // gateway restart and consume a Hosted session slot forever.
+    await removeSessionProfile(sessionId);
+    return;
+  }
+
   try { await state.client.logout(); } catch (_) {}
   await destroyClientBounded(sessionId, state, 'destroy after logout');
+  await removeSessionProfile(sessionId);
   await callback(sessionId, 'logout');
 }
 
