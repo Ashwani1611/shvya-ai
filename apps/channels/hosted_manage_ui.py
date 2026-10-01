@@ -13,7 +13,6 @@ from services.channels.hosted_whatsapp_service import HOSTED_CONNECTION_TYPE
 
 from . import hosted_attachment_ui, hosted_chat_ui, hosted_ui
 from .hosted_lifecycle import delete_hosted_account
-from .hosted_tasks import initialize_hosted_session_task
 from .models import WhatsAppAccount
 
 
@@ -129,7 +128,12 @@ def hosted_session_chats_view(request, account_id):
         if account.status != WhatsAppAccount.Status.PENDING:
             account.status = WhatsAppAccount.Status.PENDING
             account.save(update_fields=["status", "updated_at"])
-        initialize_hosted_session_task.delay(str(account.id))
+        try:
+            hosted_ui._start_gateway_session(account)
+        except Exception:
+            # The QR endpoint performs the same bounded self-heal and will
+            # surface a provider error to the user if recovery is unavailable.
+            pass
         return redirect(
             f"{reverse('whatsapp-connect-hosted')}?login={account.id}"
         )
