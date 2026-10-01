@@ -310,8 +310,11 @@ def recover_api_engagement():
     for message in instagram_pending:
         with transaction.atomic():
             locked = (
-                InstagramMessage.objects.select_for_update(skip_locked=True)
-                .select_related("conversation", "conversation__lead")
+                InstagramMessage.objects.select_for_update(
+                    skip_locked=True,
+                    of=("self",),
+                )
+                .select_related("conversation")
                 .filter(pk=message.pk)
                 .first()
             )
