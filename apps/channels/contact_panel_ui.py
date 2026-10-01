@@ -197,13 +197,30 @@ def instagram_contact(request, conversation_id):
     conversation = get_object_or_404(InstagramConversation, pk=conversation_id, organization=request.crm_user.organization)
     if request.method == "POST":
         try:
-            if request.POST.get("confirmed") != "yes":
-                raise ValidationError("Confirm the phone belongs to this Instagram contact.")
-            conversation = link_instagram_lead(user=request.crm_user, conversation_id=conversation.pk,
-                phone=request.POST.get("phone", ""), name=request.POST.get("name", ""), pipeline_id=request.POST.get("pipeline", ""))
-            return JsonResponse({"ok": True, "sidebar_url": reverse("chat-contact-panel", args=[conversation.lead_id]) + "?channel=instagram"})
+            conversation = link_instagram_lead(
+                user=request.crm_user,
+                conversation_id=conversation.pk,
+                phone=request.POST.get("phone", ""),
+                name=request.POST.get("name", ""),
+                pipeline_id=request.POST.get("pipeline", ""),
+            )
+            return JsonResponse({
+                "ok": True,
+                "sidebar_url": reverse(
+                    "chat-contact-panel", args=[conversation.lead_id]
+                ) + "?channel=instagram",
+            })
         except (ValidationError, ValueError, IntegrityError) as exc:
-            return JsonResponse({"error": " ".join(exc.messages) if isinstance(exc, ValidationError) else "Check the phone and pipeline, then retry."}, status=400)
+            return JsonResponse(
+                {
+                    "error": (
+                        " ".join(exc.messages)
+                        if isinstance(exc, ValidationError)
+                        else "Check the lead details and pipeline, then retry."
+                    )
+                },
+                status=400,
+            )
     if conversation.lead_id:
         return redirect(reverse("chat-contact-panel", args=[conversation.lead_id]) + "?channel=instagram")
     return render(request, "channels/contact_unlinked.html", {"instagram": True, "can_create": True,

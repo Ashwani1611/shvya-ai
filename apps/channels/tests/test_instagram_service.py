@@ -17,6 +17,7 @@ from apps.channels.instagram_models import (
     InstagramOAuthAttempt,
     InstagramWebhookDelivery,
 )
+from apps.crm.models import Lead
 from apps.organizations.models import Organization
 from services.channels.instagram_service import (
     InstagramAPIError,
@@ -152,9 +153,22 @@ class InstagramServiceTests(TestCase):
             {"recipient_id": "ig-scoped-1", "message_id": "meta-message-1"}
         )
 
+        queued.raw_payload = {
+            "shvya_ai": {"source_inbound_message_id": "source-1"},
+        }
+        queued.save(update_fields=["raw_payload"])
+
         delivered = send_queued_message(queued)
         self.assertEqual(delivered.status, InstagramMessage.Status.SENT)
         self.assertEqual(delivered.external_id, "meta-message-1")
+        self.assertEqual(
+            delivered.raw_payload["shvya_ai"]["source_inbound_message_id"],
+            "source-1",
+        )
+        self.assertEqual(
+            delivered.raw_payload["provider_response"]["message_id"],
+            "meta-message-1",
+        )
         call = request.call_args
         self.assertEqual(call.args[0], "POST")
         self.assertIn("/ig-business-1/messages", call.args[1])
@@ -272,6 +286,77 @@ class InstagramServiceTests(TestCase):
         self.assertTrue(raised.exception.token_invalid)
         self.assertEqual(raised.exception.subcode, 463)
         self.assertEqual(raised.exception.fbtrace_id, "trace-1")
+
+    @patch("apps.ai_engagement.services.execution_tracker.publish_instagram_engagement")
+    def test_live_instagram_dm_creates_phone_optional_lead_maps_phone_and_queues_ai(self, ai_publish):
+        pipeline = (
+            self.org.pipelines.filter(name__iexact="Leads").first()
+            or self.org.pipelines.first()
+        )
+        pipeline.country_code = "+91"
+        pipeline.ai_enabled = True
+        pipeline.save(
+            update_fields=["country_code", "ai_enabled", "updated_at"]
+        )
+        stage = (
+            pipeline.stages.filter(name__iexact="New Lead").first()
+            or pipeline.stages.filter(name__iexact="New Leads").first()
+            or pipeline.stages.first()
+        )
+        stage.ai_on = True
+        stage.save(update_fields=["ai_on", "updated_at"])
+        payload = {
+            "object": "instagram",
+            "entry": [
+                {
+                    "id": "ig-business-1",
+                    "messaging": [
+                        {
+                            "sender": {"id": "ig-ai-contact"},
+                            "recipient": {"id": "ig-business-1"},
+                            "timestamp": 1789392600000,
+                            "message": {
+                                "mid": "webhook-ai-message-1",
+                                "text": "Please call me on 98765 43210",
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+        delivery = InstagramWebhookDelivery.objects.create(
+            payload_sha256="c" * 64,
+            raw_payload=payload,
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            count = process_webhook_delivery(delivery)
+
+        self.assertEqual(count, 1)
+        conversation = InstagramConversation.objects.get(
+            account=self.account,
+            participant_id="ig-ai-contact",
+        )
+        self.assertIsNotNone(conversation.lead_id)
+        self.assertEqual(conversation.lead.lead_source, "instagram")
+        self.assertEqual(conversation.lead.phone, "+919876543210")
+        message = conversation.messages.get(external_id="webhook-ai-message-1")
+        ai_publish.assert_called_once_with(str(message.pk))
+        message.refresh_from_db()
+        execution = (message.raw_payload or {}).get("shvya_ai_execution") or {}
+        self.assertEqual(execution.get("status"), "queued")
+
+        # Redelivery remains idempotent and cannot enqueue another AI turn.
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(process_webhook_delivery(delivery), 0)
+        ai_publish.assert_called_once_with(str(message.pk))
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.org,
+                lead_source="instagram",
+            ).count(),
+            1,
+        )
 
     def test_webhook_processor_is_idempotent_and_tenant_scoped(self):
         payload = {

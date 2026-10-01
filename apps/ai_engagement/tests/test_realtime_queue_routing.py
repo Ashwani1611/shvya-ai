@@ -15,6 +15,18 @@ class RealtimeAIQueueRoutingTests(SimpleTestCase):
             ]["queue"],
             "ai_realtime",
         )
+        self.assertEqual(
+            app.conf.task_routes[
+                "apps.channels.instagram_tasks.generate_instagram_ai_engagement_task"
+            ]["queue"],
+            "ai_realtime",
+        )
+        self.assertEqual(
+            app.conf.task_routes[
+                "apps.channels.instagram_tasks.send_instagram_message_task"
+            ]["queue"],
+            "ai_realtime",
+        )
 
     def test_hosted_ai_wake_processing_and_recovery_use_dedicated_queue(self):
         self.assertEqual(

@@ -141,6 +141,7 @@ class AIPermissionService:
         lead,
         latest_inbound=None,
         account=None,
+        channel="whatsapp",
     ) -> AIPermissionDecision:
         """Evaluate current, non-cached AI permission state for one Lead.
 
@@ -201,6 +202,25 @@ class AIPermissionService:
             return self._decision(
                 allowed=False,
                 reason="lead_ai_disabled",
+                organization=organization,
+                lead=lead,
+            )
+
+        normalized_channel = str(channel or "whatsapp").strip().casefold()
+        if normalized_channel == "instagram":
+            # Instagram conversation identity is the Meta participant ID, not a
+            # phone number or a pipeline-bound WhatsApp sender. The same org,
+            # pipeline, stage, and lead AI toggles still apply above.
+            return self._decision(
+                allowed=True,
+                reason="allowed",
+                organization=organization,
+                lead=lead,
+            )
+        if normalized_channel != "whatsapp":
+            return self._decision(
+                allowed=False,
+                reason="unsupported_ai_channel",
                 organization=organization,
                 lead=lead,
             )
