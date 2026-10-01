@@ -140,6 +140,9 @@ def ensure_instagram_lead(*, conversation_id):
         .get(pk=conversation_id)
     )
     if conversation.lead_id:
+        from apps.ai_engagement.services.intent_score import persist_intent_score
+
+        persist_intent_score(lead=conversation.lead)
         return conversation, conversation.lead
 
     pipeline, stage = _preferred_pipeline_stage(conversation.organization)
