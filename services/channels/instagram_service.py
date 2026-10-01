@@ -1378,15 +1378,19 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
                         text=message.body,
                     )
 
-                    def _queue_instagram_ai_turn(message_id=str(message.pk)):
-                        from apps.channels.instagram_tasks import (
-                            generate_instagram_ai_engagement_task,
-                        )
+                    from apps.ai_engagement.services.execution_tracker import (
+                        publish_instagram_engagement,
+                        record_instagram_execution,
+                    )
 
-                        generate_instagram_ai_engagement_task.delay(message_id)
-
+                    record_instagram_execution(
+                        message.pk,
+                        status="queued",
+                    )
                     transaction.on_commit(
-                        _queue_instagram_ai_turn,
+                        lambda message_id=str(message.pk): (
+                            publish_instagram_engagement(message_id)
+                        ),
                         robust=True,
                     )
 
