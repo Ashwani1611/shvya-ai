@@ -195,6 +195,7 @@ def _apply_decision_state(*, organization, lead, source, decision):
                 organization=organization,
                 lead=lead,
                 actions=attribute_actions,
+                source_message=source,
             )
         )
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
@@ -226,6 +227,7 @@ def _apply_decision_state(*, organization, lead, source, decision):
                 organization=organization,
                 lead=lead,
                 actions=stage_actions,
+                source_message=source,
             )
         )
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
@@ -236,6 +238,7 @@ def _apply_decision_state(*, organization, lead, source, decision):
                 organization=organization,
                 lead=lead,
                 actions=other_actions,
+                source_message=source,
             )
         )
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
