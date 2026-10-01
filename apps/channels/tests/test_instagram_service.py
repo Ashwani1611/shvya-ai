@@ -17,7 +17,7 @@ from apps.channels.instagram_models import (
     InstagramOAuthAttempt,
     InstagramWebhookDelivery,
 )
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead
 from apps.organizations.models import Organization
 from services.channels.instagram_service import (
     InstagramAPIError,
