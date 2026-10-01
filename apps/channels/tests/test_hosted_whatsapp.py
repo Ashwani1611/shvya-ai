@@ -131,6 +131,7 @@ class HostedWhatsAppTests(TestCase):
 
         self.assertEqual(page_response.status_code, 404)
         self.assertEqual(create_response.status_code, 404)
+
     @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
     def test_create_endpoint_starts_gateway_initialization(self, create_session):
         create_session.return_value = {
