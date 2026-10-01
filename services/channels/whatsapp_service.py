@@ -292,6 +292,54 @@ def _queue_whatsapp_engagement(
 # ============================================================
 
 
+def extract_inbound_message_body(raw_payload):
+    """Return the user-visible text represented by a Meta inbound message.
+
+    Approved template quick-reply buttons are delivered by Meta as
+    ``type="button"``, while interactive reply buttons/lists use
+    ``type="interactive"``. Their visible label is the customer's actual
+    reply, so persist that label as normal text for the inbox, qualification,
+    reply-intent handling, and AI engagement.
+    """
+    if not isinstance(raw_payload, dict):
+        return ""
+
+    message_type = str(raw_payload.get("type") or "").strip().lower()
+
+    if message_type == "text":
+        text_payload = raw_payload.get("text") or {}
+        if isinstance(text_payload, dict):
+            return str(text_payload.get("body") or "")
+
+    if message_type == "button":
+        button = raw_payload.get("button") or {}
+        if isinstance(button, dict):
+            return str(button.get("text") or button.get("payload") or "").strip()
+
+    if message_type == "interactive":
+        interactive = raw_payload.get("interactive") or {}
+        if not isinstance(interactive, dict):
+            return ""
+
+        interactive_type = str(interactive.get("type") or "").strip().lower()
+        if interactive_type == "button_reply":
+            reply = interactive.get("button_reply") or {}
+            if isinstance(reply, dict):
+                return str(reply.get("title") or reply.get("id") or "").strip()
+
+        if interactive_type == "list_reply":
+            reply = interactive.get("list_reply") or {}
+            if isinstance(reply, dict):
+                return str(
+                    reply.get("title")
+                    or reply.get("description")
+                    or reply.get("id")
+                    or ""
+                ).strip()
+
+    return ""
+
+
 @transaction.atomic
 def handle_inbound_message(
     *,
@@ -321,6 +369,12 @@ def handle_inbound_message(
     other required state itself.
     """
 
+    # Meta template quick replies and interactive replies do not arrive in the
+    # normal text.body field. Recover their visible label before idempotency so
+    # both new deliveries and provider retries use the customer's real reply.
+    if not str(body or "").strip():
+        body = extract_inbound_message_body(raw_payload)
+
     # --------------------------------------------------------
     # IDEMPOTENCY
     # --------------------------------------------------------
@@ -334,6 +388,26 @@ def handle_inbound_message(
     )
 
     if existing:
+        # Older deployments stored template/interactive button replies with an
+        # empty body. If Meta retries the same wamid after this fix, repair that
+        # row in place instead of leaving the inbox on "Unsupported message type".
+        if (
+            existing.direction == WhatsAppMessage.Direction.INBOUND
+            and not str(existing.body or "").strip()
+            and str(body or "").strip()
+        ):
+            existing.body = body
+            existing.message_type = WhatsAppMessage.MessageType.TEXT
+            update_fields = ["body", "message_type"]
+            if (
+                isinstance(raw_payload, dict)
+                and raw_payload
+                and existing.raw_payload != raw_payload
+            ):
+                existing.raw_payload = raw_payload
+                update_fields.append("raw_payload")
+            update_fields.append("updated_at")
+            existing.save(update_fields=update_fields)
         return existing
 
     # --------------------------------------------------------
