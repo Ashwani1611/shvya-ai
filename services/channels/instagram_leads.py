@@ -18,7 +18,7 @@ from services.crm.lead_filter_service import accessible_pipelines
 from services.crm_activity_service import record_lead_created
 
 
-_PHONE_CANDIDATE = re.compile(r"(?<!\\w)(\\+?\\d[\\d\\s().-]{6,}\\d)(?!\\w)")
+_PHONE_CANDIDATE = re.compile(r"(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)")
 
 
 def _preferred_pipeline_stage(organization):
