@@ -47,12 +47,12 @@ class HostedWhatsAppRecoveryTests(TestCase):
         session.save()
         self.client.cookies["shvya_crm_sessionid"] = session.session_key
 
-    @patch("apps.channels.hosted_tasks.initialize_hosted_session_task.delay")
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.create_session")
     @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.get_session")
     def test_periodic_reconcile_reinitializes_missing_connected_gateway_session(
         self,
         get_session,
-        initialize_delay,
+        create_session,
     ):
         self.account.status = WhatsAppAccount.Status.CONNECTED
         self.account.save(update_fields=["status", "updated_at"])
@@ -60,13 +60,50 @@ class HostedWhatsAppRecoveryTests(TestCase):
             "Session not found.",
             status_code=404,
         )
+        create_session.return_value = {
+            "status": "initializing",
+            "phoneNumber": "",
+            "lastError": "",
+        }
 
         result = reconcile_hosted_sessions()
 
         self.account.refresh_from_db()
         self.assertEqual(self.account.status, WhatsAppAccount.Status.PENDING)
-        initialize_delay.assert_called_once_with(str(self.account.id))
+        create_session.assert_called_once_with(
+            session_id=self.account.id,
+            phone_number="+918700274739",
+        )
         self.assertEqual(result["reinitialized"], 1)
+        self.assertEqual(result["pending"], 1)
+
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.create_session")
+    @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.get_session")
+    def test_periodic_reconcile_reinitializes_missing_pending_gateway_session(
+        self,
+        get_session,
+        create_session,
+    ):
+        get_session.side_effect = WhatsAppWebGatewayError(
+            "Session not found.",
+            status_code=404,
+        )
+        create_session.return_value = {
+            "status": "qr_ready",
+            "phoneNumber": "",
+            "lastError": "",
+        }
+
+        result = reconcile_hosted_sessions()
+
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.PENDING)
+        create_session.assert_called_once_with(
+            session_id=self.account.id,
+            phone_number="+918700274739",
+        )
+        self.assertEqual(result["reinitialized"], 1)
+        self.assertEqual(result["pending"], 1)
 
     @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.get_session")
     def test_periodic_reconcile_keeps_running_hosted_session_connected(self, get_session):
@@ -82,6 +119,67 @@ class HostedWhatsAppRecoveryTests(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
         self.assertEqual(result["running"], 1)
+
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
+    def test_status_endpoint_recovers_missing_pending_gateway_session(
+        self,
+        get_session,
+        create_session,
+    ):
+        get_session.side_effect = WhatsAppWebGatewayError(
+            "Session not found.",
+            status_code=404,
+        )
+        create_session.return_value = {
+            "status": "initializing",
+            "phoneNumber": "",
+            "lastError": "",
+        }
+
+        response = self.client.get(
+            reverse("whatsapp-hosted-session-status", args=[self.account.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "initializing")
+        create_session.assert_called_once_with(
+            session_id=self.account.id,
+            phone_number="+918700274739",
+        )
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.PENDING)
+
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_qr")
+    def test_qr_endpoint_recovers_missing_pending_gateway_session(
+        self,
+        get_qr,
+        create_session,
+    ):
+        get_qr.side_effect = WhatsAppWebGatewayError(
+            "Session not found.",
+            status_code=404,
+        )
+        create_session.return_value = {
+            "status": "initializing",
+            "phoneNumber": "",
+            "lastError": "",
+        }
+
+        response = self.client.get(
+            reverse("whatsapp-hosted-session-qr", args=[self.account.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["ok"])
+        self.assertEqual(payload["status"], "initializing")
+        self.assertIsNone(payload["qr"])
+        create_session.assert_called_once_with(
+            session_id=self.account.id,
+            phone_number="+918700274739",
+        )
 
     @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
     def test_status_endpoint_reconciles_running_gateway_to_connected(self, get_session):
