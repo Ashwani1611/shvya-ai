@@ -16,7 +16,9 @@ from services.channels.template_service import (
     create_template,
     submit_template,
     sync_templates,
+    update_draft,
 )
+from services.channels.template_media import save_delivery_media
 
 
 class WhatsAppTemplateServiceTests(TestCase):
@@ -91,6 +93,84 @@ class WhatsAppTemplateServiceTests(TestCase):
                 organization=self.org,
                 body="Hello {{not_a_real_field}}",
             )
+
+    def test_draft_account_switch_clears_approval_handle_and_delivery_media(self):
+        template = create_template(
+            organization=self.org, account=self.account, created_by=self.user,
+            name="draft_image", body="Hello", attachment_type="image",
+        )
+        state = template.meta_state
+        state.header_sample_handle = "old-account-handle"
+        state.header_file_name = "old.png"
+        state.delivery_media = {"header.media": {"asset": "old-file", "kind": "image"}}
+        state.components = [{"type": "BODY", "text": "Previous draft"}]
+        state.save()
+        other = WhatsAppAccount.objects.create(organization=self.org, phone_number_id="another-phone")
+        update_draft(
+            template=template, account=other, name=template.name, body="New body",
+            category=template.category, template_format=template.template_format, attachment_type="image",
+        )
+        state.refresh_from_db()
+        self.assertEqual(state.header_sample_handle, "")
+        self.assertEqual(state.header_file_name, "")
+        self.assertEqual(state.delivery_media, {})
+        self.assertEqual(state.components, [])
+
+    def test_draft_carousel_reorder_preserves_matching_samples_and_files(self):
+        first = {"uid": "first", "body": "First", "media_type": "image", "header_handle": "first-handle", "buttons": []}
+        second = {"uid": "second", "body": "Second", "media_type": "image", "header_handle": "second-handle", "buttons": []}
+        template = create_template(
+            organization=self.org, account=self.account, created_by=self.user,
+            name="draft_carousel", body="Hello", template_format="carousel",
+            carousel_config={"cards": [first, second]},
+        )
+        state = template.meta_state
+        state.delivery_media = {"card0.header.media": {"asset": "first-file", "kind": "image"}, "card1.header.media": {"asset": "second-file", "kind": "image"}}
+        state.save()
+        update_draft(
+            template=template, account=self.account, name=template.name, body=template.body,
+            category=template.category, template_format="carousel", carousel_config={"cards": [second, first]},
+        )
+        state.refresh_from_db()
+        self.assertEqual(state.carousel_config["cards"][0]["header_handle"], "second-handle")
+        self.assertEqual(state.delivery_media["card0.header.media"]["asset"], "second-file")
+        self.assertEqual(state.delivery_media["card1.header.media"]["asset"], "first-file")
+
+    @patch("services.channels.template_media.default_storage")
+    def test_saving_another_card_preserves_existing_card_media(self, storage):
+        storage.save.return_value = "new-card.png"
+        template = create_template(
+            organization=self.org, account=self.account, created_by=self.user,
+            name="card_upload", body="Hello",
+        )
+        state = template.meta_state
+        state.delivery_media = {"card0.header.media": {"asset": "first-file", "kind": "image"}}
+        state.save()
+        saved = save_delivery_media(
+            template=template, field="card1.header.media", kind="image",
+            uploaded_file=SimpleUploadedFile("second.png", b"image", content_type="image/png"),
+        )
+        state.refresh_from_db()
+        self.assertEqual(state.delivery_media["card0.header.media"]["asset"], "first-file")
+        self.assertEqual(state.delivery_media["card1.header.media"], saved)
+        storage.delete.assert_not_called()
+
+    @patch("services.channels.template_media.default_storage")
+    def test_metadata_failure_removes_only_the_new_unreferenced_upload(self, storage):
+        storage.save.return_value = "new-upload.png"
+        template = create_template(
+            organization=self.org, account=self.account, created_by=self.user,
+            name="failed_upload", body="Hello",
+        )
+        with patch.object(WhatsAppTemplateMetadata, "save", side_effect=RuntimeError("metadata failed")):
+            with self.assertRaisesRegex(RuntimeError, "metadata failed"):
+                save_delivery_media(
+                    template=template, field="header.media", kind="image",
+                    uploaded_file=SimpleUploadedFile("new.png", b"image", content_type="image/png"),
+                )
+        storage.delete.assert_called_once_with("new-upload.png")
+        template.meta_state.refresh_from_db()
+        self.assertEqual(template.meta_state.delivery_media, {})
 
     def test_copy_is_a_new_draft_without_remote_identity(self):
         original = create_template(

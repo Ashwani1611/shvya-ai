@@ -17,7 +17,7 @@ from services.channels.whatsapp_error_service import describe_whatsapp_failure, 
 
 from .campaign_audience import is_suppressed, rights, user_pipelines
 from .campaign_policy import CampaignInputError
-from .campaign_service import finish_campaign, retry_eligibility, validate_plan
+from .campaign_service import finish_campaign, retry_eligibility, validate_campaign_sender, validate_plan
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +77,11 @@ def send_delivery(delivery_id):
         if delivery.lead.organization_id != plan.campaign.organization_id or current_pipeline is None or not rights(plan.consent_by, current_pipeline)["can_edit_leads"]:
             _skip(delivery, "The recipient is no longer accessible to the campaign owner.")
             return {"status": "recipient_access_changed"}
+        try:
+            validate_campaign_sender(user=plan.consent_by, pipeline=current_pipeline, account=plan.campaign.account)
+        except CampaignInputError as exc:
+            _skip(delivery, str(exc))
+            return {"status": "sender_route_changed"}
         if is_suppressed(organization_id=plan.campaign.organization_id, phone=delivery.phone, lead=delivery.lead):
             _skip(delivery, "Recipient has opted out of campaign messages.")
             return {"status": "opted_out"}
@@ -154,8 +159,11 @@ def send_delivery(delivery_id):
         message.refresh_from_db()
         cause = exc.__cause__
         http_status = cause.status_code if isinstance(cause, WhatsAppAPIError) else None
-        uncertain = http_status is None
-        if uncertain:
+        uncertain = http_status is None and not isinstance(cause, CampaignInputError)
+        if isinstance(cause, CampaignInputError):
+            failure = {"code": "SHVYA_TEMPLATE_PREPARATION", "title": "Template preparation failed",
+                       "why": str(cause), "resolve": "Resolve the template or attachment error and create a newly reviewed campaign. No template message was sent."}
+        elif uncertain:
             failure = {"code": "SHVYA_UNCONFIRMED", "why": "The send outcome is uncertain; the provider may already have accepted it.", "resolve": "Reconcile the original message. Automatic and bulk retries are blocked to prevent duplicates."}
         else:
             failure = describe_whatsapp_failure(raw_payload=message.raw_payload, error_text=message.error)
@@ -179,7 +187,14 @@ def send_delivery(delivery_id):
         else:
             attempt.uncertain, attempt.http_status = uncertain, http_status
             attempt.error_code = str(failure.get("code") or "")[:64]
-            attempt.error_message = failure_summary(failure)[:2000]
+            if failure.get("code") == "SHVYA_TEMPLATE_PREPARATION":
+                attempt.error_message = " ".join(
+                    part for part in (
+                        failure_summary(failure), failure.get("why"), failure.get("resolve"),
+                    ) if part
+                )[:2000]
+            else:
+                attempt.error_message = failure_summary(failure)[:2000]
             if not uncertain:
                 attempt.failed_at = attempt.failed_at or now
             if delivery.attempt_count == attempt.number and not (delivery.delivered_at or delivery.read_at or delivery.replied_at):

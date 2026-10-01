@@ -207,12 +207,16 @@ def _clean_carousel_config(config):
     if not isinstance(raw_cards, list):
         raise TemplateError("Carousel cards must be a list.")
     cards = []
+    seen_uids = set()
     for index, raw in enumerate(raw_cards[:10]):
         if not isinstance(raw, dict):
             raise TemplateError("Each carousel card must be an object.")
         uid = str(raw.get("uid") or f"card_{index + 1}").strip()
         if not CARD_UID_RE.fullmatch(uid):
             uid = f"card_{index + 1}"
+        if uid in seen_uids:
+            raise TemplateError("Each carousel card must have a unique identity.")
+        seen_uids.add(uid)
         buttons = raw.get("buttons") or []
         if not isinstance(buttons, list):
             buttons = []
@@ -255,6 +259,10 @@ def _merge_carousel_handles(new_config, old_config):
     }
     for card in new_config.get("cards", []):
         old = old_cards.get(card["uid"]) or {}
+        card["header_handle"] = ""
+        card["media_name"] = ""
+        card["mime_type"] = ""
+        card["file_size"] = None
         if old.get("media_type") != card.get("media_type"):
             continue
         card["header_handle"] = old.get("header_handle", "")
@@ -477,7 +485,7 @@ def _carousel_button_payload(button):
 def _upload_carousel_samples(*, template, config, carousel_files):
     files = carousel_files or {}
     st = state_for(template)
-    for card in config["cards"]:
+    for card_index, card in enumerate(config["cards"]):
         field_name = f"carousel_media_{card['uid']}"
         uploaded_file = files.get(field_name)
         if uploaded_file is not None:
@@ -492,6 +500,8 @@ def _upload_carousel_samples(*, template, config, carousel_files):
             card["file_size"] = size
             st.carousel_config = config
             st.save(update_fields=["carousel_config", "updated_at"])
+            from .template_media import save_delivery_media
+            save_delivery_media(template=template, field=f"card{card_index}.header.media", kind=card["media_type"], uploaded_file=uploaded_file)
     return _validate_carousel_config(
         template=template,
         config=config,
@@ -642,10 +652,16 @@ def update_draft(
         raise TemplateError("Submitted templates cannot be edited in place. Copy to a draft instead.")
     st = state_for(template)
     old_attachment_type = template.attachment_type
+    old_account_id = template.account_id
+    old_format = template.template_format
+    old_carousel_config = st.carousel_config
+    account_changed = old_account_id != account.pk
     is_carousel = template_format == WhatsAppTemplate.Format.CAROUSEL
     clean_carousel = _clean_carousel_config(carousel_config or {}) if is_carousel else {}
     if is_carousel:
-        clean_carousel = _merge_carousel_handles(clean_carousel, st.carousel_config)
+        clean_carousel = _merge_carousel_handles(
+            clean_carousel, {} if account_changed else old_carousel_config,
+        )
         category = WhatsAppTemplate.Category.MARKETING
         footer = ""
         attachment_type = WhatsAppTemplate.AttachmentType.NONE
@@ -665,9 +681,19 @@ def update_draft(
         template.save()
         st.language = language or "en_US"
         st.placeholder_mapping = mapping
+        # A failed submit can leave a fully rendered older definition behind.
+        # The next submission must rebuild it from this draft's current fields.
+        st.components = []
         st.local_status = WhatsAppTemplateMetadata.LocalStatus.DRAFT
         st.carousel_config = clean_carousel
-        if is_carousel or old_attachment_type != attachment_type or attachment_type == WhatsAppTemplate.AttachmentType.NONE:
+        if old_attachment_type != attachment_type or account_changed or old_format != template_format:
+            st.delivery_media = {}
+        elif is_carousel:
+            from .template_media import remap_carousel_delivery_media
+            st.delivery_media = remap_carousel_delivery_media(
+                st.delivery_media, old_carousel_config, clean_carousel,
+            )
+        if is_carousel or account_changed or old_attachment_type != attachment_type or attachment_type == WhatsAppTemplate.AttachmentType.NONE:
             st.header_sample_handle = ""
             st.header_file_name = ""
             st.header_mime_type = ""
@@ -714,6 +740,8 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
                     "updated_at",
                 ]
             )
+            from .template_media import save_delivery_media
+            save_delivery_media(template=template, field="header.media", kind=template.attachment_type, uploaded_file=attachment_file)
         header_handle = st.header_sample_handle
         if not header_handle:
             rule = MEDIA_RULES[template.attachment_type]
@@ -724,6 +752,7 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
         header_handle=header_handle,
         carousel_config=carousel_config,
     )
+    st = state_for(template)
     st.local_status = WhatsAppTemplateMetadata.LocalStatus.SUBMITTING
     st.save(update_fields=["local_status", "updated_at"])
     try:

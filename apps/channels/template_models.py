@@ -49,6 +49,9 @@ class WhatsAppTemplateMetadata(models.Model):
     header_file_name = models.CharField(max_length=255, blank=True)
     header_mime_type = models.CharField(max_length=128, blank=True)
     header_file_size = models.PositiveBigIntegerField(null=True, blank=True)
+    # Private, reusable delivery files, distinct from Meta approval handles.
+    delivery_media = models.JSONField(default=dict, blank=True)
+    delivery_bindings = models.JSONField(default=dict, blank=True)
 
     # Carousel configuration is kept separate from the canonical template
     # fields because standard templates do not need card data. Each card may

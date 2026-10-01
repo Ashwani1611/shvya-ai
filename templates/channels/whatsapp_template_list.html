@@ -125,6 +125,7 @@
             </td>
             <td class="px-5 py-4 text-gray-500">{{ template.updated_at|date:"d M Y, H:i" }}</td>
             <td class="px-5 py-4"><div class="flex justify-end gap-1">
+              {% if can_manage and template.status == 'approved' and template.meta_template_id %}<a href="{% url 'whatsapp-template-delivery-setup' template.id %}" aria-label="Sending setup for {{ template.name }}" title="Sending setup" class="flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-blue-50 hover:text-blue-600"><i class="ti ti-adjustments"></i></a>{% endif %}
               <button type="button" data-copy="{{ template.id }}" aria-label="Copy {{ template.name }}" title="Copy to draft" class="action-copy flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-emerald-50 hover:text-emerald-600"><i class="ti ti-copy"></i></button>
               <button type="button" data-delete="{{ template.id }}" data-name="{{ template.name|escapejs }}" aria-label="Delete {{ template.name }}" title="Delete" class="action-delete flex h-9 w-9 items-center justify-center rounded-lg text-gray-400 hover:bg-red-50 hover:text-red-600"><i class="ti ti-trash"></i></button>
             </div></td>
