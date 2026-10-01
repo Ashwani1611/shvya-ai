@@ -172,7 +172,7 @@ test('production patch chain applies and sync orders before truncating the chat 
   const identities = [];
   const chats = Array.from({ length: 1005 }, (_, i) => ({ id: `${i}@c.us`, timestamp: i }));
   chats.push({ id: 'status@broadcast', timestamp: 99999 });
-  const ctx = context(['syncRecentHistory'], {
+  const ctx = context(['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery', 'syncRecentHistory'], {
     syncOneChat: async (_session, chat, _client, options) => {
       visited.push([chat.timestamp, options.messageLimit]);
       return { chats: 1, messages: 1 };
@@ -198,7 +198,7 @@ test('callback retries retain gateway lease fencing metadata and failure metrics
 
 test('failed chat does not stop other imports or falsely complete history', async () => {
   const visited = [];
-  const ctx = context(['syncRecentHistory'], {
+  const ctx = context(['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery', 'syncRecentHistory'], {
     syncOneChat: async (_id, chat) => {
       visited.push(chat.id);
       if (chat.id === 'bad@c.us') throw new Error('fetch failed');
