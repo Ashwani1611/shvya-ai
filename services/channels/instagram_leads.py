@@ -136,7 +136,7 @@ def ensure_instagram_lead(*, conversation_id):
     """Auto-create and link a phone-optional CRM lead for a live Instagram DM."""
     conversation = (
         InstagramConversation.objects.select_for_update()
-        .select_related("organization", "lead", "account")
+        .select_related("organization", "account")
         .get(pk=conversation_id)
     )
     if conversation.lead_id:
@@ -210,7 +210,6 @@ def link_instagram_lead(*, user, conversation_id, phone="", name="", pipeline_id
     """Manually link/create an Instagram lead; phone is optional."""
     conversation = (
         InstagramConversation.objects.select_for_update()
-        .select_related("lead")
         .get(
             pk=conversation_id,
             organization=user.organization,
@@ -218,6 +217,19 @@ def link_instagram_lead(*, user, conversation_id, phone="", name="", pipeline_id
         )
     )
     if conversation.lead_id:
+        if str(phone or "").strip():
+            current_lead = Lead.objects.select_related("pipeline").get(
+                pk=conversation.lead_id,
+                organization=user.organization,
+            )
+            normalized = normalize_instagram_phone(
+                phone,
+                country_code=getattr(current_lead.pipeline, "country_code", ""),
+            )
+            if normalized != current_lead.phone:
+                raise ValidationError(
+                    "This Instagram conversation is already linked to another lead identity."
+                )
         return conversation
 
     allowed = accessible_pipelines(user)
