@@ -20,6 +20,19 @@ from services.crm_activity_service import record_lead_created
 
 _PHONE_CANDIDATE = re.compile(r"(?<!\w)(\+?\d[\d\s().-]{6,}\d)(?!\w)")
 
+_PHONE_CONTEXT_TERMS = (
+    "phone",
+    "mobile",
+    "number",
+    "contact",
+    "call",
+    "whatsapp",
+    "reach me",
+    "reach us",
+    "tel",
+    "telephone",
+)
+
 
 def _preferred_pipeline_stage(organization):
     pipelines = Pipeline.objects.filter(
@@ -84,11 +97,33 @@ def normalize_instagram_phone(value, *, country_code=""):
 
 
 def extract_instagram_phone(text, *, country_code=""):
-    """Return the first safely normalizable phone explicitly present in text."""
-    for match in _PHONE_CANDIDATE.finditer(str(text or "")):
+    """Return a phone only when the DM supplies credible phone evidence.
+
+    A bare number (for example a customer replying only with their mobile) is
+    accepted. An embedded local-format number needs nearby phone/contact
+    language so budgets, order IDs, dates, and other numeric values are not
+    silently written into the CRM phone field. International +numbers are
+    already self-identifying and can be embedded without a cue.
+    """
+    source = str(text or "")
+    normalized_source = source.casefold()
+
+    for match in _PHONE_CANDIDATE.finditer(source):
+        raw = match.group(1).strip()
+        remaining = (source[: match.start()] + source[match.end() :]).strip(
+            " \t\r\n,.;:()[]{}-"
+        )
+        standalone = not remaining
+        nearby = normalized_source[
+            max(0, match.start() - 40) : min(len(source), match.end() + 40)
+        ]
+        has_context = any(term in nearby for term in _PHONE_CONTEXT_TERMS)
+        if not raw.startswith("+") and not standalone and not has_context:
+            continue
+
         try:
             return normalize_instagram_phone(
-                match.group(1),
+                raw,
                 country_code=country_code,
             )
         except ValidationError:
