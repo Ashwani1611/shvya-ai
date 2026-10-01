@@ -163,6 +163,23 @@ def sync_instagram_account_task(self, account_id):
     return {"status": "synced", "conversations": count}
 
 
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=20,
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def generate_instagram_ai_engagement_task(self, message_id):
+    """Run one exact Instagram inbound turn through SHVYA AI Brain."""
+    from services.channels.instagram_ai import execute_instagram_ai_engagement
+
+    return execute_instagram_ai_engagement(
+        task=self,
+        message_id=message_id,
+    )
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
 def send_instagram_message_task(self, message_id):
     from services.channels import instagram_service as provider
