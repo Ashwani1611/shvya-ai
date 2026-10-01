@@ -15,6 +15,7 @@ from apps.channels.instagram_models import (
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.instagram_ai import execute_instagram_ai_engagement
+from services.channels.instagram_leads import extract_instagram_phone
 
 
 class InstagramAIEngagementTests(TestCase):
@@ -73,6 +74,30 @@ class InstagramAIEngagementTests(TestCase):
         return SimpleNamespace(
             request=SimpleNamespace(retries=0),
             retry=Mock(side_effect=AssertionError("Unexpected Instagram AI retry")),
+        )
+
+    def test_phone_capture_accepts_explicit_contact_evidence_not_arbitrary_numbers(self):
+        self.assertEqual(
+            extract_instagram_phone("98765 43210", country_code="+91"),
+            "+919876543210",
+        )
+        self.assertEqual(
+            extract_instagram_phone(
+                "Please call me on 98765 43210",
+                country_code="+91",
+            ),
+            "+919876543210",
+        )
+        self.assertEqual(
+            extract_instagram_phone(
+                "My budget is 10000000",
+                country_code="+91",
+            ),
+            "",
+        )
+        self.assertEqual(
+            extract_instagram_phone("Reach me at +14155552671", country_code="+91"),
+            "+14155552671",
         )
 
     def test_instagram_permission_and_tenant_guard_do_not_require_phone(self):
