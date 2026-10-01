@@ -13,7 +13,7 @@ from apps.channels.instagram_models import (
     InstagramConversation,
     InstagramMessage,
 )
-from apps.crm.models import Lead, Pipeline, Stage
+from apps.crm.models import Lead
 from apps.organizations.models import Organization
 from services.channels.instagram_ai import execute_instagram_ai_engagement
 from services.channels.instagram_leads import extract_instagram_phone
