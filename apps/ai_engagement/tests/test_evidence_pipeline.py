@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -19,7 +20,7 @@ class EvidencePipelineTests(SimpleTestCase):
 
     def test_retrieval_has_a_hard_context_budget(self):
         result = select_chunks([{"content": "x" * 20000, "similarity": .8}], threshold=.38, limit=5)
-        self.assertEqual(len(result[0]["content"]), 12000)
+        self.assertEqual(len(result[0]["content"]), 5000)
 
     def test_initial_and_rolling_character_limits(self):
         self.assertEqual(len(compact("ðŸ˜€" * 600)), 500)
@@ -54,6 +55,55 @@ class EvidencePipelineTests(SimpleTestCase):
         provider.return_value.generate_text.assert_called_once()
         self.assertTrue(result["grounding_approved"])
         self.assertNotIn("decision", result)
+
+    def test_grounding_skips_provider_for_backend_deterministic_reply(self):
+        state = self._state(reason_code="QUALIFICATION_NEXT")
+        state["decision"] = EngagementDecision(
+            should_engage=True,
+            message="Which tool do you currently use?",
+            file_document_id=None,
+            crm_actions=[],
+            reason="QUALIFICATION_NEXT",
+            reason_code="QUALIFICATION_NEXT",
+            model="deterministic",
+        )
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            result = check_grounding(state)
+        provider.assert_not_called()
+        self.assertTrue(result["grounding_approved"])
+
+    def test_grounding_payload_keeps_only_recent_history(self):
+        state = self._state()
+        state["context"] = SimpleNamespace(
+            organization={},
+            knowledge=[],
+            lead={"attributes": {}},
+            conversation={
+                "messages": [
+                    {
+                        "id": f"m-{index}",
+                        "direction": "inbound",
+                        "status": "received",
+                        "body": f"message {index}",
+                    }
+                    for index in range(20)
+                ]
+            },
+        )
+        state["latest_text"] = "message 19"
+        state["qualification_state"] = {}
+        state["requirements"] = []
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value.text = (
+                '{"approved":true,"reason":"approved"}'
+            )
+            result = check_grounding(state)
+        payload = json.loads(
+            provider.return_value.generate_text.call_args.kwargs["input_text"]
+        )
+        self.assertTrue(result["grounding_approved"])
+        self.assertEqual(len(payload["inbound_evidence"]), 8)
+        self.assertEqual(len(payload["recent_conversation"]), 8)
 
     def test_grounding_rejection_returns_safe_reply_instead_of_silence(self):
         state = self._state()

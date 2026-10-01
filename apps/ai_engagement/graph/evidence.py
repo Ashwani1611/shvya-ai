@@ -1,6 +1,7 @@
 """Bounded retrieval and a selective, fail-safe grounding gate."""
 import json
 import math
+import os
 from time import monotonic
 from dataclasses import replace
 from apps.ai_engagement.services.runtime_state import contract, STATE_KEY
@@ -8,7 +9,35 @@ from apps.ai_engagement.services.runtime_state import contract, STATE_KEY
 from apps.ai_engagement.services.ai_provider import AIProviderError, OpenAIProvider
 
 
-def select_chunks(chunks, *, threshold, limit, max_chars=12000):
+def _bounded_env_int(name, default, *, minimum, maximum):
+    try:
+        value = int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        value = int(default)
+    return min(max(value, minimum), maximum)
+
+
+def _rag_context_budget():
+    return _bounded_env_int(
+        "AI_RAG_MAX_CONTEXT_CHARS",
+        5000,
+        minimum=1500,
+        maximum=12000,
+    )
+
+
+def _grounding_history_limit():
+    return _bounded_env_int(
+        "AI_GROUNDING_HISTORY_MESSAGES",
+        8,
+        minimum=2,
+        maximum=24,
+    )
+
+
+def select_chunks(chunks, *, threshold, limit, max_chars=None):
+    if max_chars is None:
+        max_chars = _rag_context_budget()
     candidates = []
     for chunk in chunks or []:
         if not isinstance(chunk, dict):
@@ -171,6 +200,21 @@ def check_grounding(state):
     if not decision.should_engage:
         return {"grounding_approved": True}
 
+    # Backend-authored deterministic qualification copy contains no model-created
+    # business claim. Re-verifying it with the same provider spends a second
+    # generation call without adding evidence. Factual/model-authored replies,
+    # files and CRM proposals still go through the independent grounding gate.
+    if (
+        str(getattr(decision, "model", "") or "").strip().casefold() == "deterministic"
+        and not getattr(decision, "crm_actions", None)
+        and not getattr(decision, "qualification_updates", None)
+        and getattr(decision, "file_document_id", None) is None
+        and str(getattr(decision, "reason_code", "") or "").strip().upper()
+        in {"QUALIFICATION_NEXT", "NORMAL_CONVERSATION"}
+    ):
+        _record_verdict(approved=True, reason="approved")
+        return {"grounding_approved": True}
+
     qualification_state = state.get("qualification_state") or {}
     latest_message_id = str(state.get("latest_message_id") or "").strip()
     answered_this_turn = bool(latest_message_id) and any(
@@ -219,12 +263,13 @@ def check_grounding(state):
         return {"grounding_approved": True}
 
     context = state["context"]
+    history_limit = _grounding_history_limit()
     payload = {
         "reply": decision.message,
         "latest_inbound": state.get("latest_text", ""),
         "inbound_evidence": [
             {"id": message.get("id"), "body": str(message.get("body") or "")[:1000]}
-            for message in (getattr(context, "conversation", {}) or {}).get("messages", [])[-24:]
+            for message in (getattr(context, "conversation", {}) or {}).get("messages", [])[-history_limit:]
             if isinstance(message, dict) and message.get("direction") == "inbound"
         ],
         "runtime_policy": state.get("runtime_policy", {}),
@@ -239,7 +284,7 @@ def check_grounding(state):
         "recent_conversation": [
             {"direction": item.get("direction"), "status": item.get("status"),
              "body": str(item.get("body") or "")[:1000]}
-            for item in (getattr(context, "conversation", {}) or {}).get("messages", [])[-24:]
+            for item in (getattr(context, "conversation", {}) or {}).get("messages", [])[-history_limit:]
             if isinstance(item, dict)
         ],
         "selected_file_document_id": decision.file_document_id,
@@ -258,6 +303,7 @@ def check_grounding(state):
     metadata = {
         "organization_id": str(state["organization"].id),
         "lead_id": str(state["lead"].id),
+        "task": "grounding",
         "purpose": "engagement",
         "phase": "grounding",
     }
@@ -300,7 +346,11 @@ def check_grounding(state):
             repair = provider.generate_text(
                 instructions=_REPAIR_INSTRUCTIONS,
                 input_text=json.dumps({**payload, "rejection_reason": reason}, ensure_ascii=False),
-                metadata={**metadata, "phase": "grounding_reply_repair"},
+                metadata={
+                    **metadata,
+                    "task": "grounding_reply_repair",
+                    "phase": "grounding_reply_repair",
+                },
                 response_schema={"name": "grounding_reply_repair", "strict": True, "schema": {
                     "type": "object", "properties": {"message": {"type": "string"}},
                     "required": ["message"], "additionalProperties": False,

@@ -159,10 +159,13 @@ class EngagementService:
     ALLOWED_ACTION_TYPES = ALLOWED_ACTION_TYPES
     ALLOWED_PIPELINE_TRANSITION_TYPES = {"stage_shift"}
 
-    MESSAGE_LIMIT = 12
-    KNOWLEDGE_LIMIT = 3
+    # Staging token-efficiency defaults: keep only the conversational context
+    # that materially changes the current turn. Runtime env values can still
+    # raise the character budget for targeted debugging.
+    MESSAGE_LIMIT = 6
+    KNOWLEDGE_LIMIT = 2
     NOTE_LIMIT = 5
-    DEFAULT_RECENT_CONVERSATION_CHARS = 6000
+    DEFAULT_RECENT_CONVERSATION_CHARS = 3200
 
     _SIMPLE_ACKS = {
         "yes",
@@ -648,7 +651,7 @@ Do not add explanations, markdown, or chain-of-thought.
             return ""
 
         recent_messages: list[str] = []
-        for message in messages[-4:]:
+        for message in messages[-2:]:
             if not isinstance(message, dict):
                 continue
             body = str(message.get("body") or "").strip()
@@ -657,7 +660,7 @@ Do not add explanations, markdown, or chain-of-thought.
             speaker = "Lead" if message.get("direction") == "inbound" else "SHVYA"
             recent_messages.append(f"{speaker}: {body}")
 
-        return "\n".join(recent_messages).strip()[:1800]
+        return "\n".join(recent_messages).strip()[:900]
 
     def _build_instructions(self, *, context: AIContext, profile=None) -> str:
         organization_context = context.organization or {}
@@ -690,7 +693,7 @@ Do not add explanations, markdown, or chain-of-thought.
             )
         except (TypeError, ValueError):
             configured = self.DEFAULT_RECENT_CONVERSATION_CHARS
-        return min(max(configured, 2000), 12000)
+        return min(max(configured, 1200), 8000)
 
     def _compact_conversation(self, conversation: dict[str, Any]) -> dict[str, Any]:
         messages = conversation.get("messages", []) if isinstance(conversation, dict) else []

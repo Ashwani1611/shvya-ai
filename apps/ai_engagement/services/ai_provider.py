@@ -139,6 +139,10 @@ class OpenAIProvider:
     TASK_MAX_OUTPUT_TOKENS = {
         "engagement": 700,
         "playground": 700,
+        # Grounding returns a tiny strict JSON verdict; reserve a small bounded
+        # output instead of the normal engagement envelope.
+        "grounding": 100,
+        "grounding_reply_repair": 180,
         "qualification": 500,
         "internal_summary": 300,
         "lead_briefing": 350,
