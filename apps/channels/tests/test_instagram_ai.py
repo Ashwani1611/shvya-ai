@@ -1,3 +1,4 @@
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -115,6 +116,80 @@ class InstagramAIEngagementTests(TestCase):
             lead=self.lead,
         )
         self.assertEqual(guarded.pk, self.inbound.pk)
+
+    @patch("apps.channels.instagram_tasks.send_instagram_message_task.delay")
+    @patch("apps.channels.instagram_tasks.generate_instagram_ai_engagement_task.apply_async")
+    def test_recovery_republishes_stale_instagram_ai_turn(
+        self,
+        ai_publish,
+        send_publish,
+    ):
+        from apps.ai_engagement.services.execution_tracker import (
+            recover_api_engagement,
+        )
+
+        self.inbound.raw_payload = {
+            "shvya_ai_execution": {
+                "status": "queued",
+                "attempts": 0,
+                "updated_at": (
+                    timezone.now() - timedelta(minutes=2)
+                ).isoformat(),
+            }
+        }
+        self.inbound.save(update_fields=["raw_payload", "updated_at"])
+
+        result = recover_api_engagement()
+
+        self.assertEqual(result["requeued"], 1)
+        ai_publish.assert_called_once_with(
+            args=[str(self.inbound.pk)],
+            countdown=0,
+        )
+        send_publish.assert_not_called()
+        self.inbound.refresh_from_db()
+        execution = self.inbound.raw_payload["shvya_ai_execution"]
+        self.assertEqual(execution["status"], "queued")
+        self.assertEqual(
+            execution["reason"],
+            "recovered_after_dispatch_delay",
+        )
+
+    @patch("apps.channels.instagram_tasks.send_instagram_message_task.delay")
+    @patch("apps.channels.instagram_tasks.generate_instagram_ai_engagement_task.apply_async")
+    def test_recovery_republishes_unclaimed_queued_instagram_ai_reply(
+        self,
+        ai_publish,
+        send_publish,
+    ):
+        from apps.ai_engagement.services.execution_tracker import (
+            recover_api_engagement,
+        )
+
+        outbound = InstagramMessage.objects.create(
+            organization=self.org,
+            account=self.account,
+            conversation=self.conversation,
+            direction=InstagramMessage.Direction.OUTBOUND,
+            status=InstagramMessage.Status.QUEUED,
+            sender_id=self.account.ig_user_id,
+            recipient_id=self.conversation.participant_id,
+            body="Queued AI reply",
+            raw_payload={
+                "shvya_ai": {
+                    "source_inbound_message_id": str(self.inbound.pk),
+                }
+            },
+        )
+        InstagramMessage.objects.filter(pk=outbound.pk).update(
+            created_at=timezone.now() - timedelta(seconds=30),
+        )
+
+        result = recover_api_engagement()
+
+        self.assertEqual(result["requeued"], 1)
+        send_publish.assert_called_once_with(str(outbound.pk))
+        ai_publish.assert_not_called()
 
     @patch("services.channels.instagram_ai._dispatch_instagram_ai_message")
     @patch("services.channels.instagram_inbox.assert_reply_allowed")
