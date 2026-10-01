@@ -139,13 +139,15 @@ class InstagramAIEngagementTests(TestCase):
             self.inbound.raw_payload["shvya_ai_processing"]["processed"]
         )
 
-        # Retried generation for the same inbound cannot create a duplicate.
+        # If the generation task is redelivered before the send worker claims
+        # the queued outbound, only the existing send is republished.
         second = execute_instagram_ai_engagement(
             task=self.task(),
             message_id=self.inbound.pk,
         )
-        self.assertEqual(second["status"], "skipped")
-        self.assertEqual(second["reason"], "duplicate_ai_response")
+        self.assertEqual(second["status"], "queued")
+        self.assertEqual(second["reason"], "existing_ai_response_requeued")
+        self.assertEqual(dispatch.call_count, 2)
         self.assertEqual(
             InstagramMessage.objects.filter(
                 conversation=self.conversation,
@@ -153,3 +155,15 @@ class InstagramAIEngagementTests(TestCase):
             ).count(),
             1,
         )
+
+        # Once Meta delivery has been claimed/sent, another redelivery is a
+        # pure duplicate and does not enqueue another customer reply.
+        outbound.status = InstagramMessage.Status.SENT
+        outbound.save(update_fields=["status", "updated_at"])
+        third = execute_instagram_ai_engagement(
+            task=self.task(),
+            message_id=self.inbound.pk,
+        )
+        self.assertEqual(third["status"], "skipped")
+        self.assertEqual(third["reason"], "duplicate_ai_response")
+        self.assertEqual(dispatch.call_count, 2)
