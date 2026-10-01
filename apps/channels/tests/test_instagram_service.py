@@ -289,17 +289,22 @@ class InstagramServiceTests(TestCase):
 
     @patch("apps.ai_engagement.services.execution_tracker.publish_instagram_engagement")
     def test_live_instagram_dm_creates_phone_optional_lead_maps_phone_and_queues_ai(self, ai_publish):
-        pipeline = Pipeline.objects.create(
-            organization=self.org,
-            name="Leads",
-            country_code="+91",
-            ai_enabled=True,
+        pipeline = (
+            self.org.pipelines.filter(name__iexact="Leads").first()
+            or self.org.pipelines.first()
         )
-        Stage.objects.create(
-            pipeline=pipeline,
-            name="New Lead",
-            ai_on=True,
+        pipeline.country_code = "+91"
+        pipeline.ai_enabled = True
+        pipeline.save(
+            update_fields=["country_code", "ai_enabled", "updated_at"]
         )
+        stage = (
+            pipeline.stages.filter(name__iexact="New Lead").first()
+            or pipeline.stages.filter(name__iexact="New Leads").first()
+            or pipeline.stages.first()
+        )
+        stage.ai_on = True
+        stage.save(update_fields=["ai_on", "updated_at"])
         payload = {
             "object": "instagram",
             "entry": [
