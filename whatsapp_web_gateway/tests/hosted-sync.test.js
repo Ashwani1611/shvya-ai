@@ -97,12 +97,82 @@ for (const route of ['messages', 'uploaded-media']) {
   });
 }
 
+test('getChats recovers once when the WhatsApp Web bridge disappears after ready', async () => {
+  let injected = 0;
+  let getChatsCalls = 0;
+  let bridgeReady = true;
+  const ctx = context(
+    ['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery'],
+    {
+      gatewayMetrics: { historySyncFailures: 0, chatBridgeRecoveries: 0 },
+    },
+  );
+  const client = {
+    pupPage: {
+      evaluate: async () => bridgeReady,
+      waitForFunction: async () => {
+        if (!bridgeReady) throw new Error('bridge timeout');
+      },
+    },
+    inject: async () => {
+      injected += 1;
+      bridgeReady = true;
+    },
+    getChats: async () => {
+      getChatsCalls += 1;
+      if (getChatsCalls === 1) {
+        bridgeReady = false;
+        throw new Error("Cannot read properties of undefined (reading 'getChats')");
+      }
+      return [{ id: 'chat@c.us' }];
+    },
+  };
+
+  const chats = await ctx.getChatsWithBridgeRecovery(
+    client,
+    30000,
+    'getChats',
+  );
+
+  assert.equal(injected, 1);
+  assert.equal(getChatsCalls, 2);
+  assert.equal(ctx.gatewayMetrics.chatBridgeRecoveries, 1);
+  assert.equal(chats.length, 1);
+});
+
+test('non-bridge getChats failures are not hidden by reinjection', async () => {
+  let injected = 0;
+  const ctx = context(
+    ['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery'],
+    {
+      gatewayMetrics: { historySyncFailures: 0, chatBridgeRecoveries: 0 },
+    },
+  );
+  const client = {
+    pupPage: {
+      evaluate: async () => true,
+      waitForFunction: async () => {},
+    },
+    inject: async () => { injected += 1; },
+    getChats: async () => {
+      throw new Error('Database permission denied');
+    },
+  };
+
+  await assert.rejects(
+    ctx.getChatsWithBridgeRecovery(client, 30000, 'getChats'),
+    /Database permission denied/,
+  );
+  assert.equal(injected, 0);
+  assert.equal(ctx.gatewayMetrics.chatBridgeRecoveries, 0);
+});
+
 test('production patch chain applies and sync orders before truncating the chat index', async () => {
   const visited = [];
   const identities = [];
   const chats = Array.from({ length: 1005 }, (_, i) => ({ id: `${i}@c.us`, timestamp: i }));
   chats.push({ id: 'status@broadcast', timestamp: 99999 });
-  const ctx = context(['syncRecentHistory'], {
+  const ctx = context(['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery', 'syncRecentHistory'], {
     syncOneChat: async (_session, chat, _client, options) => {
       visited.push([chat.timestamp, options.messageLimit]);
       return { chats: 1, messages: 1 };
@@ -128,7 +198,7 @@ test('callback retries retain gateway lease fencing metadata and failure metrics
 
 test('failed chat does not stop other imports or falsely complete history', async () => {
   const visited = [];
-  const ctx = context(['syncRecentHistory'], {
+  const ctx = context(['isRecoverableChatBridgeError', 'waitForChatBridge', 'getChatsWithBridgeRecovery', 'syncRecentHistory'], {
     syncOneChat: async (_id, chat) => {
       visited.push(chat.id);
       if (chat.id === 'bad@c.us') throw new Error('fetch failed');
