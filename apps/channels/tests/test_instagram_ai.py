@@ -22,17 +22,22 @@ from services.channels.instagram_leads import extract_instagram_phone
 class InstagramAIEngagementTests(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name="Instagram AI Org")
-        self.pipeline = Pipeline.objects.create(
-            organization=self.org,
-            name="Leads",
-            country_code="+91",
-            ai_enabled=True,
+        self.pipeline = (
+            self.org.pipelines.filter(name__iexact="Leads").first()
+            or self.org.pipelines.first()
         )
-        self.stage = Stage.objects.create(
-            pipeline=self.pipeline,
-            name="New Lead",
-            ai_on=True,
+        self.pipeline.country_code = "+91"
+        self.pipeline.ai_enabled = True
+        self.pipeline.save(
+            update_fields=["country_code", "ai_enabled", "updated_at"]
         )
+        self.stage = (
+            self.pipeline.stages.filter(name__iexact="New Lead").first()
+            or self.pipeline.stages.filter(name__iexact="New Leads").first()
+            or self.pipeline.stages.first()
+        )
+        self.stage.ai_on = True
+        self.stage.save(update_fields=["ai_on", "updated_at"])
         self.lead = Lead.objects.create(
             organization=self.org,
             pipeline=self.pipeline,
