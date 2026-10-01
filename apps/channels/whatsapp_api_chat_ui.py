@@ -240,6 +240,7 @@ def whatsapp_chat_detail_view(request, lead_id):
         return redirect("whatsapp-chats")
 
     chat_messages = list(chat_messages)
+    _attach_inbound_reply_display(chat_messages)
     _attach_template_display(chat_messages, organization=user.organization)
     for message in chat_messages:
         if message.status == message.Status.FAILED:
