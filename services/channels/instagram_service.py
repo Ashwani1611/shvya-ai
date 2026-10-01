@@ -1106,7 +1106,15 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     message.status = InstagramMessage.Status.SENT
     message.sent_at = timezone.now()
     message.error = ""
-    message.raw_payload = result
+    existing_payload = (
+        dict(message.raw_payload)
+        if isinstance(message.raw_payload, dict)
+        else {}
+    )
+    message.raw_payload = {
+        **existing_payload,
+        "provider_response": result,
+    }
     message.save(
         update_fields=["external_id", "status", "sent_at", "error", "raw_payload", "updated_at"]
     )
@@ -1351,6 +1359,37 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
                 continue
             if created:
                 _refresh_webhook_conversation(conversation)
+
+                # A live Instagram DM owns its CRM/AI turn by Meta participant
+                # identity. Phone is optional; if the customer explicitly shares
+                # one in this message, normalize and map it after creating/linking
+                # the Instagram lead.
+                from services.channels.instagram_leads import (
+                    ensure_instagram_lead,
+                    map_instagram_phone_from_message,
+                )
+
+                conversation, lead = ensure_instagram_lead(
+                    conversation_id=conversation.pk,
+                )
+                if lead is not None:
+                    map_instagram_phone_from_message(
+                        lead_id=lead.pk,
+                        text=message.body,
+                    )
+
+                    def _queue_instagram_ai_turn(message_id=str(message.pk)):
+                        from apps.channels.instagram_tasks import (
+                            generate_instagram_ai_engagement_task,
+                        )
+
+                        generate_instagram_ai_engagement_task.delay(message_id)
+
+                    transaction.on_commit(
+                        _queue_instagram_ai_turn,
+                        robust=True,
+                    )
+
                 processed += 1
 
     delivery.status = (
