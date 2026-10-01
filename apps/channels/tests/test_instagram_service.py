@@ -295,7 +295,7 @@ class InstagramServiceTests(TestCase):
             country_code="+91",
             ai_enabled=True,
         )
-        stage = Stage.objects.create(
+        Stage.objects.create(
             pipeline=pipeline,
             name="New Lead",
             ai_on=True,
