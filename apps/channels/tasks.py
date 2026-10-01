@@ -22,7 +22,6 @@ logger = logging.getLogger(__name__)
 @shared_task(name="apps.channels.reconcile_hosted_sessions")
 def reconcile_hosted_sessions():
     """Self-heal Hosted accounts whose persisted DB status drifted from the gateway."""
-    from apps.channels.hosted_tasks import initialize_hosted_session_task
     from apps.channels.hosted_gateway_routing import gateway_client_for_account
     from apps.channels.models import WhatsAppAccount
     from apps.channels.providers.whatsapp_web import (
@@ -34,7 +33,10 @@ def reconcile_hosted_sessions():
         WhatsAppAccount.objects.filter(
             connection_type=WhatsAppAccount.ConnectionType.coexisted,
             is_active=True,
-            status=WhatsAppAccount.Status.CONNECTED,
+            status__in=[
+                WhatsAppAccount.Status.CONNECTED,
+                WhatsAppAccount.Status.PENDING,
+            ],
         ).only(
             "id",
             "organization_id",
@@ -60,19 +62,25 @@ def reconcile_hosted_sessions():
             session = client.get_session(session_id=account.id)
         except WhatsAppWebGatewayError as exc:
             if exc.status_code == 404:
-                changed = WhatsAppAccount.objects.filter(
-                    pk=account.pk,
-                    status=WhatsAppAccount.Status.CONNECTED,
-                    is_active=True,
-                ).update(status=WhatsAppAccount.Status.PENDING)
-                if changed:
-                    initialize_hosted_session_task.delay(str(account.id))
-                    result["reinitialized"] += 1
+                try:
+                    session = client.create_session(
+                        session_id=account.id,
+                        phone_number=(
+                            account.display_phone_number
+                            or account.phone_number_id
+                        ),
+                    )
+                except WhatsAppWebGatewayError:
+                    # Capacity/network/provider failures are transient. Keep the
+                    # account recoverable and retry on the next Beat tick.
+                    result["gateway_errors"] += 1
+                    continue
+                result["reinitialized"] += 1
+            else:
+                # A gateway/network outage is not proof that the WhatsApp session is
+                # disconnected. Preserve DB state and retry on the next Beat tick.
+                result["gateway_errors"] += 1
                 continue
-            # A gateway/network outage is not proof that the WhatsApp session is
-            # disconnected. Preserve DB state and retry on the next Beat tick.
-            result["gateway_errors"] += 1
-            continue
 
         gateway_status = str(session.get("status") or "").strip().casefold()
         phone_number = session.get("phoneNumber") or account.display_phone_number

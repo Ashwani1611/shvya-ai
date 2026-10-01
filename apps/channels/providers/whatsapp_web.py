@@ -95,8 +95,14 @@ class WhatsAppWebClient:
     def get_qr(self, *, session_id):
         return self._request("GET", f"/sessions/{session_id}/qr")
 
-    def refresh_qr(self, *, session_id):
-        return self._request("POST", f"/sessions/{session_id}/refresh-qr")
+    def refresh_qr(self, *, session_id, phone_number=None):
+        return self._request(
+            "POST",
+            f"/sessions/{session_id}/refresh-qr",
+            payload={
+                "phoneNumber": str(phone_number or ""),
+            },
+        )
 
     def sync_history(self, *, session_id):
         """Ask a running linked-device session to backfill its searchable chat index."""

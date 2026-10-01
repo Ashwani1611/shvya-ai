@@ -962,13 +962,14 @@ async function createSession(sessionId, requestedPhone = '') {
   return state;
 }
 
-async function refreshQr(sessionId) {
+async function refreshQr(sessionId, requestedPhone = '') {
   const current = sessions.get(sessionId);
-  if (!current) return createSession(sessionId);
+  if (!current) return createSession(sessionId, requestedPhone);
+  if (requestedPhone) current.requestedPhone = requestedPhone;
   await reconcileClientState(sessionId, current);
   if (current.status === 'running') return current;
 
-  const requestedPhone = current.requestedPhone;
+  requestedPhone = current.requestedPhone || requestedPhone;
   // Stop lease renewal before browser teardown so a slow Chromium destroy
   // cannot strand this gateway as the apparent owner of the session.
   sessions.delete(sessionId);
@@ -1120,7 +1121,8 @@ app.get('/sessions/:sessionId/qr', async (req, res) => {
 
 app.post('/sessions/:sessionId/refresh-qr', async (req, res) => {
   try {
-    const state = await refreshQr(req.params.sessionId);
+    const requestedPhone = String(req.body.phoneNumber || '').trim();
+    const state = await refreshQr(req.params.sessionId, requestedPhone);
     return res.status(202).json(publicSession(req.params.sessionId, state));
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message });

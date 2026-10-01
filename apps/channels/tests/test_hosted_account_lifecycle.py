@@ -76,12 +76,12 @@ class HostedAccountLifecycleTests(TestCase):
         self.assertFalse(WhatsAppMessage.objects.filter(id=message.id).exists())
         self.assertTrue(WhatsAppAccount.objects.filter(id=account.id).exists())
 
-    @patch("apps.channels.hosted_manage_ui.initialize_hosted_session_task.delay")
+    @patch("apps.channels.hosted_manage_ui.hosted_ui._start_gateway_session")
     @patch("apps.channels.hosted_manage_ui.hosted_chat_ui._repair_live_status")
     def test_disconnected_chat_click_redirects_to_qr_login(
         self,
         repair_live_status,
-        initialize_delay,
+        start_gateway_session,
     ):
         account = self.create_account()
         account.status = WhatsAppAccount.Status.DISCONNECTED
@@ -97,7 +97,7 @@ class HostedAccountLifecycleTests(TestCase):
             f"{reverse('whatsapp-connect-hosted')}?login={account.id}",
         )
         repair_live_status.assert_called_once()
-        initialize_delay.assert_called_once_with(str(account.id))
+        start_gateway_session.assert_called_once_with(account)
         account.refresh_from_db()
         self.assertEqual(account.status, WhatsAppAccount.Status.PENDING)
 
