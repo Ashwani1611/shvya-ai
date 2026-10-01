@@ -282,7 +282,7 @@ class WhatsAppTemplateDeliveryTests(TestCase):
         self.template.attachment_type = WhatsAppTemplate.AttachmentType.IMAGE
         self.template.save(update_fields=["attachment_type", "updated_at"])
 
-        with self.assertRaisesRegex(WhatsAppTemplateSendError, "Missing value for Image header"):
+        with self.assertRaisesRegex(WhatsAppTemplateSendError, "Missing attachment for Image header"):
             queue_template_message(
                 template=self.template,
                 lead=self.lead,
