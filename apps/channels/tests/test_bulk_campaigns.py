@@ -51,7 +51,9 @@ class CampaignFixture:
         self.attribute, _ = AttributeDefinition.objects.get_or_create(organization=self.org, key="campaign_company",
                                                                        defaults={"name": "Campaign Company", "field_type": "text"})
         self.account = WhatsAppAccount.objects.create(organization=self.org, business_name="Campaign Test Number",
-            phone_number_id="123456789", waba_id="987654321", access_token="test-token", status="connected", is_active=True)
+            phone_number_id="123456789", display_phone_number="+919800000000", waba_id="987654321", access_token="test-token", status="connected", is_active=True)
+        self.pipeline.phone_number = self.account.display_phone_number
+        self.pipeline.save(update_fields=["phone_number"])
         self.template = WhatsAppTemplate.objects.create(organization=self.org, account=self.account, name="campaign_test_notice",
             category="utility", status="approved", meta_template_id="template-test-id", body="Hello {{1}}")
         self.metadata = WhatsAppTemplateMetadata.objects.create(template=self.template, local_status="synced", language="en_US",
@@ -175,7 +177,7 @@ class BulkCampaignTests(CampaignFixture, TestCase):
         self.assertEqual(campaign.campaign_delivery_rows.get().state, "skipped")
 
     def test_pipeline_and_stage_columns_apply_to_new_leads(self):
-        other = Pipeline.objects.create(organization=self.org, name="Campaign Other")
+        other = Pipeline.objects.create(organization=self.org, name="Campaign Other", phone_number=self.account.display_phone_number)
         stage = other.stages.order_by("display_order", "pk").first()
         text = f"Name,Phone,Email,Company,Pipeline,Stage\nAsha,+919000000001,,Example,{other.name},{stage.name}\n"
         upload = self.audience(text, mapping={"name": "Name", "phone": "Phone", "pipeline": "Pipeline", "stage": "Stage"})
@@ -183,6 +185,48 @@ class BulkCampaignTests(CampaignFixture, TestCase):
         lead = campaign.recipients.get().lead
         self.assertEqual(lead.pipeline_id, other.pk)
         self.assertEqual(lead.stage_id, stage.pk)
+
+    def test_preview_and_confirmation_block_unlinked_or_different_pipeline_senders(self):
+        upload = self.audience()
+        data = self.confirmation(upload)
+        WhatsAppAccount.objects.create(
+            organization=self.org, phone_number_id="123456780", display_phone_number="+919800000001",
+            waba_id="987654321", access_token="test-token", status="connected", is_active=True,
+        )
+        for number in ("", "+919800000001"):
+            with self.subTest(number=number):
+                self.pipeline.phone_number = number
+                self.pipeline.save(update_fields=["phone_number"])
+                preview = preview_campaign(user=self.user, upload=upload, template_id=self.template.pk, bindings=data["bindings"])
+                self.assertFalse(preview["ready"])
+                self.assertIn("pipeline", preview["errors"][0]["reason"])
+                with self.assertRaises(CampaignInputError):
+                    confirm_campaign(user=self.user, data=data)
+        self.assertFalse(BulkMessageCampaign.objects.exists())
+
+    def test_preview_checks_each_pipeline_in_a_mixed_upload(self):
+        other = Pipeline.objects.create(organization=self.org, name="Different sender", phone_number="+919800000001")
+        stage = other.stages.order_by("display_order", "pk").first()
+        text = f"Name,Phone,Email,Company,Pipeline,Stage\nAsha,+919000000001,,Example,{self.pipeline.name},{self.stage.name}\nBina,+919000000002,,Example,{other.name},{stage.name}\n"
+        upload = self.audience(text, mapping={"name": "Name", "phone": "Phone", "pipeline": "Pipeline", "stage": "Stage"})
+        bindings = default_bindings(template_snapshot(self.template), source_catalog(self.user))
+        preview = preview_campaign(user=self.user, upload=upload, template_id=self.template.pk, bindings=bindings)
+        self.assertFalse(preview["ready"])
+        self.assertEqual(preview["missing_count"], 1)
+        self.assertEqual(len(preview["previews"]), 1)
+
+    def test_preview_rechecks_existing_lead_pipeline_after_audience_review(self):
+        lead = Lead.objects.create(organization=self.org, pipeline=self.pipeline, stage=self.stage, name="Original", phone="+919000000001")
+        upload = self.audience(mode="existing_only")
+        data = self.confirmation(upload)
+        other = Pipeline.objects.create(organization=self.org, name="Reassigned", phone_number="+919800000001")
+        lead.pipeline = other
+        lead.stage = other.stages.order_by("display_order", "pk").first()
+        lead.save(update_fields=["pipeline", "stage", "updated_at"])
+        preview = preview_campaign(user=self.user, upload=upload, template_id=self.template.pk, bindings=data["bindings"])
+        self.assertFalse(preview["ready"])
+        with self.assertRaises(CampaignInputError):
+            confirm_campaign(user=self.user, data=data)
 
     def test_confirmation_requires_consent_current_review_and_preview(self):
         upload = self.audience()
@@ -448,6 +492,22 @@ class BulkCampaignTests(CampaignFixture, TestCase):
             self.assertEqual(send_delivery(delivery.pk)["status"], "configuration_changed")
         sender.assert_not_called()
 
+    def test_dispatch_rechecks_current_pipeline_sender_before_queueing(self):
+        campaign = self.campaign()
+        delivery = campaign.campaign_delivery_rows.get()
+        other = Pipeline.objects.create(organization=self.org, name="Reassigned", phone_number="+919800000001")
+        lead = delivery.lead
+        lead.pipeline = other
+        lead.stage = other.stages.order_by("display_order", "pk").first()
+        lead.save(update_fields=["pipeline", "stage", "updated_at"])
+        with patch.object(whatsapp_service, "send_outbound_message") as sender:
+            self.assertEqual(send_delivery(delivery.pk)["status"], "sender_route_changed")
+        sender.assert_not_called()
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.state, "skipped")
+        self.assertEqual(delivery.attempt_count, 0)
+        self.assertFalse(WhatsAppMessage.objects.exists())
+
     def test_legacy_missing_evidence_remains_unknown(self):
         lead = Lead.objects.create(organization=self.org, pipeline=self.pipeline, stage=self.stage, name="Legacy", phone="+919000000001")
         campaign = BulkMessageCampaign.objects.create(organization=self.org, account=self.account, name="Legacy", pipeline=self.pipeline, body="Legacy", status="completed")
@@ -623,6 +683,19 @@ class BulkCampaignDeliveryTests(CampaignFixture, TransactionTestCase):
         result = retry_recipients(user=self.user, campaign=campaign, selection=campaign.campaign_delivery_rows.all())
         self.assertEqual(result["queued"], 0)
 
+    def test_template_preparation_failure_is_definitive_not_uncertain(self):
+        campaign = self.campaign(auto_retry=True)
+        delivery = campaign.campaign_delivery_rows.get()
+        def invalid_attachment(*, message):
+            raise whatsapp_service.WhatsAppSendError("Template attachment changed") from CampaignInputError("Template attachment changed. Review it again.")
+        with patch.object(whatsapp_service, "send_outbound_message", side_effect=invalid_attachment):
+            self.assertEqual(send_delivery(delivery.pk)["status"], "failed")
+        delivery.refresh_from_db()
+        self.assertFalse(delivery.uncertain)
+        self.assertEqual(delivery.error_code, "SHVYA_TEMPLATE_PREPARATION")
+        self.assertIn("No template message was sent", delivery.error_message)
+        self.assertIsNone(delivery.due_at)
+
     def test_explicit_provider_failure_retries_only_when_enabled(self):
         campaign = self.campaign(auto_retry=True)
         delivery = campaign.campaign_delivery_rows.get()
@@ -658,3 +731,47 @@ class BulkCampaignDeliveryTests(CampaignFixture, TransactionTestCase):
             self.assertEqual(send_delivery(delivery.pk)["status"], "deferred")
         provider.assert_not_called()
         self.assertEqual(delivery.attempts.count(), 0)
+
+
+class CampaignTemplateMediaTests(CampaignFixture, TestCase):
+    def setUp(self):
+        super().setUp()
+        self.template.attachment_type = "image"
+        self.template.save(update_fields=["attachment_type"])
+        self.metadata.components.insert(0, {"type": "HEADER", "format": "IMAGE"})
+        self.metadata.save(update_fields=["components"])
+
+    @patch("services.channels.template_media.default_storage.save", return_value="private/test-image")
+    def test_upload_makes_media_campaign_ready_without_url_fallback(self, save_file):
+        response = self.client.post(self.url("media"), {
+            "template_id": str(self.template.pk), "field": "header.media",
+            "file": SimpleUploadedFile("banner.png", b"image", content_type="image/png"),
+        })
+        self.assertEqual(response.status_code, 200)
+        bindings = response.json()["bindings"]
+        self.assertTrue(bindings["header.media"]["default"].startswith("asset:"))
+        upload = self.audience()
+        preview = preview_campaign(user=self.user, upload=upload, template_id=self.template.pk, bindings=bindings)
+        self.assertTrue(preview["ready"])
+        save_file.assert_called_once()
+
+    @patch("services.channels.template_media.default_storage.save")
+    def test_media_upload_rejects_foreign_template_and_text_fields(self, save_file):
+        other = Organization.objects.create(package="dfy", name="Other")
+        self.template.organization = other
+        self.template.save(update_fields=["organization"])
+        response = self.client.post(self.url("media"), {
+            "template_id": str(self.template.pk), "field": "header.media",
+            "file": SimpleUploadedFile("banner.png", b"image", content_type="image/png"),
+        })
+        self.assertEqual(response.status_code, 403)
+        save_file.assert_not_called()
+
+    def test_media_upload_rejects_wrong_file_type(self):
+        response = self.client.post(self.url("media"), {
+            "template_id": str(self.template.pk), "field": "header.media",
+            "file": SimpleUploadedFile("banner.txt", b"text", content_type="text/plain"),
+        })
+        self.assertEqual(response.status_code, 400)
+        self.metadata.refresh_from_db()
+        self.assertEqual(self.metadata.delivery_media, {})

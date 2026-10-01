@@ -21,7 +21,7 @@ from django.db.models import Max
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
-from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
+from apps.channels.providers.whatsapp import WhatsAppAPIError
 from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.crm.models import LeadReminder
 from apps.followups.models import (
@@ -34,7 +34,9 @@ from apps.followups.models import (
     LeadSequenceState,
 )
 from apps.integrations.services.email import send_organization_email
-from services.channels.template_service import render_template_body
+from services.channels.template_rendering import render_for_lead
+from services.channels import whatsapp_service
+from services.channels.campaign_policy import CampaignInputError
 
 
 WHATSAPP_MIN_SEND_GAP_SECONDS = 60
@@ -74,6 +76,10 @@ ALLOWED_EMAIL_ATTACHMENT_EXTENSIONS = {
 
 class FollowupError(Exception):
     pass
+
+
+class FollowupDeliveryUnconfirmed(FollowupError):
+    """A provider request may have sent; pause rather than replay it."""
 
 
 def validate_email_attachments(attachments):
@@ -821,7 +827,7 @@ def resolve_linked_whatsapp_account(*, lead, connection_type):
     """Return the connected sender whose number is linked to the lead pipeline."""
     from services.channels.hosted_whatsapp_service import normalize_whatsapp_number
 
-    pipeline_number = getattr(lead.pipeline, "phone_number", "") if lead.pipeline_id else ""
+    pipeline_number = str(getattr(lead.pipeline, "phone_number", "") or "").strip() if lead.pipeline_id else ""
     pipeline_number_normalized = normalize_whatsapp_number(
         country_code=getattr(lead.pipeline, "country_code", "") if lead.pipeline_id else "",
         phone_number=pipeline_number,
@@ -834,7 +840,7 @@ def resolve_linked_whatsapp_account(*, lead, connection_type):
         status=WhatsAppAccount.Status.CONNECTED,
         is_active=True,
     )
-    for account in accounts:
+    for account in accounts.order_by("-connected_at", "-pk"):
         if pipeline_number == account.phone_number_id:
             return account
         if pipeline_number_normalized and pipeline_number_normalized == normalize_whatsapp_number(
@@ -1072,16 +1078,8 @@ def _lead_template_values(lead, user=None):
 
 
 def _template_components(template, lead, user=None):
-    metadata = WhatsAppTemplateMetadata.objects.filter(template=template).first()
-    mapping = (metadata.placeholder_mapping if metadata else {}) or {}
-    if not mapping:
-        return []
-    values = _lead_template_values(lead, user=user)
-    parameters = []
-    for _, key in sorted(mapping.items(), key=lambda item: int(item[0])):
-        value = values.get(key, "")
-        parameters.append({"type": "text", "text": str(value or "")})
-    return [{"type": "body", "parameters": parameters}] if parameters else []
+    from services.channels.template_rendering import render_for_lead
+    return render_for_lead(template=template, lead=lead, user=user)["components"]
 
 
 def _create_execution(state, step):
@@ -1130,7 +1128,8 @@ def _mark_skipped_and_advance(state, execution, reason):
 
 def _handle_failure(state, execution, exc):
     now = timezone.now()
-    if execution.attempt_no < execution.max_attempts:
+    configuration_error = isinstance(exc, CampaignInputError) or isinstance(exc.__cause__, CampaignInputError)
+    if not configuration_error and not isinstance(exc, FollowupDeliveryUnconfirmed) and execution.attempt_no < execution.max_attempts:
         retry_at = now + timedelta(hours=execution.step.retry_delay_hours or 24)
         execution.status = FollowupExecution.Status.RETRY_WAIT
         execution.error = str(exc)
@@ -1188,11 +1187,10 @@ def _send_whatsapp_step(state, step, execution):
         state.save(update_fields=["upcoming_send_at", "updated_at"])
         return
 
-    body = render_template_body(
-        template=template,
-        lead=lead,
-        user=state.sequence.created_by,
-    )
+    rendered = render_for_lead(template=template, lead=lead, user=state.sequence.created_by)
+    body = rendered["body_text"]
+    metadata = WhatsAppTemplateMetadata.objects.filter(template=template).first()
+    language = metadata.language if metadata and metadata.language else "en_US"
     eligible_at = live_followup_due(state)
     if eligible_at > timezone.now():
         execution.status = FollowupExecution.Status.PENDING
@@ -1212,7 +1210,9 @@ def _send_whatsapp_step(state, step, execution):
         to_number=lead.phone,
         body=body,
         message_type=WhatsAppMessage.MessageType.TEXT,
-        media_payload={},
+        media_payload={"transport": "template", "template_id": str(template.pk),
+                       "template_name": template.name, "language_code": language,
+                       "components": rendered["components"]},
         status=WhatsAppMessage.Status.QUEUED,
         raw_payload={
             "shvya_auto_followup": {
@@ -1227,45 +1227,15 @@ def _send_whatsapp_step(state, step, execution):
     execution.whatsapp_message = message
     execution.save(update_fields=["whatsapp_message", "updated_at"])
 
-    metadata = WhatsAppTemplateMetadata.objects.filter(template=template).first()
-    language = metadata.language if metadata and metadata.language else "en_US"
-    client = WhatsAppClient(
-        phone_number_id=account.phone_number_id,
-        access_token=account.access_token,
-    )
     try:
-        response = client.send_template_message(
-            to=lead.phone,
-            template_name=template.name,
-            language_code=language,
-            components=_template_components(
-                template,
-                lead,
-                user=state.sequence.created_by,
-            ),
-        )
-    except WhatsAppAPIError as exc:
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = str(exc)
-        message.save(update_fields=["status", "error", "updated_at"])
-        raise FollowupError(str(exc)) from exc
-
-    meta_messages = response.get("messages") or []
-    message.external_id = meta_messages[0].get("id") if meta_messages else None
-    message.status = WhatsAppMessage.Status.SENT
-    message.raw_payload = {
-        "meta": response,
-        "shvya_auto_followup": {
-            "sequence_id": str(state.sequence_id),
-            "step_id": str(step.id),
-            "template_id": str(template.id),
-            "template_name": template.name,
-            "attempt": execution.attempt_no,
-        },
-    }
-    message.save(
-        update_fields=["external_id", "status", "raw_payload", "updated_at"]
-    )
+        whatsapp_service.send_outbound_message(message=message)
+    except Exception as exc:
+        cause = exc.__cause__
+        if isinstance(cause, CampaignInputError):
+            raise FollowupError(str(exc)) from cause
+        if isinstance(cause, WhatsAppAPIError) and cause.status_code is not None:
+            raise FollowupError(str(exc)) from exc
+        raise FollowupDeliveryUnconfirmed("Template delivery is unconfirmed. Check the original message before resuming this sequence.") from exc
 
     finished = timezone.now()
     execution.status = FollowupExecution.Status.SENT

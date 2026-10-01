@@ -14,7 +14,7 @@ from apps.crm.models import Lead, Stage
 from services.crm.lead_service import DuplicateLeadError, create_lead, upsert_lead
 
 from .campaign_audience import (
-    is_suppressed, owned_upload, require_manage, rights, source_catalog, user_pipelines, uuid_value,
+    campaign_account_for_pipeline, is_suppressed, owned_upload, require_manage, rights, source_catalog, user_pipelines, uuid_value,
 )
 from .campaign_policy import (
     CampaignInputError, fingerprint, integer, render_message, retry_decision, scheduled_time, template_fields,
@@ -44,6 +44,7 @@ def get_template(*, user, template_id):
 
 
 def template_snapshot(template):
+    from .template_media import media_defaults
     state = getattr(template, "meta_state", None)
     if state is None or state.local_status in {"deleted", "remote_deleted"}:
         raise CampaignInputError("Sync this template from Meta before using it in a campaign.")
@@ -52,6 +53,11 @@ def template_snapshot(template):
         "name": template.name, "category": template.category, "language": state.language,
         "components": state.components, "placeholder_mapping": state.placeholder_mapping,
     }
+    if state.delivery_bindings:
+        spec["delivery_bindings"] = state.delivery_bindings
+    defaults = media_defaults(state, state.components)
+    if defaults:
+        spec["media_defaults"] = defaults
     template_fields(spec)
     return spec
 
@@ -60,10 +66,20 @@ def default_bindings(spec, sources):
     keys = {item["key"] for item in sources}
     result = {}
     for field in template_fields(spec):
-        source = field["source"]
+        saved = (spec.get("delivery_bindings") or {}).get(field["key"], {}) if field["kind"] == "text" else {}
+        source = saved.get("source", field["source"])
         source = source if source in keys else f"attr:{source}" if f"attr:{source}" in keys else ""
-        result[field["key"]] = {"source": source, "default": ""}
+        result[field["key"]] = {"source": source, "default": saved.get("default", field.get("default", ""))}
     return result
+
+
+def validate_campaign_sender(*, user, pipeline, account):
+    """Campaign consent never overrides the lead's pipeline-bound sender."""
+    linked = campaign_account_for_pipeline(user=user, pipeline=pipeline)
+    if linked is None:
+        raise CampaignInputError("A recipient pipeline has no connected WhatsApp API or Coexistence number. Link its sending number before broadcasting.")
+    if linked.pk != account.pk:
+        raise CampaignInputError("The selected template's WhatsApp number is not linked to a recipient's pipeline. Use that pipeline's linked number and template, or split the audience by sending number.")
 
 
 def preview_campaign(*, user, upload, template_id, bindings):
@@ -73,9 +89,29 @@ def preview_campaign(*, user, upload, template_id, bindings):
     spec = template_snapshot(template)
     sources = source_catalog(user)
     allowed = {item["key"] for item in sources}
-    previews, failures = [], []
-    for row in upload.reviewed_rows:
+    # Review each distinct route once, including current routes for existing
+    # leads unless the reviewed campaign explicitly moves them. A previously
+    # reviewed file must not authorize sending from a different pipeline.
+    current_routes = {}
+    if not (upload.review_config.get("update_existing") and upload.review_config.get("move_existing")):
+        existing_ids = [row["existing_id"] for row in upload.reviewed_rows if row["existing_id"]]
+        if existing_ids:
+            current_routes = {str(pk): str(pipeline_id) for pk, pipeline_id in Lead.objects.filter(
+                organization_id=user.organization_id, pk__in=existing_ids,
+            ).values_list("pk", "pipeline_id")}
+    row_routes = [current_routes.get(row["existing_id"], row["pipeline_id"]) for row in upload.reviewed_rows]
+    pipelines = {str(pipeline.pk): pipeline for pipeline in user_pipelines(user).filter(pk__in=set(row_routes))}
+    route_errors = {}
+    for pipeline_id in set(row_routes):
         try:
+            validate_campaign_sender(user=user, pipeline=pipelines.get(pipeline_id), account=template.account)
+        except CampaignInputError as exc:
+            route_errors[pipeline_id] = str(exc)
+    previews, failures = [], []
+    for row, pipeline_id in zip(upload.reviewed_rows, row_routes):
+        try:
+            if pipeline_id in route_errors:
+                raise CampaignInputError(route_errors[pipeline_id])
             rendered = render_message(spec, bindings, row["values"], allowed)
             if len(previews) < 5:
                 previews.append({"row": row["row"], "name": row["name"], "body": rendered["body"]})
@@ -121,7 +157,7 @@ def confirm_campaign(*, user, data):
         raise PermissionDenied
     preview = preview_campaign(user=user, upload=upload, template_id=data.get("template_id"), bindings=data.get("bindings"))
     if not preview["ready"]:
-        raise CampaignInputError("Some recipients have missing template parameters. Complete the mapping or fallback values.")
+        raise CampaignInputError("Resolve the recipient preview errors before sending. Check template values, attachments and pipeline sending numbers.")
     if preview["digest"] != data.get("preview_digest"):
         raise CampaignInputError("The template or its values changed. Preview it again before confirming.")
     zone = str(data.get("timezone") or "UTC")

@@ -129,7 +129,7 @@ def workspace(request, campaign_id=None):
             },
         }
 
-    urls = {key: _route(key) for key in ("list", "options", "upload", "templates", "preview", "confirm", "sample")}
+    urls = {key: _route(key) for key in ("list", "options", "upload", "templates", "media", "preview", "confirm", "sample")}
     urls["data"] = _route("detail-data", campaign_id=campaign_id) if campaign_id else _route("list-data")
     if campaign_id:
         urls["actions"] = _route("actions", campaign_id=campaign_id)
@@ -147,6 +147,8 @@ def workspace(request, campaign_id=None):
 @require_GET
 @api_errors
 def options(request):
+    from .template_ui import _admin
+
     user = request.crm_user
     pipelines = list(user_pipelines(user).prefetch_related("stages"))
     accounts = WhatsAppAccount.objects.filter(
@@ -161,6 +163,7 @@ def options(request):
         "accounts": [{"id": str(a.pk), "name": " · ".join(filter(None, [a.business_name, a.display_phone_number])) or "WhatsApp",
                       "business_name": a.business_name, "phone": a.display_phone_number} for a in accounts],
         "fields": fields, "sources": source_catalog(user),
+        "can_manage_template_media": _admin(user),
         "can_create": any(rights(user, p)["can_edit_leads"] for p in pipelines),
     })
 
@@ -248,6 +251,31 @@ def templates(request):
             row.update(supported=False, reason=str(exc))
         result.append(row)
     return JsonResponse({"templates": result, "truncated": len(selected) > 200})
+
+
+@crm_login_required
+@require_POST
+@api_errors
+def media(request):
+    from .template_ui import _admin
+    from services.channels.campaign_service import get_template
+    from services.channels.template_media import save_delivery_media
+    from services.channels.template_service import TemplateError
+
+    if not _admin(request.crm_user):
+        raise PermissionDenied
+    template = get_template(user=request.crm_user, template_id=request.POST.get("template_id"))
+    spec = template_snapshot(template)
+    field = next((item for item in template_fields(spec) if item["key"] == request.POST.get("field") and item["kind"] != "text"), None)
+    if field is None:
+        raise CampaignInputError("Choose a media header belonging to this template.")
+    try:
+        save_delivery_media(template=template, field=field["key"], kind=field["kind"], uploaded_file=request.FILES.get("file"))
+    except TemplateError as exc:
+        raise CampaignInputError(str(exc)) from exc
+    template.refresh_from_db()
+    spec = template_snapshot(template)
+    return JsonResponse({"fields": template_fields(spec), "bindings": default_bindings(spec, source_catalog(request.crm_user))})
 
 
 @crm_login_required
