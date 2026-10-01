@@ -181,6 +181,38 @@ class HostedWhatsAppRecoveryTests(TestCase):
             phone_number="+918700274739",
         )
 
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.create_session")
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_qr")
+    def test_qr_endpoint_can_reconnect_disconnected_account(
+        self,
+        get_qr,
+        create_session,
+    ):
+        self.account.status = WhatsAppAccount.Status.DISCONNECTED
+        self.account.save(update_fields=["status", "updated_at"])
+        get_qr.side_effect = WhatsAppWebGatewayError(
+            "Session not found.",
+            status_code=404,
+        )
+        create_session.return_value = {
+            "status": "qr_ready",
+            "phoneNumber": "",
+            "lastError": "",
+        }
+
+        response = self.client.get(
+            reverse("whatsapp-hosted-session-qr", args=[self.account.id])
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "qr_ready")
+        create_session.assert_called_once_with(
+            session_id=self.account.id,
+            phone_number="+918700274739",
+        )
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.PENDING)
+
     @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
     def test_status_endpoint_reconciles_running_gateway_to_connected(self, get_session):
         get_session.return_value = {
