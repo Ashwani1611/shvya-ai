@@ -632,9 +632,9 @@ class ContactPanelTests(TestCase):
 
         response = self.client.post(
             reverse("whatsapp-lead-quick-update", args=[lead.pk]),
-            {"phone": "98765 43210"},
+            {"phone": "98765 43211"},
         )
         self.assertEqual(response.status_code, 200, response.content)
         lead.refresh_from_db()
-        self.assertEqual(lead.phone, "+919876543210")
-        self.assertEqual(response.json()["phone"], "+919876543210")
+        self.assertEqual(lead.phone, "+919876543211")
+        self.assertEqual(response.json()["phone"], "+919876543211")
