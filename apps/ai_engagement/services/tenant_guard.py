@@ -219,22 +219,43 @@ class TenantGuard:
         lead=None,
         account=None,
     ):
-        message = self._require(message, object_type="whatsapp_message")
+        is_instagram = getattr(message, "conversation_id", None) is not None
+        object_type = "instagram_message" if is_instagram else "whatsapp_message"
+        account_type = "instagram_account" if is_instagram else "whatsapp_account"
+
+        message = self._require(message, object_type=object_type)
         if getattr(message, "organization_id", None) != self.organization_id:
-            self._reject(object_type="whatsapp_message")
+            self._reject(object_type=object_type)
 
         owning_account = self._require(
             getattr(message, "account", None),
-            object_type="whatsapp_account",
+            object_type=account_type,
         )
-        self.validate_whatsapp_account(owning_account)
+        if getattr(owning_account, "organization_id", None) != self.organization_id:
+            self._reject(object_type=account_type)
         if getattr(message, "account_id", None) != getattr(owning_account, "id", None):
-            self._reject(object_type="whatsapp_message")
+            self._reject(object_type=object_type)
 
         if account is not None:
-            self.validate_whatsapp_account(account)
+            if getattr(account, "organization_id", None) != self.organization_id:
+                self._reject(object_type=account_type)
             if getattr(message, "account_id", None) != getattr(account, "id", None):
-                self._reject(object_type="whatsapp_message")
+                self._reject(object_type=object_type)
+
+        if is_instagram:
+            conversation = self._require(
+                getattr(message, "conversation", None),
+                object_type="instagram_conversation",
+            )
+            if getattr(conversation, "organization_id", None) != self.organization_id:
+                self._reject(object_type="instagram_conversation")
+            if getattr(conversation, "account_id", None) != getattr(message, "account_id", None):
+                self._reject(object_type="instagram_conversation")
+            if lead is not None:
+                self.validate_lead(lead)
+                if getattr(conversation, "lead_id", None) != getattr(lead, "id", None):
+                    self._reject(object_type=object_type)
+            return message
 
         message_lead = getattr(message, "lead", None)
         if message_lead is not None:
@@ -242,7 +263,7 @@ class TenantGuard:
         if lead is not None:
             self.validate_lead(lead)
             if getattr(message, "lead_id", None) not in {None, getattr(lead, "id", None)}:
-                self._reject(object_type="whatsapp_message")
+                self._reject(object_type=object_type)
         return message
 
     def validate_many(
