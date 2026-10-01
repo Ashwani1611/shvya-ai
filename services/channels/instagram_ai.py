@@ -132,13 +132,55 @@ def _latest_customer_turn(conversation):
     return human_reply or inbound
 
 
-def _has_existing_ai_response(*, conversation, source_message_id):
-    return conversation.messages.filter(
-        organization_id=conversation.organization_id,
-        account_id=conversation.account_id,
-        direction=InstagramMessage.Direction.OUTBOUND,
-        raw_payload__shvya_ai__source_inbound_message_id=str(source_message_id),
-    ).exists()
+def _existing_ai_response(*, conversation, source_message_id):
+    return (
+        conversation.messages.filter(
+            organization_id=conversation.organization_id,
+            account_id=conversation.account_id,
+            direction=InstagramMessage.Direction.OUTBOUND,
+            raw_payload__shvya_ai__source_inbound_message_id=str(source_message_id),
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def _resume_existing_ai_response(*, task, conversation, source_message_id):
+    existing = _existing_ai_response(
+        conversation=conversation,
+        source_message_id=source_message_id,
+    )
+    if existing is None:
+        return None
+
+    if existing.status == InstagramMessage.Status.QUEUED:
+        try:
+            _dispatch_instagram_ai_message(existing.pk)
+        except Exception as exc:
+            raise task.retry(exc=exc, countdown=20)
+        return {
+            "status": "queued",
+            "reason": "existing_ai_response_requeued",
+            "lead_id": (
+                str(conversation.lead_id)
+                if conversation.lead_id
+                else None
+            ),
+            "source_message_id": str(source_message_id),
+            "message_id": str(existing.pk),
+        }
+
+    return {
+        "status": "skipped",
+        "reason": "duplicate_ai_response",
+        "lead_id": (
+            str(conversation.lead_id)
+            if conversation.lead_id
+            else None
+        ),
+        "source_message_id": str(source_message_id),
+        "message_id": str(existing.pk),
+    }
 
 
 def _source_processed(source):
@@ -294,13 +336,17 @@ def execute_instagram_ai_engagement(*, task, message_id):
                 "source_message_id": str(source.pk),
             }
 
-    if _source_processed(source) or _has_existing_ai_response(
+    existing_result = _resume_existing_ai_response(
+        task=task,
         conversation=conversation,
         source_message_id=source.pk,
-    ):
+    )
+    if existing_result is not None:
+        return existing_result
+    if _source_processed(source):
         return {
             "status": "skipped",
-            "reason": "duplicate_ai_response",
+            "reason": "source_already_processed",
             "lead_id": str(lead.pk),
             "source_message_id": str(source.pk),
         }
@@ -434,13 +480,18 @@ def execute_instagram_ai_engagement(*, task, message_id):
                     "reason": permission.reason,
                     "lead_id": str(lead.pk),
                 }
-            if _source_processed(locked_source) or _has_existing_ai_response(
+            existing = _existing_ai_response(
                 conversation=locked_conversation,
                 source_message_id=locked_source.pk,
-            ):
+            )
+            if existing is not None or _source_processed(locked_source):
                 return {
                     "status": "skipped",
-                    "reason": "duplicate_ai_response",
+                    "reason": (
+                        "duplicate_ai_response"
+                        if existing is not None
+                        else "source_already_processed"
+                    ),
                     "lead_id": str(lead.pk),
                     "source_message_id": str(source.pk),
                 }
@@ -496,9 +547,11 @@ def execute_instagram_ai_engagement(*, task, message_id):
             outbound.save(update_fields=["raw_payload", "updated_at"])
 
             outbound_id = str(outbound.pk)
+            # Let broker publication failures propagate after the database
+            # commit. Celery will retry this generation task; the retry sees the
+            # already-queued AI outbound above and republishes only its send task.
             transaction.on_commit(
                 lambda outbound_id=outbound_id: _dispatch_instagram_ai_message(outbound_id),
-                robust=True,
             )
 
     except (AIPermissionError, CRMActionExecutionError) as exc:
