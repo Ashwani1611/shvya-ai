@@ -132,15 +132,25 @@ def _start_gateway_session(account, *, client=None):
     return result
 
 
-def _recover_missing_gateway_session(account, *, client, error):
-    if (
-        error.status_code == 404
-        and account.status
-        in {
-            WhatsAppAccount.Status.PENDING,
-            WhatsAppAccount.Status.CONNECTED,
-        }
-    ):
+def _recover_missing_gateway_session(
+    account,
+    *,
+    client,
+    error,
+    allow_reconnect=False,
+):
+    recoverable_statuses = {
+        WhatsAppAccount.Status.PENDING,
+        WhatsAppAccount.Status.CONNECTED,
+    }
+    if allow_reconnect:
+        recoverable_statuses.update(
+            {
+                WhatsAppAccount.Status.DISCONNECTED,
+                WhatsAppAccount.Status.FAILED,
+            }
+        )
+    if error.status_code == 404 and account.status in recoverable_statuses:
         return _start_gateway_session(account, client=client)
     raise error
 
@@ -279,6 +289,7 @@ def hosted_session_qr_view(request, account_id):
                 account,
                 client=client,
                 error=exc,
+                allow_reconnect=True,
             )
     except WhatsAppWebGatewayError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=503)
