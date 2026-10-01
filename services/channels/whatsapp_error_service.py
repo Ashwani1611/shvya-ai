@@ -5,6 +5,11 @@ import re
 
 
 ERROR_CATALOG = {
+    "131053": {
+        "title": "Media Upload Failed",
+        "why": "Meta could not retrieve or process the message attachment.",
+        "resolve": "For templates, open Templates → Sending setup and upload the original image, video, or document. Do not use the Meta preview URL. Review the failed send before retrying.",
+    },
     "131049": {
         "title": "Marketing Message Limited",
         "why": "Meta limited the marketing message under Healthy Ecosystem protections.",
