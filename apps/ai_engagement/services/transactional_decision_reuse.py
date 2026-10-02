@@ -82,6 +82,97 @@ def _pending_post_state_turn(*, runtime, lead) -> tuple[dict, dict] | None:
     return state, processing
 
 
+def operational_state_for_context(context) -> dict:
+    """Use the same committed, source-bound facts for generation and validation.
+
+    Sandbox previews remain explicitly simulated. Live facts are loaded through
+    tenant-scoped CRM queries, never from model proposals or hidden attributes
+    that happen to be present in an input context.
+    """
+    lead_data = getattr(context, "lead", {})
+    lead_data = lead_data if isinstance(lead_data, dict) else {}
+    preview = lead_data.get("operational_state")
+    if isinstance(preview, dict) and preview.get("execution_mode") == "sandbox_preview":
+        return deepcopy(preview)
+    lead_id = str(lead_data.get("id") or "").strip()
+    if not lead_id:
+        return {}
+
+    # Playground and lower-level orchestration tests use synthetic lead IDs
+    # (for example ``lead-1``). Operational state is database-backed and must
+    # only be queried for a real Lead UUID; synthetic contexts still receive
+    # the normal generation payload without being treated as CRM rows.
+    try:
+        uuid.UUID(lead_id)
+    except (AttributeError, TypeError, ValueError):
+        return {}
+
+    from apps.crm.models import Lead, LeadReminder
+    from apps.ai_engagement.services import transactional_turn_runtime as runtime
+    from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+    organization_id = (getattr(context, "organization", None) or {}).get("id")
+    persisted_lead = Lead.objects.filter(
+        pk=lead_id, organization_id=organization_id,
+    ).only("attributes").first()
+    if persisted_lead is None:
+        return {}
+
+    reminders = list(
+        LeadReminder.objects.filter(
+            lead_id=lead_id,
+            lead__organization_id=organization_id,
+            status="pending",
+        )
+        .order_by("due_at", "created_at")
+        .values("title", "description", "due_at", "status")[:10]
+    )
+    for reminder in reminders:
+        due_at = reminder.get("due_at")
+        if due_at is not None:
+            reminder["due_at"] = due_at.isoformat()
+
+    # Customer-safe context intentionally strips internal runtime attributes.
+    # Read the committed, tenant-scoped state and expose only these explicit
+    # operational fields, never the rest of the internal attribute payload.
+    attributes = persisted_lead.attributes
+    attributes = attributes if isinstance(attributes, dict) else {}
+    state = attributes.get(STATE_KEY)
+    state = state if isinstance(state, dict) else {}
+    source_id = next((
+        str(message.get("id") or "")
+        for message in reversed((context.conversation or {}).get("messages") or [])
+        if isinstance(message, dict) and message.get("direction") == "inbound"
+    ), "")
+    if not source_id or str(state.get(runtime._PRE_RESOLVED_MESSAGE_KEY) or "") != source_id:
+        state = {}
+    resolved_actions = {
+        "source_message_id": state.get(runtime._PRE_RESOLVED_MESSAGE_KEY),
+        "action_types": state.get(runtime._PRE_RESOLVED_ACTIONS_KEY) or [],
+    }
+    resolved_file_id = state.get(_PRE_RESOLVED_FILE_KEY)
+    if resolved_file_id is not None:
+        from apps.ai_engagement.models import Document
+
+        document = (
+            Document.objects.filter(
+                id=resolved_file_id,
+                organization_id=getattr(context, "organization", {}).get("id"),
+            )
+            .only("name")
+            .first()
+        )
+        resolved_actions["file_share"] = {
+            "status": state.get(_PRE_RESOLVED_FILE_STATUS_KEY) or "resolved_pending_send",
+            "document_name": document.name if document is not None else "configured file",
+        }
+
+    return {
+        "pending_reminders": reminders,
+        "resolved_actions": resolved_actions,
+    }
+
+
 def install_transactional_decision_reuse() -> None:
     """Make state-changing turns two-pass and final-response-only after commit.
 
@@ -291,82 +382,9 @@ def install_transactional_decision_reuse() -> None:
         except (TypeError, ValueError, json.JSONDecodeError):
             return raw
 
-        lead_data = context.lead if isinstance(context.lead, dict) else {}
-        lead_id = str(lead_data.get("id") or "").strip()
-        if not lead_id:
-            return raw
-
-        # Playground and lower-level orchestration tests use synthetic lead IDs
-        # (for example ``lead-1``). Operational state is database-backed and must
-        # only be queried for a real Lead UUID; synthetic contexts still receive
-        # the normal generation payload without being treated as CRM rows.
-        try:
-            uuid.UUID(lead_id)
-        except (AttributeError, TypeError, ValueError):
-            return raw
-
-        from apps.crm.models import Lead, LeadReminder
-
-        organization_id = (getattr(context, "organization", None) or {}).get("id")
-        persisted_lead = Lead.objects.filter(
-            pk=lead_id, organization_id=organization_id,
-        ).only("attributes").first()
-        if persisted_lead is None:
-            return raw
-
-        reminders = list(
-            LeadReminder.objects.filter(
-                lead_id=lead_id,
-                lead__organization_id=organization_id,
-                status="pending",
-            )
-            .order_by("due_at", "created_at")
-            .values("title", "description", "due_at", "status")[:10]
-        )
-        for reminder in reminders:
-            due_at = reminder.get("due_at")
-            if due_at is not None:
-                reminder["due_at"] = due_at.isoformat()
-
-        # Customer-safe context intentionally strips internal runtime attributes.
-        # Read the committed, tenant-scoped state and expose only these explicit
-        # operational fields, never the rest of the internal attribute payload.
-        attributes = persisted_lead.attributes
-        attributes = attributes if isinstance(attributes, dict) else {}
-        state = attributes.get(STATE_KEY)
-        state = state if isinstance(state, dict) else {}
-        source_id = next((
-            str(message.get("id") or "")
-            for message in reversed((context.conversation or {}).get("messages") or [])
-            if isinstance(message, dict) and message.get("direction") == "inbound"
-        ), "")
-        if not source_id or str(state.get(runtime._PRE_RESOLVED_MESSAGE_KEY) or "") != source_id:
-            state = {}
-        resolved_actions = {
-            "source_message_id": state.get(runtime._PRE_RESOLVED_MESSAGE_KEY),
-            "action_types": state.get(runtime._PRE_RESOLVED_ACTIONS_KEY) or [],
-        }
-        resolved_file_id = state.get(_PRE_RESOLVED_FILE_KEY)
-        if resolved_file_id is not None:
-            from apps.ai_engagement.models import Document
-
-            document = (
-                Document.objects.filter(
-                    id=resolved_file_id,
-                    organization_id=getattr(context, "organization", {}).get("id"),
-                )
-                .only("name")
-                .first()
-            )
-            resolved_actions["file_share"] = {
-                "status": state.get(_PRE_RESOLVED_FILE_STATUS_KEY) or "resolved_pending_send",
-                "document_name": document.name if document is not None else "configured file",
-            }
-
-        payload["operational_state"] = {
-            "pending_reminders": reminders,
-            "resolved_actions": resolved_actions,
-        }
+        operational_state = operational_state_for_context(context)
+        if operational_state:
+            payload["operational_state"] = operational_state
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 
     EngagementService._build_input = build_input_with_operational_state

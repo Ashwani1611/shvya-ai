@@ -340,7 +340,7 @@ def _empty_profile(organization_name: str) -> dict[str, Any]:
             "raw": "",
         },
         "knowledge_policy": {
-            "source": "rag_only",
+            "source": "approved_organization_and_retrieved_knowledge",
             "unknown_fact": "human_confirmation",
         },
         "instruction_precedence": [
@@ -384,7 +384,7 @@ def _profile_from_values(
         },
         "qualification": qualification,
         "knowledge_policy": {
-            "source": "rag_only",
+            "source": "approved_organization_and_retrieved_knowledge",
             "unknown_fact": "human_confirmation",
         },
         "instruction_precedence": _empty_profile(organization_name)["instruction_precedence"],
@@ -424,3 +424,14 @@ def compile_org_ai_profile_from_context(organization_context: dict[str, Any]) ->
         bot_languages=str(context.get("bot_languages") or ""),
         ai_playbook=str(context.get("ai_playbook") or ""),
     )
+
+
+def requires_response_composition(organization_context: dict[str, Any], *, profile=None) -> bool:
+    """Authored language/behavior needs generation even after a known answer.
+
+    Deterministic answer extraction proves what the lead answered. It cannot
+    translate the next question or apply conditional Playbook instructions.
+    """
+    profile = profile or compile_org_ai_profile_from_context(organization_context)
+    communication = profile.get("communication") or {}
+    return bool(communication.get("languages") or communication.get("custom_instructions"))

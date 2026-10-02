@@ -18,6 +18,7 @@ from apps.ai_engagement.services.knowledge_pipeline import (
 from apps.ai_engagement.services.retrieval import (
     KnowledgeRetrievalService,
 )
+from apps.ai_engagement.tests.test_knowledge_url_security import public_dns
 from apps.organizations.models import Organization
 
 
@@ -722,12 +723,16 @@ class TestKnowledgeRetrievalIntegration:
         with patch(
             "apps.ai_engagement.services.embeddings."
             "EmbeddingService.embed_texts",
-            return_value=[vector] * len(chunks),
-        ):
+            side_effect=lambda texts, **kwargs: [vector] * len(texts),
+        ) as embed:
             embedding_service.index_document(
                 document,
                 only_missing=True,
             )
+
+        batch_sizes = [len(call.args[0]) for call in embed.call_args_list]
+        assert sum(batch_sizes) == len(chunks)
+        assert all(size <= embedding_service.MAX_BATCH_CHUNKS for size in batch_sizes)
 
         ingestion_service.publish_document_version(document)
         document.refresh_from_db()
@@ -743,6 +748,14 @@ class TestKnowledgeRetrievalIntegration:
 
 
 class TestKnowledgeUrlVersionIntegration:
+    @pytest.fixture(autouse=True)
+    def stable_public_dns(self):
+        # Keep URL security validation real without depending on external DNS
+        # in versioning tests whose HTTP extraction boundary is already mocked.
+        with patch('apps.ai_engagement.services.knowledge_url_security.socket.getaddrinfo',
+                   side_effect=public_dns):
+            yield
+
     def test_successful_url_processing_publishes_first_version(
         self,
         organization,

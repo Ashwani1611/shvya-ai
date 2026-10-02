@@ -108,7 +108,9 @@ def _requirement_ref(
     requirements: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
     ref = _reference(value)
-    match = re.fullmatch(r"q(?:uestion)?\s*(\d+)", ref)
+    # _reference removes the plain "Question " prefix, so accept the remaining
+    # number as well as the authored Q1 / Qualification Question 1 aliases.
+    match = re.fullmatch(r"(?:(?:qualification\s+)?q(?:uestion)?\s*)?(\d+)", ref)
     if match:
         found = [
             requirement

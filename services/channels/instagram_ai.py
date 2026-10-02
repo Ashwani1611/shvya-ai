@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 from copy import deepcopy
+from dataclasses import replace
 
 from django.db import transaction
 from django.db.models import Q
@@ -94,7 +95,10 @@ class InstagramAIContextBuilder(AIContextBuilder):
     def _build_lead_context(self, *, lead):
         context = super()._build_lead_context(lead=lead)
         # Count only confirmed delivery in this exact Instagram conversation.
-        shared_ids = set(context.get("shared_document_ids") or [])
+        # The inherited runtime history belongs to WhatsApp delivery. A file
+        # sent there (or in another Instagram thread) has not been delivered in
+        # this conversation and must remain available to Instagram's playbook.
+        shared_ids = set()
         document_ids = InstagramMessage.objects.filter(
             organization_id=lead.organization_id,
             conversation_id=self.conversation_id,
@@ -205,7 +209,9 @@ def _mark_source_processed(*, source, decision):
     from apps.ai_engagement.services.runtime_state import response_hash
 
     payload = deepcopy(source.raw_payload) if isinstance(source.raw_payload, dict) else {}
+    processing = payload.get("shvya_ai_processing")
     payload["shvya_ai_processing"] = {
+        **(processing if isinstance(processing, dict) else {}),
         "message_id": str(source.pk),
         "processed": True,
         "response_hash": response_hash(getattr(decision, "message", "")),
@@ -214,20 +220,48 @@ def _mark_source_processed(*, source, decision):
     source.save(update_fields=["raw_payload", "updated_at"])
 
 
-def _apply_decision_state(*, organization, lead, source, decision):
+def _source_state_resolved(source):
+    payload = source.raw_payload if isinstance(source.raw_payload, dict) else {}
+    processing = payload.get("shvya_ai_processing")
+    return bool(
+        isinstance(processing, dict)
+        and processing.get("state_resolved")
+        and str(processing.get("message_id") or "") == str(source.pk)
+    )
+
+
+def _finalize_decision_state(*, organization, lead, source, decision):
+    from apps.ai_engagement.services.qualification_state import record_last_asked_requirement, state_for_lead
+    from apps.ai_engagement.services.runtime_state import finalize_runtime
+    from apps.ai_engagement.services.transactional_turn_runtime import _requirements_for_turn
+
+    requirements = _requirements_for_turn(organization=organization, lead=lead)
+    finalize_runtime(
+        lead=lead, decision=decision,
+        qualification=state_for_lead(lead, requirements=requirements),
+        requirements=requirements, message_id=source.pk,
+    )
+    if getattr(decision, "next_requirement_id", None):
+        record_last_asked_requirement(lead, decision.next_requirement_id, requirements=requirements)
+
+
+def _apply_decision_state(*, organization, lead, source, decision, finalize=True):
     """Apply CRM/qualification state in the canonical deterministic order."""
     from apps.ai_engagement.services.qualification_state import (
         normalize_stage_name,
         persist_answer_updates,
-        record_last_asked_requirement,
         state_for_lead,
     )
-    from apps.ai_engagement.services.runtime_state import finalize_runtime
     from apps.ai_engagement.services.transactional_turn_runtime import (
         _qualified_action,
         _requirements_for_turn,
         _split_actions,
     )
+
+    if _source_state_resolved(source):
+        if finalize:
+            _finalize_decision_state(organization=organization, lead=lead, source=source, decision=decision)
+        return []
 
     requirements = _requirements_for_turn(
         organization=organization,
@@ -293,22 +327,89 @@ def _apply_decision_state(*, organization, lead, source, decision):
         )
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
-    qualification = state_for_lead(lead, requirements=requirements)
-    finalize_runtime(
-        lead=lead,
-        decision=decision,
-        qualification=qualification,
-        requirements=requirements,
-        message_id=source.pk,
-    )
-
-    if getattr(decision, "next_requirement_id", None):
-        record_last_asked_requirement(
-            lead,
-            decision.next_requirement_id,
-            requirements=requirements,
-        )
+    if finalize:
+        _finalize_decision_state(organization=organization, lead=lead, source=source, decision=decision)
     return results
+
+
+def _resolve_instagram_state(*, organization, lead, source, decision, revision):
+    """Commit source-bound CRM effects before composing the actual reply."""
+    from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
+    from apps.ai_engagement.services.runtime_state import state_revision
+    from apps.ai_engagement.services.transactional_decision_reuse import _PENDING_FILE_RESOLUTION
+    from apps.ai_engagement.services.transactional_turn_runtime import _mark_state_resolved
+
+    document_id = getattr(decision, "file_document_id", None)
+    if document_id is not None and FileSharingService().get_guided_document(
+        organization=organization, document_id=document_id,
+    ) is None:
+        raise FileSharingError("The selected file is no longer available.")
+    with transaction.atomic():
+        conversation = InstagramConversation.objects.select_for_update(of=("self",)).get(
+            pk=source.conversation_id, organization=organization, account_id=source.account_id,
+        )
+        locked_lead = Lead.objects.select_for_update().select_related("stage", "pipeline").get(
+            pk=lead.pk, organization=organization,
+        )
+        inbound = InstagramMessage.objects.select_for_update().get(
+            pk=source.pk, organization=organization, account_id=source.account_id,
+            conversation=conversation, direction=InstagramMessage.Direction.INBOUND,
+        )
+        latest = _latest_customer_turn(conversation)
+        if conversation.lead_id != locked_lead.pk or latest is None or latest.pk != inbound.pk:
+            return {"reason": "conversation_changed_before_state_resolution"}
+        if _source_processed(inbound) or _existing_ai_response(
+            conversation=conversation, source_message_id=inbound.pk,
+        ) is not None:
+            return {"reason": "source_already_processed"}
+        if _source_state_resolved(inbound):
+            return {"resolved": True, "results": []}
+        if revision != state_revision(locked_lead):
+            raise CRMActionExecutionError("Lead state changed during Instagram generation; retry required.")
+        permission = AIPermissionService().evaluate(organization=organization, lead=locked_lead, channel="instagram")
+        if not permission.allowed:
+            return {"reason": permission.reason}
+        if decision.should_engage:
+            from services.channels.instagram_inbox import assert_reply_allowed
+
+            assert_reply_allowed(conversation)
+        results = _apply_decision_state(
+            organization=organization, lead=locked_lead, source=inbound, decision=decision, finalize=False,
+        )
+        action_types = [
+            str(result.get("type") or "") for result in results
+            if isinstance(result, dict) and result.get("status") == "executed"
+        ]
+        if getattr(decision, "qualification_updates", []):
+            action_types.append("qualification_state")
+        token = _PENDING_FILE_RESOLUTION.set({
+            "lead_id": str(lead.pk), "source_message_id": str(source.pk), "document_id": document_id,
+        })
+        try:
+            _mark_state_resolved(lead=locked_lead, inbound=inbound, action_types=action_types)
+        finally:
+            _PENDING_FILE_RESOLUTION.reset(token)
+    return {"resolved": True, "results": results}
+
+
+def _generate_instagram_decision(*, service, organization, lead, source):
+    from apps.ai_engagement.services.phase5_6_runtime import source_evidence_context
+    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+
+    resolved = _source_state_resolved(source)
+    token = _FINAL_LANGUAGE_ONLY.set(resolved)
+    try:
+        with source_evidence_context(organization=organization, lead=lead, source=source, provider=service.provider):
+            decision = service.engage(organization=organization, lead=lead)
+    finally:
+        _FINAL_LANGUAGE_ONLY.reset(token)
+    if resolved:
+        processing = source.raw_payload["shvya_ai_processing"]
+        decision = replace(
+            decision, crm_actions=[], qualification_updates=[],
+            file_document_id=processing.get("resolved_file_document_id"),
+        )
+    return decision
 
 
 def execute_instagram_ai_engagement(*, task, message_id):
@@ -391,17 +492,35 @@ def execute_instagram_ai_engagement(*, task, message_id):
             conversation_id=conversation.pk,
         )
     )
-    from apps.ai_engagement.services.phase5_6_runtime import source_evidence_context
+    from apps.ai_engagement.services.runtime_state import state_revision
+    from apps.ai_engagement.services.transactional_turn_runtime import _state_changing_decision
 
+    state_results = []
     try:
-        with source_evidence_context(
-            organization=source.organization, lead=lead,
-            source=source, provider=service.provider,
-        ):
-            decision = service.engage(
-                organization=source.organization,
-                lead=lead,
+        revision = state_revision(lead)
+        decision = _generate_instagram_decision(
+            service=service, organization=source.organization, lead=lead, source=source,
+        )
+        # The graph can persist an unambiguous answer while understanding this
+        # turn. Its validated revision includes that own write, but does not
+        # bless unrelated changes by refreshing the lead after provider I/O.
+        revision = getattr(decision, "backend_revision", "") or revision
+        if not _source_state_resolved(source) and _state_changing_decision(decision):
+            resolution = _resolve_instagram_state(
+                organization=source.organization, lead=lead, source=source, decision=decision, revision=revision,
             )
+            if not resolution.get("resolved"):
+                return {"status": "skipped", "reason": resolution["reason"], "lead_id": str(lead.pk)}
+            state_results = resolution["results"]
+            lead.refresh_from_db()
+            source.refresh_from_db()
+            revision = state_revision(lead)
+            # Provider work deliberately happens after the state transaction.
+            # A retry resumes this language-only pass from the persisted marker.
+            decision = _generate_instagram_decision(
+                service=service, organization=source.organization, lead=lead, source=source,
+            )
+            revision = getattr(decision, "backend_revision", "") or revision
     except EngagementError as exc:
         provider_error = exc.__cause__
         if isinstance(provider_error, AIProviderTransientError):
@@ -436,6 +555,14 @@ def execute_instagram_ai_engagement(*, task, message_id):
     except Exception as exc:
         logger.exception("Unexpected Instagram AI generation failure for lead %s", lead.pk)
         raise task.retry(exc=exc)
+
+    # Fail-soft composition after a committed state pass remains language-only
+    # and cannot replace the exact file selection already validated for this turn.
+    if _source_state_resolved(source):
+        decision = replace(
+            decision, crm_actions=[], qualification_updates=[],
+            file_document_id=source.raw_payload["shvya_ai_processing"].get("resolved_file_document_id"),
+        )
 
     try:
         with transaction.atomic():
@@ -513,6 +640,9 @@ def execute_instagram_ai_engagement(*, task, message_id):
                     "source_message_id": str(source.pk),
                 }
 
+            if revision != state_revision(locked_lead):
+                raise CRMActionExecutionError("Lead state changed before Instagram reply; retry required.")
+
             body = str(getattr(decision, "message", "") or "").strip()
             if decision.should_engage and not body:
                 return {
@@ -526,7 +656,7 @@ def execute_instagram_ai_engagement(*, task, message_id):
 
                 assert_reply_allowed(locked_conversation)
 
-            crm_results = _apply_decision_state(
+            crm_results = state_results + _apply_decision_state(
                 organization=source.organization,
                 lead=locked_lead,
                 source=locked_source,

@@ -1,305 +1,263 @@
-"""Meta-backed analytics for WhatsApp message templates.
+"""Resilient analytics for WhatsApp message templates.
 
-All figures in this module come from Meta's template_analytics field. The
-service never derives template performance from SHVYA webhook rows, so the
-template screen cannot accidentally mix a partial local event history with
-Meta's canonical aggregate.
+The provider/base implementation remains in ``template_analytics_base`` so this
+module can keep the stable import path while applying SHVYA's canonical click
+semantics. Meta can return total and unique rows for the same button in one
+``clicked`` array. Total clicks drive the existing Button clicks KPI; unique
+rows are exposed separately and are never added to the total.
 """
 
 from collections import defaultdict
-from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 
-from django.utils import timezone
-
-from apps.channels.providers import whatsapp as meta
+from . import template_analytics_base as _base
 
 
-MAX_LOOKBACK_DAYS = 90
-MAX_TEMPLATE_IDS_PER_META_REQUEST = 10
-METRIC_TYPES = ("SENT", "DELIVERED", "READ", "CLICKED")
+# Preserve the existing module API for callers and tests while overriding the
+# click-specific normalization below.
+for _name in dir(_base):
+    if not _name.startswith("__"):
+        globals()[_name] = getattr(_base, _name)
+del _name
 
 
-class TemplateAnalyticsError(Exception):
-    """A safe, user-displayable Meta template analytics failure."""
+def _canonical_click_type(value):
+    """Return ``(canonical_type, is_unique)`` for a Meta click metric row."""
 
-    def __init__(self, message, *, status_code=None, meta_error_code=""):
-        super().__init__(message)
-        self.status_code = status_code
-        self.meta_error_code = str(meta_error_code or "")
-
-
-def _chunks(values, size):
-    for index in range(0, len(values), size):
-        yield values[index : index + size]
-
-
-def _as_int(value):
-    try:
-        return max(0, int(value or 0))
-    except (TypeError, ValueError):
-        return 0
-
-
-def _rate(numerator, denominator):
-    denominator = _as_int(denominator)
-    if denominator <= 0:
-        return None
-    return round((_as_int(numerator) / denominator) * 100, 1)
-
-
-def _date_from_point(value):
-    if value in (None, ""):
-        return None
-    if isinstance(value, str):
-        stripped = value.strip()
-        if len(stripped) >= 10 and stripped[4:5] == "-" and stripped[7:8] == "-":
-            try:
-                return date.fromisoformat(stripped[:10])
-            except ValueError:
-                return None
-        try:
-            value = int(float(stripped))
-        except (TypeError, ValueError):
-            return None
-    if isinstance(value, (int, float)):
-        try:
-            return datetime.fromtimestamp(value, tz=dt_timezone.utc).date()
-        except (OverflowError, OSError, ValueError):
-            return None
-    return None
-
-
-def _meta_error(response):
-    message = "Meta could not provide template analytics right now."
-    code = ""
-    try:
-        payload = response.json()
-    except ValueError:
-        payload = {}
-    error = payload.get("error") if isinstance(payload, dict) else None
-    if isinstance(error, dict):
-        message = (
-            error.get("error_user_msg")
-            or error.get("message")
-            or error.get("error_user_title")
-            or message
-        )
-        code = error.get("code") or error.get("error_subcode") or ""
-    elif getattr(response, "text", ""):
-        message = "Meta rejected the template analytics request."
-    return TemplateAnalyticsError(
-        str(message),
-        status_code=getattr(response, "status_code", None),
-        meta_error_code=code,
-    )
-
-
-def _request_batch(*, account, template_ids, start_date, end_date):
-    start_ts = int(
-        datetime.combine(start_date, time.min, tzinfo=dt_timezone.utc).timestamp()
-    )
-    # Use the final second of the selected end day so the UI's displayed range
-    # is inclusive without asking Meta for the next calendar day's bucket.
-    end_ts = int(
-        datetime.combine(
-            end_date + timedelta(days=1),
-            time.min,
-            tzinfo=dt_timezone.utc,
-        ).timestamp()
-    ) - 1
-    try:
-        response = meta.requests.get(
-            f"{meta.GRAPH_API_BASE}/{account.waba_id}/template_analytics",
-            headers={"Authorization": f"Bearer {account.access_token}"},
-            params={
-                "start": start_ts,
-                "end": end_ts,
-                "granularity": "DAILY",
-                "template_ids": [str(value) for value in template_ids],
-                "metric_types": list(METRIC_TYPES),
-            },
-            timeout=meta.REQUEST_TIMEOUT_SECONDS,
-        )
-    except meta.requests.RequestException as exc:
-        raise TemplateAnalyticsError(
-            f"Network error loading Meta template analytics: {exc}"
-        ) from exc
-
-    if not response.ok:
-        raise _meta_error(response)
-
-    try:
-        payload = response.json()
-    except ValueError as exc:
-        raise TemplateAnalyticsError(
-            "Meta template analytics returned invalid JSON.",
-            status_code=response.status_code,
-        ) from exc
-
-    analytics = payload.get("template_analytics") if isinstance(payload, dict) else None
-    if analytics is None and isinstance(payload, dict):
-        analytics = payload
-    if not isinstance(analytics, dict):
-        return []
-
-    groups = analytics.get("data")
-    if isinstance(groups, list):
-        return groups
-    if isinstance(analytics.get("data_points"), list):
-        return [analytics]
-    return []
+    metric_type = str(value or "button").strip().lower() or "button"
+    is_unique = metric_type.startswith("unique_")
+    if is_unique:
+        metric_type = metric_type.removeprefix("unique_") or "button"
+    return metric_type, is_unique
 
 
 def _clicked_rows(value):
+    """Normalize Meta click rows without mixing total and unique semantics."""
+
     if isinstance(value, (int, float, str)):
-        count = _as_int(value)
-        return ([{"type": "button", "button_content": "", "count": count}] if count else [])
+        count = _base._as_int(value)
+        return (
+            [
+                {
+                    "type": "button",
+                    "button_content": "",
+                    "count": count,
+                    "is_unique": False,
+                }
+            ]
+            if count
+            else []
+        )
     if not isinstance(value, list):
         return []
+
     rows = []
     for item in value:
         if not isinstance(item, dict):
             continue
-        count = _as_int(item.get("count"))
+        count = _base._as_int(item.get("count"))
         if count <= 0:
             continue
+        metric_type, is_unique = _canonical_click_type(item.get("type"))
         rows.append(
             {
-                "type": str(item.get("type") or "button"),
-                "button_content": str(item.get("button_content") or ""),
+                "type": metric_type,
+                "button_content": str(item.get("button_content") or "").strip(),
                 "count": count,
+                "is_unique": is_unique,
             }
         )
     return rows
 
 
-def _empty_template_result(template_id, start_date, end_date):
-    days = []
-    current = start_date
-    while current <= end_date:
-        days.append(
-            {
-                "date": current.isoformat(),
-                "sent": 0,
-                "delivered": 0,
-                "read": 0,
-                "clicked": 0,
-            }
+def _select_counted_click_rows(rows):
+    """Choose the rows that represent the Button clicks KPI.
+
+    Meta may return ``url_button`` and ``unique_url_button`` together. Adding
+    both doubles the displayed count. Prefer total rows. If a provider payload
+    contains only unique rows, use those as an explicit fallback rather than
+    showing an incorrect zero.
+    """
+
+    total_rows = [row for row in rows if not row["is_unique"]]
+    unique_rows = [row for row in rows if row["is_unique"]]
+    if total_rows:
+        return total_rows, unique_rows, "total"
+    if unique_rows:
+        return unique_rows, unique_rows, "unique_fallback"
+    return [], [], "total"
+
+
+def _add_click_rows(target, rows):
+    for row in rows:
+        key = (row["type"], row["button_content"])
+        target[key] += row["count"]
+
+
+def _click_breakdown(mapping):
+    rows = [
+        {"type": key[0], "button_content": key[1], "count": count}
+        for key, count in mapping.items()
+    ]
+    rows.sort(
+        key=lambda item: (
+            -item["count"],
+            item["button_content"],
+            item["type"],
         )
-        current += timedelta(days=1)
-    return {
-        "template_id": str(template_id),
-        "days": days,
-        "totals": {"sent": 0, "delivered": 0, "read": 0, "clicked": 0},
-        "rates": {"delivered": None, "read": None, "clicked": None},
-        "availability": {"clicked": False},
-        "clicks": [],
+    )
+    return rows
+
+
+def _refresh_unique_click_rate(result):
+    availability = result.setdefault("availability", {})
+    if availability.get("unique_clicked"):
+        result["unique_click_rate"] = _base._rate(
+            result.get("unique_click_total", 0),
+            (result.get("totals") or {}).get("delivered", 0),
+        )
+    else:
+        result["unique_click_rate"] = None
+    return result
+
+
+def _fetch_meta_template_analytics(*, account, template_ids, start_date, end_date):
+    results, daily_maps, click_maps = _base._initial_result_maps(
+        template_ids,
+        start_date,
+        end_date,
+    )
+    unique_click_maps = {
+        template_id: defaultdict(int)
+        for template_id in template_ids
     }
+    click_bases = {
+        template_id: set()
+        for template_id in template_ids
+    }
+
+    groups = _base._request_all_meta_groups(
+        account=account,
+        template_ids=template_ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    for group in groups:
+        if not isinstance(group, dict):
+            continue
+        for point in group.get("data_points") or []:
+            if not isinstance(point, dict):
+                continue
+            template_id = str(
+                point.get("template_id")
+                or group.get("template_id")
+                or ""
+            )
+            if template_id not in results:
+                continue
+            point_date = _base._date_from_point(point.get("start"))
+            if (
+                point_date is None
+                or point_date < start_date
+                or point_date > end_date
+            ):
+                continue
+
+            click_total = 0
+            if "clicked" in point:
+                results[template_id]["availability"]["clicked"] = True
+                normalized = _clicked_rows(point.get("clicked"))
+                counted_rows, unique_rows, basis = _select_counted_click_rows(
+                    normalized
+                )
+                click_bases[template_id].add(basis)
+                click_total = sum(row["count"] for row in counted_rows)
+                _add_click_rows(click_maps[template_id], counted_rows)
+                if unique_rows:
+                    results[template_id]["availability"][
+                        "unique_clicked"
+                    ] = True
+                    _add_click_rows(
+                        unique_click_maps[template_id],
+                        unique_rows,
+                    )
+
+            row = {
+                "date": point_date.isoformat(),
+                "sent": _base._as_int(point.get("sent")),
+                "delivered": _base._as_int(point.get("delivered")),
+                "read": _base._as_int(point.get("read")),
+                "clicked": click_total,
+            }
+            existing = daily_maps[template_id].get(row["date"])
+            if existing:
+                existing["sent"] += row["sent"]
+                existing["delivered"] += row["delivered"]
+                existing["read"] += row["read"]
+                existing["clicked"] += row["clicked"]
+            else:
+                daily_maps[template_id][row["date"]] = row
+
+    finalized = _base._finalize_results(
+        results=results,
+        daily_maps=daily_maps,
+        click_maps=click_maps,
+        source="meta",
+        source_label="Meta template insights",
+    )
+    for template_id, result in finalized.items():
+        unique_rows = _click_breakdown(unique_click_maps[template_id])
+        result["unique_clicks"] = unique_rows
+        result["unique_click_total"] = sum(
+            row["count"] for row in unique_rows
+        )
+        bases = click_bases[template_id]
+        if bases == {"total"} or not bases:
+            result["click_count_basis"] = "total"
+        elif bases == {"unique_fallback"}:
+            result["click_count_basis"] = "unique_fallback"
+        else:
+            result["click_count_basis"] = "mixed"
+        _refresh_unique_click_rate(result)
+    return finalized
 
 
 def fetch_template_analytics(*, account, template_ids, start_date, end_date):
-    """Return normalized daily Meta analytics keyed by Meta template ID.
+    """Return Meta analytics with accurate total and unique click handling."""
 
-    The caller must already have tenant-scoped the account/template selection.
-    This service verifies that the connected account has the provider
-    credentials required for the read and never performs cross-account lookup.
-    """
-
-    ids = [str(value) for value in template_ids if value]
+    ids = _base._validate_request(
+        template_ids=template_ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
     if not ids:
         return {}
 
-    if not account.waba_id or not account.access_token:
-        raise TemplateAnalyticsError(
-            "This WhatsApp business is missing the Meta credentials required for analytics."
-        )
-    if end_date < start_date:
-        raise TemplateAnalyticsError("The analytics end date must be on or after the start date.")
-
-    inclusive_days = (end_date - start_date).days + 1
-    if inclusive_days < 1 or inclusive_days > MAX_LOOKBACK_DAYS:
-        raise TemplateAnalyticsError(
-            f"Template analytics supports a maximum {MAX_LOOKBACK_DAYS}-day range."
-        )
-
-    results = {
-        template_id: _empty_template_result(template_id, start_date, end_date)
-        for template_id in ids
-    }
-    daily_maps = {template_id: {} for template_id in ids}
-    click_maps = {
-        template_id: defaultdict(int)
-        for template_id in ids
-    }
-
-    for batch in _chunks(ids, MAX_TEMPLATE_IDS_PER_META_REQUEST):
-        groups = _request_batch(
+    local_results = _base.fetch_local_template_analytics(
+        account=account,
+        template_ids=ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    try:
+        if not account.waba_id or not account.access_token:
+            raise _base.TemplateAnalyticsError(
+                "This WhatsApp business is missing the Meta credentials required for analytics."
+            )
+        meta_results = _fetch_meta_template_analytics(
             account=account,
-            template_ids=batch,
+            template_ids=ids,
             start_date=start_date,
             end_date=end_date,
         )
-        for group in groups:
-            if not isinstance(group, dict):
-                continue
-            for point in group.get("data_points") or []:
-                if not isinstance(point, dict):
-                    continue
-                template_id = str(point.get("template_id") or group.get("template_id") or "")
-                if template_id not in results:
-                    continue
-                point_date = _date_from_point(point.get("start"))
-                if point_date is None or point_date < start_date or point_date > end_date:
-                    continue
-
-                if "clicked" in point:
-                    results[template_id]["availability"]["clicked"] = True
-                clicks = _clicked_rows(point.get("clicked"))
-                click_total = sum(item["count"] for item in clicks)
-                row = {
-                    "date": point_date.isoformat(),
-                    "sent": _as_int(point.get("sent")),
-                    "delivered": _as_int(point.get("delivered")),
-                    "read": _as_int(point.get("read")),
-                    "clicked": click_total,
-                }
-                existing = daily_maps[template_id].get(row["date"])
-                if existing:
-                    existing["sent"] += row["sent"]
-                    existing["delivered"] += row["delivered"]
-                    existing["read"] += row["read"]
-                    existing["clicked"] += row["clicked"]
-                else:
-                    daily_maps[template_id][row["date"]] = row
-
-                for click in clicks:
-                    key = (click["type"], click["button_content"])
-                    click_maps[template_id][key] += click["count"]
-
-    for template_id, result in results.items():
-        normalized_days = []
-        totals = {"sent": 0, "delivered": 0, "read": 0, "clicked": 0}
-        for fallback in result["days"]:
-            row = daily_maps[template_id].get(fallback["date"], fallback)
-            normalized_days.append(row)
-            for metric in totals:
-                totals[metric] += _as_int(row.get(metric))
-
-        clicks = [
-            {"type": key[0], "button_content": key[1], "count": count}
-            for key, count in click_maps[template_id].items()
-        ]
-        clicks.sort(key=lambda item: (-item["count"], item["button_content"], item["type"]))
-        result["days"] = normalized_days
-        result["totals"] = totals
-        result["rates"] = {
-            "delivered": _rate(totals["delivered"], totals["sent"]),
-            "read": _rate(totals["read"], totals["delivered"]),
-            "clicked": _rate(totals["clicked"], totals["delivered"]),
-        }
-        result["clicks"] = clicks
-
-    fetched_at = timezone.now().isoformat()
-    for result in results.values():
-        result["fetched_at"] = fetched_at
-    return results
+        merged = _base._merge_local_receipt_floor(
+            meta_results=meta_results,
+            local_results=local_results,
+        )
+        for result in merged.values():
+            _refresh_unique_click_rate(result)
+        return merged
+    except _base.TemplateAnalyticsError as exc:
+        for result in local_results.values():
+            result["provider_warning"] = str(exc)
+            result["provider_error_code"] = exc.meta_error_code
+        return local_results

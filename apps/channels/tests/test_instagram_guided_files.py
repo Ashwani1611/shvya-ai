@@ -8,9 +8,10 @@ from django.utils import timezone
 
 from apps.ai_engagement.models import Document
 from apps.ai_engagement.services.engagement import EngagementDecision
-from apps.ai_engagement.services.file_sharing import FileSharingError
+from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
 from apps.ai_engagement.services.instagram_files import queue_guided_file_reply
-from apps.channels.instagram_models import InstagramMessage
+from apps.ai_engagement.services.runtime_state import STATE_KEY
+from apps.channels.instagram_models import InstagramConversation, InstagramMessage
 from apps.channels.tests import test_instagram_ai as fixtures
 from apps.organizations.models import Organization
 from services.channels.instagram_ai import InstagramAIContextBuilder, execute_instagram_ai_engagement
@@ -47,6 +48,14 @@ class InstagramGuidedFileTests(TestCase):
         message.status = InstagramMessage.Status.SENT
         message.sent_at = timezone.now()
         message.save(update_fields=["status", "sent_at"])
+
+    def close_download(self, response):
+        # A manually closed HttpResponse emits request_finished again, outside
+        # the test client's guarded request lifecycle, closing PostgreSQL's
+        # connection within TestCase's transaction. Exhausting its wrapped
+        # iterator lets the client perform the guarded response cleanup itself.
+        for _chunk in response.streaming_content:
+            pass
 
     @patch("services.channels.instagram_ai._dispatch_instagram_ai_message")
     @patch("services.channels.instagram_inbox.assert_reply_allowed")
@@ -88,6 +97,39 @@ class InstagramGuidedFileTests(TestCase):
         self.assertIn(self.document.pk, builder._build_lead_context(lead=self.lead)["shared_document_ids"])
         self.assertEqual(builder._build_conversation_context(messages=[])["channel"], "instagram")
 
+    def test_other_channel_or_thread_delivery_does_not_suppress_instagram_candidate(self):
+        from types import SimpleNamespace
+
+        self.lead.attributes = {STATE_KEY: {"shared_files": [
+            {"document_id": self.document.pk, "status": "sent"},
+        ]}}
+        self.lead.save(update_fields=["attributes"])
+        other_thread = InstagramConversation.objects.create(
+            organization=self.org, account=self.account, lead=self.lead,
+            participant_id="other-instagram-customer",
+        )
+        InstagramMessage.objects.create(
+            organization=self.org, account=self.account, conversation=other_thread,
+            direction=InstagramMessage.Direction.OUTBOUND, status=InstagramMessage.Status.SENT,
+            sender_id=self.account.ig_user_id, recipient_id=other_thread.participant_id,
+            body="Previously sent guide", raw_payload={"shvya_ai": {
+                "file_document_id": self.document.pk,
+            }},
+        )
+        builder = InstagramAIContextBuilder(conversation_id=self.conversation.pk)
+        lead_context = builder._build_lead_context(lead=self.lead)
+        self.assertEqual(lead_context["shared_document_ids"], [])
+        context = SimpleNamespace(lead=lead_context, as_dict=lambda: {
+            "lead": lead_context, "knowledge": [],
+            "conversation": {"messages": [{"direction": "inbound", "body": "Tell me about your product"}]},
+        })
+        self.assertEqual(
+            [item["document_id"] for item in FileSharingService().build_file_candidates(
+                organization=self.org, context=context,
+            )],
+            [self.document.pk],
+        )
+
     def test_signed_download_requires_delivery_and_is_revoked_when_file_is_retired(self):
         message = self.queue_file()
         path = urlsplit(message.body.splitlines()[-1]).path
@@ -96,7 +138,7 @@ class InstagramGuidedFileTests(TestCase):
         response = self.client.get(path)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(b"".join(response.streaming_content), b"Product guide")
-        response.close()
+        self.close_download(response)
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
         self.document.is_active = False
         self.document.save(update_fields=["is_active"])
@@ -141,6 +183,33 @@ class InstagramGuidedFileTests(TestCase):
         self.document.save(update_fields=["version"])
         self.assertEqual(self.client.get(path).status_code, 404)
 
+    @patch("services.channels.instagram_service._graph_post", return_value={"message_id": "ig-ai-text-echo"})
+    def test_provider_echo_preserves_ai_text_source_and_read_status(self, post):
+        from services.channels.instagram_ai import _latest_customer_turn
+
+        message = InstagramMessage.objects.create(
+            organization=self.org, account=self.account, conversation=self.conversation,
+            direction=InstagramMessage.Direction.OUTBOUND, status=InstagramMessage.Status.QUEUED,
+            sender_id=self.account.ig_user_id, recipient_id=self.conversation.participant_id,
+            body="Here is the information you requested.", raw_payload={"shvya_ai": {
+                "source_inbound_message_id": str(self.inbound.pk), "provider": "instagram",
+            }},
+        )
+        echo = InstagramMessage.objects.create(
+            organization=self.org, account=self.account, conversation=self.conversation,
+            direction=InstagramMessage.Direction.OUTBOUND, status=InstagramMessage.Status.READ,
+            external_id="ig-ai-text-echo", body=message.body,
+            sender_id=message.sender_id, recipient_id=message.recipient_id,
+        )
+        sent = send_queued_message(message)
+        self.assertEqual(sent.pk, message.pk)
+        self.assertEqual(sent.status, InstagramMessage.Status.READ)
+        self.assertEqual(sent.raw_payload["shvya_ai"]["source_inbound_message_id"], str(self.inbound.pk))
+        self.assertFalse(InstagramMessage.objects.filter(pk=echo.pk).exists())
+        self.assertEqual(_latest_customer_turn(self.conversation).pk, self.inbound.pk)
+        self.assertEqual(send_queued_message(sent).pk, message.pk)
+        post.assert_called_once()
+
     @patch("services.channels.instagram_service._graph_post", return_value={"message_id": "ig-file-echo"})
     def test_provider_echo_preserves_signed_download_identity(self, post):
         message = self.queue_file()
@@ -157,4 +226,4 @@ class InstagramGuidedFileTests(TestCase):
         self.assertEqual(sent.external_id, "ig-file-echo")
         response = self.client.get(path)
         self.assertEqual(response.status_code, 200)
-        response.close()
+        self.close_download(response)

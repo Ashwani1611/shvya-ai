@@ -15,6 +15,7 @@ from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.graph.state import EngagementGraphState
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
+    requires_response_composition,
 )
 from apps.ai_engagement.services.qualification_state import (
     MODE_QUALIFICATION,
@@ -164,7 +165,7 @@ def _canonical_yes_no_reply(state: EngagementGraphState, requirements: list[dict
     return by_value["yes"] if affirmative else by_value["no"]
 
 
-def _deterministic_extract(state: EngagementGraphState) -> dict:
+def _deterministic_extract(state: EngagementGraphState, *, reply_text: str | None = None) -> dict:
     """Handle high-confidence replies only against the persisted active question."""
     if state.get("caller_supplied_context"):
         return {}
@@ -174,7 +175,7 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     if not requirements:
         return {}
 
-    direct_text = _canonical_yes_no_reply(state, requirements)
+    direct_text = _canonical_yes_no_reply(state, requirements) if reply_text is None else reply_text
     direct = apply_unambiguous_reply(
         lead=lead,
         requirements=requirements,
@@ -185,11 +186,10 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     updates: dict = {"qualification_state": qualification_state}
 
     direct_next = direct.get("next_requirement")
-    # Qualification sequencing is backend-owned. A configured questionnaire,
-    # bot language, engagement instructions, or CRM attribute definitions must
-    # never force a high-confidence A/B/Yes/No answer back through the provider
-    # just to discover the already-known next question. Doing so made Sandbox
-    # turns fail mid-flow when provider/schema validation had a transient problem.
+    # Keep high-confidence answer extraction deterministic, but let the normal
+    # response path apply language, Playbook actions and guided-file conditions.
+    # Knowing the next question does not prove that raw English copy is a valid
+    # complete response for this organization.
     if (
         direct.get("changed")
         and direct.get("answer_status") == REQUIREMENT_ANSWERED
@@ -200,10 +200,18 @@ def _deterministic_extract(state: EngagementGraphState) -> dict:
     ):
         from apps.ai_engagement.services.engagement import EngagementDecision
 
+        context = state["context"]
+        if (requires_response_composition(context.organization or {}, profile=state.get("profile"))
+                or (context.pipeline or {}).get("attribute_definitions")):
+            return updates
+        context = _with_file_candidates(state, context)
+        updates["context"] = context
+        if (context.organization or {}).get("_file_candidates"):
+            return updates
         next_question = str(direct_next["question"]).strip()
         updates["direct_decision"] = EngagementDecision(
             should_engage=True,
-            message=f"Nice. {next_question}",
+            message=next_question,
             file_document_id=None,
             crm_actions=[],
             reason="QUALIFICATION_NEXT",
@@ -300,11 +308,8 @@ def _retrieve_knowledge(state: EngagementGraphState) -> dict:
     }
 
 
-def _generate(state: EngagementGraphState) -> dict:
-    # Keep the authored organization policy intact. The service uses the same
-    # persisted flow snapshot as this graph; serializing questions back to prose
-    # destroys explicit IDs, conditional rules and flow-version metadata.
-    context = state["context"]
+def _with_file_candidates(state: EngagementGraphState, context):
+    """Resolve eligible files before selecting a response-generation shortcut."""
     from apps.ai_engagement.services.file_sharing import FileSharingService
     from apps.organizations.models import Organization
     candidates = (context.organization or {}).get("_file_candidates")
@@ -314,8 +319,14 @@ def _generate(state: EngagementGraphState) -> dict:
         candidates = FileSharingService().build_file_candidates(
             organization=state["organization"], context=context,
         ) if isinstance(state["organization"], Organization) and state["organization"].pk else []
-    if candidates:
-        context = replace(context, organization={**context.organization, "_file_candidates": candidates})
+    return replace(context, organization={**context.organization, "_file_candidates": candidates})
+
+
+def _generate(state: EngagementGraphState) -> dict:
+    # Keep the authored organization policy intact. The service uses the same
+    # persisted flow snapshot as this graph; serializing questions back to prose
+    # destroys explicit IDs, conditional rules and flow-version metadata.
+    context = _with_file_candidates(state, state["context"])
 
     decision = state["legacy_engage"](
         state["service"],

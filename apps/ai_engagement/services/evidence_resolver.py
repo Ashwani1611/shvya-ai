@@ -159,7 +159,7 @@ class EvidenceResolver:
                     # Category settings can be general (for example a privacy
                     # policy) while an FAQ/file answers the actual refund ask.
                     # Preserve configured facts first without hiding that answer.
-                    evidence=(structured + knowledge)[:self.MAX_ITEMS],
+                    evidence=self._bounded_evidence(structured + knowledge),
                 )
             if knowledge:
                 return EvidenceResolution(
@@ -225,7 +225,7 @@ class EvidenceResolver:
                     question_type=question_type,
                     sensitive=False,
                     verified=True,
-                    evidence=(knowledge + structured)[:self.MAX_ITEMS],
+                    evidence=self._bounded_evidence(knowledge + structured),
                 )
             return self._unknown(question_type=question_type, sensitive=False)
 
@@ -406,7 +406,33 @@ class EvidenceResolver:
                     },
                 )
             )
-        return (authored_items + tuple(items))[:self.MAX_ITEMS]
+        matched = (authored_items + tuple(items))[:self.MAX_ITEMS]
+        if matched:
+            return matched
+
+        # The reply model already understands multilingual and paraphrased
+        # questions. Give its existing independent verifier the complete authored
+        # Q/A instead of declaring knowledge absent solely from lexical mismatch.
+        from apps.ai_engagement.services.authored_knowledge import authored_answer_candidates
+        return tuple(EvidenceItem(
+            source_id=item['source_id'], source_type=item['source_type'],
+            content=item['content'], score=0.0,
+            metadata={'requires_relevance_verification': True,
+                      'retrieval_path': 'authored_faq_candidates'},
+        ) for item in authored_answer_candidates(organization=organization, question=question))
+
+    @staticmethod
+    def _bounded_evidence(items) -> tuple[EvidenceItem, ...]:
+        """Bound merged evidence while retaining complete conditional Q/A pairs."""
+        selected, remaining = [], 12000
+        for item in items:
+            if len(item.content) > remaining:
+                continue
+            selected.append(item)
+            remaining -= len(item.content)
+            if len(selected) >= 12:
+                break
+        return tuple(selected)
 
     @staticmethod
     def _crm_evidence(lead) -> tuple[EvidenceItem, ...]:

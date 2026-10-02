@@ -10,7 +10,7 @@ from django.utils import timezone
 from apps.accounts.models import User
 from apps.ai_engagement.models import Document, FAQ, OrgInfo
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
-from apps.crm.models import AttributeDefinition, Lead, Pipeline
+from apps.crm.models import AttributeDefinition, Lead, Pipeline, Stage
 from apps.followups.models import (
     FollowupSequence,
     FollowupStep,
@@ -290,6 +290,105 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertTrue(simulated["qualification"]["would_move_to_completion_stage"])
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.stage_id, self.new_stage.id)
+
+    def test_structured_qualification_resolves_qualified_when_qualification_stage_exists(self):
+        Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Qualification",
+            display_order=98,
+            is_active=True,
+            ai_on=True,
+        )
+        attribute_keys = []
+        for index in range(1, 6):
+            definition = AttributeDefinition.objects.create(
+                organization=self.organization,
+                name=f"Qualification Field {index}",
+                key=f"qualification_field_{index}",
+                field_type="text",
+                description=f"Qualification test field {index}.",
+            )
+            attribute_keys.append(definition.key)
+
+        data = {
+            "mode": "all_required",
+            "requirements": [
+                {
+                    "stable_id": f"q{index}",
+                    "question": f"Qualification question {index}?",
+                    "required": True,
+                    "options": [
+                        {"key": "A", "value": "Yes"},
+                        {"key": "B", "value": "No"},
+                    ],
+                }
+                for index in range(1, 6)
+            ],
+            "mappings": [
+                {
+                    "requirement_id": f"q{index}",
+                    "attribute_keys": [attribute_keys[index - 1]],
+                }
+                for index in range(1, 6)
+            ],
+            "criteria": ["All required qualification questions are answered"],
+            "target_stage_id": str(self.qualified.id),
+            "final_ack": "Thanks for sharing the details. Our team will connect with you shortly.",
+        }
+
+        validation = self._call("validate_qualification_configuration", {"data": data})
+        self.assertTrue(validation["valid"])
+        self.assertEqual(validation["completion_stage"]["id"], str(self.qualified.id))
+
+        applied = self._call(
+            "upsert_qualification_configuration",
+            {
+                "dry_run": False,
+                "approved": False,
+                "reason": "Regression test exact qualification completion stage resolution.",
+                "data": data,
+            },
+        )
+        self.assertEqual(applied["completion_stage"]["id"], str(self.qualified.id))
+
+        no_answers = self._call("simulate_ai_conversation", {"answers": {}})
+        self.assertFalse(no_answers["qualification"]["completed"])
+        self.assertFalse(no_answers["qualification"]["would_move_to_completion_stage"])
+        self.assertEqual(
+            no_answers["qualification"]["next_requirement"]["stable_id"],
+            "q1",
+        )
+
+        four_answers = self._call(
+            "simulate_ai_conversation",
+            {"answers": {f"q{index}": "Yes" for index in range(1, 5)}},
+        )
+        self.assertFalse(four_answers["qualification"]["completed"])
+        self.assertFalse(four_answers["qualification"]["would_move_to_completion_stage"])
+        self.assertEqual(
+            four_answers["qualification"]["next_requirement"]["stable_id"],
+            "q5",
+        )
+
+        five_answers = self._call(
+            "simulate_ai_conversation",
+            {"answers": {f"q{index}": "Yes" for index in range(1, 6)}},
+        )
+        self.assertTrue(five_answers["qualification"]["completed"])
+        self.assertTrue(five_answers["qualification"]["criteria"]["qualified"])
+        self.assertTrue(five_answers["qualification"]["would_move_to_completion_stage"])
+        self.assertEqual(
+            five_answers["qualification"]["completion_stage"]["id"],
+            str(self.qualified.id),
+        )
+        self.assertEqual(
+            five_answers["qualification"]["final_ack"],
+            data["final_ack"],
+        )
+        self.assertEqual(
+            set(five_answers["qualification"]["projected_attributes"]),
+            set(attribute_keys),
+        )
 
     def test_touchpoint_and_faq_lifecycle_is_archive_first(self):
         touchpoint = self._call(

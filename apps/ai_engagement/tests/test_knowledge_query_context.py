@@ -63,3 +63,29 @@ class KnowledgeQueryContextTests(SimpleTestCase):
         conversation = AIContextBuilder()._build_conversation_context(messages=[])
         self.assertEqual(conversation["channel"], "whatsapp")
         self.assertEqual(conversation["execution_mode"], "live")
+
+    def test_short_multilingual_enquiries_do_not_skip_knowledge(self):
+        for question in ("价格", "الأسعار", "Tarifs", "Integrations", "कितना"):
+            with self.subTest(question=question):
+                context = context_for([{"direction": "inbound", "body": question}])
+                self.assertTrue(EngagementService()._should_retrieve_knowledge(context=context))
+
+    def test_accepting_an_information_offer_retrieves_its_topic(self):
+        for answer in ("Yes", "Yes please", "Sure"):
+            with self.subTest(answer=answer):
+                context = context_for([
+                    {"direction": "outbound", "body": "Would you like the Enterprise pricing?"},
+                    {"direction": "inbound", "body": answer},
+                ])
+                service = EngagementService()
+                self.assertTrue(service._should_retrieve_knowledge(context=context))
+                self.assertIn("Enterprise pricing", service._build_knowledge_query(context=context))
+
+    def test_acknowledgements_and_option_answers_still_skip_retrieval(self):
+        for answer in ("Hello", "Yes", "No", "Thanks", "not now", "unsubscribe", "A", "Option B", "200000"):
+            with self.subTest(answer=answer):
+                context = context_for([
+                    {"direction": "outbound", "body": "Do you run ads? A. Yes B. No"},
+                    {"direction": "inbound", "body": answer},
+                ])
+                self.assertFalse(EngagementService()._should_retrieve_knowledge(context=context))

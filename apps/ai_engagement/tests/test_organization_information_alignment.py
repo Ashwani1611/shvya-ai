@@ -76,6 +76,21 @@ def test_engagement_input_keeps_org_facts_but_hides_full_questionnaire():
     assert "answered_requirement_ids" in turn
 
 
+def test_authored_company_facts_and_instagram_conditions_survive_prompt_compaction():
+    context = build_context()
+    context.organization["ai_playbook"] += "\n## Rules\nFor Instagram leads answer in Hindi."
+    context.lead["lead_source"] = "instagram"
+    context.conversation.update(channel="whatsapp", execution_mode="live")
+    payload = json.loads(EngagementService()._build_input(context=context))
+    organization = payload["organization"]
+    assert organization["about"] == context.organization["about"]
+    assert organization["bot_languages"] == "Hindi, English"
+    assert "For Instagram leads answer in Hindi." in organization["ai_playbook"]
+    assert organization["ai_profile"]["knowledge_policy"]["source"] == "approved_organization_and_retrieved_knowledge"
+    assert payload["lead"]["lead_source"] == "instagram"
+    assert payload["recent_conversation"]["channel"] == "whatsapp"
+
+
 def test_engagement_system_prompt_prioritizes_backend_state_before_org_sequence_text():
     context = build_context()
     instructions = EngagementService()._build_instructions(context=context)

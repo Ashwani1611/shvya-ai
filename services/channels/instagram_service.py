@@ -1114,15 +1114,20 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
                 or duplicate.direction != InstagramMessage.Direction.OUTBOUND
             ):
                 raise InstagramAPIError("Instagram send returned a message ID belonging to another conversation.")
-            if guided_file:
-                # Signed download grants point at this queued row's immutable id.
+            if isinstance(ai_metadata, dict):
+                # AI source-turn metadata and signed file grants belong to the
+                # queued row. Keeping an unannotated echo instead would turn the
+                # bot response into a human reply and break retry/history checks.
+                if duplicate.status == InstagramMessage.Status.READ:
+                    message.status = InstagramMessage.Status.READ
                 duplicate.delete()
             else:
                 message.delete()
                 return duplicate
     
         message.external_id = external_id
-        message.status = InstagramMessage.Status.SENT
+        if message.status != InstagramMessage.Status.READ:
+            message.status = InstagramMessage.Status.SENT
         message.sent_at = timezone.now()
         message.error = ""
         existing_payload = (

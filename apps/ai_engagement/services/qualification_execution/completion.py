@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import timedelta
 from typing import Any
-
-from django.utils import timezone
 
 from .common import _norm
 
@@ -20,6 +17,22 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
     from apps.ai_engagement.services.playbook import criteria_for_lead
     if not criteria_for_lead(lead=lead, state=state).get("qualified"):
         return None
+
+    if config.get("completion_routes"):
+        resolved = {}
+        for route in config["completion_routes"]:
+            if not route.get("source_supported", True):
+                return None
+            sources = route.get("sources")
+            if sources is not None and str(getattr(lead, "lead_source", "")) not in sources:
+                continue
+            candidates = route.get("targets") or []
+            if route.get("current_pipeline_only"):
+                candidates = [item for item in candidates if str(item.get("pipeline_id")) == str(lead.pipeline_id)]
+            if len(candidates) != 1:
+                return None
+            resolved[str(candidates[0]["id"])] = candidates[0]
+        return next(iter(resolved.values())) if len(resolved) == 1 else None
 
     target = config.get("completion_stage")
     explicit_targets = (
@@ -102,11 +115,6 @@ _REMINDER_CREATE_RE = re.compile(
     r"\breminder\b.{0,40}\b(?:create|set|add|schedule)\b",
     re.I,
 )
-_REMINDER_RELATIVE_RE = re.compile(
-    r"\b(?:in|after)\s+(?P<amount>\d{1,3})\s*"
-    r"(?P<unit>minutes?|mins?|hours?|hrs?|days?|weeks?)\b",
-    re.I,
-)
 
 
 def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, Any]]:
@@ -122,24 +130,14 @@ def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, A
         text = str(rule or "").strip()
         if not text or not _COMPLETION_REMINDER_SCOPE_RE.search(text):
             continue
+        # This deterministic path proves completion only. A prohibition or an
+        # extra condition must not be turned into an unconditional reminder.
+        if re.search(r"\b(?:do not|don't|never|unless|except|if|provided that)\b", text, re.I):
+            continue
         if not _REMINDER_CREATE_RE.search(text):
             continue
 
         due_at = parse_grounded_due_at(text)
-        if due_at is None:
-            relative = _REMINDER_RELATIVE_RE.search(text)
-            if relative:
-                amount = int(relative.group("amount"))
-                unit = relative.group("unit").casefold()
-                if unit.startswith(("min", "minute")):
-                    delta = timedelta(minutes=amount)
-                elif unit.startswith(("hr", "hour")):
-                    delta = timedelta(hours=amount)
-                elif unit.startswith("week"):
-                    delta = timedelta(weeks=amount)
-                else:
-                    delta = timedelta(days=amount)
-                due_at = (timezone.now() + delta).isoformat()
         if due_at is None:
             continue
 

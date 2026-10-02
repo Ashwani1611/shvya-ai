@@ -383,11 +383,14 @@ def upsert_attribute_configuration(*, identity, arguments):
                     description=description,
                     options=options,
                 )
+                # booked_at is fixed and does not consume one of the 15 custom-attribute slots.
                 if (
                     AttributeDefinition.objects.filter(
                         organization=organization,
                         is_active=True,
-                    ).count()
+                    )
+                    .exclude(key="booked_at")
+                    .count()
                     > MAX_CUSTOM_ATTRIBUTES
                 ):
                     raise OperationsToolError(

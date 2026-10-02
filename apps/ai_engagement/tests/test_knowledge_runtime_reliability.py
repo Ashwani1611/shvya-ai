@@ -111,6 +111,28 @@ class KnowledgeRuntimeReliabilityTests(TestCase):
         answers = matching_authored_answers(organization=self.organization, question='refund')
         self.assertEqual([item['source_id'] for item in answers], [f'faq:{own.pk}'])
 
+    def test_topic_later_in_authored_faq_answer_remains_retrievable(self):
+        introduction = (
+            'Our academy provides practical education across multiple technology domains '
+            'through experienced instructors using hands-on projects and instructor-led '
+            'workshops covering foundational skills alongside advanced professional topics. '
+        )
+        own = FAQ.objects.create(organization=self.organization,
+            question='Which training subjects do you offer?',
+            answer=introduction + 'We also provide CompTIA Security+ certification training.')
+        FAQ.objects.create(organization=self.other, question='Security+', answer='Foreign terms.')
+        answers = matching_authored_answers(organization=self.organization, question='Security+')
+        self.assertEqual([item['source_id'] for item in answers], [f'faq:{own.pk}'])
+
+        self.info.ai_playbook = (
+            '## FAQ\nQ: Which certification tracks can I study?\nA: '
+            + introduction + 'Our networking track includes CCNA preparation.'
+        )
+        self.info.save(update_fields=['ai_playbook'])
+        answers = matching_authored_answers(organization=self.organization, question='CCNA')
+        self.assertEqual([item['source_type'] for item in answers], ['playbook_faq'])
+        self.assertIn('CCNA preparation', answers[0]['content'])
+
     def test_composer_keeps_verified_faq_with_saved_languages_on_later_stage(self):
         self.info.ai_playbook = '## FAQ\n**Q:** Is onboarding included?\n**A:** Onboarding is included.'
         self.info.save(update_fields=['ai_playbook'])

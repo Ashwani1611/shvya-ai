@@ -228,9 +228,15 @@ def refine_evidence_from_context(*, context, resolution):
             key = " ".join(content.casefold().split())
             if not content or item.source_id in source_ids or key in contents:
                 continue
+            complete_candidate = (item.metadata or {}).get("requires_relevance_verification")
+            if complete_candidate and len(content) > remaining:
+                # A fallback FAQ is a complete Q/A pair; its trailing text can
+                # contain the exception that makes an otherwise plausible reply
+                # wrong. Omit a pair that does not fit rather than clipping it.
+                continue
             source_ids.add(item.source_id)
             contents.add(key)
-            bounded = content[:min(4000, remaining)]
+            bounded = content if complete_candidate else content[:min(4000, remaining)]
             combined.append(replace(item, content=bounded))
             remaining -= len(bounded)
     structured = resolution.category == GroundingCategory.STRUCTURED_ORG_DATA
