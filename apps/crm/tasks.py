@@ -388,9 +388,13 @@ def bulk_move_leads_task(job_id):
         for start in range(processed, total, BULK_MOVE_BATCH_SIZE):
             end = min(start + BULK_MOVE_BATCH_SIZE, total)
             batch_ids = lead_ids[start:end]
+            batch_moved = 0
+            batch_skipped = 0
 
             # Lock only this bounded batch. A worker failure rolls the entire
             # uncheckpointed batch back, while other CRM work stays responsive.
+            # Progress counters are promoted only after the transaction commits,
+            # so Redis status can never claim rolled-back rows as completed.
             with transaction.atomic():
                 leads = {
                     str(lead.pk): lead
@@ -405,7 +409,7 @@ def bulk_move_leads_task(job_id):
                 for lead_id in batch_ids:
                     lead = leads.get(str(lead_id))
                     if lead is None:
-                        skipped_count += 1
+                        batch_skipped += 1
                         continue
 
                     # Redelivery is idempotent if an earlier checkpoint was
@@ -414,18 +418,18 @@ def bulk_move_leads_task(job_id):
                         lead.pipeline_id == target_pipeline.id
                         and lead.stage_id == target_stage.id
                     ):
-                        moved_count += 1
+                        batch_moved += 1
                         continue
 
                     if lead.pipeline_id != source_pipeline.id:
-                        skipped_count += 1
+                        batch_skipped += 1
                         continue
                     if (
                         selection_scope != "pipeline"
                         and source_stage_id
                         and str(lead.stage_id) != source_stage_id
                     ):
-                        skipped_count += 1
+                        batch_skipped += 1
                         continue
 
                     if lead.pipeline_id == target_pipeline.id:
@@ -441,8 +445,10 @@ def bulk_move_leads_task(job_id):
                             stage=target_stage,
                             actor=actor,
                         )
-                    moved_count += 1
+                    batch_moved += 1
 
+            moved_count += batch_moved
+            skipped_count += batch_skipped
             processed = end
             checkpoint("running")
 
