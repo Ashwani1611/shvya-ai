@@ -26,3 +26,9 @@ Keep turns short, ask one question at a time, avoid acknowledgment loops, accept
 Before eventual deployment, require the adapter to support a real terminal action and verified opt-out/handoff behavior. Writing “end the call” does not create an end-call function. Separate preliminary caller interest from canonical Shvya qualification completion. Business eligibility decisions remain governed by the approved Playbook and backend, including required answers and branch applicability.
 
 Use [testing-and-debugging.md](references/testing-and-debugging.md) for scenario tests, trace limitations, speech diagnostics and version checks. Use `render_setup_template` with `voice-agent` and `voice-call-instructions` for deterministic draft preparation. Current voice work is artifact-only: no calls, publishing, provider API writes, test leads, external sends, credential retrieval or voice swaps. Deliver the two prompts, unresolved facts, adapter capability checklist and local test cases. Do not mark voice integration operational until an authorized implementation and end-to-end evidence exist.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.
