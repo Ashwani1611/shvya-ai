@@ -9,7 +9,7 @@ from urllib.parse import quote, urlsplit
 
 from django.conf import settings
 from django.core import signing
-from django.db import transaction
+from django.db import models, transaction
 from django.http import Http404, JsonResponse
 from django.shortcuts import render
 from django.utils.crypto import constant_time_compare, salted_hmac
@@ -104,7 +104,8 @@ def _resolved_action(data, dynamic_value):
     if action_type == WhatsAppTemplateCTAEvent.ActionType.CALL:
         if not _PHONE.fullmatch(destination):
             raise Http404("This call action is invalid.")
-        dial = "+" + re.sub(r"\D", "", destination) if destination.startswith("+") else re.sub(r"\D", "", destination)
+        digits = re.sub(r"\D", "", destination)
+        dial = f"+{digits}" if destination.startswith("+") else digits
         return action_type, f"tel:{dial}", label
 
     if action_type == WhatsAppTemplateCTAEvent.ActionType.COPY_CODE:
@@ -113,20 +114,6 @@ def _resolved_action(data, dynamic_value):
         return action_type, destination, label
 
     raise Http404("This action is not supported.")
-
-
-def _template(data):
-    template = (
-        WhatsAppTemplate.objects.select_related("organization", "account")
-        .filter(
-            pk=data.get("t"),
-            account__organization_id=models.F("organization_id"),
-        )
-        .first()
-    )
-    if template is None:
-        raise Http404("This tracked action is no longer available.")
-    return template
 
 
 def _form_token(*, cta_token, visitor_hash):
@@ -190,7 +177,7 @@ def _render(
 @never_cache
 @ensure_csrf_cookie
 @require_http_methods(["GET", "POST"])
-def tracked_template_cta(request, token):
+def tracked_template_cta(request, token, suffix=None):
     try:
         data = decode_cta_token(token)
     except signing.BadSignature as exc:
@@ -198,13 +185,16 @@ def tracked_template_cta(request, token):
 
     template = (
         WhatsAppTemplate.objects.select_related("organization", "account")
-        .filter(pk=data.get("t"), account__organization_id=models.F("organization_id"))
+        .filter(
+            pk=data.get("t"),
+            account__organization_id=models.F("organization_id"),
+        )
         .first()
     )
     if template is None:
         raise Http404("This tracked action is no longer available.")
 
-    dynamic_value = request.GET.get("v") or request.POST.get("v")
+    dynamic_value = suffix or request.GET.get("v") or request.POST.get("v")
     action_type, destination, label = _resolved_action(data, dynamic_value)
     visitor, new_visitor = _visitor(request)
     visitor_hash = _visitor_hash(visitor)
@@ -278,7 +268,3 @@ def tracked_template_cta(request, token):
         form_token="",
         confirmed=True,
     )
-
-
-# Imported after Django model setup to keep the public handler module focused.
-from django.db import models  # noqa: E402  isort: skip
