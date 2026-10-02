@@ -146,18 +146,21 @@ class FixtureContracts(unittest.TestCase):
 
     def test_channels_are_preview_only(self):
         for channel in ("whatsapp", "instagram", "sandbox"):
-            data = fixture(); data["cases"][0]["channel"] = channel
+            data = fixture()
+            data["cases"][0]["channel"] = channel
             self.assertEqual(validate_scenarios(data)[0]["channel"], channel)
 
     def test_no_remote_execution_or_arbitrary_actions(self):
         for key in ("send", "tools", "url", "execute", "organization_id"):
-            data = fixture(); data["cases"][0][key] = True
+            data = fixture()
+            data["cases"][0][key] = True
             with self.subTest(key=key), self.assertRaises(RecoveryEvaluationError):
                 validate_scenarios(data)
 
     def test_invalid_channel_shapes_rejected(self):
         for channel in ({}, [], None, "hosted-send"):
-            data = fixture(); data["cases"][0]["channel"] = channel
+            data = fixture()
+            data["cases"][0]["channel"] = channel
             with self.subTest(channel=channel), self.assertRaises(RecoveryEvaluationError):
                 validate_scenarios(data)
 
@@ -167,32 +170,46 @@ class FixtureContracts(unittest.TestCase):
                 validate_scenarios(data)
 
     def test_duplicate_case_ids_rejected(self):
-        data = fixture(); data["cases"].append(copy.deepcopy(data["cases"][0]))
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"].append(copy.deepcopy(data["cases"][0]))
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_injected_case_label_rejected(self):
-        data = fixture(); data["cases"][0]["id"] = "x\nPRIVATE_DATA"
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["id"] = "x\nPRIVATE_DATA"
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_oversized_messages_rejected(self):
-        data = fixture(); data["cases"][0]["turns"][0]["message"] = "x" * 4001
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["turns"][0]["message"] = "x" * 4001
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_unsupported_checks_rejected(self):
-        data = fixture(); data["cases"][0]["turns"][0]["expect"] = {"python": "print(1)"}
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["turns"][0]["expect"] = {"python": "print(1)"}
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_boolean_file_count_rejected(self):
-        data = fixture(); data["cases"][0]["turns"][0]["expect"] = {"file_count": True}
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["turns"][0]["expect"] = {"file_count": True}
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_internal_attribute_expectations_rejected(self):
-        data = fixture(); data["cases"][0]["turns"][0]["expect"] = {"attributes": {"shvya_ai_runtime": "secret"}}
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["turns"][0]["expect"] = {"attributes": {"shvya_ai_runtime": "secret"}}
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_turn_limit_is_enforced(self):
-        data = fixture(); data["cases"][0]["turns"] *= 7
-        with self.assertRaises(RecoveryEvaluationError): validate_scenarios(data)
+        data = fixture()
+        data["cases"][0]["turns"] *= 7
+        with self.assertRaises(RecoveryEvaluationError):
+            validate_scenarios(data)
 
     def test_checks_are_redacted(self):
         result = SimpleNamespace(response="PRIVATE_REPLY ₹2999", files=[{"url": "PRIVATE_URL"}],
