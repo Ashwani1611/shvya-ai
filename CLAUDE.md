@@ -88,7 +88,7 @@ Do not duplicate an existing service in a new location simply because it is easi
 
 The historical Django app module `apps.channels` intentionally retains the app label `channels`. It collides by name with the third-party Django Channels package, so the third-party package is imported as a library rather than registered as a Django app. Do not rename this live app casually: any module rename must follow the migration plan in `docs/architecture-boundaries.md` and preserve the existing Django app label/database migration identity.
 
-### Current staging domain ownership
+### Current domain ownership
 
 - `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
