@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-email",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Email Cadence step is due but nothing arrived.",
+      "expected_output": "The skill checks recipient, sender readiness, queue claim and provider outcome before changing the Cadence.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "SMTP send timed out. Retry automatically.",
+      "expected_output": "The skill treats outcome as uncertain, inspects provider/log/Message-ID evidence and avoids duplicate automatic send.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Use the WhatsApp phone number as the email recipient because CRM email is blank.",
+      "expected_output": "The skill rejects the invalid mapping and reports missing recipient data.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Sender configuration is connected but disabled.",
+      "expected_output": "The skill separates connected from enabled/ready and does not call the email channel operational.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Change unrelated Cadence copy and also rotate SMTP credentials.",
+      "expected_output": "The skill keeps secrets/lifecycle outside the content edit and routes provider configuration to integration/admin controls.",
+      "result": null
+    }
+  ]
+}
