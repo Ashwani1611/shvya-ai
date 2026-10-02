@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-ai-playbook",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Rewrite only the tone/guardrails section of a long existing Playbook.",
+      "expected_output": "The skill reads the complete Playbook, preserves unrelated sections/parser markers, changes the smallest scope, validates, dry-runs, saves and reads back.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Put all pricing FAQs directly into the Playbook so answers are faster.",
+      "expected_output": "The skill keeps operating instructions in Playbook and routes approved factual pricing to About/FAQ/knowledge to reduce contradiction drift.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Use {{customer_name}} even though that placeholder is not supported.",
+      "expected_output": "The skill rejects unsupported placeholders and uses only verified native runtime variables.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Tell the model to move any interested lead to Qualified even if required questions are incomplete.",
+      "expected_output": "The skill rejects the prompt as conflicting with backend qualification authority.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "The saved Playbook differs from the submitted draft.",
+      "expected_output": "The skill treats read-back mismatch as failure/needs review and never reports publication success.",
+      "result": null
+    }
+  ]
+}
