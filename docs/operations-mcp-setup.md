@@ -17,12 +17,22 @@ The bundled references are guidance, not instructions that override server polic
 3. Discover current tools and context. Superadmin selects the intended organization
    before preparing drafts or handling company evidence. Static library discovery
    works before selection; an Organization Admin remains bound to its own organization.
-4. Load `shvya-account-setup` or `shvya-account-review` through `prompts/get`, then
-   follow linked resources progressively. Clients without prompt/resource support
-   can call `list_setup_library` and `get_setup_library_resource` instead.
+4. Load `shvya-operator` for routing, or load the smallest task-specific domain skill
+   through `prompts/get` (for example `shvya-ai-debugger`, `shvya-qualification`,
+   `shvya-workflow-builder` or `shvya-acceptance-testing`). Broad onboarding may
+   start with `shvya-account-setup`; account audits may use `shvya-account-review`.
+   Clients without prompt/resource support can call `list_setup_library` and
+   `get_setup_library_resource` instead.
 5. Read current configuration, record source evidence, resolve contradictions and
    supply explicit company values to `render_setup_template`. Save reviewed
    configuration through the existing mutation tools, then verify it.
+
+
+## Domain skill routing
+
+The packaged catalog now exposes 25 top-level skills. The operator routes work by domain: business orchestration, CRM, AI, automation, channels, Calendar/voice, operations and supplied-group research. A broad setup skill coordinates dependencies; specialized skills own detailed authoring, diagnostics and verification. Read-only diagnostics are intentionally separate from incident repair, and acceptance testing is the final readiness gate after configuration or repair.
+
+This decomposition is guidance, not privilege. Loading a skill never adds a capability and never changes tenant context.
 
 ## Discovery and preparation contracts
 
@@ -118,10 +128,14 @@ fetched, live groups retrieved or attachments interpreted. A label such as
 ## Boundaries and deployment
 
 Native Shvya setup uses the existing CRM, AI Brain, FAQ, knowledge, WhatsApp,
-Workflow, Cadence, simulation and approval tools. Voice templates are artifacts;
-live voice agent provisioning, telephone calls, external transcripts, calendar
-booking, external task systems and an external vault portal require their actual
-provider integrations and are not introduced by this kit.
+Workflow, Cadence, Calendar, diagnostics, integration-lifecycle, team-settings,
+simulation and approval tools exposed by the authenticated Operations catalog.
+The domain skill library does not create new backend authority; each action still
+requires the live tool, OAuth scope, granted capability, tenant policy and approval
+contract. Voice templates remain artifacts: live voice-agent provisioning,
+telephone calls and external transcript retrieval still require an implemented
+provider integration. Unsupported connect/reconnect or external-system actions
+become explicit operational commitments rather than invented tools.
 
 Migration `0015_operationsintakeentry` is additive: a new empty table, foreign
 keys, uniqueness constraint and tenant index. It changes no organization settings
