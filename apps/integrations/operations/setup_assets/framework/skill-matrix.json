@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "status": "AUTHORITATIVE_ROUTING_GUIDANCE_NOT_AUTHORIZATION",
+  "skills": [
+    {
+      "name": "shvya-account-setup",
+      "domain": "business",
+      "purpose": "orchestrate multi-domain onboarding/configuration"
+    },
+    {
+      "name": "shvya-account-review",
+      "domain": "business",
+      "purpose": "read-only requirements/configuration/live-behavior audit"
+    },
+    {
+      "name": "shvya-vault",
+      "domain": "business",
+      "purpose": "revisioned onboarding evidence and open questions"
+    },
+    {
+      "name": "shvya-industry-designer",
+      "domain": "business",
+      "purpose": "industry-to-configuration blueprint"
+    },
+    {
+      "name": "shvya-crm-architect",
+      "domain": "crm",
+      "purpose": "pipelines stages attributes and dependencies"
+    },
+    {
+      "name": "shvya-qualification",
+      "domain": "crm",
+      "purpose": "qualification contract mappings and completion"
+    },
+    {
+      "name": "shvya-lead-repair",
+      "domain": "crm",
+      "purpose": "bounded lead state reconciliation"
+    },
+    {
+      "name": "shvya-ai-brain",
+      "domain": "ai",
+      "purpose": "AI Brain orchestration and behavior quality"
+    },
+    {
+      "name": "shvya-ai-playbook",
+      "domain": "ai",
+      "purpose": "canonical Playbook authoring"
+    },
+    {
+      "name": "shvya-knowledge-manager",
+      "domain": "ai",
+      "purpose": "FAQ URL document ingestion/publication"
+    },
+    {
+      "name": "shvya-ai-debugger",
+      "domain": "ai",
+      "purpose": "AI runtime/grounding/action diagnosis"
+    },
+    {
+      "name": "shvya-workflow-builder",
+      "domain": "automation",
+      "purpose": "Workflow authoring and simulation"
+    },
+    {
+      "name": "shvya-cadence-builder",
+      "domain": "automation",
+      "purpose": "Cadence authoring timing and routing"
+    },
+    {
+      "name": "shvya-automation-debugger",
+      "domain": "automation",
+      "purpose": "Workflow/Cadence runtime diagnosis"
+    },
+    {
+      "name": "shvya-channel-routing",
+      "domain": "channels",
+      "purpose": "source-account-pipeline-sender topology"
+    },
+    {
+      "name": "shvya-whatsapp",
+      "domain": "channels",
+      "purpose": "WhatsApp API Coexistence Hosted configuration/diagnosis"
+    },
+    {
+      "name": "shvya-instagram",
+      "domain": "channels",
+      "purpose": "Instagram connection DM AI behavior diagnosis"
+    },
+    {
+      "name": "shvya-email",
+      "domain": "channels",
+      "purpose": "email sender/automation/delivery diagnosis"
+    },
+    {
+      "name": "shvya-calendar",
+      "domain": "calendar",
+      "purpose": "booking configuration/state/sync/reminders"
+    },
+    {
+      "name": "shvya-voice-agent",
+      "domain": "voice",
+      "purpose": "provider-neutral voice artifacts and test plan"
+    },
+    {
+      "name": "shvya-diagnostics",
+      "domain": "operations",
+      "purpose": "read-only cross-domain diagnosis"
+    },
+    {
+      "name": "shvya-incident-repair",
+      "domain": "operations",
+      "purpose": "bounded production repair coordination"
+    },
+    {
+      "name": "shvya-integration-manager",
+      "domain": "operations",
+      "purpose": "integration lifecycle/dependency management"
+    },
+    {
+      "name": "shvya-acceptance-testing",
+      "domain": "operations",
+      "purpose": "final structural/simulation/provider readiness gate"
+    },
+    {
+      "name": "shvya-read-whatsapp-group",
+      "domain": "research",
+      "purpose": "supplied WhatsApp group evidence analysis"
+    }
+  ]
+}
