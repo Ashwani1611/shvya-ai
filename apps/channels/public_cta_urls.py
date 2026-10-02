@@ -1,7 +1,10 @@
 from django.urls import path
 
+from services.channels.template_cta_meta_compat import (
+    tracked_template_cta_compatible,
+)
+
 from . import template_cta_ui
-from .template_cta_public import tracked_template_cta
 
 
 urlpatterns = [
@@ -21,12 +24,12 @@ urlpatterns = [
     # this route intentionally has no literal slash after ``suffix``.
     path(
         "w/cta/<str:token>/<path:suffix>",
-        tracked_template_cta,
+        tracked_template_cta_compatible,
         name="whatsapp-template-cta-action-dynamic",
     ),
     path(
         "w/cta/<str:token>/",
-        tracked_template_cta,
+        tracked_template_cta_compatible,
         name="whatsapp-template-cta-action",
     ),
 ]
