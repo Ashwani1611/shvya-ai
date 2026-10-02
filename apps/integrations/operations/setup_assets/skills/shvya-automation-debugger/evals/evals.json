@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-automation-debugger",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "AI correctly disqualified a lead but follow-up messages kept going.",
+      "expected_output": "The skill checks Cadence/Workflow suppression on the disqualified stage rather than blaming qualification, identifies the automation path and verifies the stop condition after repair.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "A Workflow never fired for 100 matching-looking leads.",
+      "expected_output": "The skill verifies actual event payload/condition semantics and enabled state before concluding event generation is broken.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Three identical follow-ups were sent.",
+      "expected_output": "The skill distinguishes three legitimate triggers from retries/idempotency failure using execution/delivery IDs and does not count jobs as customer impact.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Automation skipped during business hours according to the user's timezone.",
+      "expected_output": "The skill verifies configured timezone/hours and incident timestamp rather than assuming the UI/user timezone is authoritative.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Provider is down, so widen the Workflow trigger to retry more often.",
+      "expected_output": "The skill refuses config distortion as outage compensation and routes provider/runtime recovery to incident repair.",
+      "result": null
+    }
+  ]
+}
