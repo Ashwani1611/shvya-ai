@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-whatsapp",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Stage AI is off but a welcome message was sent.",
+      "expected_output": "The skill checks universal, stage and lead AI gates plus welcome scheduling/incident-time state and treats any bypass as a runtime policy defect, not a Playbook issue.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Template quick-reply shows Unsupported message type in chat.",
+      "expected_output": "The skill inspects inbound interactive payload normalization/context and verifies displayed reply/receipt handling instead of changing the template wording blindly.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Bulk template send returns 400 even though the template is approved.",
+      "expected_output": "The skill validates exact component/variable/media payload, selected account/WABA and routing; approval alone is not considered sufficient.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Hosted WhatsApp says connected but queue messages never send.",
+      "expected_output": "The skill checks gateway callback/session, worker claim, outbound queue and provider/gateway evidence before reconnecting or editing AI.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "A historical synced message arrives after Coexistence connection.",
+      "expected_output": "The skill recognizes history/backfill semantics and does not treat it as a new live customer trigger.",
+      "result": null
+    }
+  ]
+}
