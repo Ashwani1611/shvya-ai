@@ -254,15 +254,26 @@ class WhatsAppTemplateLocalClickReceiptTests(TestCase):
 
     @patch("services.channels.template_analytics.meta.requests.get")
     def test_url_only_template_does_not_fabricate_local_clicks(self, requests_get):
-        self.template.buttons = [
-            {
-                "type": "visit_website",
-                "text": "Open offer",
-                "url": "https://example.com/offer",
-            }
-        ]
+        url_button = {
+            "type": "visit_website",
+            "text": "Open offer",
+            "url": "https://example.com/offer",
+        }
+        self.template.buttons = [url_button]
         self.template.save(update_fields=["buttons", "updated_at"])
-        self._outbound()
+        outbound = self._outbound()
+        payload = dict(outbound.media_payload)
+        payload["template_display"] = {
+            "buttons": [
+                {
+                    "type": "visit_website",
+                    "text": "Open offer",
+                    "detail": "https://example.com/offer",
+                }
+            ]
+        }
+        outbound.media_payload = payload
+        outbound.save(update_fields=["media_payload", "updated_at"])
         self._quick_reply()
         requests_get.return_value = self._meta_response()
 
