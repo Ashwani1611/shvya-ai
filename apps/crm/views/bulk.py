@@ -1,4 +1,4 @@
-"""Organization-scoped bulk CRM actions; all mutations commit together."""
+"""Organization-scoped bulk CRM actions with bounded large-move processing."""
 
 import json
 import logging
