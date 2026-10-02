@@ -5,7 +5,8 @@ remain available after a Meta sync because Meta only returns the SHVYA tracking
 URL, not the server-held final website or phone action. Meta click tracking is
 also enabled before the first analytics read, but only for templates that
 actually contain URL actions. Total and unique tracked clicks are merged per
-button label so Meta and SHVYA never count the same action twice.
+button label using one indexed receipt query, so Meta and SHVYA never count the
+same action twice and large broadcasts avoid duplicate scans.
 """
 
 import copy
@@ -55,7 +56,6 @@ def install_template_cta_tracking_hardening():
     from . import template_meta_fix
     from . import template_service
 
-    current_augment_analytics = tracking.augment_tracked_cta_analytics
     current_carousel_button = template_service._carousel_button_payload
     current_enable_meta_click_tracking = tracking._enable_meta_click_tracking
     current_fetch_analytics = template_analytics.fetch_template_analytics
@@ -101,38 +101,45 @@ def install_template_cta_tracking_hardening():
         end_date,
         results,
     ):
-        # Preserve provider and quick-reply metrics before the core tracked
-        # augmentation. The core layer establishes availability/source metadata;
-        # this layer recomputes tracked URL totals from the original rows plus
-        # recipient-linked SHVYA events, using a per-label maximum. Provider
-        # aggregate totals remain a floor when no per-button breakdown exists.
+        ids = list(dict.fromkeys(str(value) for value in template_ids if value))
+        if not ids or not results:
+            return results
+        tracked_ids = tracking._tracked_templates(account, ids)
+        if not tracked_ids:
+            return results
+
         existing_clicks = {
             str(meta_id): copy.deepcopy(result.get("clicks") or [])
-            for meta_id, result in (results or {}).items()
+            for meta_id, result in results.items()
         }
         existing_unique = {
             str(meta_id): copy.deepcopy(result.get("unique_clicks") or [])
-            for meta_id, result in (results or {}).items()
+            for meta_id, result in results.items()
         }
         existing_clicked_totals = {
             str(meta_id): int((result.get("totals") or {}).get("clicked") or 0)
-            for meta_id, result in (results or {}).items()
+            for meta_id, result in results.items()
         }
         existing_unique_totals = {
             str(meta_id): int(result.get("unique_click_total") or 0)
-            for meta_id, result in (results or {}).items()
+            for meta_id, result in results.items()
         }
-        augmented = current_augment_analytics(
-            account=account,
-            template_ids=template_ids,
-            start_date=start_date,
-            end_date=end_date,
-            results=results,
-        )
+        for meta_id in tracked_ids:
+            result = results.get(meta_id)
+            if not result:
+                continue
+            availability = result.setdefault("availability", {})
+            availability["clicked"] = True
+            availability["unique_clicked"] = True
+            result.setdefault("click_count_basis", "shvya_tracked_cta")
+            result.setdefault("click_source", "shvya_tracked_cta")
+            result.setdefault(
+                "click_source_label",
+                "SHVYA tracked CTA receipts",
+            )
+            result["click_scope"] = "tracked_cta"
+            result["click_data_partial"] = False
 
-        ids = list(dict.fromkeys(str(value) for value in template_ids if value))
-        if not ids or not augmented:
-            return augmented
         start_at = datetime.combine(start_date, time.min, tzinfo=dt_timezone.utc)
         end_at = datetime.combine(
             end_date + timedelta(days=1),
@@ -151,7 +158,7 @@ def install_template_cta_tracking_hardening():
             WhatsAppTemplateTrackedLink.objects.filter(
                 organization_id=account.organization_id,
                 account_id=account.pk,
-                meta_template_id__in=ids,
+                meta_template_id__in=tracked_ids,
                 is_active=True,
                 sent_at__gte=start_at,
                 sent_at__lt=end_at,
@@ -170,7 +177,7 @@ def install_template_cta_tracking_hardening():
         )
         for link in links:
             meta_id = str(link.meta_template_id or "")
-            if meta_id not in augmented:
+            if meta_id not in results:
                 continue
             # All independently tracked actions are URL buttons in the Meta
             # template. Keeping that canonical type makes Meta and SHVYA rows
@@ -190,7 +197,10 @@ def install_template_cta_tracking_hardening():
             )
             recipients[meta_id][key].add(identity)
 
-        for meta_id, result in augmented.items():
+        for meta_id in tracked_ids:
+            result = results.get(meta_id)
+            if not result:
+                continue
             local_rows = [
                 {
                     "type": key[0],
@@ -246,7 +256,21 @@ def install_template_cta_tracking_hardening():
                 if delivered
                 else None
             )
-        return augmented
+            if local_rows or result.get("source") == "shvya":
+                result["source"] = (
+                    "meta+shvya"
+                    if str(result.get("source") or "").startswith("meta")
+                    else "shvya"
+                )
+                result["source_label"] = (
+                    "Meta insights + SHVYA tracked CTA receipts"
+                    if result["source"] == "meta+shvya"
+                    else "SHVYA delivery and tracked CTA receipts"
+                )
+                result["click_source"] = "shvya_tracked_cta"
+                result["click_source_label"] = "SHVYA tracked CTA receipts"
+                result["click_count_basis"] = "observed_tracked_cta"
+        return results
 
     def fetch_analytics(*, account, template_ids, start_date, end_date):
         # Confirm Meta's own URL tracking before the read so the first insights
