@@ -64,8 +64,8 @@ def _instagram_username(conversation):
 
 def _lead_name(conversation, supplied=""):
     return (
-        str(supplied or "").strip()
-        or _instagram_username(conversation)
+        _instagram_username(conversation)
+        or str(supplied or "").strip()
         or str(conversation.participant_name or "").strip()
         or "Instagram user"
     )[:150]
