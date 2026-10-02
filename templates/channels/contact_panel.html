@@ -6,7 +6,7 @@
     <button type="button" role="tab" aria-selected="true" data-contact-tab="personal"><i class="ti ti-user"></i>Personal</button>
     <button type="button" role="tab" aria-selected="false" data-contact-tab="calls"><i class="ti ti-phone"></i>Calls</button>
     <button type="button" role="tab" aria-selected="false" data-contact-tab="checking"><i class="ti ti-calendar"></i>Checking In</button>
-    {% if channel == 'hosted' %}
+    {% if channel == 'hosted' or channel == 'instagram' %}
     <button type="button" role="tab" aria-selected="false" data-contact-tab="touchpoints"><i class="ti ti-message-circle"></i>Touchpoints</button>
     {% else %}
     <button type="button" role="tab" aria-selected="false" data-contact-tab="templates"><i class="ti ti-template"></i>Templates</button>
@@ -56,7 +56,7 @@
       {% for sequence in sequences %}<div class="contact-card"><h3>{{ sequence.name }}</h3><p>{{ sequence.description }}</p><form data-start-sequence action="{% url 'chat-checking-in' active_lead.id %}">{% csrf_token %}<input type="hidden" name="channel" value="{{ channel }}"><input type="hidden" name="sequence" value="{{ sequence.id }}"><input type="hidden" name="account" value="{{ linked_account.id }}"><button type="submit" class="contact-primary" {% if not active_lead.auto_followup_enabled %}disabled{% endif %}>{% if sequence_state.sequence_id == sequence.id %}Resume sequence{% else %}Start sequence{% endif %}</button></form></div>{% empty %}<p class="contact-empty">{% if channel == 'instagram' %}WhatsApp sequences cannot be triggered from an Instagram conversation.{% else %}No sequences for this pipeline’s linked WhatsApp number.{% endif %}</p>{% endfor %}
       <p class="contact-help">Sequences follow their configured timing and sending rules.</p>
     </section>
-    {% if channel != 'hosted' %}
+    {% if channel != 'hosted' and channel != 'instagram' %}
     <section data-contact-panel="templates" role="tabpanel" hidden><h3>Templates</h3><label class="contact-search"><i class="ti ti-search"></i><input type="search" data-template-search placeholder="Search templates" aria-label="Search templates"></label>
       {% for tmpl in lead_templates %}<article class="contact-card" data-template-name="{{ tmpl.name|lower }}"><h3>{{ tmpl.name }}</h3><p>{{ tmpl.get_status_display }}</p>{% if tmpl.status == 'approved' %}<form data-send-template action="{% url 'whatsapp-send-template' active_lead.id %}">{% csrf_token %}<input type="hidden" name="template_id" value="{{ tmpl.id }}"><input type="hidden" name="account" value="{{ linked_account.id }}"><button type="submit" class="contact-primary">Send template</button></form>{% endif %}</article>{% empty %}<p class="contact-empty">{% if channel == 'hosted' %}Use Touchpoints for saved replies in hosted chats.{% elif channel == 'instagram' %}WhatsApp templates are not available for Instagram. Use Touchpoints for saved replies.{% else %}No templates for this pipeline’s linked WhatsApp number.{% endif %}</p>{% endfor %}
     </section>
