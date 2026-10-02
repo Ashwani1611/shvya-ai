@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-crm-architect",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Add a 'Quotation Sent' stage after Qualified without breaking existing automation.",
+      "expected_output": "The skill reads the current pipeline/dependencies, resolves Qualified by real ID, proposes a non-protected new stage/order, dry-runs/applies/read-backs and validates dependent configuration.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Create a new 'City' attribute because the UI already shows a 'Location' field.",
+      "expected_output": "The skill inspects existing definitions/semantics before creating anything and reuses an equivalent field when appropriate rather than duplicating.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Change a dropdown attribute to text because a new value does not fit existing options.",
+      "expected_output": "The skill treats type migration as consequential, checks existing values/mappings and does not silently change type to escape option governance.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Delete a stage that a Workflow and qualification target reference.",
+      "expected_output": "The skill blocks/defer deletion, reports dependencies and proposes dependency-safe migration/archive sequence.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Move 10,000 leads as part of reorganizing the pipeline.",
+      "expected_output": "The skill does not treat schema design as permission for mass lead mutation and hands bounded lead movement to the proper bulk/lead operation path.",
+      "result": null
+    }
+  ]
+}
