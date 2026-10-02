@@ -622,6 +622,8 @@ class AIContextBuilder:
             )
 
         return {
+            "channel": "whatsapp",
+            "execution_mode": "live",
             "message_count": len(
                 normalized_messages
             ),

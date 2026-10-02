@@ -646,21 +646,35 @@ Do not add explanations, markdown, or chain-of-thought.
         return len(normalized.split()) >= 3 or any("\u0900" <= ch <= "\u0dff" for ch in normalized)
 
     def _build_knowledge_query(self, *, context: AIContext) -> str:
+        """Keep the customer's newest question inside the retrieval budget.
+
+        A long previous assistant reply must never consume the entire query.
+        Previous text helps resolve short follow-ups, but is conversation context,
+        not evidence of a company fact.
+        """
         messages = (context.conversation or {}).get("messages", [])
         if not isinstance(messages, list):
             return ""
-
-        recent_messages: list[str] = []
-        for message in messages[-2:]:
-            if not isinstance(message, dict):
+        for index in range(len(messages) - 1, -1, -1):
+            message = messages[index]
+            if not isinstance(message, dict) or message.get("direction") != "inbound":
                 continue
-            body = str(message.get("body") or "").strip()
-            if not body:
+            latest = str(message.get("body") or "").strip()
+            if not latest:
                 continue
-            speaker = "Lead" if message.get("direction") == "inbound" else "SHVYA"
-            recent_messages.append(f"{speaker}: {body}")
-
-        return "\n".join(recent_messages).strip()[:900]
+            query = f"Lead: {latest}"[:900]
+            if len(latest.split()) <= 8 and len(query) < 650:
+                for previous in reversed(messages[:index]):
+                    if not isinstance(previous, dict):
+                        continue
+                    body = str(previous.get("body") or "").strip()
+                    if not body:
+                        continue
+                    speaker = "Lead" if previous.get("direction") == "inbound" else "SHVYA"
+                    query += f"\nPrevious {speaker} context: {body}"[:900 - len(query)]
+                    break
+            return query
+        return ""
 
     def _build_instructions(self, *, context: AIContext, profile=None) -> str:
         organization_context = context.organization or {}
@@ -723,6 +737,8 @@ Do not add explanations, markdown, or chain-of-thought.
             "message_count": len(chosen),
             "messages": chosen,
             "truncated": len(chosen) < len(messages),
+            "channel": conversation.get("channel", "") if isinstance(conversation, dict) else "",
+            "execution_mode": conversation.get("execution_mode", "live") if isinstance(conversation, dict) else "live",
         }
 
     def _build_input(
