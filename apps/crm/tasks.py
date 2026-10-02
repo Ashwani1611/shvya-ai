@@ -1,8 +1,10 @@
 """Background processing for large CRM imports."""
 
 import logging
+import uuid
 
 from celery import shared_task
+from celery.exceptions import Retry
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 from django.db import transaction
@@ -18,7 +20,13 @@ from apps.crm.models import (
 from apps.accounts.models import User
 from apps.crm.models.lead import normalize_phone
 from apps.organizations.models import Organization
-from services.crm.bulk_move_service import get_bulk_move_job, save_bulk_move_job
+from services.crm.bulk_move_service import (
+    acquire_bulk_move_lock,
+    get_bulk_move_job,
+    refresh_bulk_move_lock,
+    release_bulk_move_lock,
+    save_bulk_move_job,
+)
 from services.crm.lead_import_service import (
     delete_import_state,
     get_import_job,
@@ -32,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 IMPORT_BATCH_SIZE = 250
 BULK_MOVE_BATCH_SIZE = 100
+BULK_MOVE_BATCHES_PER_TASK = 5
 
 
 def _prepare_import_row(row, mapping, definitions):
@@ -323,12 +332,19 @@ def import_leads_task(import_token, organization_id, import_mode):
 
 
 @shared_task(
+    bind=True,
     name="crm.bulk_move_leads",
     acks_late=True,
     reject_on_worker_lost=True,
+    max_retries=None,
 )
-def bulk_move_leads_task(job_id):
-    """Move a large frozen lead selection in bounded, resumable batches."""
+def bulk_move_leads_task(self, job_id, generation=0):
+    """Move a large frozen lead selection in bounded resumable task slices.
+
+    A 10k+ move must not occupy one Celery delivery for the entire job. Each
+    invocation processes at most a few database batches, checkpoints committed
+    progress, then hands the next generation back to the ingestion queue.
+    """
     from services.crm.lead_transition import (
         move_lead_to_pipeline_stage,
         move_lead_to_stage,
@@ -341,26 +357,58 @@ def bulk_move_leads_task(job_id):
     if job.get("status") == "completed":
         return
 
-    lead_ids = list(job.get("lead_ids") or [])
-    total = len(lead_ids)
-    processed = min(max(int(job.get("processed") or 0), 0), total)
-    moved_count = int(job.get("moved_count") or 0)
-    skipped_count = int(job.get("skipped_count") or 0)
+    generation = int(generation or 0)
+    current_generation = int(job.get("generation") or 0)
+    if generation < current_generation:
+        # A stale redelivery after a newer slice has already been dispatched.
+        return
+    if generation > current_generation:
+        # The successor raced the Redis checkpoint by a moment. Retry instead
+        # of dropping it and leaving the large job stranded.
+        raise self.retry(countdown=2)
 
-    def checkpoint(status, message=""):
-        nonlocal job
-        job = {
-            **job,
-            "status": status,
-            "processed": processed,
-            "total": total,
-            "moved_count": moved_count,
-            "skipped_count": skipped_count,
-            "message": message,
-        }
-        save_bulk_move_job(job_id, job)
+    lock_token = str(uuid.uuid4())
+    if not acquire_bulk_move_lock(job_id, lock_token):
+        # Only one consumer may advance a job cursor. This also prevents an
+        # acks_late redelivery from duplicating activity/workflow events.
+        raise self.retry(countdown=2)
 
     try:
+        # Re-read after acquiring the lock because another delivery may have
+        # advanced the cursor while this task was waiting.
+        job = get_bulk_move_job(job_id)
+        if not job:
+            logger.warning("Bulk move job expired while waiting for lock: %s", job_id)
+            return
+        if job.get("status") == "completed":
+            return
+
+        current_generation = int(job.get("generation") or 0)
+        if generation < current_generation:
+            return
+        if generation > current_generation:
+            raise self.retry(countdown=2)
+
+        lead_ids = list(job.get("lead_ids") or [])
+        total = len(lead_ids)
+        processed = min(max(int(job.get("processed") or 0), 0), total)
+        moved_count = int(job.get("moved_count") or 0)
+        skipped_count = int(job.get("skipped_count") or 0)
+
+        def checkpoint(status, message=""):
+            nonlocal job
+            job = {
+                **job,
+                "status": status,
+                "processed": processed,
+                "total": total,
+                "moved_count": moved_count,
+                "skipped_count": skipped_count,
+                "message": message,
+                "generation": current_generation,
+            }
+            save_bulk_move_job(job_id, job)
+
         organization = Organization.objects.get(pk=job["organization_id"])
         actor = User.objects.filter(
             pk=job["actor_id"],
@@ -385,16 +433,19 @@ def bulk_move_leads_task(job_id):
 
         checkpoint("running")
 
-        for start in range(processed, total, BULK_MOVE_BATCH_SIZE):
-            end = min(start + BULK_MOVE_BATCH_SIZE, total)
+        slice_end = min(
+            processed + (BULK_MOVE_BATCH_SIZE * BULK_MOVE_BATCHES_PER_TASK),
+            total,
+        )
+        for start in range(processed, slice_end, BULK_MOVE_BATCH_SIZE):
+            end = min(start + BULK_MOVE_BATCH_SIZE, slice_end)
             batch_ids = lead_ids[start:end]
             batch_moved = 0
             batch_skipped = 0
 
             # Lock only this bounded batch. A worker failure rolls the entire
             # uncheckpointed batch back, while other CRM work stays responsive.
-            # Progress counters are promoted only after the transaction commits,
-            # so Redis status can never claim rolled-back rows as completed.
+            # Progress counters are promoted only after the transaction commits.
             with transaction.atomic():
                 leads = {
                     str(lead.pk): lead
@@ -451,15 +502,46 @@ def bulk_move_leads_task(job_id):
             skipped_count += batch_skipped
             processed = end
             checkpoint("running")
+            if not refresh_bulk_move_lock(job_id, lock_token):
+                raise RuntimeError("Bulk move worker lost its job lock.")
 
-        checkpoint(
-            "completed",
-            "" if not skipped_count else f"{skipped_count} lead(s) were skipped because they changed or were deleted before processing.",
+        if processed >= total:
+            checkpoint(
+                "completed",
+                "" if not skipped_count else (
+                    f"{skipped_count} lead(s) were skipped because they changed "
+                    "or were deleted before processing."
+                ),
+            )
+            return
+
+        # Publish the successor before advancing the generation. If it starts
+        # immediately it will retry until this checkpoint is visible. This order
+        # also means a worker crash can never leave a generation saved in Redis
+        # without a corresponding queued task.
+        next_generation = current_generation + 1
+        bulk_move_leads_task.apply_async(
+            args=[job_id, next_generation],
+            queue="ingestion",
+            countdown=1,
         )
+        current_generation = next_generation
+        checkpoint("running")
+    except Retry:
+        raise
     except Exception:
         logger.exception("Bulk CRM lead move failed: job=%s", job_id)
-        checkpoint(
-            "failed",
-            "Bulk lead move stopped safely. Refresh the CRM to see completed batches before retrying.",
-        )
+        job = get_bulk_move_job(job_id) or job
+        job = {
+            **job,
+            "status": "failed",
+            "message": (
+                "Bulk lead move stopped safely. Refresh the CRM to see completed "
+                "batches before retrying."
+            ),
+        }
+        save_bulk_move_job(job_id, job)
         raise
+    finally:
+        release_bulk_move_lock(job_id, lock_token)
+
