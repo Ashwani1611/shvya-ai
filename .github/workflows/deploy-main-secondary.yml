@@ -1,0 +1,231 @@
+name: Deploy Main Secondary
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_sha:
+        description: "Optional main commit SHA to deploy; defaults to the selected main revision"
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: main-secondary-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy main to friend Linux server
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.event == 'push' &&
+        github.event.workflow_run.head_repository.full_name == github.repository &&
+        github.event.workflow_run.head_branch == 'main'
+      )
+    runs-on: ubuntu-latest
+
+    # Reuse the existing friend-server SSH secrets that were previously used
+    # by the staging deployment. The Git branch deployed here is main.
+    environment: staging
+
+    steps:
+      - name: Require Security success for deployment SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_SHA: ${{ github.event.workflow_run.head_sha || inputs.deploy_sha || github.sha }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 60); do
+            state="$(gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/security.yml/runs" \
+              -f head_sha="${DEPLOY_SHA}" \
+              -f event=push \
+              -f branch=main \
+              -f per_page=100 \
+              --jq '[.workflow_runs[] | select(.head_sha == env.DEPLOY_SHA and .head_branch == "main" and .event == "push")] | sort_by(.run_number) | last | if . == null then "missing" else (.status + ":" + (.conclusion // "")) end')"
+
+            case "${state}" in
+              completed:success)
+                echo "Security workflow passed for ${DEPLOY_SHA}."
+                exit 0
+                ;;
+              completed:*)
+                echo "Security workflow did not pass for ${DEPLOY_SHA}: ${state}"
+                exit 1
+                ;;
+              missing|queued:*|in_progress:*|requested:*|waiting:*|pending:*)
+                echo "Waiting for Security workflow for ${DEPLOY_SHA}: ${state}"
+                sleep 15
+                ;;
+              *)
+                echo "Unexpected Security workflow state for ${DEPLOY_SHA}: ${state}"
+                exit 1
+                ;;
+            esac
+          done
+
+          echo "Security workflow did not complete successfully for ${DEPLOY_SHA}."
+          exit 1
+
+      - name: Deploy main to friend Linux server over SSH
+        uses: appleboy/ssh-action@2ead5e36573f08b82fbfce1504f1a4b05a647c6f
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          password: ${{ secrets.VPS_PASSWORD }}
+          port: ${{ secrets.VPS_PORT || 22 }}
+          command_timeout: 30m
+          script: |
+            set -eu
+
+            APP_DIR=/opt/shvya-ai-staging
+            COMPOSE="docker compose -p shvya-staging --env-file .env.staging -f docker-compose.staging.yml"
+            DEPLOY_SHA="${{ github.event.workflow_run.head_sha || inputs.deploy_sha || github.sha }}"
+
+            if [ -z "$DEPLOY_SHA" ]; then
+              echo "Deployment SHA is missing."
+              exit 1
+            fi
+
+            echo "Preparing friend-server checkout from main..."
+            if [ ! -d "$APP_DIR/.git" ]; then
+              rm -rf "$APP_DIR"
+              git clone --branch main --single-branch https://github.com/Ashwani1611/shvya-ai.git "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+
+            echo "Fetching main..."
+            git fetch --no-tags origin main
+
+            if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
+              echo "Deployment SHA ${DEPLOY_SHA} is unavailable."
+              exit 1
+            fi
+
+            if ! git merge-base --is-ancestor "$DEPLOY_SHA" origin/main; then
+              echo "Refusing deployment: ${DEPLOY_SHA} is not part of origin/main."
+              exit 1
+            fi
+
+            # The friend server now follows main. The isolated compose project,
+            # database and environment remain separate from production.
+            git checkout -B main origin/main
+            git reset --hard "$DEPLOY_SHA"
+
+            ACTUAL_SHA="$(git rev-parse HEAD)"
+            if [ "$ACTUAL_SHA" != "$DEPLOY_SHA" ]; then
+              echo "Deployment checkout mismatch: expected ${DEPLOY_SHA}, got ${ACTUAL_SHA}."
+              exit 1
+            fi
+
+            if [ ! -f .env.staging ]; then
+              echo ".env.staging is missing on the friend server."
+              echo "Refusing to create a replacement because existing integration/database secrets must be preserved."
+              exit 1
+            fi
+
+            mkdir -p "$APP_DIR/staticfiles" "$APP_DIR/media" "$APP_DIR/backups"
+
+            echo "Validating isolated Compose configuration..."
+            $COMPOSE config --quiet
+
+            echo "Building application and WhatsApp gateway images from main..."
+            $COMPOSE build web
+            $COMPOSE build whatsapp-web-gateway
+
+            echo "Preparing writable application mounts..."
+            $COMPOSE run --rm --no-deps --user 0 web sh -c \
+              'mkdir -p /app/staticfiles /app/media && chown -R 10001:10001 /app/staticfiles /app/media'
+
+            echo "Starting database, Redis and PgBouncer..."
+            $COMPOSE up -d --wait db redis pgbouncer
+
+            echo "Backing up friend-server database before migrations..."
+            BACKUP_FILE="$APP_DIR/backups/shvya-main-secondary-$(date -u +%Y%m%dT%H%M%SZ).sql"
+            $COMPOSE exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' > "$BACKUP_FILE"
+            test -s "$BACKUP_FILE"
+            gzip "$BACKUP_FILE"
+            find "$APP_DIR/backups" -type f -name 'shvya-main-secondary-*.sql.gz' -mtime +14 -delete
+
+            APPLICATION_MAINTENANCE=1
+            report_failure() {
+              status=$?
+              if [ "$status" -ne 0 ] && [ "$APPLICATION_MAINTENANCE" -eq 1 ]; then
+                echo "Secondary deployment failed during maintenance."
+                echo "Database/Redis state and backup are preserved."
+                $COMPOSE ps || true
+              fi
+              return "$status"
+            }
+            trap report_failure EXIT
+
+            echo "Stopping old application processes..."
+            $COMPOSE stop --timeout 60 beat web ws
+            $COMPOSE stop --timeout 300 worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker
+
+            if [ -n "$($COMPOSE ps --status running -q web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat)" ]; then
+              echo "Old application services are still running; refusing migrations."
+              exit 1
+            fi
+
+            echo "Applying migrations from main..."
+            $COMPOSE run --rm --no-deps web python manage.py migrate --noinput
+
+            echo "Collecting static files..."
+            $COMPOSE run --rm --no-deps web python manage.py collectstatic --noinput
+
+            echo "Starting application services..."
+            $COMPOSE up -d --no-deps web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat
+            $COMPOSE up -d --wait --no-deps web
+
+            echo "Starting WhatsApp Web gateway..."
+            $COMPOSE up -d --wait --no-deps --force-recreate whatsapp-web-gateway
+
+            echo "Refreshing isolated Nginx..."
+            $COMPOSE up -d --wait --force-recreate nginx
+
+            APPLICATION_MAINTENANCE=0
+
+            echo "Verifying runtime identity..."
+            for service in web ws worker ai_realtime_worker hosted_ai_worker campaign_worker ingestion_worker automation_worker beat; do
+              uid="$($COMPOSE exec -T "$service" id -u)"
+              gid="$($COMPOSE exec -T "$service" id -g)"
+              if [ "$uid" != "10001" ] || [ "$gid" != "10001" ]; then
+                echo "${service} is running as unexpected uid:gid ${uid}:${gid}."
+                exit 1
+              fi
+            done
+
+            echo "Checking local readiness..."
+            ready=0
+            for attempt in $(seq 1 15); do
+              if curl --fail --silent --show-error --max-time 5 \
+                -H "Host: staging.shvya-ai.com" \
+                http://127.0.0.1:8180/health/ready/ >/dev/null; then
+                ready=1
+                break
+              fi
+              sleep 2
+            done
+
+            if [ "$ready" -ne 1 ]; then
+              echo "Secondary main deployment failed readiness verification."
+              $COMPOSE ps
+              $COMPOSE logs --tail=150 nginx web worker ai_realtime_worker hosted_ai_worker
+              exit 1
+            fi
+
+            echo "Friend Linux server is running main commit: ${DEPLOY_SHA}"
+            $COMPOSE ps
+            docker image prune -f
