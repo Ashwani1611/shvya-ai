@@ -31,6 +31,7 @@ The map intentionally distinguishes entry points, orchestration, deterministic b
 | Lead API authentication | CRM API authentication classes used by `apps/crm/views/api.py` | API-key scoped access. |
 | Read-only Diagnostic MCP | `apps/integrations/diagnostic_auth.py`, `diagnostic_tools.py`, `views/mcp.py` | Organization/API-key scoped troubleshooting; never add writes here. |
 | Actor-bound Operations MCP | `apps/integrations/operations_auth.py`, `operations_policy.py`, `operations_tools.py`, `views/operations_mcp.py` | Superadmin explicit tenant context or Superadmin-policy-bounded Organization Admin access; dry-run/approval/verification/audit. |
+| Operations MCP tool + skill catalog | `apps/integrations/operations/tool_catalog.py`, `operations/registry.py`, `operations/setup_library.py`, `operations/setup_assets/` | 101 Operations-native tools plus diagnostic exposure; 25 top-level domain skills and setup resources route work without granting authority. |
 
 When adding a new tenant-facing entry point, reuse central organization authorization rather than checking only `user.is_active`.
 
