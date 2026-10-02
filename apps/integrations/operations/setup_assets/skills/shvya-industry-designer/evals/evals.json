@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-industry-designer",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Design SHVYA for a real-estate brokerage with existing pipelines and WhatsApp.",
+      "expected_output": "The skill reads existing structure, builds a business-specific blueprint, reuses equivalent CRM objects, avoids importing generic prices/offers, and hands each domain to its owner with acceptance criteria.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Use the healthcare industry template exactly as-is for a clinic.",
+      "expected_output": "The skill treats it as a pattern, verifies actual clinic services/booking/compliance needs and marks unverified template facts as gaps rather than defaults.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "The company description is vague: 'we sell software'. Build full stages and qualification anyway.",
+      "expected_output": "The skill produces only source-independent structure, lists material unanswered business questions and defers dependent configuration instead of inventing a sales motion.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "A template recommends 7 stages, but the tenant already has a semantically equivalent 5-stage pipeline.",
+      "expected_output": "The skill prefers reuse/adaptation, explains why duplication would create dependency drift, and does not force a fixed stage count.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "The blueprint mentions Instagram automation, but integration lifecycle says Instagram is disconnected.",
+      "expected_output": "The skill marks channel-dependent steps not-ready and hands connection/readiness to the integration/Instagram skills instead of calling the blueprint complete.",
+      "result": null
+    }
+  ]
+}
