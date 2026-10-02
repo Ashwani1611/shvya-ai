@@ -201,6 +201,11 @@ class KnowledgeIngestionService:
                 )
 
             with transaction.atomic():
+                from apps.organizations.models import Organization
+                Organization.objects.select_for_update().get(pk=document.organization_id)
+                reserved_document = Document.objects.select_for_update().get(
+                    pk=document.pk, organization_id=document.organization_id,
+                )
 
                 # ------------------------------------------------
                 # Lock existing versions for this source.
@@ -222,10 +227,11 @@ class KnowledgeIngestionService:
                     .first()
                 )
 
+                # Preserve the order reserved at upload even when workers finish late.
                 next_version = (
-                    latest.version + 1
-                    if latest
-                    else 1
+                    reserved_document.version
+                    if reserved_document.source_key == source_key
+                    else (latest.version + 1 if latest else 1)
                 )
 
                 # ------------------------------------------------
@@ -504,6 +510,9 @@ class KnowledgeIngestionService:
             # ----------------------------------------------------
 
             with transaction.atomic():
+                from apps.organizations.models import Organization
+                # Lock a row that exists even for the first URL version.
+                Organization.objects.select_for_update().get(pk=source.organization_id)
 
                 existing_versions = list(
                     Document.objects

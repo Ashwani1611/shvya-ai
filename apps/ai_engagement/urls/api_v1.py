@@ -20,7 +20,10 @@ from apps.ai_engagement.views.playground import (
     PlaygroundAPIView, PlaygroundFileAPIView,
 )
 
+from apps.ai_engagement.views.shared_files import instagram_shared_file
+
 urlpatterns = [
+    path("shared-files/<str:token>/", instagram_shared_file, name="ai-instagram-shared-file"),
     path("playground/files/<int:document_id>/", PlaygroundFileAPIView.as_view(), name="ai-playground-file"),
     path(
         "org-info/",

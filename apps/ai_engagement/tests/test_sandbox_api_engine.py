@@ -99,12 +99,16 @@ class SandboxAPIEngineTests(TestCase):
             "reason_code": self.reason_code,
         }), "test-transport")
 
-    def _request(self, *, session_id, message=None, stage=None, organization=None):
+    def _request(self, *, session_id, message=None, stage=None, organization=None, channel=None, lead_source=None):
         data = {"session_id": session_id}
         if message is None:
             request = self.factory.delete("/api/v1/ai-engagement/playground/", data, format="json")
         else:
             data["message"] = message
+            if channel is not None:
+                data["channel"] = channel
+            if lead_source is not None:
+                data["lead_source"] = lead_source
             if stage is not None:
                 data["stage_id"] = str(stage.pk)
             request = self.factory.post("/api/v1/ai-engagement/playground/", data, format="json")
@@ -280,3 +284,106 @@ class SandboxAPIEngineTests(TestCase):
         self._request(session_id="complete")
         self.assertEqual(PlaygroundService()._load_session_payload(
             organization=self.org, session_id="complete"), {})
+
+    def test_instagram_source_and_channel_reach_model_and_persist_until_reset(self):
+        before = self._business_counts()
+        first = self._request(
+            session_id="instagram-context", message="Hello", stage=self.qualified,
+            channel="instagram", lead_source="instagram",
+        )
+        second = self._request(session_id="instagram-context", message="Thank you")
+        for result in (first, second):
+            self.assertEqual(result["channel"], "instagram")
+            self.assertEqual(result["lead_source"], "instagram")
+            self.assertEqual(result["execution_mode"], "sandbox_preview")
+        self.assertTrue(self.messages)
+        for payload in self.messages:
+            self.assertEqual(payload["lead"]["lead_source"], "instagram")
+            self.assertEqual(payload["recent_conversation"]["channel"], "instagram")
+            self.assertEqual(payload["recent_conversation"]["execution_mode"], "sandbox_preview")
+        self.assertEqual(self._business_counts(), before)
+
+    def test_acquisition_source_is_independent_of_current_chat_channel(self):
+        result = self._request(
+            session_id="cross-channel", message="Thank you", stage=self.qualified,
+            channel="whatsapp", lead_source="instagram",
+        )
+        self.assertEqual(result["channel"], "whatsapp")
+        self.assertEqual(result["lead_source"], "instagram")
+        self.assertEqual(self.messages[-1]["lead"]["lead_source"], "instagram")
+        self.assertEqual(self.messages[-1]["recent_conversation"]["channel"], "whatsapp")
+
+    def test_invalid_context_and_mid_conversation_source_change_are_rejected(self):
+        self._request(
+            session_id="fixed-context", message="Hello", stage=self.qualified,
+            channel="instagram", lead_source="instagram",
+        )
+        for extra in (
+            {"channel": "email"}, {"lead_source": "invented-source"},
+            {"channel": "whatsapp"}, {"lead_source": "meta_ads"},
+        ):
+            request = self.factory.post(
+                "/api/v1/ai-engagement/playground/",
+                {"session_id": "fixed-context", "message": "Hi", **extra}, format="json",
+            )
+            force_authenticate(request, user=SimpleNamespace(
+                is_authenticated=True, organization=self.org,
+            ))
+            response = PlaygroundAPIView.as_view()(request)
+            self.assertEqual(response.status_code, 400, response.data)
+        self._request(session_id="fixed-context")
+        result = self._request(
+            session_id="fixed-context", message="Hello", stage=self.qualified,
+            channel="whatsapp", lead_source="meta_ads",
+        )
+        self.assertEqual(result["channel"], "whatsapp")
+        self.assertEqual(result["lead_source"], "meta_ads")
+
+    def test_attribute_and_reminder_effects_are_explicit_previews_without_crm_writes(self):
+        from datetime import timedelta
+        from django.utils import timezone
+        from apps.ai_engagement.services.engagement import EngagementDecision
+        from apps.ai_engagement.services.playground import _SandboxLead
+        from apps.ai_engagement.services.playground_effects import preview_effects
+
+        AttributeDefinition.objects.get_or_create(
+            organization=self.org, key="industry", defaults={"name": "Industry"},
+        )
+        AttributeDefinition.objects.get_or_create(
+            organization=self.org, key="password", defaults={"name": "Password"},
+        )
+        visitor = _SandboxLead(
+            id="playground:effects", pk="playground:effects", organization=self.org,
+            organization_id=self.org.pk, pipeline=self.pipeline, pipeline_id=self.pipeline.pk,
+            stage=self.qualified, stage_id=self.qualified.pk, attributes={},
+        )
+        due_at = (timezone.now() + timedelta(days=1)).isoformat()
+        decision = EngagementDecision(
+            should_engage=True, message="Thanks.", file_document_id=None,
+            crm_actions=[
+                {"type": "attribute_updates", "updates": [
+                    {"key": "industry", "value": " Retail "},
+                    {"key": "password", "value": "must-not-preview"},
+                    {"key": "foreign-field", "value": "must-not-preview"},
+                ]},
+                {"type": "create_reminder", "title": "Call back", "description": "Customer request", "due_at": due_at},
+            ],
+            reason="NORMAL_CONVERSATION", model="test",
+        )
+        before = self._business_counts()
+        events, files = preview_effects(
+            organization=self.org, visitor=visitor, decision=decision,
+            requirements=[], qualification={}, sent_files=[],
+        )
+        self.assertEqual(files, [])
+        self.assertEqual(visitor.attributes, {"industry": "Retail"})
+        self.assertEqual([event["type"] for event in events], ["attribute_updates", "reminder"])
+        self.assertTrue(all(event["status"] == "preview" for event in events))
+        self.assertEqual(events[0]["updates"], [{"key": "industry", "name": "Industry", "value": "Retail"}])
+        self.assertEqual(visitor.preview_reminder["due_at"], due_at)
+        repeated, _ = preview_effects(
+            organization=self.org, visitor=visitor, decision=decision,
+            requirements=[], qualification={}, sent_files=[],
+        )
+        self.assertEqual(repeated, [])
+        self.assertEqual(self._business_counts(), before)

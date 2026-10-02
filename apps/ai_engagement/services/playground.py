@@ -74,6 +74,7 @@ class _SandboxContextBuilder:
         retrieval_service: KnowledgeRetrievalService,
         pipeline=None,
         stage=None,
+        channel: str = "sandbox",
     ) -> None:
         self.organization = organization
         self.visitor = visitor
@@ -83,6 +84,7 @@ class _SandboxContextBuilder:
         self.retrieval_service = retrieval_service
         self.pipeline = pipeline
         self.stage = stage
+        self.channel = channel
         self.last_knowledge: list[dict[str, Any]] = []
 
     def organization_context(self) -> dict[str, Any]:
@@ -271,7 +273,11 @@ class _SandboxContextBuilder:
                 "notes": "",
                 "attributes": visitor_attributes,
                 "qualification": state_for_lead(self.visitor),
-                "lead_source": "playground",
+                "lead_source": getattr(self.visitor, "lead_source", "system"),
+                "operational_state": {
+                    "execution_mode": "sandbox_preview",
+                    "reminder": deepcopy(getattr(self.visitor, "preview_reminder", None)),
+                },
                 "shared_document_ids": list(getattr(self.visitor, "shared_document_ids", [])),
                 "stage_entered_at": None,
                 "created_at": None,
@@ -282,6 +288,8 @@ class _SandboxContextBuilder:
             contacts=[],
             attributes=self._attribute_context(),
             conversation={
+                "channel": self.channel,
+                "execution_mode": "sandbox_preview",
                 "message_count": len(recent_conversation),
                 "messages": recent_conversation,
             },
@@ -315,6 +323,8 @@ class PlaygroundResult:
     stage: dict = field(default_factory=dict)
     events: list = field(default_factory=list)
     files: list = field(default_factory=list)
+    channel: str = "sandbox"
+    lead_source: str = "system"
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -325,6 +335,8 @@ class PlaygroundResult:
             "knowledge": self.knowledge,
             "model": self.model,
             "stage": self.stage, "events": self.events, "files": self.files,
+            "channel": self.channel, "lead_source": self.lead_source,
+            "execution_mode": "sandbox_preview",
         }
 
 
@@ -359,6 +371,8 @@ class PlaygroundService:
         message: str,
         history: list[dict[str, Any]] | None = None,
         stage_id: str | None = None,
+        channel: str | None = None,
+        lead_source: str | None = None,
     ) -> PlaygroundResult:
         started_at = monotonic()
         if organization is None:
@@ -372,6 +386,9 @@ class PlaygroundService:
         saved = self._load_session_payload(
             organization=organization,
             session_id=session_id,
+        )
+        channel, lead_source = self._session_context(
+            saved=saved, channel=channel, lead_source=lead_source,
         )
         stored_history = (
             self._normalize_role_history(saved.get("history"))
@@ -411,6 +428,8 @@ class PlaygroundService:
             stage=stage or SimpleNamespace(name="New Lead"),
             stage_id=getattr(stage, "id", None),
             name="Playground Visitor", phone="", email="",
+            lead_source=lead_source,
+            preview_reminder=deepcopy(saved.get("reminder")),
             shared_document_ids=list(saved.get("sent_files") or []),
             attributes=deepcopy(saved.get("attributes") or {}),
         )
@@ -428,6 +447,7 @@ class PlaygroundService:
             retrieval_service=self.retrieval_service,
             pipeline=pipeline,
             stage=stage,
+            channel=channel,
         )
 
         service = self.engagement_service or EngagementService(
@@ -513,7 +533,10 @@ class PlaygroundService:
             saved=visitor.attributes.get(STATE_KEY),
             organization_id=organization.id,
         )
-        if events and decision.should_engage and monotonic() - started_at < 15:
+        if (
+            any(event.get("type") == "stage_transition" for event in events)
+            and decision.should_engage and monotonic() - started_at < 15
+        ):
             decision = self._compose_after_preview(
                 organization=organization, visitor=visitor, message=message,
                 service=service, context_builder=context_builder,
@@ -547,6 +570,8 @@ class PlaygroundService:
             history=updated_history,
             attributes=visitor.attributes,
             turn=turn, stage_id=str(visitor.stage_id or ""), sent_files=sent_files,
+            channel=channel, lead_source=lead_source,
+            reminder=visitor.preview_reminder,
         )
 
         return PlaygroundResult(
@@ -559,7 +584,27 @@ class PlaygroundService:
             stage={"id": str(visitor.stage_id or ""), "name": visitor.stage.name,
                    "pipeline": getattr(visitor.pipeline, "name", "")},
             events=events, files=files,
+            channel=channel, lead_source=lead_source,
         )
+
+    def _session_context(self, *, saved, channel, lead_source):
+        """Keep test routing stable until reset, independently of lead origin."""
+        from apps.crm.models import Lead
+
+        valid_sources = dict(Lead._meta.get_field("lead_source").choices)
+        requested = {"channel": channel, "lead_source": lead_source}
+        allowed = {"channel": {"sandbox", "whatsapp", "instagram"}, "lead_source": valid_sources}
+        for key, value in requested.items():
+            if value is not None and value not in allowed[key]:
+                raise PlaygroundError(f"Invalid {key.replace('_', ' ')} for this test.")
+            if value is not None and saved.get(key) and value != saved[key]:
+                raise PlaygroundError("Restart chat before changing the test channel or lead source.")
+
+        selected_channel = saved.get("channel") or channel or "sandbox"
+        selected_source = saved.get("lead_source") or lead_source or (
+            selected_channel if selected_channel in {"whatsapp", "instagram"} else "system"
+        )
+        return selected_channel, selected_source
 
     def _compose_after_preview(
         self, *, organization, visitor, message, service, context_builder,
@@ -747,6 +792,9 @@ class PlaygroundService:
         turn: int = 0,
         stage_id: str = "",
         sent_files: list | None = None,
+        channel: str = "sandbox",
+        lead_source: str = "system",
+        reminder: dict | None = None,
     ) -> None:
         normalized = self._normalize_role_history(history)[-self.MAX_HISTORY_MESSAGES :]
         try:
@@ -759,6 +807,8 @@ class PlaygroundService:
                     "history": normalized,
                     "attributes": deepcopy(attributes or {}),
                     "turn": turn, "stage_id": stage_id, "sent_files": list(sent_files or []),
+                    "channel": channel, "lead_source": lead_source,
+                    "reminder": deepcopy(reminder),
                 },
                 timeout=self.SESSION_TTL_SECONDS,
             )

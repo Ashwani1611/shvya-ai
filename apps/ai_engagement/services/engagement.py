@@ -165,6 +165,10 @@ class EngagementService:
     DEFAULT_RECENT_CONVERSATION_CHARS = 6000
 
     _SIMPLE_ACKS = {
+        "hi",
+        "hello",
+        "hey",
+        "namaste",
         "yes",
         "yeah",
         "yep",
@@ -178,10 +182,21 @@ class EngagementService:
         "right",
         "maybe",
         "not sure",
+        "not now",
+        "later",
+        "i'm busy",
+        "i am busy",
+        "no thanks",
+        "not interested",
+        "stop",
+        "unsubscribe",
+        "opt out",
         "interested",
         "thanks",
         "thank you",
     }
+
+    _AFFIRMATIVE_FOLLOWUPS = {"yes", "yeah", "yep", "sure", "okay", "ok", "yes please", "please do"}
 
     _KNOWLEDGE_TERMS = {
         "price",
@@ -617,7 +632,9 @@ Do not add explanations, markdown, or chain-of-thought.
             return False
 
         normalized = " ".join(text.casefold().split())
-        if normalized in self._SIMPLE_ACKS:
+        if normalized in self._AFFIRMATIVE_FOLLOWUPS and self._accepts_knowledge_offer(context=context):
+            return True
+        if normalized in self._SIMPLE_ACKS | self._AFFIRMATIVE_FOLLOWUPS:
             return False
 
         compact = re.sub(r"[\s,â‚¹$â‚¬Â£+\-./:]", "", normalized)
@@ -627,7 +644,7 @@ Do not add explanations, markdown, or chain-of-thought.
         if words & self._KNOWLEDGE_TERMS:
             return True
         if len(normalized) <= 24 and re.fullmatch(
-            r"(?:option\s*)?[a-z0-9]{1,8}", normalized
+            r"(?:option\s*)?(?:[a-z]|\d{1,2})[.)]?", normalized
         ):
             return False
 
@@ -638,26 +655,61 @@ Do not add explanations, markdown, or chain-of-thought.
             return True
         if "?" in text and len(normalized) > 20:
             return True
-        # Meaningful multilingual enquiries must not depend on English trigger
-        # words or punctuation. Keep greetings and short answers inexpensive.
-        return len(normalized.split()) >= 3 or any("\u0900" <= ch <= "\u0dff" for ch in normalized)
+        # A noun such as "Integrations", "Tarifs" or "价格" can be a complete
+        # enquiry. English keyword lists and space counts cannot safely exclude
+        # knowledge retrieval in the organization's other configured languages.
+        return sum(character.isalpha() for character in normalized) >= 2
+
+    def _accepts_knowledge_offer(self, *, context: AIContext) -> bool:
+        """An affirmative follow-up can accept a previous offer of information."""
+        messages = (context.conversation or {}).get("messages") or []
+        latest_index = next((index for index in range(len(messages) - 1, -1, -1)
+                             if isinstance(messages[index], dict)
+                             and messages[index].get("direction") == "inbound"
+                             and str(messages[index].get("body") or "").strip()), None)
+        if latest_index is None:
+            return False
+        for message in reversed(messages[:latest_index]):
+            if not isinstance(message, dict) or not str(message.get("body") or "").strip():
+                continue
+            if message.get("direction") != "outbound":
+                return False
+            previous = str(message["body"]).casefold()
+            words = set(re.findall(r"[^\W_]+", previous, flags=re.UNICODE))
+            return bool(words & self._KNOWLEDGE_TERMS and re.search(
+                r"\b(?:would you like|shall i|can i|may i|want me to)\b", previous))
+        return False
 
     def _build_knowledge_query(self, *, context: AIContext) -> str:
+        """Keep the customer's newest question inside the retrieval budget.
+
+        A long previous assistant reply must never consume the entire query.
+        Previous text helps resolve short follow-ups, but is conversation context,
+        not evidence of a company fact.
+        """
         messages = (context.conversation or {}).get("messages", [])
         if not isinstance(messages, list):
             return ""
-
-        recent_messages: list[str] = []
-        for message in messages[-4:]:
-            if not isinstance(message, dict):
+        for index in range(len(messages) - 1, -1, -1):
+            message = messages[index]
+            if not isinstance(message, dict) or message.get("direction") != "inbound":
                 continue
-            body = str(message.get("body") or "").strip()
-            if not body:
+            latest = str(message.get("body") or "").strip()
+            if not latest:
                 continue
-            speaker = "Lead" if message.get("direction") == "inbound" else "SHVYA"
-            recent_messages.append(f"{speaker}: {body}")
-
-        return "\n".join(recent_messages).strip()[:1800]
+            query = f"Lead: {latest}"[:900]
+            if len(latest.split()) <= 8 and len(query) < 650:
+                for previous in reversed(messages[:index]):
+                    if not isinstance(previous, dict):
+                        continue
+                    body = str(previous.get("body") or "").strip()
+                    if not body:
+                        continue
+                    speaker = "Lead" if previous.get("direction") == "inbound" else "SHVYA"
+                    query += f"\nPrevious {speaker} context: {body}"[:900 - len(query)]
+                    break
+            return query
+        return ""
 
     def _build_instructions(self, *, context: AIContext, profile=None) -> str:
         organization_context = context.organization or {}
@@ -720,6 +772,8 @@ Do not add explanations, markdown, or chain-of-thought.
             "message_count": len(chosen),
             "messages": chosen,
             "truncated": len(chosen) < len(messages),
+            "channel": conversation.get("channel", "") if isinstance(conversation, dict) else "",
+            "execution_mode": conversation.get("execution_mode", "live") if isinstance(conversation, dict) else "live",
         }
 
     def _build_input(

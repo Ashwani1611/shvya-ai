@@ -161,16 +161,14 @@ def _facts_for_memory(decision: IntentDecision | None) -> list[Mapping[str, Any]
 
 
 def refine_evidence_from_context(*, context, resolution):
-    """Adopt existing semantic/hybrid hits after validating their real owners.
-
-    The canonical context builder already performs metered semantic retrieval
-    with keyword fallback. Reuse those hits; never perform another provider call
-    here. Live appointment availability is deliberately excluded.
-    """
+    """Reuse metered semantic hits after validating real tenant ownership."""
     if resolution is None or resolution.question_type in {"appointment_availability", "internal_crm_status", "conversation_memory"}:
         return resolution
-    if (resolution.category not in {GroundingCategory.NO_VERIFIED_EVIDENCE, GroundingCategory.KNOWLEDGE_BASE}
-            and resolution.question_type != "product_or_service"):
+    if resolution.category not in {
+        GroundingCategory.NO_VERIFIED_EVIDENCE,
+        GroundingCategory.KNOWLEDGE_BASE,
+        GroundingCategory.STRUCTURED_ORG_DATA,
+    }:
         return resolution
     org_id = (context.organization or {}).get("id")
     lead_id = (context.lead or {}).get("id")
@@ -181,6 +179,7 @@ def refine_evidence_from_context(*, context, resolution):
     from apps.ai_engagement.models import Chunk
     from apps.ai_engagement.services.evidence_resolver import EvidenceItem
     candidates = []
+    seen_chunks = set()
     for item in (context.knowledge or [])[:20]:
         if not isinstance(item, dict):
             continue
@@ -188,8 +187,10 @@ def refine_evidence_from_context(*, context, resolution):
             chunk_id, score = int(item.get("chunk_id")), float(item.get("similarity") or 0)
         except (ValueError, TypeError):
             continue
-        if 0.38 <= score <= 1.0:
+        if 0.38 <= score <= 1.0 and chunk_id not in seen_chunks:
+            seen_chunks.add(chunk_id)
             candidates.append((chunk_id, score))
+    candidates.sort(key=lambda item: -item[1])
     if not candidates:
         return resolution
     chunks = {item.pk: item for item in Chunk.objects.select_related("document").filter(
@@ -199,7 +200,7 @@ def refine_evidence_from_context(*, context, resolution):
     evidence = []
     for chunk_id, score in candidates:
         chunk = chunks.get(chunk_id)
-        if chunk is not None:
+        if chunk is not None and str(chunk.content or "").strip():
             evidence.append(EvidenceItem(source_id=f"document:{chunk.document_id}:chunk:{chunk.pk}",
                 source_type="knowledge_chunk", content=chunk.content[:4000], score=score,
                 metadata={"document_id": chunk.document_id, "chunk_id": chunk.pk,
@@ -208,9 +209,43 @@ def refine_evidence_from_context(*, context, resolution):
             break
     if not evidence:
         return resolution
-    refined = replace(resolution, category=GroundingCategory.KNOWLEDGE_BASE,
-                      information_class=InformationClass.DYNAMIC_RETRIEVED,
-                      verified=True, evidence=tuple([*resolution.evidence, *evidence][:8]), controlled_fallback="")
+    combined, source_ids, contents = [], set(), set()
+    remaining = 12000
+    configured = []
+    retrieved = {}
+    for item in [*resolution.evidence[:8], *evidence]:
+        if item.source_type == "knowledge_chunk":
+            retrieved[item.source_id] = item
+        else:
+            configured.append(item)
+    ranked = sorted(retrieved.values(), key=lambda item: -item.score)
+    for index in range(max(len(configured), len(ranked))):
+        for items in (configured, ranked):
+            if index >= len(items) or remaining <= 0 or len(combined) >= 8:
+                continue
+            item = items[index]
+            content = str(item.content or "").strip()
+            key = " ".join(content.casefold().split())
+            if not content or item.source_id in source_ids or key in contents:
+                continue
+            complete_candidate = (item.metadata or {}).get("requires_relevance_verification")
+            if complete_candidate and len(content) > remaining:
+                # A fallback FAQ is a complete Q/A pair; its trailing text can
+                # contain the exception that makes an otherwise plausible reply
+                # wrong. Omit a pair that does not fit rather than clipping it.
+                continue
+            source_ids.add(item.source_id)
+            contents.add(key)
+            bounded = content if complete_candidate else content[:min(4000, remaining)]
+            combined.append(replace(item, content=bounded))
+            remaining -= len(bounded)
+    structured = resolution.category == GroundingCategory.STRUCTURED_ORG_DATA
+    refined = replace(
+        resolution,
+        category=(resolution.category if structured else GroundingCategory.KNOWLEDGE_BASE),
+        information_class=(resolution.information_class if structured else InformationClass.DYNAMIC_RETRIEVED),
+        verified=True, evidence=tuple(combined), controlled_fallback="",
+    )
     _ACTIVE_EVIDENCE.set({**active, "resolution": refined})
     _record("grounding", refined.trace_dict())
     return refined
@@ -903,6 +938,33 @@ def _working_hours_question(question: str) -> bool:
     return bool(_WORKING_HOURS_RE.search(str(question or "")))
 
 
+def _requires_live_availability(question: str, intents: set[Intent]) -> bool:
+    """Separate offered services from live capacity or appointment questions."""
+    text = str(question or "")
+    if re.search(
+        r"\b(?:appointments?|slots?|reservations?|bookings?|vacanc\w*|"
+        r"seats?\s+(?:left|remaining|available)|rooms?\s+available|"
+        r"(?:in|out\s+of)\s+stock|stock\s+(?:left|available))\b", text, re.I,
+    ):
+        return True
+    if _working_hours_question(text):
+        return False
+    if intents & {Intent.BOOKING_INTENT, Intent.CALL_REQUEST}:
+        return True
+    if re.search(
+        r"\b(?:today|tomorrow|tonight|right\s+now|currently|"
+        r"(?:this|next)\s+(?:week|weekend|month|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|"
+        r"\d{1,2}(?::\d{2})?\s*(?:am|pm)|\d{4}-\d{2}-\d{2})\b",
+        text, re.I,
+    ):
+        return True
+    return not bool(re.search(
+        r"\b(?:courses?|training|programmes?|programs?|products?|services?|"
+        r"features?|integrations?|languages?|online|offline|remote|support)\b",
+        text, re.I,
+    ))
+
+
 def _install_live_availability_guard() -> None:
     from apps.ai_engagement.services import evidence_resolver as evidence_module
     from apps.ai_engagement.services.intent_types import Intent, IntentDecision
@@ -931,7 +993,7 @@ def _install_live_availability_guard() -> None:
                 intent_decision.primary_intent,
                 *intent_decision.secondary_intents,
             }
-        if Intent.AVAILABILITY_QUESTION in intents and not _working_hours_question(question):
+        if Intent.AVAILABILITY_QUESTION in intents and _requires_live_availability(question, intents):
             # Specific appointment/slot availability is dynamic. Static working
             # hours, organization settings and KB text cannot confirm a live slot.
             return evidence_module.EvidenceResolution(
@@ -1054,5 +1116,66 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None):
     try:
         yield
     finally:
+        _ACTIVE_MEMORY.reset(memory_token)
+        _ACTIVE_EVIDENCE.reset(evidence_token)
+
+
+@contextmanager
+def source_evidence_context(*, organization, lead, source, provider=None):
+    """Bind verified knowledge to a real inbound source without CRM mutations."""
+    from apps.ai_engagement.services import conversation_policy_runtime as policy_runtime
+    from apps.ai_engagement.services import intent_runtime
+    from apps.ai_engagement.services.intent_engine import IntentEngine
+    from apps.ai_engagement.services.qualification_state import state_for_lead
+    from apps.ai_engagement.services.tenant_guard import TenantGuard, TenantScopeError
+    from apps.ai_engagement.services.transactional_turn_runtime import _requirements_for_turn
+
+    TenantGuard(organization).validate_message(source, lead=lead)
+    if str(getattr(source, "direction", "")) != "inbound":
+        raise TenantScopeError(object_type="inbound_message")
+    source_id = str(source.pk)
+    message = str(source.body or "").strip()
+    requirements = _requirements_for_turn(organization=organization, lead=lead)
+    intent = IntentEngine(provider=provider).classify(
+        organization=organization, lead=lead, message=message,
+        source_message_id=source_id, requirements=requirements,
+        qualification_state=state_for_lead(lead, requirements=requirements),
+    )
+    try:
+        memory = StructuredLeadMemoryService().load(organization=organization, lead=lead)
+    except (StructuredMemoryScopeError, TenantScopeError):
+        raise
+    except Exception as exc:
+        _mark_runtime_error(step="structured_memory_load", exc=exc, code="STRUCTURED_MEMORY_LOAD_FAILED")
+        memory = {"version": 1, "organization_id": str(organization.pk),
+                  "lead_id": str(lead.pk), "facts": {}}
+    try:
+        resolution = EvidenceResolver().resolve(
+            organization=organization, lead=lead, question=message,
+            intent_decision=intent, structured_memory=memory,
+        )
+    except TenantScopeError:
+        raise
+    except Exception as exc:
+        _mark_runtime_error(step="evidence_resolution", exc=exc, code="EVIDENCE_RESOLUTION_FAILED")
+        resolution = _fail_closed_resolution(intent)
+    scope = {"organization_id": str(organization.pk), "lead_id": str(lead.pk)}
+    evidence_token = _ACTIVE_EVIDENCE.set({**scope, "resolution": resolution})
+    memory_token = _ACTIVE_MEMORY.set({
+        **scope, "snapshot": memory, "settings": dict(organization.settings or {}),
+        "intent_decision": intent,
+    })
+    intent_token = intent_runtime._CURRENT.set({
+        **scope, "source_message_id": source_id, "decision": intent,
+    })
+    turn_token = policy_runtime._TURN.set(None)
+    policy_token = policy_runtime._POLICY.set(None)
+    try:
+        _record("grounding", resolution.trace_dict())
+        yield
+    finally:
+        policy_runtime._POLICY.reset(policy_token)
+        policy_runtime._TURN.reset(turn_token)
+        intent_runtime._CURRENT.reset(intent_token)
         _ACTIVE_MEMORY.reset(memory_token)
         _ACTIVE_EVIDENCE.reset(evidence_token)

@@ -10,6 +10,29 @@ from apps.ai_engagement.services.engagement import EngagementDecision
 
 
 class GroundingReplyRepairTests(SimpleTestCase):
+    def test_deterministic_label_does_not_bypass_configured_language_validation(self):
+        state = self.state()
+        state["requirements"] = [{"id": "budget", "question": "What is your budget?"}]
+        state["qualification_state"] = {"engagement_mode": "qualification", "requirement_states": {}}
+        state["decision"] = EngagementDecision(
+            should_engage=True, message="What is your budget?", file_document_id=None,
+            crm_actions=[], reason="QUALIFICATION_NEXT", reason_code="QUALIFICATION_NEXT",
+            next_requirement_id="budget", model="deterministic",
+        )
+        corrected = "आपका बजट कितना है?"
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [
+                SimpleNamespace(text=json.dumps(item)) for item in (
+                    {"approved": False, "reason": "language_mismatch"},
+                    {"message": corrected}, {"approved": True, "reason": "approved"},
+                )
+            ]
+            result = check_grounding(state)
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+        self.assertTrue(result["grounding_approved"])
+        self.assertEqual(result["decision"].message, corrected)
+        self.assertEqual(result["decision"].next_requirement_id, "budget")
+
     def state(self):
         return {
             "organization": SimpleNamespace(id="org-a", settings={}),

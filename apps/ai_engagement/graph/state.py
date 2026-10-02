@@ -27,6 +27,7 @@ class EngagementGraphState(TypedDict, total=False):
     requirements: list[dict[str, Any]]
     latest_text: str
     latest_message_id: str
+    answer_extracted: bool
 
     route: str
     retrieval_query: str
@@ -39,4 +40,3 @@ class EngagementGraphState(TypedDict, total=False):
     validation_errors: list[str]
 
     grounding_approved: bool
-
