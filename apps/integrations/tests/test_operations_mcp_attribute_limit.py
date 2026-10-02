@@ -1,6 +1,13 @@
 """Regression coverage for Operations MCP custom-attribute capacity."""
 
-from apps.integrations.tests.operations_mcp_test_base import *
+from apps.crm.models import AttributeDefinition
+from apps.integrations.models import OperationsPolicy
+from apps.integrations.operations_policy import (
+    CAP_ATTRIBUTE_CONFIG_WRITE,
+    CAP_ORGANIZATION_READ,
+    ROLE_ORGANIZATION_ADMIN,
+)
+from apps.integrations.tests.operations_mcp_test_base import OperationsMCPBase
 
 
 class TestOperationsMCPAttributeLimit(OperationsMCPBase):
