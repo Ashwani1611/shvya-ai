@@ -9,7 +9,6 @@ from functools import wraps
 from typing import Any
 from uuid import UUID
 
-from django.db import transaction
 from django.utils import timezone
 
 
@@ -265,34 +264,22 @@ class StateReconciler:
                 organization_id=lead.organization_id,
                 direction="inbound",
             )
-            .only("raw_payload")
+            .only("raw_payload", "lead_id", "organization_id", "direction")
             .first()
         )
         payload = source.raw_payload if source and isinstance(source.raw_payload, dict) else {}
         processing = payload.get("shvya_ai_processing")
         processing = processing if isinstance(processing, dict) else {}
 
-        file_id = (
-            processing.get("resolved_file_document_id")
-            or runtime.get(_FILE_ID_KEY)
+        from apps.ai_engagement.services.file_delivery_receipts import (
+            SOURCE_KEY, source_file_state,
         )
-        file_status = (
-            processing.get("file_share_status")
-            or runtime.get(_FILE_STATUS_KEY)
+        file_state = source_file_state(
+            lead=lead, source=source, processing=processing, runtime=runtime,
         )
-        document_name = ""
-        if file_id is not None:
-            from apps.ai_engagement.models import Document
-
-            document = (
-                Document.objects.filter(
-                    id=file_id,
-                    organization_id=lead.organization_id,
-                )
-                .only("name")
-                .first()
-            )
-            document_name = str(getattr(document, "name", "") or "")
+        turn_runtime = (
+            runtime if str(runtime.get(SOURCE_KEY) or "") == str(source_message_id) else {}
+        )
 
         visible_attributes = {
             str(key): value
@@ -315,19 +302,17 @@ class StateReconciler:
                 "conversation_mode": runtime_contract.get("conversation_mode"),
             },
             "workflow": {
-                "action_types": processing.get("pre_resolved_actions")
-                or runtime.get("pre_resolved_actions")
-                or [],
+                "action_types": (
+                    processing.get("pre_resolved_actions")
+                    if "pre_resolved_actions" in processing
+                    else turn_runtime.get("pre_resolved_actions")
+                ) or [],
                 "pending_reminders": reminders,
                 "booking_status": runtime_contract.get("booking_status"),
                 "booking_confirmation": runtime_contract.get("booking_confirmation"),
                 "handoff_status": runtime.get("handoff_status"),
             },
-            "file_share": {
-                "document_id": int(file_id) if str(file_id or "").isdigit() else None,
-                "document_name": document_name,
-                "status": str(file_status or "none"),
-            },
+            "file_share": file_state,
             "execution_results": deepcopy(execution_results or []),
             "structured_decision": deepcopy(structured_decision or {}),
         }
@@ -378,23 +363,27 @@ class ResponseActionValidator:
 
         file_state = state.get("file_share")
         file_state = file_state if isinstance(file_state, dict) else {}
-        resolved_file_id = file_state.get("document_id")
+        from apps.ai_engagement.services.file_delivery_receipts import positive_id
+
+        resolved_file_id = positive_id(file_state.get("document_id"))
         file_status = _normalized(file_state.get("status"))
-        selected_file_id = getattr(decision, "file_document_id", None)
-        try:
-            selected_file_id = int(selected_file_id) if selected_file_id is not None else None
-        except (TypeError, ValueError):
-            selected_file_id = None
+        selected_file_id = positive_id(getattr(decision, "file_document_id", None))
 
         # Backend-resolved selection is authoritative after reconciliation.
         if resolved_file_id is not None and selected_file_id != int(resolved_file_id):
             selected_file_id = int(resolved_file_id)
 
+        # A failed/unavailable/uncertain attempt is not a fresh authorization to
+        # send again. Existing transport recovery owns any permitted retry.
+        if file_status in {"failed", "unavailable", "delivery_unknown"}:
+            selected_file_id = None
         confirmed_file = file_status in {"sent", "delivered", "read"}
         if _FILE_SUCCESS_RE.search(message) and not confirmed_file:
             if selected_file_id is not None:
                 name = str(file_state.get("document_name") or "the file").strip()
                 replacement = f"I'm sending {name} with this message."
+            elif file_status == "delivery_unknown":
+                replacement = "I couldn't confirm whether the file was sent."
             else:
                 replacement = "I wasn't able to send a file with this message."
             message = self._replace_sentence(message, _FILE_SUCCESS_RE, replacement)
@@ -510,7 +499,20 @@ def _reconciled_for_context(*, lead, context=None) -> dict[str, Any] | None:
         processing = _processing_for_source(lead=lead, source_message_id=source_id)
     processing = processing if isinstance(processing, dict) else {}
     state = processing.get("reconciled_state")
-    return deepcopy(state) if isinstance(state, dict) else None
+    if not isinstance(state, dict) or str(state.get("source_message_id") or "") != source_id:
+        return None
+    state = deepcopy(state)
+    from apps.ai_engagement.services.file_delivery_receipts import source_file_state
+    from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+    source = lead.whatsapp_messages.filter(
+        pk=source_id, organization_id=lead.organization_id, direction="inbound",
+    ).only("raw_payload", "lead_id", "organization_id", "direction").first()
+    attributes = lead.attributes if isinstance(lead.attributes, dict) else {}
+    state["file_share"] = source_file_state(
+        lead=lead, source=source, processing=processing, runtime=attributes.get(STATE_KEY),
+    )
+    return state
 
 
 def _structured_from_decision(decision, *, source_message_id="") -> dict[str, Any]:
@@ -538,90 +540,16 @@ def _structured_from_decision(decision, *, source_message_id="") -> dict[str, An
 
 
 def _record_ai_file_delivery(*, message_id, status: str, reason: str = "") -> None:
-    """Persist provider-confirmed file execution for future turns and audits."""
-    from apps.ai_engagement.services.runtime_state import STATE_KEY
-    from apps.channels.models import WhatsAppMessage
-    from apps.crm.models import Lead
+    """Project persisted transport outcomes without retriggering successful sends."""
+    from django.db import DatabaseError
+    from apps.ai_engagement.services.file_delivery_receipts import record_file_delivery
 
-    outbound = (
-        WhatsAppMessage.objects.select_related("lead", "organization")
-        .filter(pk=message_id, direction=WhatsAppMessage.Direction.OUTBOUND)
-        .first()
-    )
-    if outbound is None or outbound.lead_id is None:
-        return
-    raw_payload = outbound.raw_payload if isinstance(outbound.raw_payload, dict) else {}
-    ai_meta = raw_payload.get("shvya_ai")
-    ai_meta = ai_meta if isinstance(ai_meta, dict) else {}
-    source_id = str(ai_meta.get("source_inbound_message_id") or "").strip()
-    media = outbound.media_payload if isinstance(outbound.media_payload, dict) else {}
-    if media.get("source") != "document" or not source_id:
-        return
-    document_id = media.get("document_id")
     try:
-        document_id = int(document_id)
-    except (TypeError, ValueError):
-        return
-
-    normalized_status = _normalized(status)
-    if normalized_status not in {"sent", "delivered", "read", "failed"}:
-        return
-
-    with transaction.atomic():
-        lead = Lead.objects.select_for_update().get(
-            pk=outbound.lead_id,
-            organization_id=outbound.organization_id,
-        )
-        inbound = (
-            WhatsAppMessage.objects.select_for_update()
-            .filter(
-                pk=source_id,
-                lead=lead,
-                organization_id=outbound.organization_id,
-                direction=WhatsAppMessage.Direction.INBOUND,
-            )
-            .first()
-        )
-        if inbound is None:
-            return
-
-        now = timezone.now().isoformat()
-        payload = deepcopy(inbound.raw_payload) if isinstance(inbound.raw_payload, dict) else {}
-        processing = payload.get("shvya_ai_processing")
-        processing = deepcopy(processing) if isinstance(processing, dict) else {}
-        processing["resolved_file_document_id"] = document_id
-        processing["file_share_status"] = normalized_status
-        processing["file_share_message_id"] = str(outbound.id)
-        processing["file_share_updated_at"] = now
-        if reason:
-            processing["file_share_reason"] = str(reason)[:500]
-        payload["shvya_ai_processing"] = processing
-        inbound.raw_payload = payload
-        inbound.save(update_fields=["raw_payload", "updated_at"])
-
-        attributes = deepcopy(lead.attributes) if isinstance(lead.attributes, dict) else {}
-        runtime = attributes.get(STATE_KEY)
-        runtime = deepcopy(runtime) if isinstance(runtime, dict) else {}
-        runtime[_FILE_ID_KEY] = document_id
-        runtime[_FILE_STATUS_KEY] = normalized_status
-        if normalized_status in {"sent", "delivered", "read"}:
-            shared = [
-                deepcopy(item)
-                for item in runtime.get(_SHARED_FILES_KEY) or []
-                if isinstance(item, dict) and int(item.get("document_id") or -1) != document_id
-            ]
-            shared.append(
-                {
-                    "document_id": document_id,
-                    "source_message_id": source_id,
-                    "message_id": str(outbound.id),
-                    "status": normalized_status,
-                    "sent_at": now,
-                }
-            )
-            runtime[_SHARED_FILES_KEY] = shared[-30:]
-        attributes[STATE_KEY] = runtime
-        Lead.objects.filter(pk=lead.pk).update(attributes=attributes)
+        record_file_delivery(message_id=message_id, status=_normalized(status))
+    except DatabaseError:
+        # Transport already ran. A projection outage must not make Celery repeat
+        # the external operation. Source reads reconcile from the message later.
+        logger.warning("ai_file_receipt_projection_unavailable")
 
 
 def install_canonical_ai_architecture() -> None:
@@ -864,7 +792,12 @@ def install_canonical_ai_architecture() -> None:
             return raw
         from apps.crm.models import Lead
 
-        lead = Lead.objects.filter(pk=lead_id).first()
+        organization_data = getattr(context, "organization", None)
+        organization_data = organization_data if isinstance(organization_data, dict) else {}
+        organization_id = organization_data.get("id")
+        if not _valid_uuid(organization_id):
+            return raw
+        lead = Lead.objects.filter(pk=lead_id, organization_id=organization_id).first()
         if lead is None:
             return raw
         reconciled = _reconciled_for_context(lead=lead, context=context)
