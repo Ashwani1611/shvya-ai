@@ -45,6 +45,8 @@ The same production MCP endpoint serves the backend-owned SHVYA setup library th
 
 For broad work, load `shvya-operator` or `shvya-account-setup`; for a narrow task, load the smallest domain skill such as `shvya-ai-debugger`, `shvya-qualification`, `shvya-workflow-builder`, `shvya-channel-routing` or `shvya-acceptance-testing`. Skills never grant scope or capabilities; the live `tools/list`, actor, tenant context, OAuth grant and SHVYA policy remain authoritative.
 
+For material live work, follow the selected skill's shared quality-contract links and `references/domain-checks.md` before treating an observation as a defect. Packaged `evals/evals.json` files describe behavioral review cases but are never presented as production test results.
+
 ## Starter prompts
 
 - Load the relevant SHVYA domain skill, check my Operations context and explain what I can manage.
