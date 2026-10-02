@@ -15,10 +15,11 @@
   <link rel="stylesheet" href="{% static 'marketing/theme.css' %}">
   {# The media query also supplies the correct device appearance without JavaScript. #}
   <link rel="stylesheet" id="marketing-day-theme" href="{% static 'marketing/day.css' %}" media="(prefers-color-scheme: light)">
+  <link rel="stylesheet" href="{% static 'marketing/clarity.css' %}">
   {# Deliberately not deferred: resolve saved appearance before rendering page content. #}
   <script src="{% static 'marketing/theme.js' %}"></script>
 </head>
-<body class="marketing-site">
+<body class="marketing-site {% block body_class %}{% endblock %}">
   {% block content %}{% endblock %}
   <script src="{% static 'marketing/dark/interactions.js' %}" defer></script>
   <script src="{% static 'marketing/opportunity.js' %}" defer></script>

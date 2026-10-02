@@ -1,0 +1,19 @@
+/* Landing-page clarity, applied after both palettes. Theme switching remains
+ * owned by theme.js and day.css, including the no-JavaScript media query. */
+.marketing-home .hero-glow { display: none; }
+.marketing-home :is(.hero, .final-cta) { background: var(--background); }
+.marketing-home :is(.demo-card, .calc-result) { background-image: none; }
+.marketing-home :is(header, .nav-dropdown>div, .account-menu>div,
+    .mobile-menu>div, .announcement, .button, .demo-card, .chat-shell,
+    .bubble, .flow-panel, .integration-grid a, .calc-panel, .calc-result) {
+    box-shadow: none;
+    text-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+.marketing-home>header { background: var(--background); }
+/* Native dialog dimming remains, without the blurred haze. */
+.marketing-home .intro-dialog::backdrop {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
