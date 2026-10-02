@@ -152,12 +152,16 @@ class PlaygroundFileAPIView(PlaygroundAPIView):
     def get(self, request, document_id):
         from pathlib import Path
         from django.http import FileResponse, Http404
-        from apps.ai_engagement.models import Document
+        from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
         organization = self._organization(request)
         if organization is None:
             raise Http404
-        document = Document.objects.filter(pk=document_id, organization=organization, is_active=True,
-                     processing_status=Document.ProcessingStatus.COMPLETED).exclude(file="").exclude(share_instruction="").first()
+        try:
+            document = FileSharingService().get_guided_document(
+                organization=organization, document_id=document_id,
+            )
+        except FileSharingError:
+            raise Http404 from None
         if document is None:
             raise Http404
         try:

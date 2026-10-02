@@ -403,6 +403,7 @@ class KnowledgeIngestionService:
                 pk=locked_document.pk,
             ).update(
                 is_active=False,
+                file_sharing_ready=False,
             )
 
             locked_document.is_active = True

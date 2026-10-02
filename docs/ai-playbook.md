@@ -168,3 +168,29 @@ bounded knowledge retrieval in the existing engine. Actual backend fields and
 response schemas replace sample placeholders. The generic majority-answered
 qualification shortcut, invented example facts, obsolete variable names and
 requests for hidden reasoning are excluded.
+
+### Guided attachment readiness
+
+AI-guided uploads validate the original bytes before storing them and persist
+`Document.file_sharing_ready` separately from knowledge processing. Pending or
+failed extraction/embeddings must not prevent delivery of a validated, explicitly
+guided attachment. This does not publish unindexed content as factual knowledge
+or bypass AI credit accounting. Published knowledge files retain their existing
+eligibility. Tenant ownership, current guidance, newer shareable versions,
+sent-file suppression and channel send gates are still checked.
+
+The file's **When and why to send** condition is evaluated every turn against
+conversation, source, stage and attributes. It does not require an explicit file
+request or duplication in the Playbook. Unmet restrictions still prohibit sending.
+One decision selects at most one file; the existing sent-file state avoids
+unsolicited repeats. Selection and delivery use a shared eligibility policy in
+Cloud API/Coexistence, Hosted, Instagram and Sandbox. Instagram PDFs use native
+attachments; other supported document formats use protected download links.
+
+Migration `0019_document_file_sharing_ready` adds the readiness flag. Production
+deploy runs `prepare_guided_files --limit 100` to validate existing pending/failed
+guided uploads without retrying extraction/embeddings. The command leaves missing
+or invalid bytes, superseded uploads and retired completed versions unavailable,
+prints aggregate counts only, and can be rerun in bounded batches. Saving a
+file's sending instruction also revalidates its stored bytes. The guided-file UI
+shows attachment readiness separately from knowledge processing status.

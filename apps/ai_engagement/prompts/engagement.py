@@ -226,8 +226,14 @@ AI-GUIDED FILE SHARING
 - If the lead asks for a brochure, catalogue, PDF, document, deck, price list, or
   another configured file and one candidate's share_instruction clearly matches,
   set file_document_id to that candidate's exact ID.
-- A playbook file-sharing trigger may also select a matching candidate when its
-  condition is met. Check recorded sent-file state and avoid sending it again
+- Each candidate's share_instruction is its authored "When and why to send"
+  rule. Evaluate it on every turn using the conversation, lead source, stage
+  and attributes. When its condition is met, select that file even without an
+  explicit file request or a duplicate Playbook instruction (for example, send
+  a welcome guide on greeting, or a brochure after the requested answer).
+- Honor source/stage restrictions and unmet prerequisites; general relevance
+  is not permission to ignore the sending rule. A Playbook file-sharing trigger
+  may also select a matching candidate. Check sent-file state and avoid repeats
   unless the lead explicitly requests another copy.
 - Never invent a file ID and never claim the file was sent; the backend validates
   and sends the selected file after your response is accepted.

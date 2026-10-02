@@ -404,29 +404,19 @@ class ActionPlanner:
         source_message_id,
         state_snapshot,
     ) -> ActionProposal:
-        from apps.ai_engagement.models import Document
+        from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
 
         try:
             document_id = int(document_id)
         except (TypeError, ValueError):
             document_id = -1
-
-        document = (
-            Document.objects.filter(
-                id=document_id,
-                organization=organization,
-            ).first()
-            if document_id > 0
-            else None
-        )
-        valid = bool(
-            document is not None
-            and guard.validate_file(document)
-            and document.is_active
-            and document.processing_status == Document.ProcessingStatus.COMPLETED
-            and bool(document.file)
-            and bool(str(document.share_instruction or "").strip())
-        )
+        try:
+            document = FileSharingService().get_guided_document(
+                organization=organization, document_id=document_id,
+            )
+        except FileSharingError:
+            document = None
+        valid = bool(document is not None and guard.validate_file(document))
         return self._proposal(
             organization=organization,
             lead=lead,
@@ -435,9 +425,9 @@ class ActionPlanner:
             parameters={"document_id": document_id},
             evidence=evidence,
             reason=(
-                "Organization-owned processed shareable document validated."
+                "Organization-owned shareable document validated."
                 if valid
-                else "Document is unavailable, foreign, inactive, unprocessed, or not shareable."
+                else "Document is unavailable, foreign, superseded, or not shareable."
             ),
             confidence="high",
             source_intent=source_intent,

@@ -169,6 +169,7 @@ class KnowledgeSourceService:
         organization,
         uploaded_file,
         name: str = "",
+        share_instruction: str = "",
     ) -> tuple[KnowledgeSource, Document]:
         """
         Create an organization-owned FILE KnowledgeSource and
@@ -273,6 +274,8 @@ class KnowledgeSourceService:
                     source_key=filename,
                     version=next_version,
                     file=uploaded_file,
+                    share_instruction=share_instruction.strip(),
+                    file_sharing_ready=bool(share_instruction.strip()),
                     source_url="",
                     processing_status=(
                         Document.ProcessingStatus.PENDING

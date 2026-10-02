@@ -136,9 +136,8 @@ def ai_setup_view(request):
                     organization=organization,
                     uploaded_file=uploaded_file,
                     name=request.POST.get("name", "").strip(),
+                    share_instruction=instruction,
                 )
-                document.share_instruction = instruction
-                document.save(update_fields=["share_instruction", "updated_at"])
                 ingest_and_index_document.delay(
                     document_id=document.id,
                     organization_id=organization.id,
@@ -146,7 +145,7 @@ def ai_setup_view(request):
             except KnowledgeSourceServiceError as exc:
                 messages.error(request, str(exc))
             else:
-                messages.success(request, "AI-guided file added and processing started.")
+                messages.success(request, "File is ready for AI-guided sharing. Knowledge indexing has started.")
             return redirect("crm-knowledge-base-ai-setup")
 
         if action == "update_guided_file":
@@ -160,7 +159,13 @@ def ai_setup_view(request):
             else:
                 document.share_instruction = instruction
                 document.save(update_fields=["share_instruction", "updated_at"])
-                messages.success(request, "File instruction updated.")
+                from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
+                try:
+                    FileSharingService.prepare_uploaded_file(document=document)
+                except FileSharingError as exc:
+                    messages.error(request, str(exc))
+                else:
+                    messages.success(request, "File instruction updated. File is ready for sharing.")
             return redirect("crm-knowledge-base-ai-setup")
 
         if action == "delete_guided_file":

@@ -962,7 +962,6 @@ def _execute_ai_engagement_response_impl(
             }
 
             if decision.file_document_id is not None:
-                from apps.ai_engagement.models import Document
                 try:
                     document_id = int(
                         decision.file_document_id
@@ -979,11 +978,8 @@ def _execute_ai_engagement_response_impl(
                         "file_document_id."
                     )
 
-                eligible_files = Document.objects.filter(
-                    organization=organization,
-                    is_active=True,
-                    processing_status=Document.ProcessingStatus.COMPLETED,
-                ).exclude(file="")
+                from apps.ai_engagement.services.file_sharing import FileSharingService
+                eligible_files = FileSharingService.eligible_documents(organization=organization)
                 if eligible_files.exclude(share_instruction="").exists():
                     eligible_files = eligible_files.exclude(share_instruction="")
                 if not eligible_files.filter(

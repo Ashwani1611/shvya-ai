@@ -124,12 +124,13 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if message.message_type != WhatsAppMessage.MessageType.TEXT:
         media_payload = message.media_payload or {}
         if media_payload.get("source") == "document":
-            from apps.ai_engagement.models import Document
+            from apps.ai_engagement.services.file_sharing import FileSharingService
             document_id = media_payload.get("document_id")
             if isinstance(document_id, bool) or not isinstance(document_id, int) or document_id <= 0:
                 raise WhatsAppSendError("Invalid guided document ID.")
-            document = Document.objects.filter(pk=document_id, organization_id=message.organization_id,
-                is_active=True, processing_status=Document.ProcessingStatus.COMPLETED).exclude(file="").first()
+            document = FileSharingService.eligible_documents(
+                organization=message.organization,
+            ).filter(pk=document_id).first()
             if document is None:
                 raise WhatsAppSendError("The selected organization document is no longer available.")
             if raw_payload.get("shvya_ai") and not str(document.share_instruction or "").strip():

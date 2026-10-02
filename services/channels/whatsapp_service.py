@@ -945,27 +945,12 @@ def _send_outbound_media_message(
 
     if source == "document":
 
-        from apps.ai_engagement.models import Document
+        from apps.ai_engagement.services.file_sharing import FileSharingService
 
-        document_id = payload.get(
-            "document_id"
-        )
-
-        document = (
-            Document.objects
-            .filter(
-                id=document_id,
-                organization=message.organization,
-                is_active=True,
-                processing_status=(
-                    Document.ProcessingStatus.COMPLETED
-                ),
-            )
-            .exclude(
-                file="",
-            )
-            .first()
-        )
+        document_id = payload.get("document_id")
+        document = FileSharingService.eligible_documents(
+            organization=message.organization,
+        ).filter(id=document_id).first()
 
         if not document:
             raise ValueError(
