@@ -442,7 +442,7 @@
       updateUrl();
     } catch (error) {
       if (seq !== state.seq || state.stopped) return;
-      if (selected && !state.threadLoaded) {
+      if (selected && !state.threadLoaded && !state.messages.size) {
         thread.innerHTML = '<div class="thread-error" role="status">Messages could not load. <button type="button" data-chat-retry>Retry</button></div>';
       }
     } finally {
