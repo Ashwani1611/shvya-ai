@@ -13,6 +13,10 @@ from apps.ai_engagement.graph.evidence import check_grounding, select_chunks
 from apps.ai_engagement.graph.policy_actions import build_controlled_actions
 from apps.ai_engagement.graph.runtime_policy import get_runtime_policy
 from apps.ai_engagement.graph.state import EngagementGraphState
+from apps.ai_engagement.services.evidence_recovery import (
+    assess_evidence, enabled as evidence_recovery_enabled, recovery_route,
+    retrieve_evidence, retry_retrieval,
+)
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
     requires_response_composition,
@@ -266,6 +270,8 @@ def _route_after_classification(state: EngagementGraphState) -> Literal["direct"
 
 
 def _retrieve_knowledge(state: EngagementGraphState) -> dict:
+    if evidence_recovery_enabled(state):
+        return retrieve_evidence(state)
     service = state["service"]
     organization = state["organization"]
     context = service.context_builder.build(
@@ -449,6 +455,9 @@ def build_engagement_graph():
     builder.add_node("deterministic_extract", _deterministic_extract)
     builder.add_node("route_turn", _route_turn)
     builder.add_node("retrieve_knowledge", _retrieve_knowledge)
+    builder.add_node("assess_evidence", assess_evidence)
+    builder.add_node("retry_retrieval", retry_retrieval)
+    builder.add_node("reassess_evidence", assess_evidence)
     builder.add_node("generate", _generate)
     builder.add_node("direct", _use_direct_decision)
     builder.add_node("validate", _validate_decision)
@@ -460,9 +469,15 @@ def build_engagement_graph():
     builder.add_conditional_edges(
         "route_turn",
         _route_after_classification,
-        {"direct": "direct", "rag": "retrieve_knowledge", "generate": "generate"},
+        {"direct": "direct", "rag": "retrieve_knowledge", "generate": "assess_evidence"},
     )
-    builder.add_edge("retrieve_knowledge", "generate")
+    builder.add_edge("retrieve_knowledge", "assess_evidence")
+    builder.add_conditional_edges(
+        "assess_evidence", recovery_route,
+        {"generate": "generate", "retry_retrieval": "retry_retrieval"},
+    )
+    builder.add_edge("retry_retrieval", "reassess_evidence")
+    builder.add_edge("reassess_evidence", "generate")
     builder.add_edge("generate", "validate")
     builder.add_edge("direct", "validate")
     builder.add_edge("validate", "grounding")
