@@ -15,6 +15,7 @@ class ChannelsConfig(AppConfig):
         from . import hosted_lifecycle  # noqa: F401
         from . import instagram_models  # noqa: F401
         from . import template_models  # noqa: F401
+        from . import template_cta_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
         from . import operational_signals  # noqa: F401
         from . import campaign_models  # noqa: F401
@@ -26,6 +27,15 @@ class ChannelsConfig(AppConfig):
         from . import instagram_tasks  # noqa: F401
         from . import welcome_tasks  # noqa: F401
         from . import campaign_tasks  # noqa: F401
+
+        # Install CTA payload tracking before the template transport imports its
+        # rendering helpers. New Website, Call and Copy Code template buttons
+        # are represented as signed SHVYA action URLs; Quick Reply stays native.
+        from services.channels.template_cta_tracking import (
+            install_template_cta_tracking,
+        )
+
+        install_template_cta_tracking()
 
         # Install the actual Meta template transport first. The failure layer
         # then wraps every transport, including templates, so exact Meta error
