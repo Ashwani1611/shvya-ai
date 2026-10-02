@@ -72,9 +72,10 @@ def _replace_placeholder(destination, placeholder, value):
     pattern = re.compile(r"{{\s*" + re.escape(str(placeholder)) + r"\s*}}")
     if not pattern.search(destination):
         raise Http404("This tracked button is invalid.")
-    # The dynamic value came from the template send. Re-encode control and
-    # whitespace characters while preserving URL-safe query/path punctuation.
-    encoded = quote(str(value), safe="/:@!$&'()*+,;=?-._~%")
+    # Treat the message-time value as one URL component. Encoding reserved
+    # characters prevents a CRM value from injecting a second query parameter,
+    # changing the host, or altering the signed destination's structure.
+    encoded = quote(str(value), safe="-._~")
     return pattern.sub(encoded, destination, count=1)
 
 
@@ -93,7 +94,7 @@ def _resolved_action(data, dynamic_value):
         except ValueError as exc:
             raise Http404("This website action is invalid.") from exc
         if (
-            parsed.scheme not in {"http", "https"}
+            parsed.scheme != "https"
             or not parsed.netloc
             or parsed.username
             or parsed.password
@@ -116,11 +117,16 @@ def _resolved_action(data, dynamic_value):
     raise Http404("This action is not supported.")
 
 
-def _form_token(*, cta_token, visitor_hash):
+def _digest(value):
+    return hashlib.sha256(str(value or "").encode("utf-8")).hexdigest()
+
+
+def _form_token(*, cta_token, visitor_hash, destination):
     return signing.dumps(
         {
-            "h": hashlib.sha256(cta_token.encode("utf-8")).hexdigest(),
+            "h": _digest(cta_token),
             "v": visitor_hash,
+            "d": _digest(destination),
             "r": secrets.token_urlsafe(24),
         },
         salt=FORM_SALT,
@@ -128,7 +134,7 @@ def _form_token(*, cta_token, visitor_hash):
     )
 
 
-def _verify_form_token(*, form_token, cta_token, visitor_hash):
+def _verify_form_token(*, form_token, cta_token, visitor_hash, destination):
     try:
         data = signing.loads(
             str(form_token or ""),
@@ -137,11 +143,14 @@ def _verify_form_token(*, form_token, cta_token, visitor_hash):
         )
     except signing.BadSignature as exc:
         raise Http404("This action confirmation has expired.") from exc
-    expected = hashlib.sha256(cta_token.encode("utf-8")).hexdigest()
     if (
         not isinstance(data, dict)
-        or not constant_time_compare(str(data.get("h") or ""), expected)
+        or not constant_time_compare(str(data.get("h") or ""), _digest(cta_token))
         or not constant_time_compare(str(data.get("v") or ""), visitor_hash)
+        or not constant_time_compare(
+            str(data.get("d") or ""),
+            _digest(destination),
+        )
         or not data.get("r")
     ):
         raise Http404("This action confirmation is invalid.")
@@ -200,7 +209,11 @@ def tracked_template_cta(request, token, suffix=None):
     visitor_hash = _visitor_hash(visitor)
 
     if request.method == "GET":
-        form_token = _form_token(cta_token=token, visitor_hash=visitor_hash)
+        form_token = _form_token(
+            cta_token=token,
+            visitor_hash=visitor_hash,
+            destination=destination,
+        )
         response = _render(
             request,
             template=template,
@@ -225,6 +238,7 @@ def tracked_template_cta(request, token, suffix=None):
         form_token=request.POST.get("event_token"),
         cta_token=token,
         visitor_hash=visitor_hash,
+        destination=destination,
     )
     request_key = hashlib.sha256(
         f"{form_data['r']}:{visitor_hash}".encode("utf-8")
