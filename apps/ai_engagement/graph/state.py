@@ -40,3 +40,7 @@ class EngagementGraphState(TypedDict, total=False):
     validation_errors: list[str]
 
     grounding_approved: bool
+
+    evidence_coverage: Any
+    retrieval_retries: int
+    retrieval_status: str
