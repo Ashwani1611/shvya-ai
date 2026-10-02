@@ -8,6 +8,8 @@ For live organization work, start from `get_operations_context`. Confirm the int
 
 Use the smallest relevant skill and smallest relevant evidence set. Broad onboarding may coordinate several skills; a narrow issue should not load or mutate unrelated domains.
 
+For large reviews/onboarding, follow [context and delegation](context-and-delegation.md): fan out only independent read/draft work, merge by requirement/root cause, and serialize dependent writes.
+
 ## 2. Read before write
 
 Before changing a resource, read its current authoritative state and the dependencies that can change the meaning of the write. Reuse equivalent records. Bind only IDs returned from the active tenant. Never infer IDs, attribute keys, provider ownership or stage identity from labels alone.
