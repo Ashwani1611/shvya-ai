@@ -227,3 +227,35 @@ class InstagramGuidedFileTests(TestCase):
         response = self.client.get(path)
         self.assertEqual(response.status_code, 200)
         self.close_download(response)
+
+    @patch("services.channels.instagram_service._graph_post")
+    def test_pdf_is_sent_as_native_attachment_with_short_lived_provider_grant(self, post):
+        self.document.file.save("guide.pdf", SimpleUploadedFile("guide.pdf", b"%PDF-1.4\nexample"))
+        message = self.queue_file()
+        post.return_value = {"message_id": "native-pdf-message"}
+        def provider_send(*args, **kwargs):
+            payload = kwargs["payload"]["message"]
+            self.assertEqual(payload["attachment"]["type"], "file")
+            self.assertNotIn("text", payload)
+            path = urlsplit(payload["attachment"]["payload"]["url"]).path
+            response = self.client.get(path)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "application/pdf")
+            self.close_download(response)
+            with patch("django.core.signing.time.time", return_value=timezone.now().timestamp() + 16 * 60):
+                self.assertEqual(self.client.get(path).status_code, 404)
+            self.assertEqual(self.client.get(path.replace("provider-files/", "shared-files/")).status_code, 404)
+            return {"message_id": "native-pdf-message"}
+        post.side_effect = provider_send
+        sent = send_queued_message(message)
+        self.assertEqual(sent.status, InstagramMessage.Status.SENT)
+
+    def test_provider_grant_cannot_serve_non_pdf_or_revoked_file(self):
+        from apps.ai_engagement.services.instagram_files import shared_file_url
+        message = self.queue_file()
+        path = urlsplit(shared_file_url(message, provider_fetch=True)).path
+        self.assertEqual(self.client.get(path).status_code, 404)
+        self.document.file.save("guide.pdf", SimpleUploadedFile("guide.pdf", b"%PDF-1.4\nexample"))
+        self.document.share_instruction = ""
+        self.document.save(update_fields=["share_instruction"])
+        self.assertEqual(self.client.get(path).status_code, 404)

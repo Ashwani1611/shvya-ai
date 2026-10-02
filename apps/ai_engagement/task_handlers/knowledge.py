@@ -552,7 +552,7 @@ def reindex_document_embeddings(
         indexed_count = (
             EmbeddingIndexService().index_document(
                 document,
-                only_missing=False,
+                only_missing=recovering,
             )
         )
         if recovering:

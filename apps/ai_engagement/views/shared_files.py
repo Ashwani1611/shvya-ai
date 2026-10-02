@@ -10,16 +10,18 @@ from apps.ai_engagement.services.file_sharing import FileSharingError
 from apps.ai_engagement.services.instagram_files import (
     SHARED_FILE_MAX_AGE,
     SHARED_FILE_SALT,
+    PROVIDER_FILE_SALT,
+    PROVIDER_FILE_MAX_AGE,
     document_for_message,
 )
 from apps.channels.instagram_models import InstagramMessage
 
 
 @require_safe
-def instagram_shared_file(request, token):
+def instagram_shared_file(request, token, *, provider_fetch=False):
     try:
-        message_id = UUID(signing.TimestampSigner(salt=SHARED_FILE_SALT).unsign(
-            token, max_age=SHARED_FILE_MAX_AGE,
+        message_id = UUID(signing.TimestampSigner(salt=PROVIDER_FILE_SALT if provider_fetch else SHARED_FILE_SALT).unsign(
+            token, max_age=PROVIDER_FILE_MAX_AGE if provider_fetch else SHARED_FILE_MAX_AGE,
         ))
     except (signing.BadSignature, ValueError, TypeError):
         raise Http404 from None
@@ -29,12 +31,16 @@ def instagram_shared_file(request, token):
         "organization", "account", "conversation",
     ).filter(
         pk=message_id, direction=InstagramMessage.Direction.OUTBOUND,
-        status__in=[InstagramMessage.Status.SENT, InstagramMessage.Status.READ],
+        status__in=([InstagramMessage.Status.QUEUED, InstagramMessage.Status.FAILED,
+                     InstagramMessage.Status.SENT, InstagramMessage.Status.READ]
+                    if provider_fetch else [InstagramMessage.Status.SENT, InstagramMessage.Status.READ]),
     ).first()
     if message is None:
         raise Http404
     try:
         document = document_for_message(message)
+        if provider_fetch and Path(document.file.name).suffix.lower() != ".pdf":
+            raise Http404
         response = FileResponse(
             document.file.open("rb"), as_attachment=True,
             filename=Path(document.file.name).name,

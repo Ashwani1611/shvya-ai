@@ -230,3 +230,43 @@ class AIBrainPersistenceTests(TestCase):
         self.assertEqual(self.organization.name, "Original Name")
         self.assertEqual(self.info.about, "Original description")
         self.assertEqual(self.info.ai_playbook, "##Rules\nOriginal rule.")
+
+
+class AIBrainMultipartUploadTests(TestCase):
+    def test_real_multipart_upload_saves_document_and_queues_after_commit(self):
+        import tempfile
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from apps.ai_engagement.models import Document
+        organization = Organization.objects.create(name="Upload acceptance")
+        request = RequestFactory().post("/dashboard/knowledge-base/ai-setup/", {
+            "action": "save_settings", "organization_name": organization.name,
+            "about": "We offer onboarding.", "bot_languages": "English",
+            "ai_playbook": "##Rules\nAnswer using our approved knowledge.",
+            "knowledge_file": SimpleUploadedFile("guide.txt", b"Our onboarding includes training."),
+        }, HTTP_ACCEPT="application/json")
+        user = SimpleNamespace(organization=organization)
+        with tempfile.TemporaryDirectory() as folder, override_settings(MEDIA_ROOT=folder):
+            with patch("apps.crm.authentication.get_crm_authenticated_user", return_value=user), patch("apps.crm.views.ai_setup.messages"), patch("apps.ai_engagement.services.ai_brain_setup.ingest_and_index_document.delay") as queue:
+                with self.captureOnCommitCallbacks(execute=True):
+                    response = ai_setup_view(request)
+            self.assertEqual(response.status_code, 200)
+            document = Document.objects.get(organization=organization)
+            self.assertTrue(document.file.storage.exists(document.file.name))
+            queue.assert_called_once_with(document_id=document.pk, organization_id=organization.pk)
+
+    def test_storage_failure_returns_safe_json_and_rolls_back_source(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from apps.ai_engagement.models import Document, KnowledgeSource
+        organization = Organization.objects.create(name="Storage failure")
+        request = RequestFactory().post("/dashboard/knowledge-base/ai-setup/", {
+            "action": "save_settings", "organization_name": organization.name, "about": "We offer onboarding.",
+            "knowledge_file": SimpleUploadedFile("guide.txt", b"Safe company information."),
+        }, HTTP_ACCEPT="application/json")
+        with patch("apps.crm.authentication.get_crm_authenticated_user", return_value=SimpleNamespace(organization=organization)), patch("django.core.files.storage.default_storage.save", side_effect=PermissionError("secret-storage-detail")):
+            response = ai_setup_view(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn(b"storage permissions", response.content)
+        self.assertNotIn(b"secret-storage-detail", response.content)
+        self.assertFalse(Document.objects.filter(organization=organization).exists())
+        self.assertFalse(KnowledgeSource.objects.filter(organization=organization).exists())

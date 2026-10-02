@@ -32,7 +32,7 @@ function harness(reply) {
             assert.equal(options.method, 'POST');
             assert.equal(options.headers.Accept, 'application/json');
             assert.equal(options.credentials, 'same-origin');
-            return reply({ playbook, payload: options.body });
+            return { headers: { get: () => 'application/json' }, ...await reply({ playbook, payload: options.body }) };
         },
     });
     return { playbook, status, button, redirects, submit: () => submit({ preventDefault() {} }) };
@@ -73,3 +73,20 @@ test('a mismatching database readback is never reported as a confirmed save', as
     assert.match(h.status.textContent, /differs from your draft/);
     assert.equal(h.redirects.length, 0);
 });
+
+for (const [status, redirected, expected] of [
+    [413, false, /larger than the server allows/],
+    [403, false, /session could not authorize/],
+    [200, true, /session could not authorize/],
+    [502, false, /HTTP 502/],
+]) {
+    test(`non-JSON HTTP ${status} response preserves the draft with actionable guidance`, async () => {
+        const h = harness(() => ({ ok: false, status, redirected, headers: { get: () => 'text/html' } }));
+        const draft = h.playbook.value;
+        await h.submit();
+        assert.match(h.status.textContent, expected);
+        assert.equal(h.playbook.value, draft);
+        assert.equal(h.redirects.length, 0);
+        assert.equal(h.button.disabled, false);
+    });
+}

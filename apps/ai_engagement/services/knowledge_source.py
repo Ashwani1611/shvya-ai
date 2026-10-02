@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import logging
+
+from botocore.exceptions import BotoCoreError, ClientError
+
 from pathlib import Path
 
 from django.core.exceptions import ValidationError
@@ -19,6 +23,9 @@ from apps.ai_engagement.services.knowledge_file_security import (
     validate_knowledge_file,
     validate_organization_knowledge_quota,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class KnowledgeSourceServiceError(Exception):
@@ -77,6 +84,23 @@ class KnowledgeSourceService:
         raise KnowledgeSourceServiceError(
             'Only completed documents or failed imports with extracted content can be re-indexed.'
         )
+
+    @staticmethod
+    def retry_failed_upload(*, document):
+        """Retry extraction of the original stored upload without adding a version."""
+        from apps.ai_engagement.tasks import ingest_and_index_document
+        with transaction.atomic():
+            locked = Document.objects.select_for_update().get(
+                pk=document.pk, organization_id=document.organization_id,
+            )
+            if locked.processing_status != Document.ProcessingStatus.FAILED or not locked.file:
+                raise KnowledgeSourceServiceError("Only failed uploaded files can be retried here.")
+            locked.processing_status = Document.ProcessingStatus.PENDING
+            locked.processing_error = ""
+            locked.save(update_fields=["processing_status", "processing_error", "updated_at"])
+            transaction.on_commit(lambda: ingest_and_index_document.delay(
+                document_id=locked.pk, organization_id=locked.organization_id,
+            ))
 
     # ========================================================
     # CREATE URL SOURCE
@@ -242,19 +266,27 @@ class KnowledgeSourceService:
                 is_active=True,
             )
 
-            document = Document.objects.create(
-                organization=locked_organization,
-                name=source_name,
-                source_key=filename,
-                version=next_version,
-                file=uploaded_file,
-                source_url="",
-                processing_status=(
-                    Document.ProcessingStatus.PENDING
-                ),
-                processing_error="",
-                is_active=False,
-            )
+            try:
+                document = Document.objects.create(
+                    organization=locked_organization,
+                    name=source_name,
+                    source_key=filename,
+                    version=next_version,
+                    file=uploaded_file,
+                    source_url="",
+                    processing_status=(
+                        Document.ProcessingStatus.PENDING
+                    ),
+                    processing_error="",
+                    is_active=False,
+                )
+            except (OSError, BotoCoreError, ClientError) as exc:
+                logger.warning("Knowledge upload storage failed organization=%s error_type=%s",
+                               locked_organization.pk, type(exc).__name__)
+                raise KnowledgeSourceServiceError(
+                    "The file could not be stored. Ask an administrator to check media storage permissions and credentials, then retry."
+                ) from exc
+
 
         return source, document
 

@@ -10,6 +10,11 @@ from django.utils import timezone
 from config.celery import app
 
 REQUIRED = {
+    "ingestion": {
+        "ai.ingest_and_index_document",
+        "ai.ingest_and_index_url_source",
+        "ai.reindex_document_embeddings",
+    },
     "ai_realtime": {
         "ai.generate_ai_engagement_response",
         "ai.recover_api_engagement",
@@ -185,6 +190,32 @@ def recent_hosted_ai_jobs(*, minutes=90, limit=50):
     return len(jobs), counts
 
 
+def recent_knowledge_imports(limit=100):
+    """Bounded operational counts without document names, contents or errors."""
+    from apps.ai_engagement.models import Document
+    counts = Counter()
+    for document in Document.objects.order_by("-updated_at").only(
+        "processing_status", "processing_error", "is_active",
+    )[:limit]:
+        counts[document.processing_status] += 1
+        if document.processing_status != Document.ProcessingStatus.FAILED:
+            continue
+        error = (document.processing_error or "").casefold()
+        if "credit" in error or "quota" in error or "billing" in error:
+            counts["blocked_by_credits_or_quota"] += 1
+        elif "api_key" in error or "authentication" in error or "401" in error:
+            counts["blocked_by_provider_configuration"] += 1
+        elif "no such file" in error or "permission" in error:
+            counts["blocked_by_storage"] += 1
+        elif "ocr" in error or "readable text" in error:
+            counts["blocked_by_text_extraction"] += 1
+        elif "embedding" in error:
+            counts["blocked_by_embedding"] += 1
+        else:
+            counts["other_failure"] += 1
+    return counts
+
+
 class Command(BaseCommand):
     help = "Verify AI consumers and summarize recent WhatsApp API + Hosted AI health."
 
@@ -197,8 +228,10 @@ class Command(BaseCommand):
             raise CommandError("No ready AI consumer for: " + ", ".join(missing))
 
         self.stdout.write(
-            self.style.SUCCESS("Hosted and WhatsApp API AI consumers are ready.")
+            self.style.SUCCESS("Knowledge ingestion, Hosted and WhatsApp API AI consumers are ready.")
         )
+
+        self.stdout.write("Recent knowledge import counts: " + str(dict(recent_knowledge_imports())))
 
         models = configured_ai_models()
         self.stdout.write(

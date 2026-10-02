@@ -29,7 +29,8 @@ class MarketingThemeTests(SimpleTestCase):
         for path in self.paths:
             with self.subTest(path=path):
                 response = self.render_page(path)
-                self.assertContains(response, 'class="marketing-site"', count=1)
+                from bs4 import BeautifulSoup
+                self.assertEqual(len(BeautifulSoup(response.content, "html.parser").select("body.marketing-site")), 1)
                 self.assertContains(response, "data-marketing-theme-toggle", count=1)
                 self.assertContains(response, 'id="marketing-day-theme"', count=1)
                 self.assertContains(response, "marketing/dark/site.css")
