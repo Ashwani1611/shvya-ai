@@ -2,9 +2,9 @@ name: Security
 
 on:
   pull_request:
-    branches: [main, staging]
+    branches: [main]
   push:
-    branches: [main, staging]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
