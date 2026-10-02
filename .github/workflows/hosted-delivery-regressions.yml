@@ -1,0 +1,21 @@
+name: Hosted delivery regressions
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'whatsapp_web_gateway/**'
+      - '.github/workflows/hosted-delivery-regressions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'whatsapp_web_gateway/**'
+      - '.github/workflows/hosted-delivery-regressions.yml'
+permissions:
+  contents: read
+jobs:
+  delivery:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Verify acknowledgement, durable callbacks, idempotency and assembled gateway
+        run: node --test whatsapp_web_gateway/tests/realtime-delivery.test.js whatsapp_web_gateway/tests/realtime-build.test.js whatsapp_web_gateway/tests/send-idempotency.test.js

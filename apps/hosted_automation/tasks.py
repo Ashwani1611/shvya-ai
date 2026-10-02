@@ -212,6 +212,15 @@ def _execute(job):
     else:
         from services.channels.hosted_whatsapp_service import account_ai_block_reason
         reason = account_ai_block_reason(account=job.account, lead=job.lead)
+    if (
+        reason == "whatsapp_account_not_connected"
+        and job.account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+        and job.account.is_active
+    ):
+        # Connectivity is not revoked AI consent. Keep the already-generated
+        # reply and recheck every control again after the gateway reconnects.
+        return _defer(job, timezone.now() + timedelta(seconds=30),
+                      "session_reconnecting", "Waiting for the Hosted session to reconnect.")
     if reason:
         _cancel_generated_message(job)
         finished = _finish(job, HostedAutomationJob.Status.SKIPPED, {**(job.result or {}), "status": "skipped", "reason": reason})
@@ -258,7 +267,7 @@ def process_hosted_ai_engagement_job_task(self, job_id):
     except HostedAutomationPaused as exc:
         reason = getattr(exc, "reason", "account_health_pause")
         return _defer(job, exc.paused_until, reason,
-                      str(exc.__cause__ or exc) if reason == "provider_transient" else "",
+                      str(exc.__cause__ or exc) if reason in {"provider_transient", "provider_ack_pending", "session_reconnecting"} else "",
                       retry=reason == "provider_transient")
     except _DurableRetry as exc:
         return _defer(job, timezone.now() + timedelta(seconds=max(1, min(float(exc.countdown), 900))),
