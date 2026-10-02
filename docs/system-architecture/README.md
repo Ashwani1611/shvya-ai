@@ -233,6 +233,6 @@ The architecture map now also includes these first-class staging domains:
 - **SHVYA Sales** — `apps/sales/`; quotations, agreements, invoices, PDF/delivery tracking and payment lifecycle. See [`../shvya-sales.md`](../shvya-sales.md).
 - **SHVYA Calendar** — `apps/shvya_calendar/`; lead capture, scheduling, Google Calendar/Meet, bookings and reminders. See [`../shvya-calendar-workspace.md`](../shvya-calendar-workspace.md).
 - **Call Intelligence** — `apps/telephony/` plus `android/call-intelligence/`; device/call synchronization, CRM linkage and analysis. See [`../call-intelligence.md`](../call-intelligence.md).
-- **Expanded Operations MCP** — `apps/integrations/operations_*.py`; 70 Operations-native tools plus diagnostic read tools, including configuration plans/lifecycle controls and Superadmin diagnostics. See [`../operations-mcp.md`](../operations-mcp.md).
+- **Expanded Operations MCP** — `apps/integrations/operations_*.py` plus `apps/integrations/operations/`; 101 Operations-native tools plus 10 diagnostic read tools, including configuration plans/lifecycle controls, Calendar/integration/team capabilities and Superadmin diagnostics. The authenticated setup library adds 25 top-level domain skills and 8 specialist setup/review sub-prompts without adding backend authority. See [`../operations-mcp.md`](../operations-mcp.md) and [`../operations-mcp-setup.md`](../operations-mcp-setup.md).
 
 These workspaces still follow the same organization boundary, service-layer validation, idempotency and deployment rules described throughout this folder.
