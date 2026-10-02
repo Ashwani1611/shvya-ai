@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-channel-routing",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "A lead in Pipeline B was acquired by a WhatsApp number linked to Pipeline A. Which number should reply now?",
+      "expected_output": "The skill follows the current pipeline-bound routing contract, inspects bindings and does not fallback to any merely connected number.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "WhatsApp account shows connected, but messages are not delivered.",
+      "expected_output": "The skill checks routing plus integration/provider delivery layers and does not treat connection status as end-to-end health.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Use this phone number to find the organization and send from it.",
+      "expected_output": "The skill does not infer tenant authority from a phone number and requires authenticated tenant context.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Instagram inbound creates the lead, but AI outbound uses WhatsApp.",
+      "expected_output": "The skill detects channel/sender mismatch and traces source/current pipeline/channel eligibility before repair.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Bind an account to a new pipeline while active Workflows/Cadences reference the old route.",
+      "expected_output": "The skill checks downstream dependencies and validates routing after the proposed change rather than treating binding as isolated.",
+      "result": null
+    }
+  ]
+}
