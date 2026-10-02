@@ -422,6 +422,61 @@ class BulkLeadTests(TestCase):
             len(lead_ids),
         )
 
+    def test_background_bulk_move_rolls_back_failed_batch_and_progress(self):
+        from services.crm.lead_transition import move_lead_to_stage as real_move
+
+        extra = [
+            Lead.objects.create(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+                name=f"Rollback lead {index}",
+                phone=f"+9166{index:010d}",
+            )
+            for index in range(2)
+        ]
+        lead_ids = [self.leads[0].pk, extra[0].pk, extra[1].pk]
+        job_id, _job = create_bulk_move_job(
+            organization_id=self.organization.pk,
+            actor_id=self.user.pk,
+            lead_ids=lead_ids,
+            selection_scope="stage",
+            source_pipeline_id=self.pipeline.pk,
+            source_stage_id=self.stage.pk,
+            target_pipeline_id=self.pipeline.pk,
+            target_stage_id=self.next_stage.pk,
+        )
+        attempts = []
+
+        def move_then_fail(**kwargs):
+            attempts.append(kwargs["lead"].pk)
+            if len(attempts) == 2:
+                raise RuntimeError("simulated batch failure")
+            return real_move(**kwargs)
+
+        with patch(
+            "services.crm.lead_transition.move_lead_to_stage",
+            side_effect=move_then_fail,
+        ):
+            with self.assertRaises(RuntimeError):
+                bulk_move_leads_task(job_id)
+
+        result = get_bulk_move_job(job_id)
+        self.assertEqual(result["status"], "failed")
+        self.assertEqual(result["processed"], 0)
+        self.assertEqual(result["moved_count"], 0)
+        self.assertEqual(result["skipped_count"], 0)
+        self.assertEqual(
+            Lead.objects.filter(pk__in=lead_ids, stage=self.stage).count(),
+            len(lead_ids),
+        )
+        self.assertFalse(
+            self.organization.lead_activities.filter(
+                lead_id__in=lead_ids,
+                topic="stage_changed",
+            ).exists()
+        )
+
     def test_same_stage_is_noop(self):
         old_time = self.leads[0].stage_entered_at
         response = self.post("update", move=True, target_pipeline=str(self.pipeline.pk), target_stage=str(self.stage.pk))
