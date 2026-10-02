@@ -149,8 +149,8 @@ def _config(
         # "qualification questions" can accidentally match a stage literally
         # named "Qualification" while the intended target is "Qualified".
         target_match = re.search(
-            r"\\b(?:move|shift|transition)(?:\\s+(?:the\\s+)?lead|\\s+it)?"
-            r"(?:\\s+stage)?\\s+(?:to|into)\\s+(?P<target>.+)$",
+            r"\b(?:move|shift|transition)(?:\s+(?:the\s+)?lead|\s+it)?"
+            r"(?:\s+stage)?\s+(?:to|into)\s+(?P<target>.+)$",
             normalized,
             re.I,
         )
