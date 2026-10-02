@@ -15,6 +15,7 @@ Before a material live investigation or configuration task, load the shared fram
 - `framework/evidence-and-attribution.md`
 - `framework/known-trap-method.md`
 - `framework/execution-and-recovery.md`
+- `framework/context-and-delegation.md`
 
 Then load the selected skill's `references/domain-checks.md`. These files encode the cross-skill rules for read-before-write, producing-layer attribution, configured-vs-live state, conflict handling, distinct-business-object impact counts, ambiguous outcome recovery and post-write verification. Behavioral `evals/evals.json` files are rubrics only; they never prove a production test ran.
 
