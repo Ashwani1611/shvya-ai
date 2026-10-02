@@ -171,7 +171,7 @@ class WhatsAppTemplateCTATrackingTests(TestCase):
         ):
             template_service.build_meta_payload(template=template)
 
-    def test_send_time_creates_inactive_per_recipient_link_and_parameter(self):
+    def test_send_time_creates_usable_per_recipient_link_and_parameter(self):
         template = self._template(
             name="send_tracked_cta",
             status=WhatsAppTemplate.Status.APPROVED,
@@ -207,7 +207,7 @@ class WhatsAppTemplateCTATrackingTests(TestCase):
         )
 
         self.assertEqual(len(links), 1)
-        self.assertFalse(links[0].is_active)
+        self.assertTrue(links[0].is_active)
         self.assertEqual(links[0].destination_url, "https://example.com/offer")
         self.assertEqual(
             components,
