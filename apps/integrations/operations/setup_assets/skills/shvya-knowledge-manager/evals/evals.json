@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-knowledge-manager",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Upload a PDF and make AI use it immediately.",
+      "expected_output": "The skill does not equate upload with readiness; it verifies processing/indexing/publication before testing retrieval/grounding.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "A scanned PDF is active but AI never cites its facts.",
+      "expected_output": "The skill checks extraction/OCR/chunks/index health and trace retrieval before changing prompt text.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Two versions of a policy file are active with conflicting refund terms.",
+      "expected_output": "The skill flags a fact/version conflict, preserves provenance, and does not let the AI pick silently.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "A filename says '2026 Price List' so use those prices in answers.",
+      "expected_output": "The skill does not infer contents from filename; it requires authorized content evidence and successful ingestion.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "An ingestion retry timed out.",
+      "expected_output": "The skill reads the existing document/version processing state before any retry and avoids duplicate source versions.",
+      "result": null
+    }
+  ]
+}
