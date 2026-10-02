@@ -7,6 +7,8 @@ from django.core.cache import cache
 
 BULK_MOVE_JOB_TIMEOUT = 24 * 60 * 60
 BULK_MOVE_JOB_PREFIX = "shvya:crm_bulk_move:"
+BULK_MOVE_LOCK_PREFIX = "shvya:crm_bulk_move_lock:"
+BULK_MOVE_LOCK_TIMEOUT = 5 * 60
 
 
 def create_bulk_move_job(*, organization_id, actor_id, lead_ids, selection_scope,
@@ -28,6 +30,7 @@ def create_bulk_move_job(*, organization_id, actor_id, lead_ids, selection_scope
         "moved_count": 0,
         "skipped_count": 0,
         "message": "",
+        "generation": 0,
     }
     save_bulk_move_job(job_id, payload)
     return job_id, payload
@@ -45,3 +48,30 @@ def save_bulk_move_job(job_id, payload):
         payload,
         timeout=BULK_MOVE_JOB_TIMEOUT,
     )
+
+
+def acquire_bulk_move_lock(job_id, token):
+    """Acquire a short-lived single-consumer lock for one bulk-move job."""
+    if not job_id or not token:
+        return False
+    return cache.add(
+        f"{BULK_MOVE_LOCK_PREFIX}{job_id}",
+        token,
+        timeout=BULK_MOVE_LOCK_TIMEOUT,
+    )
+
+
+def refresh_bulk_move_lock(job_id, token):
+    """Extend a lock held by this worker after each committed batch."""
+    key = f"{BULK_MOVE_LOCK_PREFIX}{job_id}"
+    if cache.get(key) != token:
+        return False
+    cache.set(key, token, timeout=BULK_MOVE_LOCK_TIMEOUT)
+    return True
+
+
+def release_bulk_move_lock(job_id, token):
+    """Release only the lock still owned by this worker."""
+    key = f"{BULK_MOVE_LOCK_PREFIX}{job_id}"
+    if cache.get(key) == token:
+        cache.delete(key)

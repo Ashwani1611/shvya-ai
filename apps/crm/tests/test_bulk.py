@@ -303,7 +303,7 @@ class BulkLeadTests(TestCase):
         self.leads[2].refresh_from_db()
         self.assertEqual(self.leads[2].stage, self.stage)
 
-    def test_thousand_lead_stage_move_is_queued_outside_web_request(self):
+    def test_ten_thousand_lead_stage_move_is_queued_outside_web_request(self):
         extra = [
             Lead(
                 organization=self.organization,
@@ -312,7 +312,7 @@ class BulkLeadTests(TestCase):
                 name=f"Bulk lead {index}",
                 phone=f"+9188{index:010d}",
             )
-            for index in range(997)
+            for index in range(9997)
         ]
         Lead.objects.bulk_create(extra, batch_size=250)
         self.assertEqual(
@@ -321,7 +321,7 @@ class BulkLeadTests(TestCase):
                 pipeline=self.pipeline,
                 stage=self.stage,
             ).count(),
-            1000,
+            10000,
         )
 
         with patch("apps.crm.views.bulk.bulk_move_leads_task.apply_async") as queued:
@@ -337,12 +337,13 @@ class BulkLeadTests(TestCase):
         self.assertEqual(response.status_code, 202, response.content)
         payload = response.json()
         self.assertTrue(payload["queued"])
-        self.assertEqual(payload["count"], 1000)
+        self.assertEqual(payload["count"], 10000)
         job = get_bulk_move_job(payload["job_id"])
-        self.assertEqual(job["total"], 1000)
-        self.assertEqual(len(job["lead_ids"]), 1000)
+        self.assertEqual(job["total"], 10000)
+        self.assertEqual(len(job["lead_ids"]), 10000)
+        self.assertEqual(job["generation"], 0)
         queued.assert_called_once_with(
-            args=[payload["job_id"]],
+            args=[payload["job_id"], 0],
             queue="ingestion",
         )
         self.assertEqual(
@@ -351,7 +352,7 @@ class BulkLeadTests(TestCase):
                 pipeline=self.pipeline,
                 stage=self.stage,
             ).count(),
-            1000,
+            10000,
         )
 
         status_response = self.client.get(
@@ -360,6 +361,70 @@ class BulkLeadTests(TestCase):
         self.assertEqual(status_response.status_code, 200)
         self.assertEqual(status_response.json()["status"], "queued")
         self.assertNotIn("lead_ids", status_response.json())
+
+    def test_large_worker_job_requeues_after_bounded_slice(self):
+        extra = [
+            Lead(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+                name=f"Slice lead {index}",
+                phone=f"+9155{index:010d}",
+            )
+            for index in range(500)
+        ]
+        Lead.objects.bulk_create(extra, batch_size=250)
+        lead_ids = list(
+            Lead.objects.filter(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+            )
+            .order_by("pk")
+            .values_list("pk", flat=True)
+        )
+        self.assertEqual(len(lead_ids), 503)
+
+        job_id, _job = create_bulk_move_job(
+            organization_id=self.organization.pk,
+            actor_id=self.user.pk,
+            lead_ids=lead_ids,
+            selection_scope="stage",
+            source_pipeline_id=self.pipeline.pk,
+            source_stage_id=self.stage.pk,
+            target_pipeline_id=self.pipeline.pk,
+            target_stage_id=self.next_stage.pk,
+        )
+
+        with patch("apps.crm.tasks.bulk_move_leads_task.apply_async") as queued:
+            bulk_move_leads_task(job_id, 0)
+
+        partial = get_bulk_move_job(job_id)
+        self.assertEqual(partial["status"], "running")
+        self.assertEqual(partial["processed"], 500)
+        self.assertEqual(partial["moved_count"], 500)
+        self.assertEqual(partial["generation"], 1)
+        queued.assert_called_once_with(
+            args=[job_id, 1],
+            queue="ingestion",
+            countdown=1,
+        )
+
+        bulk_move_leads_task(job_id, 1)
+        result = get_bulk_move_job(job_id)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["processed"], 503)
+        self.assertEqual(result["moved_count"], 503)
+        self.assertEqual(
+            Lead.objects.filter(stage=self.next_stage).count(),
+            503,
+        )
+        self.assertEqual(
+            self.organization.lead_activities.filter(
+                topic="stage_changed",
+            ).count(),
+            503,
+        )
 
     def test_background_bulk_move_batches_preserve_history_and_are_idempotent(self):
         extra = [

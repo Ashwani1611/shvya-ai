@@ -74,8 +74,8 @@ def _uuid(value):
         raise ValueError("The selection is invalid. Refresh the CRM and select the leads again.") from exc
 
 
-def _selection(user, data, *, lock=False):
-    """Resolve a tenant-scoped explicit selection or the whole pipeline."""
+def _selection_queryset(user, data, *, lock=False):
+    """Build a tenant-scoped selection without materializing full Lead rows."""
     scope = data.get("selection_scope", "ids")
     if scope not in ("ids", "pipeline", "stage"):
         raise ValueError("Invalid lead selection scope.")
@@ -84,8 +84,9 @@ def _selection(user, data, *, lock=False):
         raise PermissionDenied
 
     queryset = Lead.objects.filter(
-        organization=user.organization, pipeline=pipeline,
-    ).select_related("pipeline", "stage", "organization").order_by("pk")
+        organization=user.organization,
+        pipeline=pipeline,
+    ).order_by("pk")
     if scope in ("pipeline", "stage"):
         if scope == "stage":
             stage_id = _uuid(data.get("source_stage"))
@@ -93,13 +94,17 @@ def _selection(user, data, *, lock=False):
                 raise ValueError("The selected stage is no longer available.")
             queryset = queryset.filter(stage_id=stage_id)
         if data.get("lead_ids"):
-            raise ValueError("Do not combine pipeline selection with individual lead IDs.")
+            raise ValueError(
+                "Do not combine pipeline selection with individual lead IDs."
+            )
         excluded_values = data.get("exclude_lead_ids", [])
         if not isinstance(excluded_values, list):
             raise ValueError("Invalid excluded lead selection.")
         excluded_ids = {_uuid(value) for value in excluded_values}
         if excluded_ids:
-            found = set(queryset.filter(pk__in=excluded_ids).values_list("pk", flat=True))
+            found = set(
+                queryset.filter(pk__in=excluded_ids).values_list("pk", flat=True)
+            )
             if found != excluded_ids:
                 raise ValueError("An excluded lead is no longer in this pipeline.")
             queryset = queryset.exclude(pk__in=excluded_ids)
@@ -112,19 +117,45 @@ def _selection(user, data, *, lock=False):
             raise ValueError("Select at least one lead.")
         ids = {_uuid(value) for value in values}
         queryset = queryset.filter(
-            pk__in=ids, stage_id=_uuid(data.get("source_stage")),
+            pk__in=ids,
+            stage_id=_uuid(data.get("source_stage")),
         )
     if lock:
         queryset = queryset.select_for_update(of=("self",))
-    leads = list(queryset)
-    if not leads:
+    return pipeline, queryset, ids
+
+
+def _validate_selection_size(size, ids):
+    if not size:
         raise ValueError("Select at least one lead.")
-    if ids is not None and len(leads) != len(ids):
+    if ids is not None and size != len(ids):
         raise ValueError(
             "Some selected leads have moved, been deleted, or are no longer accessible. "
             "Refresh and select them again."
         )
+
+
+def _selection(user, data, *, lock=False):
+    """Resolve full Lead objects for actions that truly need their row data."""
+    pipeline, queryset, ids = _selection_queryset(user, data, lock=lock)
+    leads = list(
+        queryset.select_related("pipeline", "stage", "organization")
+    )
+    _validate_selection_size(len(leads), ids)
     return pipeline, leads
+
+
+def _selection_ids(user, data):
+    """Freeze a large routing selection using UUIDs only.
+
+    This keeps 10k+ stage/pipeline moves out of web-worker memory: notes,
+    attributes, and related model data are loaded later only in bounded Celery
+    batches.
+    """
+    pipeline, queryset, ids = _selection_queryset(user, data, lock=False)
+    lead_ids = list(queryset.values_list("pk", flat=True))
+    _validate_selection_size(len(lead_ids), ids)
+    return pipeline, queryset, lead_ids
 
 
 CORE_FIELDS = [
@@ -291,21 +322,22 @@ def _update(user, pipeline, leads, data):
             clear_sequence(lead=lead)
 
 
-def _queue_large_move(user, pipeline, leads, data):
+def _queue_large_move(user, pipeline, queryset, lead_ids, data):
     move, sequence_action, target, stage, _sequence = _update_plan(
         user, pipeline, data
     )
     if not move or sequence_action != "keep":
         return None
-    if len(leads) <= BULK_MOVE_ASYNC_THRESHOLD:
+    if len(lead_ids) <= BULK_MOVE_ASYNC_THRESHOLD:
         return None
 
-    if all(
-        lead.pipeline_id == target.pk and lead.stage_id == stage.pk
-        for lead in leads
-    ):
+    # Do not materialize 10k full Lead objects just to detect a no-op.
+    if not queryset.exclude(
+        pipeline_id=target.pk,
+        stage_id=stage.pk,
+    ).exists():
         return JsonResponse({
-            "count": len(leads),
+            "count": len(lead_ids),
             "action": "update",
             "queued": False,
         })
@@ -313,7 +345,7 @@ def _queue_large_move(user, pipeline, leads, data):
     job_id, job = create_bulk_move_job(
         organization_id=user.organization_id,
         actor_id=user.pk,
-        lead_ids=[lead.pk for lead in leads],
+        lead_ids=lead_ids,
         selection_scope=data.get("selection_scope", "ids"),
         source_pipeline_id=pipeline.pk,
         source_stage_id=data.get("source_stage"),
@@ -322,7 +354,7 @@ def _queue_large_move(user, pipeline, leads, data):
     )
     try:
         bulk_move_leads_task.apply_async(
-            args=[job_id],
+            args=[job_id, 0],
             queue="ingestion",
         )
     except Exception:
@@ -341,7 +373,7 @@ def _queue_large_move(user, pipeline, leads, data):
         )
 
     return JsonResponse({
-        "count": len(leads),
+        "count": len(lead_ids),
         "action": "update",
         "queued": True,
         "job_id": job_id,
@@ -387,11 +419,15 @@ def bulk_leads(request):
             and data.get("move") is True
             and data.get("sequence_action", "keep") == "keep"
         ):
-            pipeline, leads = _selection(request.crm_user, data, lock=False)
+            pipeline, queryset, lead_ids = _selection_ids(
+                request.crm_user,
+                data,
+            )
             queued = _queue_large_move(
                 request.crm_user,
                 pipeline,
-                leads,
+                queryset,
+                lead_ids,
                 data,
             )
             if queued is not None:
