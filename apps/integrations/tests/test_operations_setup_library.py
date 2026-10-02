@@ -76,7 +76,7 @@ class SetupLibraryTests(SimpleTestCase):
 
     def test_domain_skills_keep_authority_and_verification_boundaries(self):
         operator = library._read_asset("prompts/shvya-mcp-operator.md")
-        self.assertIn("smallest relevant skill", operator)
+        self.assertIn("primary skill for a narrow task", operator)
         self.assertIn("acceptance testing", operator.casefold())
         for name in (
             "shvya-ai-debugger",
