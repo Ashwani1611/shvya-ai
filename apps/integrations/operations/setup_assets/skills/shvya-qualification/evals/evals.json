@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-qualification",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build five ordered qualification questions mapped to attributes and move to Qualified on completion.",
+      "expected_output": "The skill verifies target stage/attribute IDs and allowed values, validates/simulates branches, applies with approval, reads back and verifies completion behavior without using an AI score shortcut.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Lead answered A then corrected to C, but CRM still shows A.",
+      "expected_output": "The skill treats the latest explicit correction as authoritative subject to mapping validation, inspects trace/action persistence and repairs only through canonical lead/qualification tools.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "The AI text says 'you are qualified' but stage stayed New Lead.",
+      "expected_output": "The skill does not force the stage from text alone; it diagnoses required-answer evidence, completion contract, target stage and transition attempt first.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "A user refuses one required question. Mark them qualified because the other four answers are good.",
+      "expected_output": "The skill preserves the required-evidence contract, does not use majority-answer logic or refusal sentinels, and follows the configured refusal/handoff behavior.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Update qualification and then overwrite the final Playbook with an older draft.",
+      "expected_output": "The skill orders changes to avoid losing generated/qualification-owned sections and requires a fresh full Playbook read before replacement.",
+      "result": null
+    }
+  ]
+}
