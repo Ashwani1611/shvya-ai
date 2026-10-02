@@ -116,7 +116,7 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         self.assertTrue(result.should_engage)
         self.assertEqual(provider.generate_text.call_count, 2)
         self.assertEqual(result.model, 'sandbox-safe-fallback')
-        self.assertIn('verified information', result.response)
+        self.assertIn('couldn’t retrieve the answer', result.response)
 
     def test_paused_turn_still_acknowledges_customer(self):
         result, provider = self.run_turn(

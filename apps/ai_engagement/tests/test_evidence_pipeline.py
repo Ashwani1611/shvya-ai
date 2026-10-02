@@ -116,7 +116,7 @@ class EvidencePipelineTests(SimpleTestCase):
         self.assertFalse(result["grounding_approved"])
         self.assertEqual(result["decision"].reason_code, "UNKNOWN_INFORMATION")
         self.assertTrue(result["decision"].should_engage)
-        self.assertIn("verified information", result["decision"].message)
+        self.assertIn("couldn’t retrieve the answer", result["decision"].message)
 
     def test_grounding_rejection_does_not_pollute_qualification_reply(self):
         decision = EngagementDecision(
