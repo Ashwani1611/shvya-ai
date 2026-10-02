@@ -44,7 +44,7 @@ class TerminalEngagementFailsoftTests(TestCase):
         outbound = WhatsAppMessage.objects.get(pk=result["message_id"])
         self.assertEqual(
             outbound.body,
-            "I don’t have enough verified information to answer that confidently. The team would need to confirm it.",
+            "I couldn’t retrieve the answer just now. Please try your question again shortly.",
         )
         self.assertEqual(outbound.raw_payload["shvya_ai"]["source_inbound_message_id"], str(source.id))
         send.assert_called_once_with(str(outbound.id))
@@ -273,3 +273,40 @@ class TerminalEngagementFailsoftTests(TestCase):
         self.assertEqual(decision.model, "deterministic-fallback")
         self.assertEqual(decision.crm_actions, [])
         self.assertIsNone(decision.file_document_id)
+
+    def test_provider_failure_recovers_exact_active_faq_before_qualification(self):
+        from apps.ai_engagement.models import FAQ
+        from types import SimpleNamespace
+        FAQ.objects.create(organization=self.organization, question="What is the price?",
+                           answer="The plan costs ₹2999 per month, excluding tax.", is_active=True)
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization, lead=self.lead,
+            latest_inbound=SimpleNamespace(body="What is the price?"))
+        self.assertEqual(decision.message, "The plan costs ₹2999 per month, excluding tax.")
+        self.assertEqual(decision.model, "deterministic-authored-faq")
+        self.assertEqual(decision.crm_actions, [])
+
+    def test_provider_failure_does_not_copy_merely_similar_faq(self):
+        from apps.ai_engagement.models import FAQ
+        from types import SimpleNamespace
+        FAQ.objects.create(organization=self.organization, question="What is the annual price?",
+                           answer="The annual price is ₹29999.", is_active=True)
+        decision = build_deterministic_fallback_decision(
+            organization=self.organization, lead=self.lead,
+            latest_inbound=SimpleNamespace(body="What is the monthly price?"))
+        self.assertNotIn("29999", decision.message)
+
+    def test_terminal_faq_recovery_rejects_conflicts_private_and_action_claims(self):
+        from apps.ai_engagement.models import FAQ
+        from types import SimpleNamespace
+        for answers in (("Your booking is confirmed.",), ("api_key: secret",),
+                        ("The price is ₹100.", "The price is ₹200.")):
+            with self.subTest(answers=answers):
+                FAQ.objects.filter(organization=self.organization).delete()
+                for answer in answers:
+                    FAQ.objects.create(organization=self.organization, question="What is the price?",
+                                       answer=answer, is_active=True)
+                decision = build_deterministic_fallback_decision(
+                    organization=self.organization, lead=self.lead,
+                    latest_inbound=SimpleNamespace(body="What is the price?"))
+                self.assertNotEqual(decision.model, "deterministic-authored-faq")

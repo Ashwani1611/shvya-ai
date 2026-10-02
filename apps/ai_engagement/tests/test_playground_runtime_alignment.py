@@ -35,7 +35,7 @@ class PlaygroundRuntimeAlignmentTests(SimpleTestCase):
 
         self.assertIn("build_deterministic_fallback_decision", source)
         self.assertIn("sandbox-safe-fallback", source)
-        self.assertIn("I don’t have enough verified information", source)
+        self.assertIn("I couldn’t retrieve the answer just now", source)
 
     def test_sandbox_reuses_live_first_inbound_welcome_helper(self):
         source = self._source()

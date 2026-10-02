@@ -335,8 +335,7 @@ class FinalResponseActionValidatorTests(SimpleTestCase):
                 )
                 self.assertEqual(
                     result.message,
-                    "I can’t share private or internal system information. "
-                    "I can still help with your enquiry or ask the team to assist.",
+                    "I can help with product and service questions, but cannot disclose credentials or private records.",
                 )
                 self.assertEqual(result.model, "deterministic-confidentiality-guard")
 

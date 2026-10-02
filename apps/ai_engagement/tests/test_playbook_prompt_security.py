@@ -37,6 +37,8 @@ def test_internal_text_never_survives_customer_guard(message):
     "You mentioned a credit score of 750. The team can review your request.",
     "The team can confirm availability for Friday.",
     "You can configure an AI playbook for your organization.",
+    "Our AI Playbook lets you configure qualification questions and follow-ups.",
+    "Use your AI Playbook to choose the bot language.",
     "The brochure includes product information and pricing.",
 ])
 def test_public_conversation_is_not_mistaken_for_internal_data(message):

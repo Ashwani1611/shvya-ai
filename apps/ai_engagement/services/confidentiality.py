@@ -7,8 +7,7 @@ from apps.ai_engagement.services.trace_sanitizer import redact_text
 
 
 SAFE_CONFIDENTIALITY_REPLY = (
-    "I can’t share private or internal system information. "
-    "I can still help with your enquiry or ask the team to assist."
+    "I can help with product and service questions, but cannot disclose credentials or private records."
 )
 
 _SENSITIVE_FIELD_PARTS = frozenset(
@@ -67,7 +66,8 @@ _INTERNAL_SCHEMA_RE = re.compile(
 _INSTRUCTION_DISCLOSURE_RE = re.compile(
     r"\b(?:system prompt|developer message|hidden instructions?|"
     r"internal instructions?|chain[- ]of[- ]thought|hidden reasoning|"
-    r"internal reasoning|(?:your|our|my|the)\s+(?:internal\s+)?ai\s+playbook)\b",
+    r"internal reasoning|internal\s+ai\s+playbook|"
+    r"(?:your|our|my|the)\s+ai\s+playbook\s+(?:says?|requires?|instructs?|directs?|states?|tells?))\b",
     flags=re.IGNORECASE,
 )
 _PROMPT_SECTION_RE = re.compile(

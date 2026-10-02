@@ -262,13 +262,15 @@ class BrainEvidenceSourceTests(TestCase):
         })
         try:
             with patch('apps.ai_engagement.graph.evidence.OpenAIProvider') as provider:
-                provider.return_value.generate_text.return_value.text = (
-                    '{"approved":false,"reason":"unsupported_claim"}'
-                )
+                provider.return_value.generate_text.side_effect = [
+                    SimpleNamespace(text='{"approved":false,"reason":"unsupported_claim"}'),
+                    SimpleNamespace(text='{"message":"We provide CCNA training."}'),
+                    SimpleNamespace(text='{"approved":false,"reason":"unsupported_claim"}'),
+                ]
                 result = check_grounding({'decision': decision, 'context': context,
                     'organization': self.organization, 'lead': self.lead, 'latest_text': question,
                     'requirements': [], 'qualification_state': {}})
-            provider.return_value.generate_text.assert_called_once()
+            self.assertEqual(provider.return_value.generate_text.call_count, 3)
             self.assertFalse(result['grounding_approved'])
             self.assertEqual(result['decision'].reason_code, 'UNKNOWN_INFORMATION')
         finally:
