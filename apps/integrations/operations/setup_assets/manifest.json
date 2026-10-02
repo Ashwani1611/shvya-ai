@@ -1757,6 +1757,15 @@
       "description": "Immutable Shvya reference guidance: framework/customer-content-gates.md",
       "kind": "reference",
       "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/context-and-delegation.md",
+      "uri": "shvya-kit:///framework/context-and-delegation.md",
+      "name": "framework/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable Shvya reference guidance: framework/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
     }
   ]
 }
