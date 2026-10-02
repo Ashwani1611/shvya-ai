@@ -24,3 +24,9 @@ Read [evidence-sources.md](references/evidence-sources.md) first, then [review-c
 The requirement table separates `configured?` from `active/observed?` and includes evidence/date, confidence and remaining gap. A behavioral defect includes a precise message quotation/reference, distinct affected-lead count within the observed sample, time window and whether it is current or historical. Quote only necessary relevant content and redact unnecessary personal data.
 
 Never inflate a bounded sample into an organization-wide count. Label attempts separately from distinct leads, and unavailable counts separately from zero. Include what demonstrably works; finish with unresolved questions and platform/integration issues that belong outside the setup queue.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.
