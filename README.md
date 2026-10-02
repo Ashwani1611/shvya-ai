@@ -10,7 +10,7 @@
 
 The CRM remains the system of record. AI, messaging, automation, and analytics operate on top of tenant-scoped CRM data rather than replacing it.
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Implementation note:** updated for the current Operations MCP and domain-skill architecture on 2026-10-03. Source code, migrations, tests, live `tools/list`/`prompts/list`, and deployment configuration remain the executable source of truth.
 
 > Engineering rules and architectural constraints are defined in [`CLAUDE.md`](./CLAUDE.md). Changes to tenant isolation, business logic, async work, idempotency, model structure, or external integrations must follow those rules.
 
@@ -39,8 +39,29 @@ Current platform capabilities include:
 | Analytics | CRM and engagement insights, operational reporting, account health |
 | Support | Organization Help & Support portal, Shvya-Ops Client's Portal, private attachments, ticket response indicator, email delivery/outbox |
 | Diagnostics | Read-only organization-scoped diagnostic MCP/OAuth connector with explicit API-key permission and audit metadata |
-| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound + granular capabilities, qualification/messaging/knowledge configuration, configuration plans, lifecycle safeguards, simulations, integration/drift/integrity diagnostics, approval receipts, verified writes, session controls and append-only audit |
+| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound granular capabilities, **101 Operations-native + 10 diagnostic tools**, **25 top-level domain skills**, setup/intake resources, CRM/AI/automation/channel/Calendar operations, configuration plans, diagnostics, approval receipts, verified writes and append-only audit |
 | Administration | Organization management, roles, API keys, Superadmin console, global search |
+
+---
+
+## Operations MCP and Domain Skills
+
+SHVYA's Operations MCP is a controlled external-AI control plane, not a generic admin shell. The current catalog can expose up to **111 tools** before OAuth/capability filtering: **101 Operations-native tools** plus **10 read-only diagnostic tools**. The bundled setup library exposes **25 top-level domain skills**, **8 specialist setup/review sub-prompts**, and the central `shvya-operator` prompt.
+
+The skill layer routes work to the smallest relevant domain while the backend remains authoritative:
+
+- **Business:** account setup, account review, intake vault, industry designer
+- **CRM:** CRM architect, qualification, lead repair
+- **AI:** AI Brain, AI Playbook, knowledge manager, AI debugger
+- **Automation:** Workflow builder, Cadence builder, automation debugger
+- **Channels:** routing, WhatsApp, Instagram, email
+- **Calendar / Voice:** Calendar and provider-neutral voice preparation
+- **Operations:** diagnostics, incident repair, integration manager, acceptance testing
+- **Research:** supplied WhatsApp-group analysis
+
+Loading a skill never grants authority. Effective access is still the intersection of actor role, explicit organization context, OAuth scopes, granted capabilities, live Superadmin policy, current tool exposure and backend resource state. Significant writes continue through dry-run, approval when required, canonical services, read-back verification and append-only audit.
+
+See [`docs/operations-mcp.md`](./docs/operations-mcp.md) and [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md).
 
 ---
 
@@ -569,7 +590,7 @@ POST /api/v1/auth/token/refresh/
 /api/v1/telephony/
 ```
 
-See [`docs/api.md`](./docs/api.md) for the current staging API and MCP boundary map.
+See [`docs/api.md`](./docs/api.md) for the current API and MCP boundary map.
 
 API writes and external side effects should preserve tenant isolation and idempotency guarantees.
 
@@ -609,7 +630,8 @@ Useful project documentation includes:
 - [`docs/architecture.md`](./docs/architecture.md) - concise staging architecture overview
 - [`docs/api.md`](./docs/api.md) - API, webhook and MCP route map
 - [`docs/deployment.md`](./docs/deployment.md) - release/deployment runbook
-- [`docs/operations-mcp.md`](./docs/operations-mcp.md) - actor-bound external AI Operations connector
+- [`docs/operations-mcp.md`](./docs/operations-mcp.md) - actor-bound external AI Operations connector and current tool surface
+- [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md) - 25-skill setup library, routing and authoring/intake contracts
 - [`docs/shvya-calendar-workspace.md`](./docs/shvya-calendar-workspace.md) - Calendar workspace and booking operations
 - [`docs/shvya-sales.md`](./docs/shvya-sales.md) - Sales documents, delivery, tracking and payment lifecycle
 - [`docs/call-intelligence.md`](./docs/call-intelligence.md) - Android SIM + CRM Call Intelligence architecture

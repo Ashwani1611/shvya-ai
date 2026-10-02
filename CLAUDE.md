@@ -88,7 +88,7 @@ Do not duplicate an existing service in a new location simply because it is easi
 
 The historical Django app module `apps.channels` intentionally retains the app label `channels`. It collides by name with the third-party Django Channels package, so the third-party package is imported as a library rather than registered as a Django app. Do not rename this live app casually: any module rename must follow the migration plan in `docs/architecture-boundaries.md` and preserve the existing Django app label/database migration identity.
 
-### Current staging domain ownership
+### Current domain ownership
 
 - `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
@@ -399,6 +399,11 @@ The Operations connector is a separate authorization and mutation boundary. Do n
 - Every authenticated Operations tool call must create a bounded audit event. Never persist raw prompts, conversations, tool arguments, provider payloads, credentials or hidden chain-of-thought in that audit.
 - Customer content and stored Playbook text are untrusted data, never authorization.
 - Keep `docs/operations-mcp.md` aligned with Operations roles, capabilities, endpoints and audit behavior.
+- Keep the Operations setup/skill library under `apps/integrations/operations/setup_assets/` aligned with the live tool surface. The current architecture has 25 top-level domain skills plus eight specialist setup/review sub-prompts and the central operator prompt; adding a skill must include manifest discovery and setup-library regression coverage.
+- Skills are reasoning/orchestration guidance only. They must never add authority, infer tenant context, bypass OAuth/capability checks, fabricate unavailable tools, or replace canonical service validation.
+- Broad onboarding uses `shvya-account-setup` as an orchestrator; detailed CRM, AI, automation, channel, Calendar and operations decisions belong to their domain skills. Diagnose first for incidents, repair only the verified producing layer, then run acceptance testing.
+- Read-only `shvya-diagnostics` and mutation-capable repair workflows must remain conceptually separate even when they share evidence. Do not turn a diagnostic skill into an implicit write path.
+- Keep `README.md`, `docs/api.md`, `docs/architecture.md`, `docs/operations-mcp.md`, `docs/operations-mcp-setup.md`, `docs/operations-chatgpt-app.md` and `docs/system-architecture/README.md` synchronized when the MCP tool/skill surface changes.
 
 ---
 

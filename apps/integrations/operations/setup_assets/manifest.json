@@ -252,6 +252,366 @@
         }
       ],
       "path": "skills/shvya-account-setup/references/agent-prompts/5-account-setup-builder.md"
+    },
+    {
+      "name": "shvya-industry-designer",
+      "title": "Shvya Industry Designer",
+      "description": "Translate a company's industry and sales motion into a dependency-aware Shvya configuration blueprint.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-industry-designer/SKILL.md"
+    },
+    {
+      "name": "shvya-crm-architect",
+      "title": "Shvya CRM Architect",
+      "description": "Design and safely change pipelines, stages and attributes with dependency checks.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-crm-architect/SKILL.md"
+    },
+    {
+      "name": "shvya-qualification",
+      "title": "Shvya Qualification",
+      "description": "Build, validate, test and repair qualification questions, mappings and completion behavior.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-qualification/SKILL.md"
+    },
+    {
+      "name": "shvya-lead-repair",
+      "title": "Shvya Lead Repair",
+      "description": "Diagnose and safely repair bounded lead stage or non-sensitive attribute state.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-lead-repair/SKILL.md"
+    },
+    {
+      "name": "shvya-ai-brain",
+      "title": "Shvya AI Brain",
+      "description": "Configure and verify About, Playbook, FAQs, knowledge, qualification bindings and AI behavior.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-ai-brain/SKILL.md"
+    },
+    {
+      "name": "shvya-ai-playbook",
+      "title": "Shvya AI Playbook",
+      "description": "Author, review and safely publish the canonical eight-section AI Playbook.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-ai-playbook/SKILL.md"
+    },
+    {
+      "name": "shvya-knowledge-manager",
+      "title": "Shvya Knowledge Manager",
+      "description": "Manage FAQs, URL sources, documents, ingestion health, publication and retirement.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-knowledge-manager/SKILL.md"
+    },
+    {
+      "name": "shvya-ai-debugger",
+      "title": "Shvya AI Debugger",
+      "description": "Trace AI failures from inbound message through queue, grounding, actions and outbound delivery.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-ai-debugger/SKILL.md"
+    },
+    {
+      "name": "shvya-workflow-builder",
+      "title": "Shvya Workflow Builder",
+      "description": "Design, validate, simulate and safely apply event-condition-action Workflows.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-workflow-builder/SKILL.md"
+    },
+    {
+      "name": "shvya-cadence-builder",
+      "title": "Shvya Cadence Builder",
+      "description": "Design, build and validate Cadences across WhatsApp, email and reminders.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-cadence-builder/SKILL.md"
+    },
+    {
+      "name": "shvya-automation-debugger",
+      "title": "Shvya Automation Debugger",
+      "description": "Diagnose failed, duplicated, skipped or conflicting Workflow/Cadence automation.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-automation-debugger/SKILL.md"
+    },
+    {
+      "name": "shvya-channel-routing",
+      "title": "Shvya Channel Routing",
+      "description": "Validate source, account, pipeline, sender, AI eligibility and provider delivery topology.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-channel-routing/SKILL.md"
+    },
+    {
+      "name": "shvya-whatsapp",
+      "title": "Shvya WhatsApp",
+      "description": "Configure and diagnose WhatsApp API, Coexistence and Hosted routing, templates and automation.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-whatsapp/SKILL.md"
+    },
+    {
+      "name": "shvya-instagram",
+      "title": "Shvya Instagram",
+      "description": "Review and diagnose Instagram connection, DM lead behavior, AI engagement and delivery.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-instagram/SKILL.md"
+    },
+    {
+      "name": "shvya-email",
+      "title": "Shvya Email",
+      "description": "Design and diagnose email sender readiness, Cadence/Workflow usage and delivery evidence.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-email/SKILL.md"
+    },
+    {
+      "name": "shvya-calendar",
+      "title": "Shvya Calendar",
+      "description": "Configure and troubleshoot booking pages, availability, sync, reminders and booking outcomes.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-calendar/SKILL.md"
+    },
+    {
+      "name": "shvya-diagnostics",
+      "title": "Shvya Diagnostics",
+      "description": "Perform read-only operational diagnosis across leads, AI, automation, integrations and runtime.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-diagnostics/SKILL.md"
+    },
+    {
+      "name": "shvya-incident-repair",
+      "title": "Shvya Incident Repair",
+      "description": "Coordinate bounded production repair from verified diagnosis through post-change verification.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-incident-repair/SKILL.md"
+    },
+    {
+      "name": "shvya-integration-manager",
+      "title": "Shvya Integration Manager",
+      "description": "Inspect and safely manage supported integration lifecycle state and dependencies.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-integration-manager/SKILL.md"
+    },
+    {
+      "name": "shvya-acceptance-testing",
+      "title": "Shvya Acceptance Testing",
+      "description": "Run structural, deterministic and authorized end-to-end acceptance checks before readiness claims.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company name for context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work. Context only; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-acceptance-testing/SKILL.md"
     }
   ],
   "resources": [
@@ -739,6 +1099,186 @@
       "title": "Variables",
       "description": "Immutable Shvya reference guidance: templates/variables.md",
       "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-industry-designer/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-industry-designer/SKILL.md",
+      "name": "skills/shvya-industry-designer/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-industry-designer/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-crm-architect/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-crm-architect/SKILL.md",
+      "name": "skills/shvya-crm-architect/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-crm-architect/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-qualification/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-qualification/SKILL.md",
+      "name": "skills/shvya-qualification/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-qualification/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-lead-repair/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-lead-repair/SKILL.md",
+      "name": "skills/shvya-lead-repair/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-lead-repair/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-brain/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-brain/SKILL.md",
+      "name": "skills/shvya-ai-brain/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-brain/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-playbook/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-playbook/SKILL.md",
+      "name": "skills/shvya-ai-playbook/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-playbook/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-knowledge-manager/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-knowledge-manager/SKILL.md",
+      "name": "skills/shvya-knowledge-manager/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-knowledge-manager/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-debugger/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-debugger/SKILL.md",
+      "name": "skills/shvya-ai-debugger/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-debugger/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-workflow-builder/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-workflow-builder/SKILL.md",
+      "name": "skills/shvya-workflow-builder/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-workflow-builder/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-cadence-builder/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-cadence-builder/SKILL.md",
+      "name": "skills/shvya-cadence-builder/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-cadence-builder/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-automation-debugger/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-automation-debugger/SKILL.md",
+      "name": "skills/shvya-automation-debugger/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-automation-debugger/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-channel-routing/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-channel-routing/SKILL.md",
+      "name": "skills/shvya-channel-routing/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-channel-routing/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-whatsapp/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-whatsapp/SKILL.md",
+      "name": "skills/shvya-whatsapp/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-whatsapp/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-instagram/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-instagram/SKILL.md",
+      "name": "skills/shvya-instagram/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-instagram/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-email/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-email/SKILL.md",
+      "name": "skills/shvya-email/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-email/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-calendar/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-calendar/SKILL.md",
+      "name": "skills/shvya-calendar/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-calendar/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-diagnostics/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-diagnostics/SKILL.md",
+      "name": "skills/shvya-diagnostics/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-diagnostics/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-incident-repair/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-incident-repair/SKILL.md",
+      "name": "skills/shvya-incident-repair/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-incident-repair/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-integration-manager/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-integration-manager/SKILL.md",
+      "name": "skills/shvya-integration-manager/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-integration-manager/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-acceptance-testing/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-acceptance-testing/SKILL.md",
+      "name": "skills/shvya-acceptance-testing/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-acceptance-testing/SKILL.md",
+      "kind": "skill",
       "mimeType": "text/markdown"
     }
   ]

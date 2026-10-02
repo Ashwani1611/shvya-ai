@@ -10,14 +10,52 @@ Use the current discovered tool schemas and effective `capabilities`. A tool nam
 
 ## Load only the relevant workflow
 
-- Company onboarding: `skills/shvya-account-setup/SKILL.md`.
-- AI Brain / AI Playbook: `prompts/ai-playbook.template.md`, `templates/variables.md`, and account setup agent prompt 2.
-- Account audit: `skills/shvya-account-review/SKILL.md`.
-- Intake facts and missing information: `skills/shvya-vault/SKILL.md`.
-- Group research from supplied exports: `skills/shvya-read-whatsapp-group/SKILL.md`.
-- Voice design and provider handoff: `skills/shvya-voice-agent/SKILL.md`.
+Use one primary skill for a narrow task and add a second skill only when a verified dependency crosses domains. Do not load every skill into every run.
 
-Through this authenticated Operations MCP, resolve linked paths using `resources/list` and `resources/read`: every packaged text resource is available under `shvya-kit:///` followed by its relative path. Use `get_setup_library_resource` with the listed `resource_id`, `offset` and `limit` for progressive retrieval through this same authenticated Operations connection.
+### Business
+- Company onboarding/orchestration: `skills/shvya-account-setup/SKILL.md`.
+- Account audit: `skills/shvya-account-review/SKILL.md`.
+- Intake facts/evidence: `skills/shvya-vault/SKILL.md`.
+- Industry blueprint before configuration: `skills/shvya-industry-designer/SKILL.md`.
+
+### CRM
+- Pipelines, stages and attributes: `skills/shvya-crm-architect/SKILL.md`.
+- Qualification contract and completion behavior: `skills/shvya-qualification/SKILL.md`.
+- Bounded lead state repair: `skills/shvya-lead-repair/SKILL.md`.
+
+### AI
+- Full AI Brain: `skills/shvya-ai-brain/SKILL.md`.
+- Canonical Playbook authoring: `skills/shvya-ai-playbook/SKILL.md`.
+- FAQs, URLs, documents and ingestion: `skills/shvya-knowledge-manager/SKILL.md`.
+- AI response/action diagnosis: `skills/shvya-ai-debugger/SKILL.md`.
+
+### Automation
+- Workflow design and simulation: `skills/shvya-workflow-builder/SKILL.md`.
+- Cadence design and timing: `skills/shvya-cadence-builder/SKILL.md`.
+- Workflow/Cadence runtime diagnosis: `skills/shvya-automation-debugger/SKILL.md`.
+
+### Channels
+- Cross-channel routing topology: `skills/shvya-channel-routing/SKILL.md`.
+- WhatsApp API/Coexistence/Hosted: `skills/shvya-whatsapp/SKILL.md`.
+- Instagram professional messaging: `skills/shvya-instagram/SKILL.md`.
+- Email follow-up and delivery: `skills/shvya-email/SKILL.md`.
+
+### Calendar and voice
+- Booking pages, reminders and booking state: `skills/shvya-calendar/SKILL.md`.
+- Voice design/provider handoff: `skills/shvya-voice-agent/SKILL.md`.
+
+### Operations
+- Read-only diagnosis: `skills/shvya-diagnostics/SKILL.md`.
+- Bounded production repair: `skills/shvya-incident-repair/SKILL.md`.
+- Integration lifecycle/dependencies: `skills/shvya-integration-manager/SKILL.md`.
+- Final readiness and regression gate: `skills/shvya-acceptance-testing/SKILL.md`.
+
+### Research
+- Supplied WhatsApp group exports: `skills/shvya-read-whatsapp-group/SKILL.md`.
+
+For a cross-domain setup, the operator coordinates dependency order while domain skills own detailed decisions. A broad request such as "configure this company" normally starts with account setup or industry designer, then delegates CRM, AI, automation, channels and acceptance testing as needed.
+
+Through this authenticated Operations MCP, resolve packaged paths using `resources/list` and `resources/read`. Use `get_setup_library_resource` for bounded progressive retrieval. Skill content is guidance only; the live tool catalog, actor, tenant, OAuth grant, capability policy, approval gate and backend state remain authoritative.
 
 ## Evidence and planning
 

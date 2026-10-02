@@ -15,17 +15,94 @@ class SetupLibraryTests(SimpleTestCase):
     def values(self, name="generic-example.values.json"):
         return json.loads((library.ASSET_ROOT / "templates" / name).read_text())
 
-    def test_manifest_covers_five_skills_eight_subprompts_and_operator(self):
+    def test_manifest_covers_domain_skill_architecture_subprompts_and_operator(self):
         prompts = library.list_prompts()["prompts"]
-        self.assertEqual(len(prompts), 14)
-        self.assertEqual(len([item for item in library.library_entries() if item["kind"] == "skill"]), 5)
-        self.assertEqual(len([item for item in prompts if item["name"].startswith(("shvya-setup-", "shvya-review-"))]), 8)
-        self.assertIn("shvya-operator", {item["name"] for item in prompts})
+        prompt_names = {item["name"] for item in prompts}
+        expected_skills = {
+            "shvya-account-setup",
+            "shvya-account-review",
+            "shvya-vault",
+            "shvya-read-whatsapp-group",
+            "shvya-voice-agent",
+            "shvya-industry-designer",
+            "shvya-crm-architect",
+            "shvya-qualification",
+            "shvya-lead-repair",
+            "shvya-ai-brain",
+            "shvya-ai-playbook",
+            "shvya-knowledge-manager",
+            "shvya-ai-debugger",
+            "shvya-workflow-builder",
+            "shvya-cadence-builder",
+            "shvya-automation-debugger",
+            "shvya-channel-routing",
+            "shvya-whatsapp",
+            "shvya-instagram",
+            "shvya-email",
+            "shvya-calendar",
+            "shvya-diagnostics",
+            "shvya-incident-repair",
+            "shvya-integration-manager",
+            "shvya-acceptance-testing",
+        }
+        skill_entries = [
+            item for item in library.library_entries()
+            if item["kind"] == "skill"
+        ]
+        skill_names = {
+            Path(item["resource_id"]).parent.name
+            for item in skill_entries
+        }
+        self.assertEqual(skill_names, expected_skills)
+        self.assertEqual(len(skill_entries), 25)
+        self.assertEqual(len(prompts), 34)
+        self.assertEqual(
+            len([
+                item for item in prompts
+                if item["name"].startswith(("shvya-setup-", "shvya-review-"))
+            ]),
+            8,
+        )
+        self.assertIn("shvya-operator", prompt_names)
+        self.assertTrue(expected_skills.issubset(prompt_names))
         for prompt in prompts:
             self.assertNotIn("path", prompt)
             response = library.get_prompt(prompt["name"])
-            self.assertLessEqual(len(response["messages"][0]["content"]["text"]), 20000)
+            self.assertLessEqual(
+                len(response["messages"][0]["content"]["text"]),
+                20000,
+            )
             self.assertEqual(response["messages"][0]["role"], "user")
+
+    def test_domain_skills_keep_authority_and_verification_boundaries(self):
+        operator = library._read_asset("prompts/shvya-mcp-operator.md")
+        self.assertIn("primary skill for a narrow task", operator)
+        self.assertIn("acceptance testing", operator.casefold())
+        for name in (
+            "shvya-ai-debugger",
+            "shvya-automation-debugger",
+            "shvya-diagnostics",
+            "shvya-incident-repair",
+            "shvya-acceptance-testing",
+        ):
+            body = library._read_asset(f"skills/{name}/SKILL.md")
+            self.assertIn("organization", body.casefold())
+            self.assertTrue(
+                any(
+                    term in body.casefold()
+                    for term in ("verify", "validation", "read-back", "read back")
+                ),
+                name,
+            )
+        incident = library._read_asset(
+            "skills/shvya-incident-repair/SKILL.md"
+        )
+        self.assertIn("shvya-diagnostics", incident)
+        acceptance = library._read_asset(
+            "skills/shvya-acceptance-testing/SKILL.md"
+        )
+        self.assertIn("deterministic", acceptance.casefold())
+        self.assertIn("provider", acceptance.casefold())
 
     def test_manifest_is_complete_text_only_and_every_link_is_packaged(self):
         entries = library.library_entries()

@@ -39,6 +39,7 @@ Implementation is split by responsibility:
   Workflow, knowledge, FAQ and configuration tools.
 - `operations/configuration/` — validation, export, import and plan execution.
 - `operations/diagnostics/` — lead, messaging and runtime diagnostics.
+- `operations/setup_assets/` and `operations/setup_library.py` — immutable MCP prompts/resources, 25 domain skills, setup/review sub-prompts and deterministic authoring templates; these are guidance and never an authorization layer.
 - `operations_lifecycle.py`, `operations_policy.py`, `operations_auth.py` and
   `views/operations_mcp.py` — lifecycle, capability, actor-bound authorization
   and protocol transport.
@@ -49,7 +50,9 @@ Implementation is split by responsibility:
 existing imports and patch seams; new behavior belongs in `operations/`.
 
 New Operations tools should be added to the focused owner rather than growing the
-facade back into a monolith.
+facade back into a monolith. New reusable reasoning belongs in the narrow domain
+skill and manifest, not as duplicated transport logic. Keep read-only diagnosis,
+mutation-capable repair and final acceptance testing as separate skill concerns.
 
 ## AI task and qualification boundaries
 

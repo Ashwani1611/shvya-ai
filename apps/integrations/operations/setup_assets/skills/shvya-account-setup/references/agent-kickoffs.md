@@ -1,6 +1,6 @@
 # Authoring pass kickoffs
 
-These are reusable orchestration messages for a host-loaded skill. The current Shvya server is tools-only; these files do not install MCP `prompts/list` or `prompts/get` by themselves. Use the optional kit integration separately if implemented and deployed.
+These are reusable orchestration messages inside the authenticated Operations setup library. The current Shvya server exposes the packaged skills/sub-prompts through MCP `prompts/list` / `prompts/get` and the same immutable resources through `resources/list` / `resources/read`, with tool equivalents for clients that need them. Discovery never grants authority; the live tool catalog and effective capabilities remain authoritative.
 
 ## Profile
 

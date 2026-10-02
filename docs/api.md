@@ -1,8 +1,8 @@
 # SHVYA API and integration surface
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Implementation note:** updated for the current Operations MCP surface on 2026-10-03. Source code, Django models/migrations, tests, runtime configuration and authenticated MCP discovery remain authoritative.
 
-This document is the concise route map for the current staging branch. Django URL configuration and view/service tests remain authoritative.
+This document is the concise route map for the current application. Django URL configuration and view/service tests remain authoritative.
 
 ## Authentication boundaries
 
@@ -85,7 +85,7 @@ Current Operations endpoints:
 - `/.well-known/oauth-authorization-server/operations`
 - `/.well-known/oauth-protected-resource/operations/mcp/`
 
-See [`operations-mcp.md`](./operations-mcp.md) for roles, capabilities, the 70 Operations-native tools, dry-run/approval behavior and audit guarantees.
+See [`operations-mcp.md`](./operations-mcp.md) for roles, capabilities, the current **101 Operations-native tools + 10 diagnostic tools**, dry-run/approval behavior and audit guarantees. The same endpoint also serves the **25 top-level domain skills** through authenticated prompts/resources; see [`operations-mcp-setup.md`](./operations-mcp-setup.md).
 
 ## Public booking surface
 
