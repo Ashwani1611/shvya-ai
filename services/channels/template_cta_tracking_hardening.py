@@ -1,13 +1,15 @@
-"""Small hardening layer for tracked carousel CTA templates.
+"""Hardening for tracked WhatsApp template CTA actions.
 
 Carousel templates are always Marketing templates. Their local card actions must
 remain available after a Meta sync because Meta only returns the SHVYA tracking
-URL, not the server-held final website or phone action.
+URL, not the server-held final website or phone action. Tracking tokens also
+remain inactive until the provider accepts the outbound message.
 """
 
 import copy
 
 from apps.channels.models import WhatsAppTemplate
+from apps.channels.tracking_models import WhatsAppTemplateTrackedLink
 
 
 _INSTALLED = False
@@ -43,6 +45,7 @@ def install_template_cta_tracking_hardening():
     from . import template_service
 
     current_carousel_button = template_service._carousel_button_payload
+    current_prepare_message_tracking = tracking.prepare_message_tracking
     current_sync_templates = template_meta_fix.sync_templates
 
     def carousel_button(button):
@@ -55,6 +58,20 @@ def install_template_cta_tracking_hardening():
         ):
             return tracking._tracked_meta_button(button)
         return current_carousel_button(button)
+
+    def prepare_message_tracking(*, message, template, components):
+        rendered, links = current_prepare_message_tracking(
+            message=message,
+            template=template,
+            components=components,
+        )
+        if links:
+            WhatsAppTemplateTrackedLink.objects.filter(
+                id__in=[link.id for link in links]
+            ).update(is_active=False)
+            for link in links:
+                link.is_active = False
+        return rendered, links
 
     def sync_templates(*, organization, account):
         preserved = {}
@@ -98,5 +115,6 @@ def install_template_cta_tracking_hardening():
         return summary
 
     template_service._carousel_button_payload = carousel_button
+    tracking.prepare_message_tracking = prepare_message_tracking
     template_meta_fix.sync_templates = sync_templates
     _INSTALLED = True
