@@ -117,6 +117,7 @@ class SetupLibraryTests(SimpleTestCase):
             "framework/known-trap-method.md",
             "framework/execution-and-recovery.md",
             "framework/eval-contract.md",
+            "framework/customer-content-gates.md",
         )
         for resource in required_framework:
             self.assertTrue(library._read_asset(resource).strip())
