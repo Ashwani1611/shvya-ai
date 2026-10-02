@@ -17,8 +17,10 @@ urlpatterns = [
         template_cta_ui.enable_template_cta_tracking,
         name="whatsapp-template-enable-click-tracking",
     ),
+    # Meta requires a dynamic URL variable to be the final URL component, so
+    # this route intentionally has no literal slash after ``suffix``.
     path(
-        "w/cta/<str:token>/<path:suffix>/",
+        "w/cta/<str:token>/<path:suffix>",
         tracked_template_cta,
         name="whatsapp-template-cta-action-dynamic",
     ),
