@@ -18,6 +18,7 @@ from .template_click_receipts import (
     augment_local_click_receipts,
     merge_local_click_receipts,
 )
+from .template_cta_analytics_merge import apply_confirmed_cta_authority
 from .template_cta_tracking import augment_tracked_cta_events
 
 
@@ -277,6 +278,10 @@ def fetch_template_analytics(*, account, template_ids, start_date, end_date):
             local_results=local_results,
         )
         merged = merge_local_click_receipts(
+            meta_results=merged,
+            local_results=local_results,
+        )
+        merged = apply_confirmed_cta_authority(
             meta_results=merged,
             local_results=local_results,
         )
