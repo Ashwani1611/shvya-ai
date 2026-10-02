@@ -1,13 +1,14 @@
-"""Tenant-safe UI action for upgrading legacy native CTAs to tracked CTAs."""
+"""Tenant-safe UI actions for tracked WhatsApp template CTAs."""
 
 from __future__ import annotations
 
 import copy
+import json
 
 from django.db import transaction
 from django.http import JsonResponse
 from django.urls import reverse
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.decorators import crm_login_required
 from services.channels.template_cta_tracking import (
@@ -69,6 +70,39 @@ def _copy_delivery_state(*, source, copied):
             "updated_at",
         ]
     )
+
+
+@crm_login_required
+@require_GET
+def template_analytics(request, template_id):
+    """Add tracking capability metadata to the existing analytics response."""
+
+    response = template_ui.template_analytics(request, template_id)
+    if response.status_code != 200:
+        return response
+    try:
+        payload = json.loads(response.content)
+    except (TypeError, ValueError):
+        return response
+
+    template = template_ui._template(request.crm_user, template_id)
+    if template is None:
+        return response
+    enabled = template_tracking_enabled(template)
+    upgrade_available = bool(
+        template.status == WhatsAppTemplate.Status.APPROVED
+        and template.meta_template_id
+        and template_has_trackable_cta(template)
+        and not enabled
+    )
+    payload["cta_tracking"] = {
+        "enabled": enabled,
+        "upgrade_available": upgrade_available,
+        "mode": "shvya_confirmed_actions" if enabled else "provider_or_quick_reply",
+    }
+    if enabled or upgrade_available:
+        payload["clicks_supported"] = True
+    return JsonResponse(payload, status=response.status_code)
 
 
 @crm_login_required
