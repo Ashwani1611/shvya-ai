@@ -86,6 +86,13 @@ services:
       - 0.0.0.0:8000
       - --workers
       - ${GUNICORN_WORKERS:-2}
+      # Staging shares the same CPU-contended host as production. Allow the
+      # Django URL graph and app registry to finish loading instead of letting
+      # Gunicorn's 30-second default kill healthy workers during deploy.
+      - --timeout
+      - ${GUNICORN_TIMEOUT:-120}
+      - --graceful-timeout
+      - ${GUNICORN_GRACEFUL_TIMEOUT:-60}
     healthcheck:
       test:
         [
@@ -94,8 +101,8 @@ services:
         ]
       interval: 5s
       timeout: 4s
-      retries: 12
-      start_period: 10s
+      retries: 24
+      start_period: 120s
     expose:
       - "8000"
 
