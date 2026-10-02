@@ -243,7 +243,10 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
                     boundary()
             entry["model_labels_match"] = ([x["model"] for x in entry["baseline"]]
                                             == [x["model"] for x in entry["recovery"]])
-            report["comparison_valid"] &= entry["model_labels_match"]
+            # The configured provider/model choices are covered by the source
+            # fingerprint. A fallback -> model response is precisely a recovery
+            # outcome to compare, not configuration drift. Keep response labels
+            # as a diagnostic; human review remains required for attribution.
     except RecoveryEvaluationError as exc:
         report.update(comparison_valid=False, stopped_reason=str(exc))
     except Exception as exc:

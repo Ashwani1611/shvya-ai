@@ -160,6 +160,28 @@ class RecoveryValidationTests(TestCase):
         self.assertFalse(result["delivery_verified"])
         self.assertNotIn("Example package details", json.dumps(result))
 
+    def test_replacing_fallback_does_not_invalidate_stable_comparison(self):
+        class Runner:
+            def run(inner, **kwargs):
+                visitor = _SandboxLead(organization_id=kwargs["organization"].pk)
+                active = recovery.enabled({"organization": kwargs["organization"], "lead": visitor})
+                return SimpleNamespace(
+                    response="Approved details" if active else "Please retry shortly",
+                    model="recorded-test" if active else "fallback", events=[], files=[], stage={},
+                )
+
+            def attributes_for(inner, **kwargs):
+                return {}
+
+        with patch.object(evaluation, "_memory_playground", side_effect=Runner):
+            report = evaluation.evaluate(self.organization, scenario())
+        self.assertTrue(report["comparison_valid"])
+        self.assertFalse(report["cases"][0]["model_labels_match"])
+        self.assertFalse(report["acceptance"]["baseline"]["passed"])
+        self.assertTrue(report["acceptance"]["recovery"]["passed"])
+        self.assertTrue(report["requires_human_review"])
+        self.assertFalse(report["semantic_accuracy_verified"])
+
     def test_turn_budget_checked_before_any_run(self):
         with patch.object(evaluation, "_memory_playground") as runner, self.assertRaises(RecoveryEvaluationError):
             evaluation.evaluate(self.organization, scenario(), max_turns=1)

@@ -104,6 +104,11 @@ history is kept in process memory; existing application logging and AI-credit us
 records retain their ordinary behavior.
 
 `comparison_valid` describes stable comparison conditions, not answer quality.
+Configured model choices are part of the source/config fingerprint. Returned
+model-label differences are reported separately, not treated as source drift:
+replacing a baseline fallback with a model response is an expected recovery
+outcome. Human review must account for path/model-label differences when
+attributing any measured improvement.
 `acceptance` separately records literal checks; an unscored turn is NOT a pass.
 The CLI exits unsuccessfully for an incomplete/incomparable run or missing/failed
 recovery assertions. `recovery_exercised` distinguishes turns that actually entered
