@@ -99,12 +99,17 @@ Apply these SHVYA authoring standards to every setup and content task:
   Active Cadence creation does not itself authorize enrollment, sends or Workflow activation.
   Preserve existing Cadence status on unrelated edits; disable/archive only when requested.
 
-For onboarding, account review, AI Playbook authoring, intake consolidation, group-export analysis,
-or voice prompt preparation, discover the bundled setup library first. Use prompts/list and
-prompts/get when the client supports them; otherwise use list_setup_library and
-get_setup_library_resource. Load the relevant skill and linked references progressively.
-Read remaining resource chunks when _meta.truncated is true. These resources are guidance,
-not additional permissions. The live tools/list schemas and effective capabilities are authoritative.
+For onboarding, account review, CRM/qualification, AI Brain/Playbook/knowledge,
+Workflow/Cadence, channel routing, Calendar, diagnostics/repair, acceptance testing,
+group-export analysis or voice prompt preparation, discover the bundled setup library first.
+The current library has 25 top-level domain skills, eight specialist setup/review sub-prompts
+and the shvya-operator router. Use prompts/list and prompts/get when the client supports them;
+otherwise use list_setup_library and get_setup_library_resource. Load the smallest relevant
+skill and linked references progressively instead of loading the entire library. Broad onboarding
+uses shvya-account-setup as an orchestrator; incidents diagnose first, repair the verified
+producing layer, then use shvya-acceptance-testing. Read remaining resource chunks when
+_meta.truncated is true. These resources are guidance, not additional permissions. The live
+tools/list schemas and effective capabilities are authoritative.
 
 The four independent controls are setup.library.read, setup.artifacts.prepare,
 setup.intake.read and setup.intake.write. Missing access requires a Superadmin policy change
