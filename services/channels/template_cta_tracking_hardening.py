@@ -40,11 +40,13 @@ def install_template_cta_tracking_hardening():
     if _INSTALLED:
         return
 
+    from . import template_analytics
     from . import template_cta_tracking as tracking
     from . import template_meta_fix
     from . import template_service
 
     current_carousel_button = template_service._carousel_button_payload
+    current_fetch_analytics = template_analytics.fetch_template_analytics
     current_prepare_message_tracking = tracking.prepare_message_tracking
     current_sync_templates = template_meta_fix.sync_templates
 
@@ -58,6 +60,24 @@ def install_template_cta_tracking_hardening():
         ):
             return tracking._tracked_meta_button(button)
         return current_carousel_button(button)
+
+    def fetch_analytics(*, account, template_ids, start_date, end_date):
+        # Confirm Meta's own URL tracking before the read so the first insights
+        # request does not unnecessarily return an unavailable click field.
+        templates = WhatsAppTemplate.objects.filter(
+            organization_id=account.organization_id,
+            account_id=account.pk,
+            meta_template_id__in=template_ids,
+            status=WhatsAppTemplate.Status.APPROVED,
+        ).select_related("account")
+        for template in templates:
+            tracking._enable_meta_click_tracking(template)
+        return current_fetch_analytics(
+            account=account,
+            template_ids=template_ids,
+            start_date=start_date,
+            end_date=end_date,
+        )
 
     def prepare_message_tracking(*, message, template, components):
         rendered, links = current_prepare_message_tracking(
@@ -115,6 +135,7 @@ def install_template_cta_tracking_hardening():
         return summary
 
     template_service._carousel_button_payload = carousel_button
+    template_analytics.fetch_template_analytics = fetch_analytics
     tracking.prepare_message_tracking = prepare_message_tracking
     template_meta_fix.sync_templates = sync_templates
     _INSTALLED = True
