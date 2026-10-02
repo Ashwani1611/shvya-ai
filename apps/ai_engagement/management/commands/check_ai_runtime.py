@@ -14,6 +14,8 @@ REQUIRED = {
         "ai.generate_ai_engagement_response",
         "ai.recover_api_engagement",
         "apps.channels.tasks.send_whatsapp_message_task",
+        "apps.channels.instagram_tasks.generate_instagram_ai_engagement_task",
+        "apps.channels.instagram_tasks.send_instagram_message_task",
     },
     "hosted_ai": {
         "hosted.dispatch_due_ai",

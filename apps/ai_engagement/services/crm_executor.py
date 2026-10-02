@@ -105,12 +105,35 @@ class CRMActionExecutor:
             guard.validate_current_lead_context(locked_lead)
             if source_id:
                 # Supplied/inferred source identity is never sufficient by itself.
-                # Validate the real persisted message and its account before use.
+                # Validate the real persisted provider message and its account
+                # before using it for idempotency/evidence.
                 try:
-                    source = WhatsAppMessage.objects.select_related("account", "lead").filter(
-                        pk=source_id, organization=organization, lead=locked_lead,
-                        direction=WhatsAppMessage.Direction.INBOUND,
-                    ).first()
+                    if (
+                        source_message is not None
+                        and getattr(source_message, "conversation_id", None) is not None
+                    ):
+                        from apps.channels.instagram_models import InstagramMessage
+
+                        source = (
+                            InstagramMessage.objects
+                            .select_related("account", "conversation", "conversation__lead")
+                            .filter(
+                                pk=source_id,
+                                organization=organization,
+                                conversation__lead=locked_lead,
+                                direction=InstagramMessage.Direction.INBOUND,
+                            )
+                            .first()
+                        )
+                    else:
+                        source = WhatsAppMessage.objects.select_related(
+                            "account", "lead"
+                        ).filter(
+                            pk=source_id,
+                            organization=organization,
+                            lead=locked_lead,
+                            direction=WhatsAppMessage.Direction.INBOUND,
+                        ).first()
                 except (ValueError, DjangoValidationError) as exc:
                     raise CRMActionExecutionError("Invalid action source message.") from exc
                 if source is None:

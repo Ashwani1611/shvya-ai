@@ -18,7 +18,11 @@
       <div class="contact-card"><div class="contact-section-heading"><h3>Contact details</h3><span data-save-status role="status">Autosave on</span></div>
         <form data-autosave action="{% url 'whatsapp-lead-quick-update' active_lead.id %}">{% csrf_token %}
           <label class="contact-row"><span>Name</span><input name="name" value="{{ active_lead.name }}" maxlength="150" required autocomplete="off"></label>
+          {% if channel == 'instagram' and active_lead.lead_source == 'instagram' %}
+          <label class="contact-row"><span>Phone</span><input name="phone" value="{{ active_lead.phone }}" placeholder="+919876543210" inputmode="tel" autocomplete="tel"></label>
+          {% else %}
           <div class="contact-row"><span>Phone</span><div class="contact-locked"><span>{{ active_lead.phone }}</span><i class="ti ti-lock" title="Read-only"></i><button type="button" data-copy-phone="{{ active_lead.phone }}" aria-label="Copy phone"><i class="ti ti-copy"></i></button></div></div>
+          {% endif %}
           <label class="contact-row"><span>Email</span><input name="email" type="email" value="{{ active_lead.email }}" placeholder="Add email" autocomplete="off"></label>
         </form>
         <div class="contact-row"><span>Intent Score</span><strong class="contact-score">{% if intent_score.assessed %}{{ intent_score.score }}/10{% else %}Not assessed{% endif %}</strong></div>
