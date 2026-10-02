@@ -278,7 +278,9 @@ class KnowledgeSourceService:
             - cleaning
             - chunking
             - versioning
-            - publishing the new Document version
+            - returning the completed, unpublished Document version
+
+        Callers publish through KnowledgePipelineService after indexing.
         """
 
         self._validate_source(
@@ -318,7 +320,6 @@ class KnowledgeSourceService:
             .filter(
                 organization=source.organization,
                 source_key=normalized_url,
-                is_active=True,
                 processing_status=(
                     Document.ProcessingStatus.COMPLETED
                 ),
@@ -331,7 +332,7 @@ class KnowledgeSourceService:
 
         if document is None:
             raise KnowledgeSourceServiceError(
-                "URL processing completed but no active "
+                "URL processing completed but no "
                 "completed Document version was found."
             )
 

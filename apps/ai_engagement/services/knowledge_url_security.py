@@ -13,10 +13,13 @@ current callers inherit the protection without changing their public contract.
 from __future__ import annotations
 
 import http.client
+import io
+from pathlib import Path
 import ipaddress
 import socket
 import ssl
 from dataclasses import dataclass
+from email.message import Message
 from urllib.parse import urljoin, urlparse
 
 from apps.ai_engagement.services import knowledge as knowledge_service
@@ -266,7 +269,8 @@ def _open_pinned_response(target: _ValidatedTarget, *, timeout: float, user_agen
             headers={
                 "Host": target.host_header,
                 "User-Agent": user_agent,
-                "Accept": "text/html,application/xhtml+xml",
+                "Accept": ("text/html,application/xhtml+xml,application/pdf,"
+                           "text/plain,text/csv,application/octet-stream,*/*;q=0.5"),
                 # Bound what we read without needing to decompress attacker-
                 # controlled transfer encodings in application memory.
                 "Accept-Encoding": "identity",
@@ -281,7 +285,7 @@ def _open_pinned_response(target: _ValidatedTarget, *, timeout: float, user_agen
 
 
 def _secure_extract_url_text(self, url: str) -> str:
-    """Fetch one public HTML page with SSRF, rebinding, and size protections."""
+    """Fetch a public page or supported document with the same URL protections."""
 
     current_url = str(url or "").strip()
 
@@ -316,13 +320,6 @@ def _secure_extract_url_text(self, url: str) -> str:
                 )
 
             content_type = str(response.getheader("Content-Type", "") or "").lower()
-            if (
-                "text/html" not in content_type
-                and "application/xhtml+xml" not in content_type
-            ):
-                raise knowledge_service.KnowledgeExtractionError(
-                    "The URL did not return an HTML page."
-                )
 
             content_encoding = str(
                 response.getheader("Content-Encoding", "") or ""
@@ -347,10 +344,7 @@ def _secure_extract_url_text(self, url: str) -> str:
                 connection.close()
 
         try:
-            html = raw.decode("utf-8", errors="replace")
-            soup = knowledge_service.BeautifulSoup(html, "html.parser")
-            self._remove_unwanted_html(soup)
-            return self._clean_text(soup.get_text(separator="\n"))
+            return _extract_response_text(self, raw, content_type=content_type, url=target.url)
         except knowledge_service.KnowledgeExtractionError:
             raise
         except Exception as exc:
@@ -361,6 +355,52 @@ def _secure_extract_url_text(self, url: str) -> str:
     raise knowledge_service.KnowledgeExtractionError(
         "Knowledge URL redirected too many times."
     )
+
+
+_DOCUMENT_CONTENT_TYPES = {
+    "application/pdf": ".pdf",
+    "text/plain": ".txt",
+    "text/csv": ".csv",
+    "application/csv": ".csv",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+}
+
+
+def _extract_response_text(service, raw: bytes, *, content_type: str, url: str) -> str:
+    """Use the upload parsers for linked documents, after identical validation."""
+    mime_type = content_type.split(";", 1)[0].strip()
+    if mime_type in {"text/html", "application/xhtml+xml"}:
+        headers = Message()
+        headers["Content-Type"] = content_type
+        soup = knowledge_service.BeautifulSoup(
+            raw, "html.parser", from_encoding=headers.get_content_charset()
+        )
+        service._remove_unwanted_html(soup)
+        return service._clean_text(soup.get_text(separator="\n"))
+
+    extension = _DOCUMENT_CONTENT_TYPES.get(mime_type)
+    if mime_type in {"application/octet-stream", "binary/octet-stream"}:
+        suffix = Path(urlparse(url).path).suffix.lower()
+        if suffix in service.SUPPORTED_FILE_EXTENSIONS:
+            extension = suffix
+    if not extension:
+        raise knowledge_service.KnowledgeExtractionError(
+            "The URL did not return an HTML page or a supported knowledge file."
+        )
+
+    from apps.ai_engagement.services.knowledge_file_security import (
+        KnowledgeFileSecurityError,
+        validate_knowledge_file,
+    )
+    filename = f"linked-knowledge{extension}"
+    with io.BytesIO(raw) as stream:
+        try:
+            validate_knowledge_file(stream, filename=filename)
+        except KnowledgeFileSecurityError as exc:
+            raise knowledge_service.KnowledgeExtractionError(str(exc)) from exc
+        stream.seek(0)
+        return service.extract_file_text(stream, filename=filename)
 
 
 def _secure_normalize_url(self, url: str) -> str:

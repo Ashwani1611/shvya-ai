@@ -22,8 +22,31 @@ def _completion_target(*, lead, state: dict[str, Any], config: dict[str, Any]):
         return None
 
     target = config.get("completion_stage")
-    if isinstance(target, dict) and target.get("id") is not None:
-        return target
+    explicit_targets = (
+        [target] if isinstance(target, dict) and target.get("id") is not None else []
+    )
+    for candidates in config.get("current_pipeline_completion_targets") or []:
+        local = [
+            candidate for candidate in candidates
+            if str(candidate.get("pipeline_id")) == str(lead.pipeline_id)
+        ]
+        if len(local) != 1:
+            return None
+        explicit_targets.extend(local)
+    unique = {str(item["id"]): item for item in explicit_targets}
+    stage_errors = any(
+        item.get("code") in {
+            "unresolved_completion_stage_rule", "ambiguous_completion_stage_rule",
+        }
+        for item in config.get("errors") or []
+    )
+    if stage_errors or len(unique) > 1:
+        return None
+    if len(unique) == 1:
+        return next(iter(unique.values()))
+    if config.get("completion_rules"):
+        # An unresolved authored target must not silently become Qualified.
+        return None
 
     from apps.crm.models import Stage
 

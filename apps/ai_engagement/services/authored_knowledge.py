@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import re
 
+from django.db.models import Case, IntegerField, Q, Value, When
+
 from apps.ai_engagement.services.playbook import parse_playbook
 from apps.ai_engagement.services.retrieval import _query_tokens
 
@@ -41,26 +43,40 @@ def faq_pairs(raw):
 
 def matching_authored_answers(*, organization, question, limit=4):
     from apps.ai_engagement.models import FAQ, OrgInfo
+    query = _tokens(question)
+    if not query:
+        return []
     info = OrgInfo.objects.filter(organization=organization).only('ai_playbook').first()
     candidates = [
         {'source_id': f'playbook:faq:{index}', 'source_type': 'playbook_faq',
          'question': q, 'content': a}
         for index, (q, a) in enumerate(faq_pairs(getattr(info, 'ai_playbook', '')))
     ]
+    # Rank before bounding; later relevant FAQs must not disappear behind old rows.
+    candidate_filter = Q()
+    candidate_rank = Value(0, output_field=IntegerField())
+    for token in query:
+        question_match = Q(question__icontains=token)
+        answer_match = Q(answer__icontains=token)
+        candidate_filter |= question_match | answer_match
+        candidate_rank += Case(When(question_match, then=Value(3)), default=Value(0))
+        candidate_rank += Case(When(answer_match, then=Value(1)), default=Value(0))
+    rows = (FAQ.objects.filter(organization=organization, is_active=True)
+            .filter(candidate_filter).annotate(candidate_rank=candidate_rank)
+            .order_by('-candidate_rank', 'pk')[:100])
     candidates.extend(
         {'source_id': f'faq:{row.pk}', 'source_type': 'organization_faq',
          'question': row.question, 'content': row.answer}
-        for row in FAQ.objects.filter(organization=organization, is_active=True).order_by('pk')[:100]
+        for row in rows
     )
-    query = _tokens(question)
-    if not query:
-        return []
     scored = []
     for item in candidates:
         tokens = _tokens(item['question'])
         overlap = query & tokens
         score = len(overlap) / max(len(query | tokens), 1)
+        answer_overlap = query & _tokens(item['content'])
+        answer_coverage = len(overlap | answer_overlap) / len(query)
         exact = ' '.join(question.casefold().split()).rstrip('?.') == ' '.join(item['question'].casefold().split()).rstrip('?.')
-        if exact or (overlap and (score >= 0.4 or query <= tokens)):
-            scored.append({**item, 'score': 1.0 if exact else score})
+        if exact or (overlap and (score >= 0.4 or query <= tokens)) or answer_coverage >= 0.75:
+            scored.append({**item, 'score': 1.0 if exact else max(score, answer_coverage * 0.6)})
     return sorted(scored, key=lambda item: -item['score'])[:limit]

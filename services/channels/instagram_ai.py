@@ -89,7 +89,25 @@ class InstagramAIContextBuilder(AIContextBuilder):
                     ),
                 }
             )
-        return {"message_count": len(normalized), "messages": normalized}
+        return {"message_count": len(normalized), "messages": normalized, "channel": "instagram", "execution_mode": "live"}
+
+    def _build_lead_context(self, *, lead):
+        context = super()._build_lead_context(lead=lead)
+        # Count only confirmed delivery in this exact Instagram conversation.
+        shared_ids = set(context.get("shared_document_ids") or [])
+        document_ids = InstagramMessage.objects.filter(
+            organization_id=lead.organization_id,
+            conversation_id=self.conversation_id,
+            conversation__lead=lead,
+            direction=InstagramMessage.Direction.OUTBOUND,
+            status__in=[InstagramMessage.Status.SENT, InstagramMessage.Status.READ],
+            raw_payload__shvya_ai__file_document_id__isnull=False,
+        ).order_by().values_list("raw_payload__shvya_ai__file_document_id", flat=True).distinct()
+        for value in document_ids:
+            if not isinstance(value, bool) and str(value or "").isdigit():
+                shared_ids.add(int(value))
+        context["shared_document_ids"] = sorted(shared_ids)
+        return context
 
     def latest_inbound_for_fallback(self, *, organization, lead):
         return (
@@ -146,40 +164,30 @@ def _existing_ai_response(*, conversation, source_message_id):
 
 
 def _resume_existing_ai_response(*, task, conversation, source_message_id):
-    existing = _existing_ai_response(
-        conversation=conversation,
-        source_message_id=source_message_id,
+    existing = list(
+        conversation.messages.filter(
+            organization_id=conversation.organization_id,
+            account_id=conversation.account_id,
+            direction=InstagramMessage.Direction.OUTBOUND,
+            raw_payload__shvya_ai__source_inbound_message_id=str(source_message_id),
+        ).order_by("created_at", "id")
     )
-    if existing is None:
+    if not existing:
         return None
 
-    if existing.status == InstagramMessage.Status.QUEUED:
-        try:
-            _dispatch_instagram_ai_message(existing.pk)
-        except Exception as exc:
-            raise task.retry(exc=exc, countdown=20)
-        return {
-            "status": "queued",
-            "reason": "existing_ai_response_requeued",
-            "lead_id": (
-                str(conversation.lead_id)
-                if conversation.lead_id
-                else None
-            ),
-            "source_message_id": str(source_message_id),
-            "message_id": str(existing.pk),
-        }
-
+    queued = [item for item in existing if item.status == InstagramMessage.Status.QUEUED]
+    try:
+        for item in queued:
+            _dispatch_instagram_ai_message(item.pk)
+    except Exception as exc:
+        raise task.retry(exc=exc, countdown=20)
     return {
-        "status": "skipped",
-        "reason": "duplicate_ai_response",
-        "lead_id": (
-            str(conversation.lead_id)
-            if conversation.lead_id
-            else None
-        ),
+        "status": "queued" if queued else "skipped",
+        "reason": "existing_ai_response_requeued" if queued else "duplicate_ai_response",
+        "lead_id": str(conversation.lead_id) if conversation.lead_id else None,
         "source_message_id": str(source_message_id),
-        "message_id": str(existing.pk),
+        "message_id": str(existing[0].pk),
+        "message_ids": [str(item.pk) for item in existing],
     }
 
 
@@ -375,16 +383,25 @@ def execute_instagram_ai_engagement(*, task, message_id):
             "lead_id": str(lead.pk),
         }
 
+    # Refresh the relation cached before automatic lead creation.
+    source.conversation = conversation
+
     service = EngagementService(
         context_builder=InstagramAIContextBuilder(
             conversation_id=conversation.pk,
         )
     )
+    from apps.ai_engagement.services.phase5_6_runtime import source_evidence_context
+
     try:
-        decision = service.engage(
-            organization=source.organization,
-            lead=lead,
-        )
+        with source_evidence_context(
+            organization=source.organization, lead=lead,
+            source=source, provider=service.provider,
+        ):
+            decision = service.engage(
+                organization=source.organization,
+                lead=lead,
+            )
     except EngagementError as exc:
         provider_error = exc.__cause__
         if isinstance(provider_error, AIProviderTransientError):
@@ -546,13 +563,28 @@ def execute_instagram_ai_engagement(*, task, message_id):
             }
             outbound.save(update_fields=["raw_payload", "updated_at"])
 
+            # Queue the file with the reply; retries republish the same rows.
+            outbound_ids = [str(outbound.pk)]
+            document_id = getattr(decision, "file_document_id", None)
+            if document_id is not None:
+                from apps.ai_engagement.services.instagram_files import queue_guided_file_reply
+
+                file_message = queue_guided_file_reply(
+                    organization=source.organization,
+                    conversation=locked_conversation,
+                    document_id=document_id,
+                    ai_metadata=outbound.raw_payload["shvya_ai"],
+                )
+                outbound_ids.append(str(file_message.pk))
+
             outbound_id = str(outbound.pk)
             # Let broker publication failures propagate after the database
             # commit. Celery will retry this generation task; the retry sees the
             # already-queued AI outbound above and republishes only its send task.
-            transaction.on_commit(
-                lambda outbound_id=outbound_id: _dispatch_instagram_ai_message(outbound_id),
-            )
+            for queued_id in outbound_ids:
+                transaction.on_commit(
+                    lambda queued_id=queued_id: _dispatch_instagram_ai_message(queued_id),
+                )
 
     except (AIPermissionError, CRMActionExecutionError) as exc:
         logger.exception("Instagram AI finalization failed for lead %s", lead.pk)
@@ -567,6 +599,7 @@ def execute_instagram_ai_engagement(*, task, message_id):
         "engaged": True,
         "crm": crm_results,
         "message_id": outbound_id,
+        "message_ids": outbound_ids,
         "source_message_id": str(source.pk),
         "model": decision.model,
     }

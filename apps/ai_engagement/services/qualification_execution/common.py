@@ -28,7 +28,7 @@ _LABEL_ONLY = re.compile(
     re.I,
 )
 _COMPLETION_RULE = re.compile(
-    r"\b(?:qualification\s+(?:is\s+)?(?:complete|completed)|(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed)|(?:after|once|when)\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?(?:questions?|requirements?)\s+(?:are\s+)?(?:answered|complete|completed))\b",
+    r"\b(?:(?:all\s+)?qualification\s+criteria\s+(?:(?:are|have been)\s+)?(?:satisfied|met|passed)|qualification\s+(?:is\s+)?(?:complete|completed)|(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?(?:questions?|requirements?|answers?)\s+(?:are\s+)?(?:answered|complete|completed)|(?:after|once|when)\s+(?:all|every)\s+(?:required\s+)?(?:qualification\s+)?(?:questions?|requirements?)\s+(?:are\s+)?(?:answered|complete|completed))\b",
     re.I,
 )
 _GENERIC_ACKS = {
@@ -95,7 +95,7 @@ def _save_processing(message, processing: dict[str, Any]) -> None:
 
 
 def _reference(value: Any) -> str:
-    text = _norm(value).strip("`'\"[](){} ")
+    text = _norm(value).strip("`'\"[](){} “”*")
     return re.sub(
         r"^(?:requirement|question|attribute|field)\s+",
         "",
@@ -196,9 +196,9 @@ def _attribute_refs(
 
 
 def _split_mapping(line: str) -> tuple[str, str] | None:
-    text = str(line or "").strip()
+    text = re.sub(r"^\s*(?:[-*•]+|\d+[.)])\s*", "", str(line or "")).strip()
     attribute = re.search(r"(?im)^\s*[-*]?\s*Attribute name:\s*(.+)$", text)
-    source = re.search(r"(?im)^\s*[-*]?\s*Source:\s*Qualification Question\s*(\d+)\b", text)
+    source = re.search(r"(?im)^\s*[-*]?\s*Source:\s*(?:Qualification\s+)?Q(?:uestion)?\s*(\d+)\b", text)
     if attribute:
         return (f"Q{source.group(1)}", attribute.group(1).strip()) if source else None
     parts = re.split(r"\s*(?:->|=>|→)\s*", text, maxsplit=1)

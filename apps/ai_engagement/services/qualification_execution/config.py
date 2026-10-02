@@ -15,6 +15,34 @@ from .common import (
 )
 
 
+def _completion_destinations(line, stages):
+    """Resolve destination mentions, excluding a rule's source-stage name."""
+    destinations = re.findall(
+        r"\b(?:move|shift|route)\b[^\n;]*?\b(?:to|into)\s+([^\n;]+)",
+        str(line or ""), re.I,
+    )
+    target_text = " ".join(destinations) if destinations else str(line or "")
+    normalized = _norm(target_text)
+    matches = [
+        stage for stage in stages
+        if _norm(stage["name"]) and re.search(
+            rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])", normalized,
+        )
+    ]
+    if len(matches) > 1 and not re.search(r"\bcurrent pipeline\b", normalized):
+        named_pipeline = [
+            stage for stage in matches
+            if _norm(stage["pipeline__name"]) and re.search(
+                rf"\b(?:in|within|into)\s+(?:the\s+)?{re.escape(_norm(stage['pipeline__name']))}(?![a-z0-9])|"
+                rf"(?<![a-z0-9]){re.escape(_norm(stage['pipeline__name']))}\s+pipeline\b",
+                normalized,
+            )
+        ]
+        if named_pipeline:
+            matches = named_pipeline
+    return matches
+
+
 def _config(
     *,
     organization,
@@ -139,42 +167,26 @@ def _config(
         ).values("id", "name", "pipeline_id", "pipeline__name")
     )
     stage_targets = []
+    current_pipeline_targets = []
     protected_completion_stage_ids = set()
-    for line in section_lines(raw, "stage_shifting"):
-        if not _COMPLETION_RULE.search(line):
-            continue
-        normalized = _norm(line)
-        matches = [
-            stage
-            for stage in stages
-            if _norm(stage["name"])
-            and re.search(
-                rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])",
-                normalized,
-            )
-        ]
-        # Even an ambiguous completion rule must not let a model route to one
-        # of its possible targets through the generic CRM action path.
-        possible_targets = matches
-        if len(matches) > 1:
-            matches = [
-                stage
-                for stage in matches
-                if _norm(stage["pipeline__name"])
-                and _norm(stage["pipeline__name"]) in normalized
-            ]
-        protected_completion_stage_ids.update(str(stage["id"]) for stage in (matches or possible_targets))
-        if len(matches) == 1:
+    completion_rules = [
+        line for line in section_lines(raw, "stage_shifting")
+        if _COMPLETION_RULE.search(line)
+    ]
+    for line in completion_rules:
+        matches = _completion_destinations(line, stages)
+        protected_completion_stage_ids.update(str(stage["id"]) for stage in matches)
+        current_pipeline_only = bool(re.search(r"\bcurrent pipeline\b", line, re.I))
+        if current_pipeline_only:
+            # Organization compilation has no lead; bind at execution.
+            current_pipeline_targets.append(matches)
+        elif len(matches) == 1:
             stage_targets.append(matches[0])
         else:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "unresolved_completion_stage_rule",
-                    "detail": line,
-                }
-            )
+            errors.append({
+                "type": "configuration_error", "status": "failed",
+                "code": "unresolved_completion_stage_rule", "detail": line,
+            })
     unique_targets = {str(stage["id"]): stage for stage in stage_targets}
     completion_stage = (
         next(iter(unique_targets.values())) if len(unique_targets) == 1 else None
@@ -195,6 +207,8 @@ def _config(
         "mapping_value_rules": value_rules,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
+        "completion_rules": completion_rules,
+        "current_pipeline_completion_targets": current_pipeline_targets,
         "protected_completion_stage_ids": sorted(protected_completion_stage_ids),
         "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
