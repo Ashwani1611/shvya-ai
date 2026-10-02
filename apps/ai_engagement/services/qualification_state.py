@@ -986,13 +986,32 @@ def persist_answer_updates(*, lead, updates):
         qualification_questions(org_info.ai_playbook if org_info else "")
     )["requirements"]
     requirements = requirements_for_lead(lead, current_requirements)
+    source_ids = [
+        item["source_message_id"]
+        for item in updates
+        if isinstance(item, dict) and item.get("source_message_id")
+    ]
     messages = list(
         lead.whatsapp_messages.filter(
             organization_id=lead.organization_id,
-            id__in=[item["source_message_id"] for item in updates if isinstance(item, dict) and item.get("source_message_id")],
+            id__in=source_ids,
             direction="inbound",
         ).values("id", "body", "direction")
     )
+    if source_ids:
+        from apps.channels.instagram_models import InstagramMessage
+
+        found = {str(item["id"]) for item in messages}
+        missing = [source_id for source_id in source_ids if str(source_id) not in found]
+        if missing:
+            messages.extend(
+                InstagramMessage.objects.filter(
+                    organization_id=lead.organization_id,
+                    conversation__lead=lead,
+                    id__in=missing,
+                    direction=InstagramMessage.Direction.INBOUND,
+                ).values("id", "body", "direction")
+            )
     base = state_for_lead(lead, requirements=requirements)
     if not base.get("flow_snapshot") and requirements:
         base["flow_snapshot"] = _snapshot(requirements)

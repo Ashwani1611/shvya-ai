@@ -44,11 +44,11 @@ def whatsapp_lead_pipeline_options_view(request, lead_id):
 @require_POST
 @transaction.atomic
 def whatsapp_lead_quick_update_view(request, lead_id):
-    """Update fields exposed by the WhatsApp side panel.
+    """Update fields exposed by the shared chat side panel.
 
-    Phone is intentionally not accepted here. A WhatsApp conversation is
-    keyed to the lead phone number, so changing it from the inbox can detach
-    the visible conversation from its stored message history.
+    WhatsApp lead phone numbers remain immutable here because they identify the
+    transport conversation. Instagram participant IDs identify Instagram
+    conversations, so phone is an optional editable CRM attribute there.
 
     Pipeline/stage changes always use the shared backend transition service;
     the UI response is derived from the database-backed Lead instance.
@@ -88,6 +88,31 @@ def whatsapp_lead_quick_update_view(request, lead_id):
                 )
         lead.email = email
         update_fields.append("email")
+
+    if "phone" in request.POST and lead.lead_source == "instagram":
+        from services.channels.instagram_leads import normalize_instagram_phone
+
+        raw_phone = (request.POST.get("phone") or "").strip()
+        try:
+            phone = normalize_instagram_phone(
+                raw_phone,
+                country_code=getattr(lead.pipeline, "country_code", ""),
+            )
+        except ValidationError as exc:
+            return JsonResponse(
+                {"error": " ".join(exc.messages)},
+                status=400,
+            )
+        if phone and Lead.objects.filter(
+            organization=user.organization,
+            phone=phone,
+        ).exclude(pk=lead.pk).exists():
+            return JsonResponse(
+                {"error": "This phone number already belongs to another lead."},
+                status=400,
+            )
+        lead.phone = phone
+        update_fields.append("phone")
 
     target_pipeline = None
     target_stage = None
@@ -161,6 +186,7 @@ def whatsapp_lead_quick_update_view(request, lead_id):
         "ok": True,
         "name": lead.name,
         "email": lead.email,
+        "phone": lead.phone,
         "pipeline_id": str(lead.pipeline_id) if lead.pipeline_id else "",
         "pipeline_name": lead.pipeline.name if lead.pipeline_id else "",
         "stage_id": str(lead.stage_id) if lead.stage_id else "",

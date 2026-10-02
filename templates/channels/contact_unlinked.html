@@ -4,7 +4,7 @@
 {% if can_create %}<div class="contact-card"><h3>Create lead</h3><p class="contact-help">Save this contact in your CRM. Existing contacts are linked without duplication.</p>
 <form data-create-chat-lead method="post">{% csrf_token %}<input type="hidden" name="chat" value="{{ chat }}">
 <label class="contact-attribute"><span>Name</span><input name="name" value="{{ contact_name }}" required maxlength="150"></label>
-{% if instagram %}<label class="contact-attribute"><span>Phone with country code</span><input name="phone" placeholder="+919876543210" required></label><label class="contact-help"><input type="checkbox" name="confirmed" value="yes" required> This phone belongs to this Instagram contact.</label>
+{% if instagram %}<label class="contact-attribute"><span>Phone <small>(optional)</small></span><input name="phone" placeholder="+919876543210" inputmode="tel" autocomplete="tel"></label><p class="contact-help">Instagram DMs do not require a phone number. If the contact shares one later, SHVYA will add it to the CRM lead automatically.</p>
 {% else %}<div class="contact-row"><span>Phone</span><span>{{ phone }} <i class="ti ti-lock"></i></span></div>{% endif %}
 <label class="contact-attribute"><span>Pipeline</span><select name="pipeline" required><option value="">Choose pipeline</option>{% for pipeline in pipelines %}<option value="{{ pipeline.pk }}">{{ pipeline.name }}</option>{% endfor %}</select></label>
 {% if not pipelines %}<p class="contact-help">Connect this account to an accessible pipeline with an active stage first.</p>{% endif %}

@@ -544,18 +544,97 @@ class ContactPanelTests(TestCase):
         self.assertEqual(self.client.post(url, {"enabled": "false"}).status_code, 404)
 
 
-    def test_instagram_create_requires_confirmed_phone_and_links_without_duplicates(self):
+    def test_instagram_create_does_not_require_phone_and_blank_phones_can_repeat(self):
         from apps.channels.instagram_models import InstagramAccount, InstagramConversation
-        account = InstagramAccount.objects.create(organization=self.org, ig_user_id="contact-panel-ig", access_token="test", status="connected")
-        conversation = InstagramConversation.objects.create(organization=self.org, account=account, participant_id="contact", participant_name="IG Contact")
-        url = reverse("chat-instagram-contact", args=[conversation.pk])
-        self.assertContains(self.client.get(url), "Create lead")
-        data = {"phone": "+919111222333", "name": "IG Contact", "pipeline": str(self.pipeline.pk)}
-        self.assertEqual(self.client.post(url, data).status_code, 400)
-        data["confirmed"] = "yes"
-        self.assertEqual(self.client.post(url, data).status_code, 200)
-        self.assertEqual(self.client.post(url, data).status_code, 200)
-        conversation.refresh_from_db()
-        self.assertEqual(conversation.lead.phone, data["phone"])
-        self.assertEqual(conversation.lead.lead_source, "instagram")
-        self.assertEqual(Lead.objects.filter(organization=self.org, phone=data["phone"]).count(), 1)
+
+        account = InstagramAccount.objects.create(
+            organization=self.org,
+            ig_user_id="contact-panel-ig",
+            access_token="test",
+            status="connected",
+        )
+        first = InstagramConversation.objects.create(
+            organization=self.org,
+            account=account,
+            participant_id="contact-one",
+            participant_name="IG Contact One",
+        )
+        second = InstagramConversation.objects.create(
+            organization=self.org,
+            account=account,
+            participant_id="contact-two",
+            participant_name="IG Contact Two",
+        )
+
+        for conversation in (first, second):
+            url = reverse("chat-instagram-contact", args=[conversation.pk])
+            response = self.client.get(url)
+            self.assertContains(response, "Create lead")
+            self.assertContains(response, "Phone <small>(optional)</small>", html=True)
+            self.assertNotContains(response, "This phone belongs to this Instagram contact")
+
+            data = {
+                "name": conversation.participant_name,
+                "pipeline": str(self.pipeline.pk),
+            }
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+            # Client retries are idempotent once the Instagram conversation is linked.
+            self.assertEqual(self.client.post(url, data).status_code, 200)
+
+        first.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(first.lead.phone, "")
+        self.assertEqual(second.lead.phone, "")
+        self.assertEqual(first.lead.lead_source, "instagram")
+        self.assertEqual(second.lead.lead_source, "instagram")
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.org,
+                lead_source="instagram",
+                phone="",
+            ).count(),
+            2,
+        )
+
+        linked = self.client.get(
+            reverse("chat-contact-panel", args=[first.lead_id]),
+            {"channel": "instagram"},
+        )
+        self.assertContains(linked, 'name="phone"')
+        self.assertContains(linked, 'placeholder="+919876543210"')
+
+    def test_instagram_source_phone_is_editable_and_normalized(self):
+        from apps.channels.instagram_models import InstagramAccount, InstagramConversation
+
+        self.pipeline.country_code = "+91"
+        self.pipeline.save(update_fields=["country_code", "updated_at"])
+        lead = Lead.objects.create(
+            organization=self.org,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Instagram customer",
+            phone="",
+            lead_source="instagram",
+        )
+        account = InstagramAccount.objects.create(
+            organization=self.org,
+            ig_user_id="contact-panel-phone-edit",
+            access_token="test",
+            status="connected",
+        )
+        InstagramConversation.objects.create(
+            organization=self.org,
+            account=account,
+            participant_id="phone-edit",
+            participant_name="Phone Edit",
+            lead=lead,
+        )
+
+        response = self.client.post(
+            reverse("whatsapp-lead-quick-update", args=[lead.pk]),
+            {"phone": "98765 43211"},
+        )
+        self.assertEqual(response.status_code, 200, response.content)
+        lead.refresh_from_db()
+        self.assertEqual(lead.phone, "+919876543211")
+        self.assertEqual(response.json()["phone"], "+919876543211")

@@ -209,6 +209,12 @@ CELERY_TASK_ROUTES = {
     "ai.recover_api_engagement": {"queue": "ai_realtime"},
     "ai.generate_ai_engagement_response": {"queue": "ai_realtime"},
     "apps.channels.tasks.send_whatsapp_message_task": {"queue": "ai_realtime"},
+    "apps.channels.instagram_tasks.generate_instagram_ai_engagement_task": {
+        "queue": "ai_realtime"
+    },
+    "apps.channels.instagram_tasks.send_instagram_message_task": {
+        "queue": "ai_realtime"
+    },
     "hosted.dispatch_due_ai": {"queue": "hosted_ai"},
     "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
         "queue": "hosted_ai"

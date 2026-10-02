@@ -85,6 +85,7 @@ class Lead(models.Model):
 
     phone = models.CharField(
         max_length=32,
+        blank=True,
     )
 
     email = models.EmailField(
@@ -142,6 +143,7 @@ class Lead(models.Model):
                     "organization",
                     "phone",
                 ],
+                condition=~models.Q(phone=""),
                 name="uniq_org_phone",
             )
         ]
@@ -251,24 +253,34 @@ class Lead(models.Model):
 
         if self.phone:
             self.phone = normalize_phone(self.phone)
-
-        duplicate_qs = Lead.objects.filter(
-            organization_id=self.organization_id,
-            phone=self.phone,
-        )
-
-        if self.pk:
-            duplicate_qs = duplicate_qs.exclude(
-                pk=self.pk,
-            )
-
-        if duplicate_qs.exists():
+        elif self.lead_source != "instagram":
             raise ValidationError(
                 {
                     "phone": (
-                        "Duplicate lead created. "
-                        "This phone number already exists "
-                        "in this organization."
+                        "Phone number is required unless the lead "
+                        "originated from Instagram."
                     )
                 }
             )
+
+        if self.phone:
+            duplicate_qs = Lead.objects.filter(
+                organization_id=self.organization_id,
+                phone=self.phone,
+            )
+
+            if self.pk:
+                duplicate_qs = duplicate_qs.exclude(
+                    pk=self.pk,
+                )
+
+            if duplicate_qs.exists():
+                raise ValidationError(
+                    {
+                        "phone": (
+                            "Duplicate lead created. "
+                            "This phone number already exists "
+                            "in this organization."
+                        )
+                    }
+                )
