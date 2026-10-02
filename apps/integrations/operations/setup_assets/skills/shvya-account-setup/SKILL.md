@@ -54,3 +54,9 @@ For an edit, load only the relevant authoring reference, fetch the affected enti
 For a reported AI or delivery failure, use [diagnostics](references/diagnostics.md) before editing. For a legacy import, use [seed reconciliation](references/industry-templates.md). [Production patterns](references/prod-account-patterns.md) records design lessons without claiming legacy metrics are Shvya results.
 
 Delegate independent profile extraction, copy drafting and audits when useful. Delegates return artifacts and findings, not live mutations. Keep the execution ledger and current decisions in the coordinating agent's context.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.
