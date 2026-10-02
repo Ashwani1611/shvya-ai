@@ -27,6 +27,10 @@
 
   let navigationVersion=0;
   const drafts=new Map();
+  const live = window.ShvyaHostedLiveState.create();
+  let inboxRevision = 0;
+  let conversationRows = [];
+  const eventStamps = new Map();
   const state = {
     selected: initial.get('chat') || '',
     query: initial.get('q') || search?.value || '',
@@ -130,10 +134,12 @@
     if (message.direction !== 'outbound') return '';
     const status = String(message.status || '').toLowerCase();
     if (status === 'failed') return '<span class="bubble-status" title="Failed">!</span>';
-    if (status === 'queued') return '<span class="bubble-status" title="Queued">◷</span>';
+    if (status === 'queued') return '<span class="bubble-status" title="Queued — not yet confirmed sent">◷ Queued</span>';
+    if (status === 'sending') return '<span class="bubble-status" title="Sending — awaiting confirmation">◷ Sending</span>';
     if (status === 'delivered') return '<span class="bubble-status" title="Delivered">✓✓</span>';
     if (status === 'read') return '<span class="bubble-status read" title="Read">✓✓</span>';
-    return '<span class="bubble-status" title="Sent">✓</span>';
+    if (status === 'sent') return '<span class="bubble-status" title="Sent">✓</span>';
+    return '<span class="bubble-status" title="Awaiting status">◷</span>';
   }
 
   function captionHtml(message) {
@@ -197,6 +203,7 @@
 
   function renderList(data) {
     const rows = data.conversations || [];
+    conversationRows = rows;
     const savedTop = list.scrollTop;
     searchMeta?.classList.toggle('hidden', !state.query);
     if (searchMeta) searchMeta.textContent = state.query ? `Search results for “${state.query}”` : '';
@@ -273,7 +280,7 @@
     if (form?.elements.body) form.elements.body.disabled = !hasChat;
   }
 
-  function renderThread(data, { older = false } = {}) {
+  function renderThread(data, { older = false, revision = live.revision() } = {}) {
     state.selected = data.selected_chat || '';
     const hasChat = Boolean(state.selected);
     showThread(hasChat);
@@ -304,9 +311,7 @@
     const stick = !older && (nearBottom() || !state.threadLoaded);
     const savedTop = thread.scrollTop;
     const oldHeight = thread.scrollHeight;
-    for (const message of data.thread || []) {
-      if (message.id) state.messages.set(String(message.id), message);
-    }
+    live.merge(state.messages, data, revision, older);
     const messages = Array.from(state.messages.values()).sort((a, b) =>
       String(a.created_at).localeCompare(String(b.created_at)) || String(a.id).localeCompare(String(b.id))
     );
@@ -407,6 +412,8 @@
     if (state.busy) { state.pending = true; return; }
     state.busy = true;
     const seq = ++state.seq;
+    const revision = live.revision();
+    const listRevision = inboxRevision;
     const selected = state.selected;
     const query = state.query;
     const params = new URLSearchParams();
@@ -424,8 +431,9 @@
       const data = await response.json();
       if (seq !== state.seq || selected !== state.selected || query !== state.query || state.stopped) return;
       state.accountStatus = data.account_status || state.accountStatus;
-      renderThread(data);
-      renderList(data);
+      renderThread(data, { revision });
+      if (listRevision === inboxRevision) renderList(data);
+      else state.pending = true;
       const host=app.querySelector('[data-contact-host]');
       const url=selected ? app.dataset.contactUrl+'?'+new URLSearchParams({chat:selected}) : '';
       if(host&&host.dataset.sidebarUrl!==url){host._panelRequest?.abort();host.dataset.sidebarUrl=url;delete host.dataset.loadedUrl;if(url)window.ShvyaContact?.load(host);else host.replaceChildren();}
@@ -434,7 +442,7 @@
       updateUrl();
     } catch (error) {
       if (seq !== state.seq || state.stopped) return;
-      if (selected && !state.threadLoaded) {
+      if (selected && !state.threadLoaded && !state.messages.size) {
         thread.innerHTML = '<div class="thread-error" role="status">Messages could not load. <button type="button" data-chat-retry>Retry</button></div>';
       }
     } finally {
@@ -461,6 +469,7 @@
     state.selected = next;
     state.threadLoaded = false;
     state.messages.clear();
+    live.reset();
     state.nextBefore = '';
     state.olderLoaded = false;
     state.readSignature = '';
@@ -481,6 +490,7 @@
     state.olderBusy = true;
     const selected = state.selected;
     const before = state.nextBefore;
+    const revision = live.revision();
     const params = new URLSearchParams({ chat: selected, before, q: state.query });
     const request = new AbortController();
     olderController = request;
@@ -495,7 +505,7 @@
       const data = await response.json();
       if (selected !== state.selected || olderController !== request || state.stopped) return;
       state.olderBusy = false;
-      renderThread(data, { older: true });
+      renderThread(data, { older: true, revision });
     } catch (_) {
       if (selected === state.selected && button) button.textContent = 'Retry loading earlier messages';
     } finally {
@@ -555,8 +565,10 @@
       if (!response.ok) throw new Error(result.error || 'Could not send message');
       const realId = String(result.message?.id || '');
       if (optimistic && realId) {
-        optimistic.dataset.messageId = realId;
-        // Retain the optimistic node until its persisted message arrives.
+        // A socket event can arrive before the HTTP send response. Do not
+        // leave an optimistic duplicate beside the already-persisted bubble.
+        if (state.selected === chat && state.messages.has(realId)) optimistic.remove();
+        else optimistic.dataset.messageId = realId;
       }
       scheduleRefresh(55);
     } catch (error) {
@@ -570,6 +582,72 @@
       if (state.selected === chat) form.elements.body.focus();
     }
   });
+
+  function applyLiveMessage(data) {
+    if (state.stopped || state.unavailable || String(data.account_id || '') !== accountId) return;
+    const id = String(data.message_id || data.message?.id || '');
+    if (!id || !['upsert', 'remove'].includes(data.operation)) return;
+    const stamp = String(data.updated_at || data.message?.updated_at || '');
+    if (stamp && eventStamps.has(id) && stamp <= eventStamps.get(id)) return;
+    eventStamps.set(id, stamp);
+    if (eventStamps.size > 2000) eventStamps.delete(eventStamps.keys().next().value);
+    inboxRevision += 1;
+
+    const matchingRow = conversationRows.find(row =>
+      row.key === data.chat_key || (data.aliases || []).includes(row.key) ||
+      (row.raw_chat_ids || []).some(key => (data.aliases || []).includes(key)));
+    const active = window.ShvyaHostedLiveState.matches(state.selected, data) ||
+      Boolean(matchingRow && matchingRow.key === state.selected);
+    if (active && live.apply(state.messages, data)) {
+      const stick = nearBottom() || !state.threadLoaded;
+      const savedTop = thread.scrollTop;
+      let node = Array.from(thread.querySelectorAll('.bubble[data-message-id]'))
+        .find(item => item.dataset.messageId === id);
+      if (data.operation === 'remove') node?.remove();
+      else {
+        thread.querySelectorAll('.thread-no-messages,.thread-loading,.thread-error').forEach(item => item.remove());
+        if (!node) { node = document.createElement('div'); node.dataset.messageId = id; }
+        delete node.dataset.optimistic;
+        updateBubble(node, data.message);
+        if (!node.isConnected) {
+          const later = Array.from(thread.querySelectorAll('.bubble[data-message-id]')).find(item => {
+            const other = state.messages.get(item.dataset.messageId);
+            return other && window.ShvyaHostedLiveState.order(other, data.message) > 0;
+          });
+          thread.insertBefore(node, later || null);
+        }
+        showThread(true);
+      }
+      thread.scrollTop = stick ? thread.scrollHeight : savedTop;
+      state.stickToBottom = stick;
+    }
+
+    // Paint the sidebar too, without waiting for the expensive all-chat
+    // snapshot. That snapshot still owns exact unread counts and CRM metadata.
+    if (data.operation === 'upsert' && data.conversation) {
+      const incoming = data.conversation;
+      const newer = !matchingRow || String(incoming.last_at) >= String(matchingRow.last_at);
+      if (newer) {
+        const row = { ...matchingRow, ...incoming, key: matchingRow?.key || incoming.key,
+          unread: matchingRow?.unread || 0 };
+        if (!matchingRow || row.last_message_id !== matchingRow.last_message_id) {
+          if (data.message.direction === 'inbound' && !data.message.is_read) row.unread += 1;
+        }
+        const query = state.query.toLowerCase();
+        const haystack = [row.name, row.phone, row.key, ...(row.raw_chat_ids || [])].join(' ').toLowerCase();
+        const digits = query.replace(/\D/g, '');
+        if (!query || haystack.includes(query) || (digits && haystack.replace(/\D/g, '').includes(digits))) {
+          const rows = conversationRows.filter(item => item !== matchingRow);
+          rows.push(row);
+          rows.sort((a, b) => String(b.last_at).localeCompare(String(a.last_at)));
+          renderList({ conversations: rows.slice(0, 1000) });
+        }
+      }
+    }
+    // Reconcile unread/read tokens and bulk status writes; never delay the
+    // bubble itself on this HTTP request, and never abort it under a burst.
+    scheduleRefresh(150);
+  }
 
   function scheduleRefresh(delay = 80) {
     // Throttle rather than indefinitely postponing under a busy message stream.
@@ -604,13 +682,17 @@
         state.socketSeen = Date.now();
         try {
           const data = JSON.parse(event.data);
-          if (data.kind === 'refresh') scheduleRefresh(data.reason === 'status' ? 150 : 80);
+          if (data.kind === 'message') applyLiveMessage(data);
+          else if (data.kind === 'refresh' || data.kind === 'ready') scheduleRefresh(data.reason === 'status' ? 150 : 80);
         } catch (_) {}
       };
       current.onclose = event => {
         if (socket !== current) return;
         socket = null;
-        if ([4001, 4003].includes(event.code)) state.unavailable = true;
+        // A denied socket must not permanently disable the authenticated
+        // HTTP recovery path. Its own 401/403/404 remains authoritative.
+        if ([4001, 4003].includes(event.code)) reconnectDelay = 30000;
+        scheduleRefresh(0);
         setLive(); reconnect();
       };
       current.onerror = () => { try { current.close(); } catch (_) {} };
@@ -621,10 +703,11 @@
   const pollTimer = setInterval(() => {
     if (state.stopped || state.unavailable || document.visibilityState !== 'visible') return;
     if (socket?.readyState === WebSocket.OPEN && Date.now() - state.socketSeen > 65000) socket.close();
-    const healthy = socket?.readyState === WebSocket.OPEN;
-    if (!state.busy && Date.now() - state.lastRefresh > (healthy ? 15000 : 5000)) refresh();
+    // An OPEN socket/heartbeat does not prove Redis notifications arrived.
+    // Keep bounded recovery active even when the transport appears healthy.
+    if (!state.busy && Date.now() - state.lastRefresh >= 2000) refresh();
     setLive();
-  }, 2200);
+  }, 1000);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') { connectSocket(); scheduleRefresh(100); }
   });

@@ -1,0 +1,79 @@
+name: Hosted inbox regressions
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'apps/channels/**'
+      - 'services/channels/**'
+      - 'static/js/hosted*'
+      - 'tests/test_hosted_live_state*'
+      - '.github/workflows/hosted-inbox-regressions.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'apps/channels/**'
+      - 'services/channels/**'
+      - 'static/js/hosted*'
+      - 'tests/test_hosted_live_state*'
+      - '.github/workflows/hosted-inbox-regressions.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  publication:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: shvya_ci
+          POSTGRES_USER: shvya_ci
+          POSTGRES_PASSWORD: shvya_ci_password
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U shvya_ci -d shvya_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      SECRET_KEY: ci-only-secret-key-not-for-production
+      JWT_SECRET: ci-only-jwt-secret-not-for-production
+      CREDENTIAL_ENCRYPTION_KEY: ci-only-credential-key-not-for-production
+      DEBUG: 'False'
+      ALLOWED_HOSTS: localhost,127.0.0.1
+      DB_NAME: shvya_ci
+      DB_USER: shvya_ci
+      DB_PASSWORD: shvya_ci_password
+      DB_HOST: 127.0.0.1
+      DB_PORT: '5432'
+      REDIS_URL: redis://127.0.0.1:6379/0
+      CHANNEL_LAYER_REDIS_URL: redis://127.0.0.1:6379/1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+        with:
+          python-version: '3.13'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+      - name: Install test dependencies
+        run: pip install -r requirements-dev.txt --quiet
+      - name: Verify committed publication, subscriptions and client ordering
+        run: |
+          set -o pipefail
+          pytest -v --tb=short apps/channels/tests/test_hosted_live_push.py apps/channels/tests/test_hosted_consumer_heartbeat.py tests/test_hosted_live_state.py 2>&1 | tee hosted-inbox-test.log
+      - name: Retain test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: hosted-inbox-test-log
+          path: hosted-inbox-test.log
+          if-no-files-found: warn

@@ -16,12 +16,19 @@ class HostedWhatsAppConsumerHeartbeatTests(SimpleTestCase):
     async def test_heartbeat_loop_emits_keepalive_frame(self):
         consumer = HostedWhatsAppChatConsumer()
         consumer.send_json = AsyncMock()
+        consumer._renew_subscription = AsyncMock(return_value=True)
+        consumer.channel_name = "test-channel"
+        consumer.organization_id = "test-org"
 
         sleep = AsyncMock(side_effect=[None, asyncio.CancelledError()])
-        with patch("apps.channels.hosted_consumers.asyncio.sleep", sleep):
+        with (
+            patch("apps.channels.hosted_consumers.asyncio.sleep", sleep),
+            patch("apps.channels.hosted_consumers.touch_websocket_metric"),
+        ):
             with self.assertRaises(asyncio.CancelledError):
                 await consumer._heartbeat_loop()
 
+        consumer._renew_subscription.assert_awaited_once()
         consumer.send_json.assert_awaited_once_with({"kind": "heartbeat"})
 
     async def test_optional_client_ping_receives_pong(self):
