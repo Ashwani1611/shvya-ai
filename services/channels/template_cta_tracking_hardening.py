@@ -77,16 +77,25 @@ def install_template_cta_tracking_hardening():
         end_date,
         results,
     ):
-        # Preserve provider and quick-reply breakdowns before the core tracked
-        # augmentation. The core layer still establishes availability/source
-        # metadata; this layer recomputes tracked URL totals from the original
-        # rows plus recipient-linked SHVYA events, using a per-label maximum.
+        # Preserve provider and quick-reply metrics before the core tracked
+        # augmentation. The core layer establishes availability/source metadata;
+        # this layer recomputes tracked URL totals from the original rows plus
+        # recipient-linked SHVYA events, using a per-label maximum. Provider
+        # aggregate totals remain a floor when no per-button breakdown exists.
         existing_clicks = {
             str(meta_id): copy.deepcopy(result.get("clicks") or [])
             for meta_id, result in (results or {}).items()
         }
         existing_unique = {
             str(meta_id): copy.deepcopy(result.get("unique_clicks") or [])
+            for meta_id, result in (results or {}).items()
+        }
+        existing_clicked_totals = {
+            str(meta_id): int((result.get("totals") or {}).get("clicked") or 0)
+            for meta_id, result in (results or {}).items()
+        }
+        existing_unique_totals = {
+            str(meta_id): int(result.get("unique_click_total") or 0)
             for meta_id, result in (results or {}).items()
         }
         augmented = current_augment_analytics(
@@ -184,13 +193,21 @@ def install_template_cta_tracking_hardening():
                 existing_unique.get(meta_id, []),
                 local_unique_rows,
             )
-            clicked_total = sum(
+            breakdown_total = sum(
                 int(row.get("count") or 0)
                 for row in result["clicks"]
             )
-            unique_total = sum(
+            unique_breakdown_total = sum(
                 int(row.get("count") or 0)
                 for row in result["unique_clicks"]
+            )
+            clicked_total = max(
+                existing_clicked_totals.get(meta_id, 0),
+                breakdown_total,
+            )
+            unique_total = max(
+                existing_unique_totals.get(meta_id, 0),
+                unique_breakdown_total,
             )
             delivered = int((result.get("totals") or {}).get("delivered") or 0)
             result.setdefault("totals", {})["clicked"] = clicked_total
