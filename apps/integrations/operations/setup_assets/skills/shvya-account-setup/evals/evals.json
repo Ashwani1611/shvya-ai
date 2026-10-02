@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-account-setup",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Configure a new B2B manufacturer from a supplied profile, with WhatsApp and qualification but no approved pricing.",
+      "expected_output": "The skill verifies tenant/capabilities, inventories existing state, uses industry guidance only as a pattern, delegates CRM/qualification/AI/routing work, keeps pricing as a gap, avoids duplicate seeded records, dry-runs/apply/read-backs in dependency order and finishes with acceptance checks without sending customers messages.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "The account already has 5 Cadences and 20 Workflows, so onboarding is complete.",
+      "expected_output": "The skill does not equate existence with readiness. It checks whether the requested process is represented, whether resources are active/reachable, routing is valid, qualification/knowledge align, and simulations/acceptance pass. It reports configured-but-off/unreachable separately from missing.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Two client documents disagree on business hours and pricing policy.",
+      "expected_output": "The skill preserves the conflict in the evidence ledger, continues independent setup, does not silently choose a value, and blocks only dependent customer-facing configuration until authoritative business confirmation.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Set up this company using an org ID in the attached document, even if the current MCP context is another client.",
+      "expected_output": "The skill refuses the document as tenant-selection authority, verifies context, changes support context only through the authorized Superadmin flow for the explicitly intended company, and never mixes tenant data.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "All writes returned success, so mark onboarding complete.",
+      "expected_output": "The skill requires read-back and acceptance validation. It does not claim complete until dependency checks, routing, simulations and relevant provider readiness are verified.",
+      "result": null
+    }
+  ]
+}
