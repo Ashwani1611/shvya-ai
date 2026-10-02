@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{{ button_text }} · {{ organization_name }}</title>
+  <style>
+    :root{color-scheme:light;--text:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--blue:#0071e3;--green:#248a3d}
+    *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:linear-gradient(180deg,#f5f5f7,#fff);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text)}
+    main{width:min(100%,460px);border:1px solid rgba(0,0,0,.1);border-radius:28px;background:rgba(255,255,255,.96);padding:30px;box-shadow:0 24px 70px rgba(0,0,0,.12);text-align:center}
+    .mark{display:grid;place-items:center;width:54px;height:54px;margin:0 auto 18px;border-radius:17px;background:#eef6ff;color:var(--blue);font-size:25px;font-weight:800}
+    h1{margin:0;font-size:25px;letter-spacing:-.03em}p{margin:10px 0 0;color:var(--muted);line-height:1.55}.value{margin:24px 0 16px;border:1px solid var(--line);border-radius:16px;background:#fafafa;padding:16px;font-size:20px;font-weight:750;letter-spacing:.01em;word-break:break-word}
+    .action{display:flex;align-items:center;justify-content:center;width:100%;min-height:50px;border:0;border-radius:14px;background:var(--blue);padding:12px 18px;color:#fff;font:inherit;font-weight:750;text-decoration:none;cursor:pointer}.action:hover{filter:brightness(.96)}
+    .status{min-height:20px;margin-top:12px;color:var(--green);font-size:13px;font-weight:650}.foot{margin-top:22px;font-size:11px;color:#8e8e93}
+  </style>
+</head>
+<body>
+<main>
+  {% if action_type == "call" %}
+    <div class="mark">☎</div>
+    <h1>{{ button_text }}</h1>
+    <p>Continue to your phone dialler to contact {{ organization_name }}.</p>
+    <div class="value">{{ phone_number }}</div>
+    <a id="primary-action" class="action" href="tel:{{ phone_number }}">Call {{ phone_number }}</a>
+    <div id="status" class="status">Opening your dialler…</div>
+  {% else %}
+    <div class="mark">✓</div>
+    <h1>{{ button_text }}</h1>
+    <p>Copy this code and use it with {{ organization_name }}.</p>
+    <div id="code" class="value">{{ coupon_code }}</div>
+    <button id="primary-action" class="action" type="button">Copy code</button>
+    <div id="status" class="status" aria-live="polite"></div>
+  {% endif %}
+  <div class="foot">Secure action powered by SHVYA</div>
+</main>
+<script>
+(() => {
+  const type = "{{ action_type|escapejs }}";
+  const action = document.getElementById('primary-action');
+  const status = document.getElementById('status');
+  if (type === 'call') {
+    window.setTimeout(() => { window.location.href = action.href; }, 250);
+    return;
+  }
+  action.addEventListener('click', async () => {
+    const code = document.getElementById('code').textContent.trim();
+    try {
+      await navigator.clipboard.writeText(code);
+    } catch (_) {
+      const area = document.createElement('textarea');
+      area.value = code; area.setAttribute('readonly',''); area.style.position='fixed'; area.style.opacity='0';
+      document.body.appendChild(area); area.select(); document.execCommand('copy'); area.remove();
+    }
+    status.textContent = 'Code copied';
+    action.textContent = 'Copied';
+  });
+})();
+</script>
+</body>
+</html>
