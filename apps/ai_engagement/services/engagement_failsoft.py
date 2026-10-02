@@ -204,12 +204,12 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
 
     if any(term in normalized for term in _PLAN_TERMS):
         return (
-            "I don’t have confirmed plan or pricing details in the information available to me. The team would need to confirm them.",
+            "I couldn’t retrieve the pricing details just now. Please try again shortly.",
             "UNKNOWN_INFORMATION",
         )
 
     return (
-        "I don’t have enough verified information to answer that confidently. The team would need to confirm it.",
+        "I couldn’t retrieve the answer just now. Please try your question again shortly.",
         "UNKNOWN_INFORMATION",
     )
 
@@ -339,6 +339,35 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         compiled.get("requirements", []),
     )
     state = state_for_lead(lead, requirements=requirements)
+
+    # Exact authored FAQ answers remain available when generation or embeddings
+    # fail. Never use lexical overlap as proof of semantic equivalence here.
+    from apps.ai_engagement.services.authored_knowledge import matching_authored_answers
+    from apps.ai_engagement.services.confidentiality import customer_message_violation
+    from apps.ai_engagement.services.grounding_safety import exact_evidence_reply
+    from types import SimpleNamespace
+
+    def normalize(value):
+        return " ".join(str(value).casefold().split()).rstrip("?.!।")
+    try:
+        matches = matching_authored_answers(organization=organization, question=latest_text)
+    except Exception:
+        matches = []
+    exact = [item["content"].strip() for item in matches
+             if normalize(item["question"]) == normalize(latest_text)
+             and len(item["content"]) <= 12000
+             and not customer_message_violation(item["content"])]
+    # Conflicting duplicate FAQs must not be resolved by row order.
+    if exact and len({normalize(answer) for answer in exact}) == 1:
+        candidate = EngagementDecision(
+            should_engage=True, message=exact[0], file_document_id=None,
+            crm_actions=[], reason="ANSWER_ORG_QUESTION", reason_code="ANSWER_ORG_QUESTION",
+            model="deterministic-authored-faq",
+        )
+        resolution = SimpleNamespace(verified=True, question_type="product_or_service",
+                                     evidence=[SimpleNamespace(content=exact[0], metadata={})])
+        if exact_evidence_reply(candidate, resolution):
+            return candidate
 
     qualification_reply = _qualification_plan_message(latest_inbound)
     if qualification_reply:
@@ -493,8 +522,7 @@ def _ensure_customer_reply(decision, *, lead):
         decision,
         should_engage=True,
         message=(
-            "I don’t have enough verified information to answer that "
-            "confidently. The team would need to confirm it."
+            "I couldn’t retrieve the answer just now. Please try your question again shortly."
         ),
         reason="UNKNOWN_INFORMATION",
         reason_code="UNKNOWN_INFORMATION",

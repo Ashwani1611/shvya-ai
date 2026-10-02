@@ -103,3 +103,21 @@ answer quality or confirm deployment to either environment.
 - Upload failures caused by exhausted credits, provider credentials or missing
   production media require the corresponding configuration/storage repair.
   A code deployment alone cannot establish which of these affected a user's file.
+
+## Brain-first response recovery
+
+The grounding validator rejects generic missing-information replies when the
+supplied company facts, FAQs or indexed passages answer the question. Even an
+approved `UNKNOWN_INFORMATION` reply gets one bounded composition-and-validation
+attempt when evidence is present. Unsupported language-only claims may be
+rewritten from that evidence; rejected file/CRM/qualification actions cannot be
+rescued by merely changing the wording. Confidential output is checked before
+accepting a repair as well as at the final delivery boundary.
+
+If the generation provider is unavailable, the terminal path can return a
+complete, exact-question, active organization FAQ answer without embeddings or
+another model call. Similar questions, conflicting answers and confidential
+content cannot use that shortcut. Technical outages remain technical failures;
+we do not falsely tell customers that organization information does not exist.
+This does not bypass credits, make failed imports available, or guarantee that
+a provider can answer during an outage.

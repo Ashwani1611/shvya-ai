@@ -7,8 +7,7 @@ from apps.ai_engagement.services.trace_sanitizer import redact_text
 
 
 SAFE_CONFIDENTIALITY_REPLY = (
-    "I can’t share private or internal system information. "
-    "I can still help with your enquiry or ask the team to assist."
+    "I can help with product and service questions, but cannot disclose credentials or private records."
 )
 
 _SENSITIVE_FIELD_PARTS = frozenset(

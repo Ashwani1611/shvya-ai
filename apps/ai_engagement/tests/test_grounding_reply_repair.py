@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -130,3 +131,33 @@ class GroundingReplyRepairTests(SimpleTestCase):
             )]
             check_grounding(self.state())
         self.assertEqual(provider.call_args.kwargs, {"timeout_seconds": 5})
+
+    def test_unknown_reply_with_available_facts_is_regenerated_even_if_verifier_approves(self):
+        state = self.state()
+        state["decision"] = replace(state["decision"], reason_code="UNKNOWN_INFORMATION",
+                                    message="I do not have that information.", file_document_id=None)
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                {"approved": True, "reason": "approved"},
+                {"message": "हम फ़ॉलो-अप को स्वचालित करते हैं।"},
+                {"approved": True, "reason": "approved"},
+            )]
+            result = check_grounding(state)
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+        self.assertTrue(result["grounding_approved"])
+        self.assertIn("फ़ॉलो-अप", result["decision"].message)
+
+    def test_unsupported_language_only_claim_is_rebuilt_from_knowledge(self):
+        state = self.state()
+        state["decision"] = replace(state["decision"], file_document_id=None)
+        state["context"].knowledge = [{"content": "Basic costs ₹2999 per month."}]
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                {"approved": False, "reason": "unsupported_claim"},
+                {"message": "Basic costs ₹2999 per month."},
+                {"approved": True, "reason": "approved"},
+            )]
+            result = check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertEqual(result["decision"].message, "Basic costs ₹2999 per month.")
+        self.assertEqual(result["decision"].crm_actions, [])

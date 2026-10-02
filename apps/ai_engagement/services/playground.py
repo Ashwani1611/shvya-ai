@@ -706,9 +706,7 @@ class PlaygroundService:
             return EngagementDecision(
                 should_engage=True,
                 message=(
-                    "I don’t have enough verified information to answer that "
-                    "confidently. Please check the organization information "
-                    "or knowledge base and try again."
+                    "I couldn’t retrieve the answer just now. Please try your question again shortly."
                 ),
                 file_document_id=None,
                 crm_actions=[],
