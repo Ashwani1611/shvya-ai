@@ -111,3 +111,13 @@ class GroundingSafetyContractTests(SimpleTestCase):
         self.assertEqual(resolution.question_type, "internal_crm_status")
         self.assertNotIn("Enterprise Pipeline", resolution.controlled_fallback)
         self.assertNotIn("Negotiation", resolution.controlled_fallback)
+
+    def test_public_pipeline_feature_questions_are_not_private_lead_status(self):
+        for question in ("Which pipeline stages does your CRM support?",
+                         "What stages can I configure?", "What is a CRM pipeline?"):
+            with self.subTest(question=question):
+                self.assertFalse(EvidenceResolver._is_crm_status_question(question))
+        for question in ("Which CRM pipeline and stage am I in?", "What is my current stage?",
+                         "Show this lead's pipeline", "What is my lead status?"):
+            with self.subTest(question=question):
+                self.assertTrue(EvidenceResolver._is_crm_status_question(question))

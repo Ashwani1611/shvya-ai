@@ -497,23 +497,16 @@ class EvidenceResolver:
 
     @staticmethod
     def _is_crm_status_question(text: str) -> bool:
-        return bool(
-            re.search(
-                r"\b(?:which|what)\b.{0,32}\b(?:crm\s+)?(?:stage|pipeline)\b",
-                text,
-                flags=re.IGNORECASE,
-            )
-        ) or any(
-            phrase in text
-            for phrase in (
-                "my lead status",
-                "my status",
-                "which stage",
-                "what stage",
-                "which pipeline",
-                "what pipeline",
-            )
-        )
+        # Product questions about configurable pipelines/stages are public
+        # knowledge requests. Only requests for a person's recorded CRM state
+        # belong to the private-state boundary.
+        return bool(re.search(
+            r"\bmy\s+(?:(?:current|crm|lead|sales)\s+){0,3}(?:stage|pipeline|lead status)\b|"
+            r"\b(?:stage|pipeline)\b.{0,70}\b(?:am i in|was i in|have i been|"
+            r"you (?:put|placed|assigned|moved) me|for (?:me|this lead|that lead))\b|"
+            r"\b(?:this|that) lead(?:'s)?\b.{0,40}\b(?:stage|pipeline|status)\b",
+            text, flags=re.IGNORECASE,
+        ))
 
     @staticmethod
     def _is_memory_question(text: str) -> bool:
