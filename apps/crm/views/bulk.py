@@ -1,6 +1,7 @@
-"""Organization-scoped bulk CRM actions; all mutations commit together."""
+"""Organization-scoped bulk CRM actions with bounded large-move processing."""
 
 import json
+import logging
 from io import BytesIO
 from urllib.parse import urlencode
 from uuid import UUID
@@ -11,7 +12,7 @@ from django.db.models.deletion import ProtectedError
 from django.http import HttpResponse, JsonResponse
 from django.urls import reverse
 from django.utils import timezone
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
 from openpyxl.styles import Font, PatternFill
@@ -20,6 +21,11 @@ from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import AttributeDefinition, Lead, PipelinePermission, Stage
 from apps.followups.models import FollowupSequence
+from services.crm.bulk_move_service import (
+    create_bulk_move_job,
+    get_bulk_move_job,
+    save_bulk_move_job,
+)
 from services.crm.lead_transition import (
     LeadTransitionError,
     move_lead_to_pipeline_stage,
@@ -32,7 +38,13 @@ from services.followup_service import (
     available_sequences_for_lead,
 )
 
+from apps.crm.tasks import bulk_move_leads_task
+
 from .api import get_user_pipelines
+
+
+logger = logging.getLogger(__name__)
+BULK_MOVE_ASYNC_THRESHOLD = 100
 
 
 def bulk_permissions(user, pipeline):
@@ -220,7 +232,7 @@ def _export(user, leads, data):
     return response
 
 
-def _update(user, pipeline, leads, data):
+def _update_plan(user, pipeline, data):
     rights = bulk_permissions(user, pipeline)
     move = data.get("move") is True
     sequence_action = data.get("sequence_action", "keep")
@@ -230,20 +242,38 @@ def _update(user, pipeline, leads, data):
         raise ValueError("Choose at least one update to apply.")
     if (move and not rights["move"]) or (sequence_action != "keep" and not rights["edit"]):
         raise PermissionDenied
+
     target, stage, sequence = None, None, None
     if move:
-        target = get_user_pipelines(user).filter(pk=_uuid(data.get("target_pipeline"))).first()
+        target = get_user_pipelines(user).filter(
+            pk=_uuid(data.get("target_pipeline"))
+        ).first()
         if target is None or not bulk_permissions(user, target)["move"]:
             raise PermissionDenied
-        stage = Stage.objects.filter(pk=_uuid(data.get("target_stage")), pipeline=target, is_active=True).first()
+        stage = Stage.objects.filter(
+            pk=_uuid(data.get("target_stage")),
+            pipeline=target,
+            is_active=True,
+        ).first()
         if stage is None:
             raise ValueError("Choose an active stage in the destination pipeline.")
+
     if sequence_action == "assign":
         sequence = FollowupSequence.objects.filter(
-            pk=_uuid(data.get("sequence")), organization=user.organization, is_active=True,
+            pk=_uuid(data.get("sequence")),
+            organization=user.organization,
+            is_active=True,
         ).select_related("whatsapp_account").first()
         if sequence is None:
             raise ValueError("Choose an active Auto Followup sequence.")
+
+    return move, sequence_action, target, stage, sequence
+
+
+def _update(user, pipeline, leads, data):
+    move, sequence_action, target, stage, sequence = _update_plan(
+        user, pipeline, data
+    )
     for lead in leads:
         if move:
             if lead.pipeline_id == target.pk:
@@ -261,6 +291,83 @@ def _update(user, pipeline, leads, data):
             clear_sequence(lead=lead)
 
 
+def _queue_large_move(user, pipeline, leads, data):
+    move, sequence_action, target, stage, _sequence = _update_plan(
+        user, pipeline, data
+    )
+    if not move or sequence_action != "keep":
+        return None
+    if len(leads) <= BULK_MOVE_ASYNC_THRESHOLD:
+        return None
+
+    if all(
+        lead.pipeline_id == target.pk and lead.stage_id == stage.pk
+        for lead in leads
+    ):
+        return JsonResponse({
+            "count": len(leads),
+            "action": "update",
+            "queued": False,
+        })
+
+    job_id, job = create_bulk_move_job(
+        organization_id=user.organization_id,
+        actor_id=user.pk,
+        lead_ids=[lead.pk for lead in leads],
+        selection_scope=data.get("selection_scope", "ids"),
+        source_pipeline_id=pipeline.pk,
+        source_stage_id=data.get("source_stage"),
+        target_pipeline_id=target.pk,
+        target_stage_id=stage.pk,
+    )
+    try:
+        bulk_move_leads_task.apply_async(
+            args=[job_id],
+            queue="ingestion",
+        )
+    except Exception:
+        logger.exception("Could not queue bulk CRM lead move: %s", job_id)
+        save_bulk_move_job(
+            job_id,
+            {
+                **job,
+                "status": "failed",
+                "message": "Could not start the bulk lead move. Please try again.",
+            },
+        )
+        return JsonResponse(
+            {"error": "Could not start the bulk lead move. Please try again."},
+            status=503,
+        )
+
+    return JsonResponse({
+        "count": len(leads),
+        "action": "update",
+        "queued": True,
+        "job_id": job_id,
+        "status_url": reverse("crm-leads-bulk-status", args=[job_id]),
+    }, status=202)
+
+
+@crm_login_required
+@require_GET
+def bulk_move_status(request, job_id):
+    job = get_bulk_move_job(str(job_id))
+    if not job or job.get("organization_id") != str(request.crm_user.organization_id):
+        return JsonResponse(
+            {"error": "Bulk move status expired or is unavailable."},
+            status=404,
+        )
+    return JsonResponse({
+        "status": job.get("status", "queued"),
+        "processed": int(job.get("processed") or 0),
+        "total": int(job.get("total") or 0),
+        "moved_count": int(job.get("moved_count") or 0),
+        "skipped_count": int(job.get("skipped_count") or 0),
+        "message": job.get("message") or "",
+    })
+
+
 @crm_login_required
 @require_POST
 def bulk_leads(request):
@@ -271,6 +378,25 @@ def bulk_leads(request):
         action = data.get("action")
         if action not in ("options", "update", "export", "delete", "campaign"):
             raise ValueError("Choose a valid bulk action.")
+
+        # Large routing-only updates must never occupy a web worker for the
+        # full move. Resolve the frozen selection without row locks, validate
+        # permissions/destination, then hand the work to the ingestion worker.
+        if (
+            action == "update"
+            and data.get("move") is True
+            and data.get("sequence_action", "keep") == "keep"
+        ):
+            pipeline, leads = _selection(request.crm_user, data, lock=False)
+            queued = _queue_large_move(
+                request.crm_user,
+                pipeline,
+                leads,
+                data,
+            )
+            if queued is not None:
+                return queued
+
         with transaction.atomic():
             pipeline, leads = _selection(
                 request.crm_user,
@@ -308,7 +434,7 @@ def bulk_leads(request):
                 if data.get("confirm_delete") is not True:
                     raise ValueError("Confirm permanent deletion of the selected leads.")
                 Lead.objects.filter(pk__in=[lead.pk for lead in leads]).delete()
-        return JsonResponse({"count": len(leads), "action": action})
+        return JsonResponse({"count": len(leads), "action": action, "queued": False})
     except PermissionDenied:
         return JsonResponse({"error": "You do not have permission to perform this action on these leads."}, status=403)
     except ProtectedError:

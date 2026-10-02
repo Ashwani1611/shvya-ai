@@ -15,8 +15,10 @@ from apps.crm.models import (
     Pipeline,
     Stage,
 )
+from apps.accounts.models import User
 from apps.crm.models.lead import normalize_phone
 from apps.organizations.models import Organization
+from services.crm.bulk_move_service import get_bulk_move_job, save_bulk_move_job
 from services.crm.lead_import_service import (
     delete_import_state,
     get_import_job,
@@ -29,6 +31,7 @@ from services.crm.lead_import_service import (
 logger = logging.getLogger(__name__)
 
 IMPORT_BATCH_SIZE = 250
+BULK_MOVE_BATCH_SIZE = 100
 
 
 def _prepare_import_row(row, mapping, definitions):
@@ -317,3 +320,146 @@ def import_leads_task(import_token, organization_id, import_mode):
         raise
     finally:
         release_import_job(import_token)
+
+
+@shared_task(
+    name="crm.bulk_move_leads",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def bulk_move_leads_task(job_id):
+    """Move a large frozen lead selection in bounded, resumable batches."""
+    from services.crm.lead_transition import (
+        move_lead_to_pipeline_stage,
+        move_lead_to_stage,
+    )
+
+    job = get_bulk_move_job(job_id)
+    if not job:
+        logger.warning("Bulk move job expired before execution: %s", job_id)
+        return
+    if job.get("status") == "completed":
+        return
+
+    lead_ids = list(job.get("lead_ids") or [])
+    total = len(lead_ids)
+    processed = min(max(int(job.get("processed") or 0), 0), total)
+    moved_count = int(job.get("moved_count") or 0)
+    skipped_count = int(job.get("skipped_count") or 0)
+
+    def checkpoint(status, message=""):
+        nonlocal job
+        job = {
+            **job,
+            "status": status,
+            "processed": processed,
+            "total": total,
+            "moved_count": moved_count,
+            "skipped_count": skipped_count,
+            "message": message,
+        }
+        save_bulk_move_job(job_id, job)
+
+    try:
+        organization = Organization.objects.get(pk=job["organization_id"])
+        actor = User.objects.filter(
+            pk=job["actor_id"],
+            organization=organization,
+        ).first()
+        source_pipeline = Pipeline.objects.get(
+            pk=job["source_pipeline_id"],
+            organization=organization,
+        )
+        target_pipeline = Pipeline.objects.get(
+            pk=job["target_pipeline_id"],
+            organization=organization,
+            is_active=True,
+        )
+        target_stage = Stage.objects.get(
+            pk=job["target_stage_id"],
+            pipeline=target_pipeline,
+            is_active=True,
+        )
+        selection_scope = job.get("selection_scope") or "ids"
+        source_stage_id = str(job.get("source_stage_id") or "")
+
+        checkpoint("running")
+
+        for start in range(processed, total, BULK_MOVE_BATCH_SIZE):
+            end = min(start + BULK_MOVE_BATCH_SIZE, total)
+            batch_ids = lead_ids[start:end]
+            batch_moved = 0
+            batch_skipped = 0
+
+            # Lock only this bounded batch. A worker failure rolls the entire
+            # uncheckpointed batch back, while other CRM work stays responsive.
+            # Progress counters are promoted only after the transaction commits,
+            # so Redis status can never claim rolled-back rows as completed.
+            with transaction.atomic():
+                leads = {
+                    str(lead.pk): lead
+                    for lead in Lead.objects.select_for_update(of=("self",))
+                    .filter(
+                        organization=organization,
+                        pk__in=batch_ids,
+                    )
+                    .select_related("pipeline", "stage", "organization")
+                }
+
+                for lead_id in batch_ids:
+                    lead = leads.get(str(lead_id))
+                    if lead is None:
+                        batch_skipped += 1
+                        continue
+
+                    # Redelivery is idempotent if an earlier checkpoint was
+                    # persisted after this lead reached the requested target.
+                    if (
+                        lead.pipeline_id == target_pipeline.id
+                        and lead.stage_id == target_stage.id
+                    ):
+                        batch_moved += 1
+                        continue
+
+                    if lead.pipeline_id != source_pipeline.id:
+                        batch_skipped += 1
+                        continue
+                    if (
+                        selection_scope != "pipeline"
+                        and source_stage_id
+                        and str(lead.stage_id) != source_stage_id
+                    ):
+                        batch_skipped += 1
+                        continue
+
+                    if lead.pipeline_id == target_pipeline.id:
+                        move_lead_to_stage(
+                            lead=lead,
+                            stage=target_stage,
+                            actor=actor,
+                        )
+                    else:
+                        move_lead_to_pipeline_stage(
+                            lead=lead,
+                            pipeline=target_pipeline,
+                            stage=target_stage,
+                            actor=actor,
+                        )
+                    batch_moved += 1
+
+            moved_count += batch_moved
+            skipped_count += batch_skipped
+            processed = end
+            checkpoint("running")
+
+        checkpoint(
+            "completed",
+            "" if not skipped_count else f"{skipped_count} lead(s) were skipped because they changed or were deleted before processing.",
+        )
+    except Exception:
+        logger.exception("Bulk CRM lead move failed: job=%s", job_id)
+        checkpoint(
+            "failed",
+            "Bulk lead move stopped safely. Refresh the CRM to see completed batches before retrying.",
+        )
+        raise

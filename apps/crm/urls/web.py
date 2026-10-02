@@ -1,6 +1,6 @@
 from django.urls import path
 from apps.crm.views.lead_chat import lead_whatsapp
-from apps.crm.views.bulk import bulk_leads
+from apps.crm.views.bulk import bulk_leads, bulk_move_status
 
 from .coming_soon import coming_soon_urlpatterns
 from apps.accounts.views import crm_signup_view
@@ -82,6 +82,7 @@ from apps.crm.views.ai_setup import (
 urlpatterns = [
     path("leads/<uuid:lead_id>/whatsapp/", lead_whatsapp, name="crm-lead-whatsapp"),
     path("leads/bulk/", bulk_leads, name="crm-leads-bulk"),
+    path("leads/bulk/status/<uuid:job_id>/", bulk_move_status, name="crm-leads-bulk-status"),
 
     # ========================================================
     # AUTHENTICATION
