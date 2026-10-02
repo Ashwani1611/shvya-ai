@@ -15,6 +15,9 @@ Keep structural validation, deterministic simulation and real provider/customer-
 ## Minimum matrix
 Where relevant test: positive qualification, invalid/ambiguous answer, correction, customer question mid-flow, known fact, unknown fact, multilingual turn, human handoff, opt-out, stage/attribute/reminder action, Workflow match/non-match, Cadence timing/exit, routing, file sharing and provider readiness.
 
+## Verification
+Run every applicable scenario at its stated evidence level, preserve pass/fail per subsystem, and rerun failed cases plus affected regressions after repair. Never promote the final readiness verdict beyond the strongest evidence actually observed.
+
 ## Verdict discipline
 Use only READY_BY_DETERMINISTIC_CHECKS, READY_WITH_PROVIDER_EVIDENCE, PARTIALLY_READY or BLOCKED. Name exactly which evidence level each scenario reached.
 
