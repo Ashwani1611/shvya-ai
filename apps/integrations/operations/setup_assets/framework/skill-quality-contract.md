@@ -66,6 +66,8 @@ Run a conflict check when a task changes AI/customer-facing behavior:
 
 Never silently choose between contradictory business facts.
 
+When authoring customer-facing copy, also apply [customer-facing content gates](customer-content-gates.md).
+
 ## 7. Safe mutation sequence
 
 For a consequential live write:
