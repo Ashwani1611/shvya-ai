@@ -21,6 +21,7 @@ from apps.channels.tracking_models import (
 
 
 _INSTALLED = False
+_META_DYNAMIC_URL_EXAMPLE_SUFFIX = "00000000-0000-4000-8000-000000000001"
 
 
 def _components_have_tracking(components, *, checker):
@@ -57,6 +58,11 @@ def install_template_cta_tracking_hardening():
     current_carousel_button = template_service._carousel_button_payload
     current_fetch_analytics = template_analytics.fetch_template_analytics
     current_sync_templates = template_meta_fix.sync_templates
+
+    def tracking_example_suffix():
+        # Meta's dynamic URL template example is the variable suffix only, not
+        # the fully expanded URL. The send-time parameter uses the same shape.
+        return _META_DYNAMIC_URL_EXAMPLE_SUFFIX
 
     def carousel_button(button):
         # Carousel templates are Marketing-only. Website and Call actions can
@@ -283,6 +289,7 @@ def install_template_cta_tracking_hardening():
             state.save(update_fields=["carousel_config", "updated_at"])
         return summary
 
+    tracking.tracking_example_url = tracking_example_suffix
     template_service._carousel_button_payload = carousel_button
     template_analytics.fetch_template_analytics = fetch_analytics
     tracking.augment_tracked_cta_analytics = augment_analytics
