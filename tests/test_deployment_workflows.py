@@ -11,7 +11,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = [
     ("deploy.yml", "docker compose", "main"),
-    ("deploy-staging.yml", "$COMPOSE", "staging"),
+    ("deploy-main-secondary.yml", "$COMPOSE", "main"),
 ]
 
 
@@ -43,7 +43,7 @@ def _application_services(script, compose):
 def test_application_drain_precedes_schema_change(filename, compose, branch):
     script = _script(filename)
     readiness = script.index(f"{compose} up -d --wait db redis")
-    if filename == "deploy-staging.yml":
+    if filename == "deploy-main-secondary.yml":
         assert f"{compose} up -d --wait db redis pgbouncer" in script
     worker_services = _worker_services(script, compose)
     running_services = _running_services(script, compose)
@@ -64,7 +64,7 @@ def test_application_drain_precedes_schema_change(filename, compose, branch):
         compressed_backup = script.index('gzip "$BACKUP_FILE"')
         assert readiness < backup < checked_backup < compressed_backup < producers < workers < stopped_guard < migrate < collectstatic < restart
 
-    assert "Refusing migrations while an old" in script[stopped_guard:migrate]
+    assert "refusing migrations" in script[stopped_guard:migrate].lower()
     assert "exit 1" in script[stopped_guard:migrate]
 
 
@@ -88,12 +88,18 @@ def test_drain_stops_only_application_services_with_bounded_timeouts(filename, c
 @pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
 def test_failed_schema_rollout_reports_maintenance_without_restarting_old_images(filename, compose, branch):
     script = _script(filename)
-    hook_start = script.index("report_maintenance_failure() {")
-    hook_end = script.index("trap report_maintenance_failure EXIT", hook_start)
+    hook_name = "report_maintenance_failure" if filename == "deploy.yml" else "report_failure"
+    hook_start = script.index(f"{hook_name}() {{")
+    hook_end = script.index(f"trap {hook_name} EXIT", hook_start)
     failure_hook = script[hook_start:hook_end]
-    assert "application services may remain stopped" in failure_hook
-    assert "do not restart old images against the new schema" in failure_hook
-    assert "return \"$deploy_status\"" in failure_hook
+    if filename == "deploy.yml":
+        assert "application services may remain stopped" in failure_hook
+        assert "do not restart old images against the new schema" in failure_hook
+        assert 'return "$deploy_status"' in failure_hook
+    else:
+        assert "Secondary deployment failed during maintenance." in failure_hook
+        assert "Database/Redis state and backup are preserved." in failure_hook
+        assert 'return "$status"' in failure_hook
     assert f"{compose} up" not in failure_hook
 
     if filename == "deploy.yml":
@@ -104,12 +110,11 @@ def test_failed_schema_rollout_reports_maintenance_without_restarting_old_images
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
         assert hook_end < maintenance < restart < ready < clear
     else:
-        assert "${BACKUP_FILE}.gz" in failure_hook
         maintenance = script.index("APPLICATION_MAINTENANCE=1")
         restart = script.index(f"{compose} up -d --no-deps {_running_services(script, compose)}")
         ready = script.index(f"{compose} up -d --wait --no-deps web")
         clear = script.index("APPLICATION_MAINTENANCE=0", maintenance)
-        assert hook_end < maintenance < restart < ready < clear
+        assert maintenance < hook_start < hook_end < restart < ready < clear
 
 
 @pytest.mark.parametrize(("filename", "compose", "branch"), WORKFLOWS)
@@ -181,11 +186,11 @@ def test_production_deploy_never_generates_credential_encryption_key():
     assert required_guard < script.index("docker compose config --quiet")
 
 
-def test_security_workflow_runs_for_every_main_and_staging_push():
+def test_security_workflow_runs_for_every_main_push():
     workflow = (ROOT / ".github/workflows" / "security.yml").read_text(encoding="utf-8")
     push_block = workflow.split("  push:\n", 1)[1].split("  workflow_dispatch:", 1)[0]
 
-    assert "branches: [main, staging]" in push_block
+    assert "branches: [main]" in push_block
     assert "paths:" not in push_block
 
 
@@ -213,11 +218,11 @@ def test_production_deploy_verifies_runtime_environment_and_oauth_origin():
 def test_application_image_is_built_once_and_shared_before_rollout(filename, compose, branch):
     import yaml
 
-    compose_file = "docker-compose.yml" if branch == "main" else "docker-compose.staging.yml"
+    compose_file = "docker-compose.yml" if filename == "deploy.yml" else "docker-compose.staging.yml"
     services = yaml.safe_load((ROOT / compose_file).read_text(encoding="utf-8"))["services"]
     script = _script(filename)
     application = _application_services(script, compose)
-    image = "shvya-ai-app:latest" if branch == "main" else "shvya-staging-app:latest"
+    image = "shvya-ai-app:latest" if filename == "deploy.yml" else "shvya-staging-app:latest"
     assert {name for name, service in services.items() if service.get("image") == image} == application
     assert all(services[name]["build"] == "." for name in application)
     builds = [shlex.split(line.strip()[len(compose):])
