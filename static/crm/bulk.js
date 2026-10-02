@@ -396,7 +396,7 @@
             showError(error instanceof TypeError
                 ? 'The connection was interrupted. Refresh the CRM to check the result before retrying.'
                 : error.message);
-        } finally { setBusy(false); }
+        } finally { el('submit').hidden = false; setBusy(false); }
     });
 
     // The legacy CRM also inserts/moves cards directly, outside HTMX swaps.
