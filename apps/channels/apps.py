@@ -15,6 +15,7 @@ class ChannelsConfig(AppConfig):
         from . import hosted_lifecycle  # noqa: F401
         from . import instagram_models  # noqa: F401
         from . import template_models  # noqa: F401
+        from . import tracking_models  # noqa: F401
         from . import lead_source_signals  # noqa: F401
         from . import operational_signals  # noqa: F401
         from . import campaign_models  # noqa: F401
@@ -27,11 +28,17 @@ class ChannelsConfig(AppConfig):
         from . import welcome_tasks  # noqa: F401
         from . import campaign_tasks  # noqa: F401
 
-        # Install the actual Meta template transport first. The failure layer
-        # then wraps every transport, including templates, so exact Meta error
-        # codes are preserved consistently.
+        # Install the actual Meta template transport first. Focused compatibility
+        # layers then wrap it before the common failure diagnostics layer so
+        # exact Meta error codes are preserved consistently.
         from services.channels.whatsapp_template_delivery import (
             install_whatsapp_template_transport,
+        )
+        from services.channels.template_cta_tracking import (
+            install_template_cta_tracking,
+        )
+        from services.channels.template_cta_tracking_hardening import (
+            install_template_cta_tracking_hardening,
         )
         from services.channels.whatsapp_failure_patch import (
             install_whatsapp_failure_diagnostics,
@@ -63,6 +70,8 @@ class ChannelsConfig(AppConfig):
         install_instagram_runtime()
         install_whatsapp_phone_registration()
         install_whatsapp_template_transport()
+        install_template_cta_tracking()
+        install_template_cta_tracking_hardening()
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
         install_whatsapp_api_runtime()

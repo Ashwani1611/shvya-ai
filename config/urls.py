@@ -3,6 +3,7 @@ from django.templatetags.static import static
 from django.urls import include, path
 from django.views.generic import RedirectView, TemplateView
 
+from apps.channels.cta_tracking_views import tracked_template_cta
 from apps.channels.instagram_webhook import instagram_webhook_view
 from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.core.health import live as health_live, ready as health_ready
@@ -19,6 +20,13 @@ urlpatterns = [
     path("health/live/", health_live, name="health-live"),
     path("health/ready/", health_ready, name="health-ready"),
     path("health/runtime-metrics/", runtime_metrics, name="runtime-metrics"),
+    # Public, token-only WhatsApp template CTA tracking. Keep this outside the
+    # dashboard/session middleware so recipients can use it from WhatsApp.
+    path(
+        "w/cta/<uuid:token>",
+        tracked_template_cta,
+        name="whatsapp-template-tracked-cta",
+    ),
     path("sales/", include("apps.sales.public_urls")),
     path("features/", FeaturesView.as_view(), name="features"),
     path('dashboard/workflows/', include('apps.triggers.urls.web')),
