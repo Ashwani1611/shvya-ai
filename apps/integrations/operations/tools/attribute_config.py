@@ -383,7 +383,7 @@ def upsert_attribute_configuration(*, identity, arguments):
                     description=description,
                     options=options,
                 )
-                # booked_at is a fixed calendar field and does not consume custom capacity.
+                # booked_at is fixed and does not consume one of the 15 custom-attribute slots.
                 if (
                     AttributeDefinition.objects.filter(
                         organization=organization,
