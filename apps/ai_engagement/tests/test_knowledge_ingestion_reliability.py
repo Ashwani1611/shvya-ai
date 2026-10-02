@@ -156,3 +156,40 @@ class KnowledgeImportReliabilityTests(TestCase):
         self.assertEqual(current.version, 2)
         self.assertFalse(current.is_active)
         self.assertEqual(current.chunks.get().content, "Current terms.")
+
+
+class FailedUploadRetryTests(TestCase):
+    def test_failed_extraction_can_retry_the_same_document(self):
+        organization = Organization.objects.create(name="Retry extraction")
+        document = Document.objects.create(
+            organization=organization, name="Scanned guide", source_key="guide.pdf",
+            file="ai_knowledge/guide.pdf", processing_status="failed", is_active=False,
+            processing_error="No readable text was extracted from the document.",
+        )
+        with patch("apps.ai_engagement.tasks.ingest_and_index_document.delay") as queue:
+            with self.captureOnCommitCallbacks(execute=True):
+                KnowledgeSourceService.retry_failed_upload(document=document)
+        queue.assert_called_once_with(document_id=document.pk, organization_id=organization.pk)
+        document.refresh_from_db()
+        self.assertEqual(document.processing_status, "pending")
+        self.assertEqual(document.processing_error, "")
+        self.assertEqual(Document.objects.filter(organization=organization).count(), 1)
+        from apps.ai_engagement.services.knowledge_source import KnowledgeSourceServiceError
+        with self.assertRaises(KnowledgeSourceServiceError):
+            KnowledgeSourceService.retry_failed_upload(document=document)
+
+    def test_failure_guidance_never_discloses_raw_provider_error(self):
+        document = Document(processing_error="401 Authentication failed with secret-private-token")
+        self.assertNotIn("secret-private-token", document.failure_help)
+        self.assertIn("configuration", document.failure_help)
+
+
+class UnicodeKnowledgeUploadTests(SimpleTestCase):
+    def test_excel_unicode_csv_upload_is_validated_and_extracted(self):
+        from apps.ai_engagement.services.knowledge_file_security import validate_knowledge_file
+        for encoding in ("utf-16", "utf-32", "utf-8-sig"):
+            with self.subTest(encoding=encoding):
+                file = SimpleUploadedFile("pricing.csv", "Plan,Price\nGrowth,₹2999\n".encode(encoding))
+                validate_knowledge_file(file)
+                text = KnowledgeIngestionService().extract_file_text(file, filename="pricing.csv")
+                self.assertIn("Growth | ₹2999", text)

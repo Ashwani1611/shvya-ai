@@ -14,6 +14,10 @@ RUN apt-get update \
        build-essential \
        libpq-dev \
        curl \
+       poppler-utils \
+       tesseract-ocr \
+       tesseract-ocr-eng \
+       tesseract-ocr-hin \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid "${APP_GID}" shvya \
     && useradd --uid "${APP_UID}" --gid "${APP_GID}" --create-home --shell /usr/sbin/nologin shvya

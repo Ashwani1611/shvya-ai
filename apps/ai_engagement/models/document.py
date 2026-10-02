@@ -160,3 +160,17 @@ class Document(models.Model):
             f"{self.name} - "
             f"v{self.version}"
         )
+
+    @property
+    def failure_help(self):
+        """Safe operator guidance; provider exception text may contain secrets."""
+        error = (self.processing_error or "").casefold()
+        if "credit" in error or "quota" in error or "billing" in error:
+            return "Knowledge processing needs available AI credits or provider quota. Check the account balance, then retry."
+        if "api_key" in error or "authentication" in error or "401" in error:
+            return "The AI provider configuration needs attention. Ask an administrator to check it, then retry."
+        if "ocr" in error or "readable text" in error:
+            return "Text could not be read. Retry with the OCR-enabled worker; use a clear scan and split long scans into smaller PDFs."
+        if "no such file" in error or "not found" in error or "permission" in error:
+            return "The stored file could not be read. Ask an administrator to check shared media storage, or upload the file again."
+        return "Processing did not finish. Retry the file; if it fails again, contact support with the filename."

@@ -1086,17 +1086,18 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
 
     ai_metadata = (message.raw_payload or {}).get("shvya_ai")
     guided_file = isinstance(ai_metadata, dict) and ai_metadata.get("file_document_id") is not None
+    message_payload = {"text": message.body}
     if guided_file:
-        from apps.ai_engagement.services.instagram_files import document_for_message
+        from apps.ai_engagement.services.instagram_files import guided_message_payload
 
-        document_for_message(message)
+        message_payload = guided_message_payload(message)
 
     result = _graph_post(
         f"{account.ig_user_id}/messages",
         access_token=account.access_token,
         payload={
             "recipient": {"id": message.recipient_id},
-            "message": {"text": message.body},
+            "message": message_payload,
         },
     )
     external_id = str(result.get("message_id") or "").strip()

@@ -745,10 +745,8 @@ class KnowledgeIngestionService:
         if isinstance(raw, str):
             text = raw
         else:
-            text = raw.decode(
-                "utf-8",
-                errors="replace",
-            )
+            from apps.ai_engagement.services.knowledge_file_security import decode_knowledge_text
+            text = decode_knowledge_text(raw, extension=".txt")
 
         return self._clean_text(
             text
@@ -771,10 +769,8 @@ class KnowledgeIngestionService:
         if isinstance(raw, str):
             text = raw
         else:
-            text = raw.decode(
-                "utf-8-sig",
-                errors="replace",
-            )
+            from apps.ai_engagement.services.knowledge_file_security import decode_knowledge_text
+            text = decode_knowledge_text(raw, extension=".csv")
 
         stream = io.StringIO(
             text
@@ -880,30 +876,25 @@ class KnowledgeIngestionService:
             file_obj
         )
 
-        pages = []
-
-        for index, page in enumerate(
-            reader.pages,
-            start=1,
-        ):
-
-            text = page.extract_text()
-
-            if not text:
-                continue
-
-            text = text.strip()
-
-            if not text:
-                continue
-
-            pages.append(
-                f"Page {index}\n{text}"
-            )
-
-        return self._clean_text(
-            "\n\n".join(pages)
-        )
+        pages = {}
+        scanned = []
+        for index, page in enumerate(reader.pages, start=1):
+            text = (page.extract_text() or "").strip()
+            if text:
+                pages[index] = text
+            resources = page.get("/Resources")
+            resources = resources.get_object() if resources is not None else {}
+            if len(text) < 40 and resources.get("/XObject"):
+                scanned.append(index)
+        if scanned:
+            from apps.ai_engagement.services.knowledge_ocr import KnowledgeOCRError, extract_pdf_pages
+            try:
+                pages.update({number: text for number, text in extract_pdf_pages(file_obj, scanned).items() if text})
+            except KnowledgeOCRError as exc:
+                raise KnowledgeExtractionError(str(exc)) from exc
+        return self._clean_text("\n\n".join(
+            f"Page {index}\n{text}" for index, text in sorted(pages.items()) if text
+        ))
 
     # ============================================================
     # DOCX

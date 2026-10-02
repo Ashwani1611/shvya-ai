@@ -383,21 +383,26 @@ def _validate_text_file(
             f"{MAX_UPLOAD_BYTES // MIB} MiB."
         )
 
-    if b"\x00" in raw_bytes:
-        raise KnowledgeFileSecurityError(
-            f"The {extension} file contains binary null bytes "
-            "and is not accepted as text knowledge."
-        )
+    decode_knowledge_text(raw_bytes, extension=extension)
 
+
+def decode_knowledge_text(raw_bytes, *, extension="text"):
+    # Excel commonly exports UTF-16 CSV. Require a BOM before interpreting
+    # null-containing bytes as Unicode, rather than accepting arbitrary binary.
+    encoding = "utf-8-sig"
+    if raw_bytes.startswith((b"\xff\xfe\x00\x00", b"\x00\x00\xfe\xff")):
+        encoding = "utf-32"
+    elif raw_bytes.startswith((b"\xff\xfe", b"\xfe\xff")):
+        encoding = "utf-16"
+    if encoding == "utf-8-sig" and b"\x00" in raw_bytes:
+        raise KnowledgeFileSecurityError(f"The {extension} file contains binary null bytes and is not accepted as text knowledge.")
     try:
-        raw_bytes.decode(
-            "utf-8-sig",
-            errors="strict",
-        )
+        text = raw_bytes.decode(encoding, errors="strict")
     except UnicodeDecodeError as exc:
-        raise KnowledgeFileSecurityError(
-            f"The {extension} file must contain valid UTF-8 text."
-        ) from exc
+        raise KnowledgeFileSecurityError(f"The {extension} file must contain valid UTF-8 text or BOM-marked Unicode text.") from exc
+    if "\x00" in text:
+        raise KnowledgeFileSecurityError(f"The {extension} file contains binary null characters.")
+    return text
 
 
 # ============================================================

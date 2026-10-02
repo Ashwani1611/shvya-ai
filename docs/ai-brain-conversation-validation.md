@@ -28,7 +28,7 @@ The conversation fixes cover these failure paths:
 - Unqualified completion stage names bind to the lead's current pipeline;
   explicitly named destination pipelines must resolve exactly.
 
-## Staging acceptance scenarios
+## Isolated acceptance scenarios
 
 Use an isolated test organization with approved test files and internal recipients.
 Never use a production lead to exercise stage/reminder or outbound-message tests.
@@ -47,7 +47,7 @@ Never use a production lead to exercise stage/reminder or outbound-message tests
 | Request a callback with a clear time/timezone | One reminder is recorded, including on event retry |
 | Request a callback with an ambiguous time | Clarify the missing time rather than invent a precise appointment |
 | Meet a guided file's sharing condition on WhatsApp | Selected organization-owned file is queued through the bound account |
-| Meet the same condition on Instagram | An expiring, authorized download link is queued in the same conversation |
+| Meet the same condition on Instagram | PDFs use a native file attachment; other formats use an authorized download link |
 | Test Instagram-specific Playbook rules in Sandbox | Selected acquisition source/channel reaches the prompt; effects remain previews |
 | Ask about a fact absent from every approved source | Explain the specific missing detail without inventing facts |
 
@@ -60,8 +60,13 @@ questions after deployment before claiming end-to-end completion.
 
 A configured URL is an ingestion source, not a promise of live web browsing on
 every reply or recursive crawling of every linked page. Extracted text must be
-available and indexed before it can ground an answer. Scanned/image-only documents
-still need a supported OCR pipeline or a text-bearing replacement.
+available and indexed before it can ground an answer. Scanned PDF pages now use local Poppler/Tesseract OCR in the ingestion worker.
+The application image includes English and Hindi language data. OCR is bounded
+to 30 scanned pages per file, 2400-pixel renders, and 180 seconds total by default.
+`KNOWLEDGE_OCR_LANGUAGES`, `KNOWLEDGE_OCR_MAX_PAGES` and
+`KNOWLEDGE_OCR_TIMEOUT` may be supplied as Django settings; extra languages need
+the corresponding Tesseract language package. Blurry scans and handwriting can
+still be misread; use a text-bearing document when available.
 
 When lexical FAQ matching yields no answer, the runtime can supply a bounded set
 of complete, active organization FAQ question/answer pairs to handle differently
@@ -70,11 +75,31 @@ verification; appearing in the context never proves a FAQ answers the question.
 This is bounded context, not a semantic index of every FAQ. Oversized pairs are
 omitted rather than truncating conditions or exceptions.
 
-Instagram sends arbitrary guided documents as signed download links, not native
-document attachments. Delivery rechecks the document's eligibility; retiring a
-file or removing its sharing guidance revokes access.
+Instagram sends PDFs as native file attachments using Meta's documented Send API.
+A separate signed provider-fetch grant lasts 15 minutes and authorizes only the
+selected PDF and message. Other file types retain seven-day recipient links.
+Delivery and download recheck tenant, recipient, version and sharing eligibility;
+retiring a file or removing its sharing guidance revokes further server access.
+A native attachment already downloaded by Meta cannot be revoked from recipients.
+See https://developers.facebook.com/documentation/instagram-platform/instagram-api-with-instagram-login/messaging-api .
 
 Provider failures can still require a safe fallback. Inspect the trace's
 grounding validation reason to distinguish missing evidence from a verifier
 timeout or provider error. Passing mocked regressions does not measure real-model
 answer quality or confirm deployment to either environment.
+
+
+## Upload recovery and diagnostics
+
+- BOM-marked UTF-16/UTF-32 text and CSV exports are accepted alongside UTF-8;
+  arbitrary binary/null-containing text remains rejected.
+- Failed extraction can retry the original stored file without creating another
+  source version. Failed embedding recovery preserves vectors already generated.
+- Knowledge and guided-file lists show safe failure guidance and retry controls.
+  Provider error bodies and credentials are never shown as guidance.
+- `check_ai_runtime` requires a live ingestion consumer with the document, URL
+  and reindex tasks registered. It reports bounded aggregate knowledge status
+  and failure categories without source names or document contents.
+- Upload failures caused by exhausted credits, provider credentials or missing
+  production media require the corresponding configuration/storage repair.
+  A code deployment alone cannot establish which of these affected a user's file.

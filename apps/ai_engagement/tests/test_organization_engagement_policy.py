@@ -173,10 +173,18 @@ print('Production Celery startup and inbound task registration passed')
 
 def test_worker_readiness_requires_tasks_on_the_consuming_worker():
     from apps.ai_engagement.management.commands.check_ai_runtime import REQUIRED, missing_consumers
-    queues = {'api': [{'name': 'ai_realtime'}], 'hosted': [{'name': 'hosted_ai'}]}
-    registered = {'api': list(REQUIRED['ai_realtime']), 'hosted': list(REQUIRED['hosted_ai'])}
+    queues = {'api': [{'name': 'ai_realtime'}], 'hosted': [{'name': 'hosted_ai'}], 'ingest': [{'name': 'ingestion'}]}
+    registered = {'api': list(REQUIRED['ai_realtime']), 'hosted': list(REQUIRED['hosted_ai']), 'ingest': list(REQUIRED['ingestion'])}
     assert missing_consumers(queues, registered) == []
-    assert missing_consumers(queues, {}) == ['ai_realtime', 'hosted_ai']
-    assert missing_consumers({}, registered) == ['ai_realtime', 'hosted_ai']
+    assert missing_consumers(queues, {}) == ['ingestion', 'ai_realtime', 'hosted_ai']
+    assert missing_consumers({}, registered) == ['ingestion', 'ai_realtime', 'hosted_ai']
     registered['hosted'] = []
     assert missing_consumers(queues, registered) == ['hosted_ai']
+
+
+def test_worker_readiness_rejects_ingestion_worker_without_registered_tasks():
+    from apps.ai_engagement.management.commands.check_ai_runtime import REQUIRED, missing_consumers
+    queues = {name: [{"name": name}] for name in REQUIRED}
+    registered = {name: list(tasks) for name, tasks in REQUIRED.items()}
+    registered["ingestion"] = []
+    assert missing_consumers(queues, registered) == ["ingestion"]

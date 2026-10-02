@@ -24,6 +24,11 @@
                     method: "POST", credentials: "same-origin",
                     headers: { "Accept": "application/json" }, body: payload
                 });
+                if (!response.headers.get("content-type")?.includes("application/json")) {
+                    if (response.status === 413) throw new Error("The upload is larger than the server allows. Choose a smaller file and retry.");
+                    if (response.status === 403 || response.redirected) throw new Error("Your session could not authorize the upload. Refresh your sign-in, then select the file again.");
+                    throw new Error("The server could not process this upload (HTTP " + response.status + "). Your draft is still here. Retry, or share this status with support.");
+                }
                 const result = await response.json();
                 if (!response.ok || !result.saved) throw new Error(result.error || "Your changes could not be saved. Please try again.");
                 if (normalizedPlaybook(result.ai_playbook) !== normalizedPlaybook(payload.get("ai_playbook"))) throw new Error("The saved Playbook differs from your draft. Please refresh and check before testing.");

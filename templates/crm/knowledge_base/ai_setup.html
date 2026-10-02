@@ -104,8 +104,8 @@
                             {% for document in knowledge_documents %}
                             <div class="brain-source-row" data-knowledge-row>
                                 <i class="ti ti-file-text" aria-hidden="true"></i><div><strong>{{ document.name }}</strong><span>{{ document.created_at|date:"j M Y" }}</span></div>
-                                <span class="brain-status">{{ document.get_processing_status_display }}</span>
-                                {% if document.processing_status == 'failed' and document.has_indexable_chunks %}<button type="submit" form="retry-knowledge-{{ document.id }}" class="brain-link-button">Retry</button>{% endif %}
+                                <span class="brain-status">{{ document.get_processing_status_display }}</span>{% if document.processing_status == 'failed' %}<span class="brain-help" role="status">{{ document.failure_help }}</span>{% endif %}
+                                {% if document.processing_status == 'failed' %}<button type="submit" form="retry-knowledge-{{ document.id }}" class="brain-link-button">Retry</button>{% endif %}
                                 <button type="button" class="brain-icon-button" data-knowledge-delete data-delete-kind="document" data-delete-id="{{ document.id }}" data-delete-name="{{ document.name }}" aria-label="Delete {{ document.name }}"><i class="ti ti-trash" aria-hidden="true"></i></button>
                             </div>
                             {% endfor %}
@@ -115,8 +115,8 @@
                 </div>
                 <div class="brain-save-bar"><span class="brain-help" data-save-status role="status" aria-live="polite">Save your changes before testing in AI Sandbox.</span><button type="submit" class="brain-button brain-button-primary">Save Changes</button></div>
             </form>
-            {% for document in knowledge_documents %}{% if document.processing_status == 'failed' and document.has_indexable_chunks %}
-            <form id="retry-knowledge-{{ document.id }}" method="post" action="{% url 'crm-knowledge-base-ai-setup' %}" hidden>{% csrf_token %}<input type="hidden" name="action" value="reindex_document"><input type="hidden" name="document_id" value="{{ document.id }}"></form>
+            {% for document in knowledge_documents %}{% if document.processing_status == 'failed' %}
+            <form id="retry-knowledge-{{ document.id }}" method="post" action="{% url 'crm-knowledge-base-ai-setup' %}" hidden>{% csrf_token %}<input type="hidden" name="action" value="{% if document.has_indexable_chunks %}reindex_document{% else %}retry_knowledge_upload{% endif %}"><input type="hidden" name="document_id" value="{{ document.id }}"></form>
             {% endif %}{% endfor %}
 
             <section class="brain-card brain-guided-files" aria-labelledby="guided-files-heading">
@@ -134,7 +134,10 @@
                 <p class="brain-help brain-file-formats">{{ supported_file_extensions|join:", "|upper }} &middot; Up to {{ knowledge_max_upload_bytes|filesizeformat }} per file</p>
                 {% for document in guided_documents %}
                 <article class="brain-guided-item">
-                    <div class="brain-guided-item-heading"><h4><i class="ti ti-file-text" aria-hidden="true"></i> {{ document.name }}</h4><span class="brain-status">{{ document.get_processing_status_display }}</span></div>
+                    <div class="brain-guided-item-heading"><h4><i class="ti ti-file-text" aria-hidden="true"></i> {{ document.name }}</h4><span class="brain-status">{{ document.get_processing_status_display }}</span>{% if document.processing_status == 'failed' %}<span class="brain-help" role="status">{{ document.failure_help }}</span>{% endif %}</div>
+                    {% if document.processing_status == 'failed' %}
+                    <form method="post">{% csrf_token %}<input type="hidden" name="action" value="{% if document.has_indexable_chunks %}reindex_document{% else %}retry_knowledge_upload{% endif %}"><input type="hidden" name="document_id" value="{{ document.id }}"><button type="submit" class="brain-link-button">Retry processing</button></form>
+                    {% endif %}
                     <form method="post">
                         {% csrf_token %}<input type="hidden" name="action" value="update_guided_file"><input type="hidden" name="document_id" value="{{ document.id }}">
                         <div class="brain-field"><label for="share-instruction-{{ document.id }}">When and why to send</label><textarea id="share-instruction-{{ document.id }}" name="share_instruction" rows="3" required>{{ document.share_instruction }}</textarea></div>

@@ -355,6 +355,24 @@ def ai_setup_view(request):
         # REINDEX DOCUMENT
         # =========================================================
 
+        if action == "retry_knowledge_upload":
+            try:
+                retry_id = int(request.POST.get("document_id", ""))
+            except (ValueError, TypeError):
+                retry_id = 0
+            document = Document.objects.filter(
+                pk=retry_id, organization=organization,
+            ).first()
+            try:
+                if document is None:
+                    raise KnowledgeSourceServiceError("File not found.")
+                source_service.retry_failed_upload(document=document)
+            except KnowledgeSourceServiceError as exc:
+                messages.error(request, str(exc))
+            else:
+                messages.success(request, "File processing has been queued again.")
+            return redirect("crm-knowledge-base-ai-setup")
+
         if action == "reindex_document":
 
             document_id = request.POST.get(
