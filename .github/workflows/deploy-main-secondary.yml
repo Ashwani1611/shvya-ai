@@ -106,7 +106,7 @@ jobs:
             cd "$APP_DIR"
 
             echo "Fetching main..."
-            git fetch --no-tags origin main
+            git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
 
             if ! git cat-file -e "${DEPLOY_SHA}^{commit}" 2>/dev/null; then
               echo "Deployment SHA ${DEPLOY_SHA} is unavailable."
