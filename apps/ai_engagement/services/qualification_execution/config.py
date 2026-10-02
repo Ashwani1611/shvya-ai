@@ -144,7 +144,7 @@ def _config(
         if not _COMPLETION_RULE.search(line):
             continue
         normalized = _norm(line)
-        # Resolve stage names from the transition target clause rather than the
+        # Regression coverage: same-pipeline "Qualification" and "Qualified" must resolve distinctly.\n        # Resolve stage names from the transition target clause rather than the
         # whole qualification rule. Otherwise ordinary wording such as
         # "qualification questions" can accidentally match a stage literally
         # named "Qualification" while the intended target is "Qualified".
