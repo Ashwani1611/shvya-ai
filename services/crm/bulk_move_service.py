@@ -12,7 +12,7 @@ BULK_MOVE_JOB_PREFIX = "shvya:crm_bulk_move:"
 def create_bulk_move_job(*, organization_id, actor_id, lead_ids, selection_scope,
                          source_pipeline_id, source_stage_id, target_pipeline_id,
                          target_stage_id):
-    job_id = uuid.uuid4().hex
+    job_id = str(uuid.uuid4())
     payload = {
         "status": "queued",
         "organization_id": str(organization_id),
