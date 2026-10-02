@@ -189,8 +189,8 @@ class EngagementParityTests(TestCase):
         with tempfile.TemporaryDirectory() as folder, override_settings(MEDIA_ROOT=folder):
             for extension in ('csv', 'docx', 'pdf', 'txt', 'xlsx'):
                 with self.subTest(extension=extension):
-                    doc = Document.objects.create(organization=self.org, name='Guide', is_active=True,
-                        processing_status='completed', share_instruction='Send when a guide is requested.')
+                    doc = Document.objects.create(organization=self.org, name='Guide', is_active=False,
+                        processing_status='failed', file_sharing_ready=True, share_instruction='Send when a guide is requested.')
                     doc.file.save('guide.' + extension, ContentFile(b'fixture bytes'))
                     decision = EngagementDecision(should_engage=True, message='Here is the guide.',
                         file_document_id=doc.pk, crm_actions=[], reason='NORMAL_CONVERSATION', model='test')
@@ -278,8 +278,8 @@ class EngagementParityTests(TestCase):
              patch('services.channels.hosted_whatsapp_transport._push_chat_refresh'):
             for extension in ('csv', 'docx', 'pdf', 'txt', 'xlsx'):
                 with self.subTest(extension=extension):
-                    doc = Document.objects.create(organization=self.org, name='Guide', is_active=True,
-                            processing_status='completed', share_instruction='Send when requested.')
+                    doc = Document.objects.create(organization=self.org, name='Guide', is_active=False,
+                            processing_status='failed', file_sharing_ready=True, share_instruction='Send when requested.')
                     doc.file.save('guide.' + extension, ContentFile(b'file bytes'))
                     message = WhatsAppMessage.objects.create(organization=self.org, account=account,
                         direction='outbound', message_type='document', status='queued', to_number='+919000000022',

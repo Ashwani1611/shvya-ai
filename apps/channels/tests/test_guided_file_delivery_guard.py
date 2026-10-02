@@ -58,6 +58,20 @@ class GuidedFileDeliveryGuardTests(TestCase):
             "uploaded-guide",
         )
 
+    def test_api_and_coexistence_deliver_validated_file_despite_failed_index(self):
+        self.document.is_active = False
+        self.document.processing_status = "failed"
+        self.document.file_sharing_ready = True
+        self.document.save(update_fields=["is_active", "processing_status", "file_sharing_ready"])
+        # API and Coexistence use this same Cloud API upload/send boundary.
+        for connection_type in ("api", "coexistence"):
+            with self.subTest(connection_type=connection_type):
+                self.message.account.connection_type = connection_type
+                self.provider.reset_mock()
+                _send_outbound_media_message(client=self.provider, message=self.message)
+                self.provider.upload_media.assert_called_once()
+                self.provider.send_media_message.assert_called_once()
+
     def test_manual_document_send_does_not_require_ai_guidance(self):
         self.document.share_instruction = ""
         self.document.save(update_fields=["share_instruction"])

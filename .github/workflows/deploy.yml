@@ -286,6 +286,9 @@ jobs:
               fi
             done
 
+            echo "Validating existing guided uploads for independent file delivery..."
+            docker compose exec -T web python manage.py prepare_guided_files --limit 100
+
             echo "Verifying live AI task registration and queue consumers..."
             ai_ready=0
             for attempt in $(seq 1 5); do

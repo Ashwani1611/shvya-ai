@@ -134,7 +134,7 @@
                 <p class="brain-help brain-file-formats">{{ supported_file_extensions|join:", "|upper }} &middot; Up to {{ knowledge_max_upload_bytes|filesizeformat }} per file</p>
                 {% for document in guided_documents %}
                 <article class="brain-guided-item">
-                    <div class="brain-guided-item-heading"><h4><i class="ti ti-file-text" aria-hidden="true"></i> {{ document.name }}</h4><span class="brain-status">{{ document.get_processing_status_display }}</span>{% if document.processing_status == 'failed' %}<span class="brain-help" role="status">{{ document.failure_help }}</span>{% endif %}</div>
+                    <div class="brain-guided-item-heading"><h4><i class="ti ti-file-text" aria-hidden="true"></i> {{ document.name }}</h4><span class="brain-status">{% if document.file_sharing_ready %}Ready to share · Knowledge: {% endif %}{{ document.get_processing_status_display }}</span>{% if document.processing_status == 'failed' %}<span class="brain-help" role="status">{{ document.failure_help }}</span>{% endif %}</div>
                     {% if document.processing_status == 'failed' %}
                     <form method="post">{% csrf_token %}<input type="hidden" name="action" value="{% if document.has_indexable_chunks %}reindex_document{% else %}retry_knowledge_upload{% endif %}"><input type="hidden" name="document_id" value="{{ document.id }}"><button type="submit" class="brain-link-button">Retry processing</button></form>
                     {% endif %}

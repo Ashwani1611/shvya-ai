@@ -146,6 +146,21 @@ class SandboxAPIEngineTests(TestCase):
         ))
         self.assertEqual(self._business_counts(), before)
 
+    def test_real_graph_delivers_validated_file_when_indexing_failed(self):
+        document = Document.objects.create(
+            organization=self.org, name="Welcome", file="knowledge/welcome.txt",
+            is_active=False, processing_status="failed", file_sharing_ready=True,
+            share_instruction="Send the welcome guide when the visitor says hello.",
+        )
+        self.file_id = document.pk
+        self.reply = "Hello! Here is the welcome guide."
+        result = self._request(session_id="failed-index", message="Hello")
+        self.assertEqual([item["id"] for item in result["files"]], [document.pk])
+        self.assertTrue(any(
+            any(item["document_id"] == document.pk for item in payload.get("file_candidates", []))
+            for payload in self.messages
+        ))
+
     def test_real_api_graph_previews_stage_and_remembers_it_after_next_turn(self):
         self.actions = [{"type": "pipeline_transition", "stage_shift": {"stage_id": str(self.demo.pk)}}]
         before = self._business_counts()

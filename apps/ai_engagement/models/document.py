@@ -85,6 +85,11 @@ class Document(models.Model):
         help_text="Tell the AI when and why this file should be sent to a lead.",
     )
 
+    file_sharing_ready = models.BooleanField(
+        default=False,
+        help_text="Uploaded bytes passed file validation; independent of knowledge indexing.",
+    )
+
     # ============================================================
     # PROCESSING
     # ============================================================

@@ -8,7 +8,7 @@ from django.utils import timezone
 
 
 def preview_effects(*, organization, visitor, decision, requirements, qualification, sent_files):
-    from apps.ai_engagement.models import Document
+    from apps.ai_engagement.services.file_sharing import FileSharingError, FileSharingService
     from apps.ai_engagement.services.qualification_execution.config import _config, _mapped_value, _mapping_keys
     from apps.ai_engagement.services.qualification_execution.completion import _completion_target
     from apps.ai_engagement.services.qualification_state import (
@@ -23,8 +23,12 @@ def preview_effects(*, organization, visitor, decision, requirements, qualificat
     # test a guided upload before it has created its first pipeline.
     document_id = decision.file_document_id
     if decision.should_engage and document_id:
-        document = Document.objects.filter(pk=document_id, organization=organization, is_active=True,
-                    processing_status=Document.ProcessingStatus.COMPLETED).exclude(file='').exclude(share_instruction='').first()
+        try:
+            document = FileSharingService().get_guided_document(
+                organization=organization, document_id=document_id,
+            )
+        except FileSharingError:
+            document = None
         if document:
             files.append({'id': document.pk, 'name': document.name or Path(document.file.name).name,
                           'url': reverse('ai-playground-file', kwargs={'document_id': document.pk})})

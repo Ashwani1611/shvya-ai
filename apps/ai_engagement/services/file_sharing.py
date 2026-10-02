@@ -5,6 +5,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from django.db.models import Exists, OuterRef, Q
+
 from apps.ai_engagement.models import Document
 from apps.ai_engagement.services.ai_provider import (
     AIProviderError,
@@ -73,8 +75,10 @@ IMPORTANT RULES:
 4. Do not invent document IDs.
 5. You may select ONLY a document ID explicitly present in the
    FILE CANDIDATES section.
-6. Share a file only when it is genuinely useful and relevant to the
-   current conversation.
+6. Evaluate each candidate's "When and why to send" condition against the
+   conversation, lead source, stage and attributes. When its condition is met,
+   select it even if the lead did not explicitly ask for a file. Relevance alone
+   must not override a restriction in that condition.
 7. If no file is sufficiently relevant, do not select a file.
 8. Do not write a customer-facing message.
 9. Do not send anything.
@@ -127,6 +131,57 @@ Rules for the fields:
     # ELIGIBLE DOCUMENTS
     # ========================================================
 
+    @staticmethod
+    def prepare_uploaded_file(*, document):
+        """Validate stored bytes before enabling a previously uploaded guided file.
+
+        No embeddings, extraction or credits are needed to deliver existing bytes.
+        Do not use this to revive a retired version: callers must explicitly edit
+        its sharing configuration or restrict recovery to failed/pending imports.
+        """
+        from pathlib import Path
+        from botocore.exceptions import BotoCoreError, ClientError
+        from apps.ai_engagement.services.knowledge_file_security import (
+            KnowledgeFileSecurityError, validate_knowledge_file,
+        )
+        if not document.file or not str(document.share_instruction or "").strip():
+            raise FileSharingError("A file and sending instruction are required.")
+        try:
+            with document.file.open("rb") as handle:
+                validate_knowledge_file(handle, filename=Path(document.file.name).name)
+        except (OSError, BotoCoreError, ClientError, KnowledgeFileSecurityError) as exc:
+            raise FileSharingError("The stored file could not be validated. Upload a valid copy again.") from exc
+        # A concurrent edit/deletion must not authorize different bytes or rules.
+        updated = Document.objects.filter(
+            pk=document.pk, organization_id=document.organization_id,
+            file=document.file.name, share_instruction=document.share_instruction,
+            version=document.version,
+        ).update(file_sharing_ready=True)
+        if not updated:
+            raise FileSharingError("The file changed during validation. Retry the operation.")
+        document.file_sharing_ready = True
+
+    @staticmethod
+    def eligible_documents(*, organization):
+        """One policy for selection, queuing, provider delivery and downloads.
+
+        Published knowledge files retain their existing delivery eligibility.
+        Explicitly validated guided uploads need no embeddings or readable text.
+        A newer ready version supersedes an older file before indexing finishes.
+        """
+        ready = Q(is_active=True, processing_status=Document.ProcessingStatus.COMPLETED) | (
+            Q(file_sharing_ready=True) & ~Q(share_instruction="")
+        )
+        newer = Document.objects.filter(
+            ready, organization=organization, source_key=OuterRef("source_key"),
+            version__gt=OuterRef("version"),
+        ).exclude(file="")
+        return Document.objects.filter(ready, organization=organization).exclude(file="").annotate(
+            _newer_shareable_version=Exists(newer),
+        ).filter(
+            Q(source_key__isnull=True) | Q(source_key="") | Q(_newer_shareable_version=False),
+        ).order_by("-updated_at", "-id")
+
     def get_eligible_documents(
         self,
         *,
@@ -134,25 +189,10 @@ Rules for the fields:
         document_ids: set[int] | None = None,
     ) -> list[Document]:
         """
-        Return organization-owned, active, completed documents
-        that contain an uploaded file.
+        Return organization-owned files ready for delivery.
         """
 
-        queryset = (
-            Document.objects
-            .filter(
-                organization=organization,
-                is_active=True,
-                processing_status=Document.ProcessingStatus.COMPLETED,
-            )
-            .exclude(
-                file="",
-            )
-            .order_by(
-                "-updated_at",
-                "-id",
-            )
-        )
+        queryset = self.eligible_documents(organization=organization)
 
         # Once an organization configures guided files, only those files are
         # candidates. Before that, preserve compatibility with existing

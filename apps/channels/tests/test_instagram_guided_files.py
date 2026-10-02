@@ -152,6 +152,22 @@ class InstagramGuidedFileTests(TestCase):
         with patch("django.core.signing.time.time", return_value=timezone.now().timestamp() + 8 * 86400):
             self.assertEqual(self.client.get(path).status_code, 404)
 
+    def test_validated_failed_index_file_can_be_queued_and_downloaded(self):
+        self.document.processing_status = "failed"
+        self.document.is_active = False
+        self.document.file_sharing_ready = True
+        self.document.save(update_fields=["processing_status", "is_active", "file_sharing_ready"])
+        message = self.queue_file()
+        self.mark_sent(message)
+        path = urlsplit(message.body.splitlines()[-1]).path
+        response = self.client.get(path)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"Product guide")
+        self.close_download(response)
+        self.document.share_instruction = ""
+        self.document.save(update_fields=["share_instruction"])
+        self.assertEqual(self.client.get(path).status_code, 404)
+
     def test_cross_tenant_and_unguided_files_cannot_be_queued(self):
         foreign = Document.objects.create(
             organization=Organization.objects.create(name="Other files"),
