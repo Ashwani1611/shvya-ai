@@ -236,6 +236,8 @@ These tools serve the backend-owned setup/skill library and revisioned tenant in
 
 The setup library now exposes 25 top-level domain skills through `prompts/list` and `resources/list`. Skills route reasoning across the existing tool surface; they are not additional backend permissions or mutation endpoints.
 
+Every top-level skill links to the shared skill-quality/evidence/recovery framework, a domain-specific `references/domain-checks.md`, and behavioral `evals/evals.json`. The domain checks encode common false positives and verification requirements; evals remain `NOT_MODEL_EXECUTED` rubrics until an actual evaluator records results.
+
 
 ## Read / diagnostic tools
 
