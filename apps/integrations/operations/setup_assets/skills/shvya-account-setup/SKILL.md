@@ -21,15 +21,31 @@ Turn company materials into a grounded, reviewable Shvya configuration. Shvya is
 
 Always create plain-text content, include `{{lead_first_name}}` in each customer message body, and create every Cadence with `data.is_active: true`. Follow [content rules](references/content-rules.md) for provider mappings, missing names and required Playbook parser markers. Verify the saved Cadence remains active; keep unfinished Cadences isolated from enrollment and enabled triggers.
 
+## Domain orchestration
+
+This skill is the coordinator for broad onboarding; it is not the detailed owner of every subsystem. Load only the domain skill needed for each verified dependency:
+
+- industry/process blueprint -> `shvya-industry-designer`
+- pipelines/stages/attributes -> `shvya-crm-architect`
+- qualification -> `shvya-qualification`
+- AI Brain / Playbook / knowledge -> `shvya-ai-brain`, `shvya-ai-playbook`, `shvya-knowledge-manager`
+- Workflows / Cadences -> `shvya-workflow-builder`, `shvya-cadence-builder`
+- routing / WhatsApp / Instagram / email -> `shvya-channel-routing` plus the provider-specific skill
+- Calendar -> `shvya-calendar`
+- diagnosis/repair -> `shvya-diagnostics` then the owning repair skill; use `shvya-incident-repair` for coordinated incidents
+- final gate -> `shvya-acceptance-testing`
+
+The coordinating agent owns the dependency ledger and final state. A domain skill owns its detailed schema decisions, dry-run/apply/read-back and verification. Do not load every domain skill for a narrow setup task.
+
 ## Build workflow
 
 1. **Orient and inventory.** Read [current workflow](references/current-workflow.md) and [MCP reference](references/api-reference.md). In package mode use source materials plus explicit gaps. In live mode inventory organization, complete AI configuration, qualification, automation, attributes/stages, WhatsApp accounts, FAQs, Touchpoints and knowledge health. Make a reuse/update/create/defer table; do not duplicate seeded or already configured entities.
 2. **Extract the Client Profile.** Use [profile builder](references/agent-prompts/1-client-profile-builder.md), [intake checklist](references/brainstorming-checklist.md) and its [kickoff](references/agent-kickoffs.md). Capture provenance, contradictions, preferences, qualification gate, language, assets, integrations and verbatim commitments. Ask only material unanswered questions in one batch; continue independent work.
-3. **Author the AI Brain.** Use [qualification builder](references/agent-prompts/2-ai-qualification-builder.md) and [conditional qualification](references/conditional-qualification.md). Produce the canonical eight-section AI Playbook, About, languages, grounded FAQs and knowledge ingestion manifest. One question per turn; do not re-ask supplied answers; refusal does not fabricate required evidence.
-4. **Design then write Cadences.** Run [outline generator](references/agent-prompts/3-sequence-outline-generator.md), then [writer](references/agent-prompts/4-sequence-writer.md). Use the client's sales cycle and actual assets. Follow [content rules](references/content-rules.md) and [schedule conversion](references/cadence-scheduling.md). A useful small set beats five empty or unsupported sequences.
-5. **Bind the CRM and automation.** Use [account setup builder](references/agent-prompts/5-account-setup-builder.md), [industry guidance](references/industry-playbooks.md) and [configuration areas](references/account-setup-instructions.md). Create explicit qualification-to-attribute mappings, described stages, event/condition/action Workflows and saved-reply Touchpoints. Build a dependency map with stable local keys; bind live IDs only after discovery or creation.
+3. **Build AI and qualification through their domain owners.** Use the existing qualification-builder reference for content extraction, then load `shvya-qualification` for the authoritative question/mapping/target contract and `shvya-ai-brain` / `shvya-ai-playbook` / `shvya-knowledge-manager` for About, Playbook, languages, FAQs and knowledge. Preserve one-question-per-turn behavior and source grounding.
+4. **Design then build Cadences through the Cadence owner.** The outline and writer references remain useful copy-authoring inputs; `shvya-cadence-builder` owns provider/sender choice, step schema, timing, validation, simulation and read-back.
+5. **Bind CRM and automation through domain owners.** Use the account-setup-builder and industry references for the blueprint, then `shvya-crm-architect`, `shvya-workflow-builder`, routing/channel skills and `shvya-calendar` as required. Build a dependency map with stable local keys and bind live IDs only after discovery or creation.
 6. **Review, then apply only if requested.** Run [conflict audit](references/conflict-audit.md). Dependency order: pipeline and sender routing, attributes/stages, knowledge/FAQs, final Playbook, Cadences and steps, Touchpoints, disabled Workflows, then authorized activation/settings. Create Cadences active from the outset and leave them active; isolate them from enrollment while building. Never run structured qualification upsert after the final authored Playbook without reviewing its replacement of qualification-owned sections.
-7. **Verify and hand over.** Read back intended state; compile qualification; simulate each branch, Workflow and Cadence; validate routing and organization configuration. Deterministic simulations do not generate real AI conversations or prove provider delivery. Report configured IDs and evidence, local drafts, skipped capabilities, unresolved facts, integration ownership, commitments and remaining acceptance tests separately.
+7. **Verify and hand over.** Finish with `shvya-acceptance-testing`. Read back intended state; validate organization/qualification/routing and run relevant AI, Workflow and Cadence simulations. Deterministic simulations do not prove provider delivery. Report configured IDs and evidence, local drafts, skipped capabilities, unresolved facts, integration ownership, commitments and the bounded readiness verdict.
 
 ## Targeted changes and diagnosis
 
