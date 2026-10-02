@@ -14,6 +14,8 @@ from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, Pipeline, PipelinePermission
 from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceState
 from apps.organizations.models import Organization
+from apps.crm.tasks import bulk_move_leads_task
+from services.crm.bulk_move_service import create_bulk_move_job, get_bulk_move_job
 from services.followup_service import FollowupError, assign_sequence
 
 
@@ -300,6 +302,125 @@ class BulkLeadTests(TestCase):
             self.assertTrue(lead.activities.filter(topic="stage_changed", actor=self.user).exists())
         self.leads[2].refresh_from_db()
         self.assertEqual(self.leads[2].stage, self.stage)
+
+    def test_thousand_lead_stage_move_is_queued_outside_web_request(self):
+        extra = [
+            Lead(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+                name=f"Bulk lead {index}",
+                phone=f"+9188{index:010d}",
+            )
+            for index in range(997)
+        ]
+        Lead.objects.bulk_create(extra, batch_size=250)
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+            ).count(),
+            1000,
+        )
+
+        with patch("apps.crm.views.bulk.bulk_move_leads_task.apply_async") as queued:
+            response = self.post(
+                "update",
+                selection_scope="stage",
+                lead_ids=[],
+                move=True,
+                target_pipeline=str(self.pipeline.pk),
+                target_stage=str(self.next_stage.pk),
+            )
+
+        self.assertEqual(response.status_code, 202, response.content)
+        payload = response.json()
+        self.assertTrue(payload["queued"])
+        self.assertEqual(payload["count"], 1000)
+        job = get_bulk_move_job(payload["job_id"])
+        self.assertEqual(job["total"], 1000)
+        self.assertEqual(len(job["lead_ids"]), 1000)
+        queued.assert_called_once_with(
+            args=[payload["job_id"]],
+            queue="ingestion",
+        )
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+            ).count(),
+            1000,
+        )
+
+        status_response = self.client.get(
+            reverse("crm-leads-bulk-status", args=[payload["job_id"]])
+        )
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.json()["status"], "queued")
+        self.assertNotIn("lead_ids", status_response.json())
+
+    def test_background_bulk_move_batches_preserve_history_and_are_idempotent(self):
+        extra = [
+            Lead(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+                name=f"Worker lead {index}",
+                phone=f"+9177{index:010d}",
+            )
+            for index in range(102)
+        ]
+        Lead.objects.bulk_create(extra, batch_size=100)
+        lead_ids = list(
+            Lead.objects.filter(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.stage,
+            ).values_list("pk", flat=True)
+        )
+        job_id, _job = create_bulk_move_job(
+            organization_id=self.organization.pk,
+            actor_id=self.user.pk,
+            lead_ids=lead_ids,
+            selection_scope="stage",
+            source_pipeline_id=self.pipeline.pk,
+            source_stage_id=self.stage.pk,
+            target_pipeline_id=self.pipeline.pk,
+            target_stage_id=self.next_stage.pk,
+        )
+
+        bulk_move_leads_task(job_id)
+
+        result = get_bulk_move_job(job_id)
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["processed"], len(lead_ids))
+        self.assertEqual(result["moved_count"], len(lead_ids))
+        self.assertEqual(result["skipped_count"], 0)
+        self.assertEqual(
+            Lead.objects.filter(
+                organization=self.organization,
+                pipeline=self.pipeline,
+                stage=self.next_stage,
+            ).count(),
+            len(lead_ids),
+        )
+        self.assertEqual(
+            self.organization.lead_activities.filter(
+                topic="stage_changed",
+            ).count(),
+            len(lead_ids),
+        )
+
+        # A duplicate/redelivered task must not create duplicate movement history.
+        bulk_move_leads_task(job_id)
+        self.assertEqual(
+            self.organization.lead_activities.filter(
+                topic="stage_changed",
+            ).count(),
+            len(lead_ids),
+        )
 
     def test_same_stage_is_noop(self):
         old_time = self.leads[0].stage_entered_at
