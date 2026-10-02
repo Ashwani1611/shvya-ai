@@ -1,8 +1,8 @@
 # SHVYA Operations MCP
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Implementation note:** runtime code, migrations, tests and deployment configuration are the executable source of truth. This document tracks the current Operations MCP architecture on `main`; authenticated `tools/list` remains authoritative for a specific deployed connection.
 
-> This document describes the actor-bound Operations MCP implemented on the staging branch. The existing Diagnostic MCP remains a separate read-only connector.
+> The existing Diagnostic MCP remains a separate read-only connector.
 
 ## Purpose
 
@@ -79,6 +79,15 @@ Superadmin can independently grant:
 - `automation.cadence.config.write`
 - `automation.messaging.config.write`
 - `configuration.plan.write`
+- `setup.library.read`
+- `setup.artifacts.prepare`
+- `setup.intake.read`
+- `setup.intake.write`
+- `trace.content.read`
+- `calendar.config.write`
+- `integration.lifecycle.write`
+- `operations.task.write`
+- `team.settings.write`
 
 Legacy stored `crm.config.write` and `automation.config.write` values are recognized only for backward compatibility and are expanded into these granular controls.
 
@@ -87,9 +96,9 @@ Write capabilities may require explicit human approval. Superadmin customer-stat
 An OAuth write scope does not bypass capability policy. Authenticated `tools/list` is also policy scoped: Organization Admin clients only discover tools for capabilities currently enabled by Superadmin, while Superadmin retains the full Operations surface.
 
 
-## Current staging tool surface
+## Current Operations tool surface
 
-The staging implementation defines **75 Operations-native tools** in addition to the existing read-only Diagnostic MCP tools exposed through the Operations authorization boundary. Authenticated `tools/list` is capability scoped.
+The current catalog defines **101 Operations-native tools**: 75 core Operations tools, 8 setup-library tools and 18 extended domain tools. The Operations authorization boundary also exposes 10 existing read-only Diagnostic MCP tools, for a maximum catalog surface of **111 tools** before capability/OAuth filtering. Authenticated `tools/list` is authoritative and capability scoped.
 
 ### Context and inspection
 
@@ -190,6 +199,42 @@ Configuration plans use the dedicated `configuration.plan.write` capability. Lif
 - `test_ai_response_policy`
 
 The configuration comparison is Superadmin-only and opaque: it reports safe drift without returning credentials or raw secret values. Integrity diagnostics cover duplicate/orphan-style configuration problems, and AI response-policy testing validates bounded customer-facing behavior without turning diagnostic content into authority.
+
+### Setup-library tools
+
+- `list_setup_library`
+- `get_setup_library_resource`
+- `get_setup_variable_schema`
+- `render_setup_template`
+- `analyze_setup_group_export`
+- `get_setup_intake`
+- `upsert_setup_intake_entry`
+- `archive_setup_intake_entry`
+
+These tools serve the backend-owned setup/skill library and revisioned tenant intake. Library content is immutable guidance and does not expand authorization.
+
+### Extended domain tools
+
+- `get_capability_discovery`
+- `get_production_trace`
+- `get_calendar_configuration`
+- `validate_calendar_configuration`
+- `upsert_calendar_configuration`
+- `verify_booking`
+- `update_booking_status`
+- `reschedule_booking`
+- `prepare_account_onboarding`
+- `list_industry_playbooks`
+- `get_integration_lifecycle`
+- `disconnect_integration`
+- `validate_cadence_batch`
+- `run_acceptance_suite`
+- `list_commitments`
+- `upsert_commitment`
+- `get_team_settings`
+- `upsert_team_settings`
+
+The setup library now exposes 25 top-level domain skills through `prompts/list` and `resources/list`. Skills route reasoning across the existing tool surface; they are not additional backend permissions or mutation endpoints.
 
 
 ## Read / diagnostic tools
