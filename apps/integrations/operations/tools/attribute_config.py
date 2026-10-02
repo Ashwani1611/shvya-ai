@@ -387,7 +387,9 @@ def upsert_attribute_configuration(*, identity, arguments):
                     AttributeDefinition.objects.filter(
                         organization=organization,
                         is_active=True,
-                    ).count()
+                    )
+                    .exclude(key="booked_at")
+                    .count()
                     > MAX_CUSTOM_ATTRIBUTES
                 ):
                     raise OperationsToolError(
