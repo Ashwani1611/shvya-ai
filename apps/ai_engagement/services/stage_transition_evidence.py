@@ -135,7 +135,17 @@ def _filter_stage_actions(*, organization, lead, actions, source_message=None):
     from types import SimpleNamespace
     context = SimpleNamespace(pipeline={"id": str(lead.pipeline_id)}, conversation={"messages": []})
     if any(isinstance(item, dict) and item.get("type") == "pipeline_transition" for item in actions or []):
-        messages = lead.whatsapp_messages.filter(organization=organization)
+        if source_message is not None and getattr(source_message, "conversation_id", None):
+            from apps.channels.instagram_models import InstagramMessage
+
+            messages = InstagramMessage.objects.filter(
+                organization=organization,
+                conversation_id=source_message.conversation_id,
+                conversation__lead=lead,
+                account_id=source_message.account_id,
+            )
+        else:
+            messages = lead.whatsapp_messages.filter(organization=organization)
         if source_message is not None:
             from django.db.models import Q
             messages = messages.filter(Q(created_at__lt=source_message.created_at) |

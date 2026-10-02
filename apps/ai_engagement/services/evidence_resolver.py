@@ -141,6 +141,8 @@ class EvidenceResolver:
                 organization=organization,
                 lead=lead,
                 keys=keys,
+                question=question,
+                question_type=question_type,
             )
             knowledge = self._knowledge_evidence(
                 organization=organization,
@@ -157,7 +159,7 @@ class EvidenceResolver:
                     # Category settings can be general (for example a privacy
                     # policy) while an FAQ/file answers the actual refund ask.
                     # Preserve configured facts first without hiding that answer.
-                    evidence=(structured + knowledge)[:self.MAX_ITEMS],
+                    evidence=self._bounded_evidence(structured + knowledge),
                 )
             if knowledge:
                 return EvidenceResolution(
@@ -223,7 +225,7 @@ class EvidenceResolver:
                     question_type=question_type,
                     sensitive=False,
                     verified=True,
-                    evidence=(knowledge + structured)[:self.MAX_ITEMS],
+                    evidence=self._bounded_evidence(knowledge + structured),
                 )
             return self._unknown(question_type=question_type, sensitive=False)
 
@@ -281,7 +283,9 @@ class EvidenceResolver:
             return set()
         return {decision.primary_intent, *decision.secondary_intents}
 
-    def _structured_org_evidence(self, *, organization, lead, keys: tuple[str, ...]) -> tuple[EvidenceItem, ...]:
+    def _structured_org_evidence(
+        self, *, organization, lead, keys: tuple[str, ...], question: str = "", question_type: str = "",
+    ) -> tuple[EvidenceItem, ...]:
         profile = get_organization_ai_runtime_profile(
             organization=organization,
             lead=lead,
@@ -317,7 +321,52 @@ class EvidenceResolver:
             )
             if len(items) >= self.MAX_ITEMS:
                 break
-        return tuple(items)
+        # About is authored company knowledge, including prices and policies.
+        # Keep private Playbook instructions out of customer-fact evidence.
+        if question_type in {"pricing", "policy", "location", "availability"}:
+            about = business_information.get("about") if isinstance(business_information, Mapping) else ""
+            excerpt = self._about_excerpt(about, question=question, question_type=question_type)
+            if excerpt:
+                items = items[:self.MAX_ITEMS - 1]
+                items.append(EvidenceItem(
+                    source_id="organization_profile:business_information:about",
+                    source_type="organization_runtime_profile",
+                    content=excerpt,
+                    metadata={"field": "about", "area": "business_information"},
+                ))
+        return tuple(items[:self.MAX_ITEMS])
+
+    @classmethod
+    def _about_excerpt(cls, about, *, question: str, question_type: str) -> str:
+        """Select topical facts for the independent verifier, never instructions."""
+        from apps.ai_engagement.services.retrieval import _query_tokens
+
+        patterns = {
+            "pricing": r"\b(?:pric\w*|costs?|fees?|plans?|packages?|discounts?|free|inr|usd|rupees?|dollars?)\b|[₹$€£]\s*\d",
+            "policy": r"\b(?:polic\w*|refund\w*|cancell?\w*|warrant\w*|returns?|privacy|terms)\b",
+            "location": r"\b(?:locat\w*|address|offices?|branches?|based|headquarters)\b",
+            "availability": r"\b(?:availab\w*|offer\w*|hours?|timings?|opening|closing|open|closed|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        }
+        pattern = patterns.get(question_type)
+        if not pattern:
+            return ""
+        query = set(_query_tokens(question))
+        parts = re.split(r"\n\s*\n", str(about or "")[:20000])
+        ranked = []
+        for index, part in enumerate(parts):
+            part = part.strip()
+            if not part or not re.search(pattern, part, re.I):
+                continue
+            overlap = len(query & set(_query_tokens(part)))
+            ranked.append((overlap, index, part))
+        remaining = cls.MAX_CONTENT_CHARS
+        selected = []
+        for _, _, part in sorted(ranked, key=lambda row: (-row[0], row[1])):
+            if remaining <= 0:
+                break
+            selected.append(part[:remaining])
+            remaining -= len(selected[-1]) + 2
+        return "\n\n".join(selected)[:cls.MAX_CONTENT_CHARS]
 
     def _knowledge_evidence(self, *, organization, question: str, guard: TenantGuard) -> tuple[EvidenceItem, ...]:
         if not question:
@@ -357,7 +406,33 @@ class EvidenceResolver:
                     },
                 )
             )
-        return (authored_items + tuple(items))[:self.MAX_ITEMS]
+        matched = (authored_items + tuple(items))[:self.MAX_ITEMS]
+        if matched:
+            return matched
+
+        # The reply model already understands multilingual and paraphrased
+        # questions. Give its existing independent verifier the complete authored
+        # Q/A instead of declaring knowledge absent solely from lexical mismatch.
+        from apps.ai_engagement.services.authored_knowledge import authored_answer_candidates
+        return tuple(EvidenceItem(
+            source_id=item['source_id'], source_type=item['source_type'],
+            content=item['content'], score=0.0,
+            metadata={'requires_relevance_verification': True,
+                      'retrieval_path': 'authored_faq_candidates'},
+        ) for item in authored_answer_candidates(organization=organization, question=question))
+
+    @staticmethod
+    def _bounded_evidence(items) -> tuple[EvidenceItem, ...]:
+        """Bound merged evidence while retaining complete conditional Q/A pairs."""
+        selected, remaining = [], 12000
+        for item in items:
+            if len(item.content) > remaining:
+                continue
+            selected.append(item)
+            remaining -= len(item.content)
+            if len(selected) >= 12:
+                break
+        return tuple(selected)
 
     @staticmethod
     def _crm_evidence(lead) -> tuple[EvidenceItem, ...]:

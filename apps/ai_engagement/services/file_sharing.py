@@ -170,6 +170,18 @@ Rules for the fields:
 
         return list(queryset)
 
+    def get_guided_document(self, *, organization, document_id):
+        """Resolve one explicitly shareable file at every delivery boundary."""
+        if isinstance(document_id, bool) or not isinstance(document_id, int) or document_id <= 0:
+            return None
+        documents = self.get_eligible_documents(
+            organization=organization, document_ids={document_id},
+        )
+        return next(
+            (document for document in documents if str(document.share_instruction or "").strip()),
+            None,
+        )
+
     # ========================================================
     # CANDIDATES
     # ========================================================

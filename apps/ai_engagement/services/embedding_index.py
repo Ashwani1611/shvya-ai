@@ -37,6 +37,9 @@ class EmbeddingIndexService:
         PostgreSQL / pgvector
     """
 
+    # Bound requests and retain successful batches for missing-only retries.
+    MAX_BATCH_CHUNKS = 64
+
     def __init__(
         self,
         *,
@@ -210,6 +213,15 @@ class EmbeddingIndexService:
                 "An embedding batch cannot contain multiple organizations."
             )
 
+        indexed_count = 0
+        for start in range(0, len(chunk_list), self.MAX_BATCH_CHUNKS):
+            indexed_count += self._index_batch(
+                chunk_list[start:start + self.MAX_BATCH_CHUNKS]
+            )
+        return indexed_count
+
+    def _index_batch(self, chunk_list: list[Chunk]) -> int:
+        """Persist a bounded batch only after all returned vectors validate."""
         normalized_texts = [
             chunk.content.strip()
             for chunk in chunk_list
@@ -295,6 +307,11 @@ class EmbeddingIndexService:
                 "chunk_index",
             )
         )
+
+        if queryset.exclude(organization_id=document.organization_id).exists():
+            raise EmbeddingIndexError(
+                "Knowledge chunks do not match the document organization."
+            )
 
         if only_missing:
             queryset = queryset.filter(

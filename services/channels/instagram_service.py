@@ -1084,6 +1084,13 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     if account.status != InstagramAccount.Status.CONNECTED or not account.access_token:
         raise InstagramAPIError("Instagram is not connected. Reconnect before sending.")
 
+    ai_metadata = (message.raw_payload or {}).get("shvya_ai")
+    guided_file = isinstance(ai_metadata, dict) and ai_metadata.get("file_document_id") is not None
+    if guided_file:
+        from apps.ai_engagement.services.instagram_files import document_for_message
+
+        document_for_message(message)
+
     result = _graph_post(
         f"{account.ig_user_id}/messages",
         access_token=account.access_token,
@@ -1096,35 +1103,45 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     if not external_id:
         raise InstagramAPIError("Meta accepted the request without returning a message ID.")
 
-    # If an outbound echo reached the webhook first, never violate unique external_id.
-    duplicate = InstagramMessage.objects.filter(external_id=external_id).exclude(pk=message.pk).first()
-    if duplicate:
-        if (
-            duplicate.organization_id != message.organization_id
-            or duplicate.account_id != message.account_id
-            or duplicate.conversation_id != message.conversation_id
-            or duplicate.direction != InstagramMessage.Direction.OUTBOUND
-        ):
-            raise InstagramAPIError("Instagram send returned a message ID belonging to another conversation.")
-        message.delete()
-        return duplicate
-
-    message.external_id = external_id
-    message.status = InstagramMessage.Status.SENT
-    message.sent_at = timezone.now()
-    message.error = ""
-    existing_payload = (
-        dict(message.raw_payload)
-        if isinstance(message.raw_payload, dict)
-        else {}
-    )
-    message.raw_payload = {
-        **existing_payload,
-        "provider_response": result,
-    }
-    message.save(
-        update_fields=["external_id", "status", "sent_at", "error", "raw_payload", "updated_at"]
-    )
+    with transaction.atomic():
+        # If an outbound echo reached the webhook first, never violate unique external_id.
+        duplicate = InstagramMessage.objects.select_for_update().filter(external_id=external_id).exclude(pk=message.pk).first()
+        if duplicate:
+            if (
+                duplicate.organization_id != message.organization_id
+                or duplicate.account_id != message.account_id
+                or duplicate.conversation_id != message.conversation_id
+                or duplicate.direction != InstagramMessage.Direction.OUTBOUND
+            ):
+                raise InstagramAPIError("Instagram send returned a message ID belonging to another conversation.")
+            if isinstance(ai_metadata, dict):
+                # AI source-turn metadata and signed file grants belong to the
+                # queued row. Keeping an unannotated echo instead would turn the
+                # bot response into a human reply and break retry/history checks.
+                if duplicate.status == InstagramMessage.Status.READ:
+                    message.status = InstagramMessage.Status.READ
+                duplicate.delete()
+            else:
+                message.delete()
+                return duplicate
+    
+        message.external_id = external_id
+        if message.status != InstagramMessage.Status.READ:
+            message.status = InstagramMessage.Status.SENT
+        message.sent_at = timezone.now()
+        message.error = ""
+        existing_payload = (
+            dict(message.raw_payload)
+            if isinstance(message.raw_payload, dict)
+            else {}
+        )
+        message.raw_payload = {
+            **existing_payload,
+            "provider_response": result,
+        }
+        message.save(
+            update_fields=["external_id", "status", "sent_at", "error", "raw_payload", "updated_at"]
+        )
     return message
 
 

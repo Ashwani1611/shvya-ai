@@ -303,60 +303,17 @@ def install_playground_graph_recovery() -> None:
     from apps.ai_engagement.services.engagement import EngagementDecision
     from apps.ai_engagement.services.qualification_state import (
         MODE_QUALIFICATION,
-        REQUIREMENT_ANSWERED,
     )
 
+    original_deterministic_extract = workflow._deterministic_extract
     original_generate = workflow._generate
     original_route_turn = workflow._route_turn
 
     def scoped_deterministic_extract(state):
-        if state.get("caller_supplied_context"):
-            return {}
-
-        lead = state["lead"]
-        requirements = state.get("requirements") or []
-        if not requirements:
-            return {}
-
         direct_text = state.get("latest_text", "")
         if _is_playground_state(state):
-            direct_text = workflow._canonical_yes_no_reply(state, requirements)
-
-        direct = workflow.apply_unambiguous_reply(
-            lead=lead,
-            requirements=requirements,
-            text=direct_text,
-            source_message_id=state.get("latest_message_id", ""),
-        )
-        qualification_state = direct["state"]
-        updates = {"qualification_state": qualification_state}
-
-        direct_next = direct.get("next_requirement")
-        profile = state.get("profile") or {}
-        context = state["context"]
-        if (
-            not profile.get("communication", {}).get("custom_instructions")
-            and not profile.get("qualification", {}).get("raw")
-            and not profile.get("communication", {}).get("languages")
-            and not (context.pipeline or {}).get("attribute_definitions")
-            and direct.get("changed")
-            and direct.get("answer_status") == REQUIREMENT_ANSWERED
-            and qualification_state.get("engagement_mode") == MODE_QUALIFICATION
-            and isinstance(direct_next, dict)
-            and direct_next.get("can_direct_ask")
-            and str(direct_next.get("question") or "").strip()
-        ):
-            updates["direct_decision"] = EngagementDecision(
-                should_engage=True,
-                message=str(direct_next["question"]).strip(),
-                file_document_id=None,
-                crm_actions=[],
-                reason="QUALIFICATION_NEXT",
-                reason_code="QUALIFICATION_NEXT",
-                next_requirement_id=str(direct_next.get("id") or "") or None,
-                model="deterministic",
-            )
-        return updates
+            direct_text = workflow._canonical_yes_no_reply(state, state.get("requirements") or [])
+        return original_deterministic_extract(state, reply_text=direct_text)
 
     def scoped_route_turn(state):
         """Keep Sandbox RAG focused on the current customer information request."""

@@ -58,6 +58,8 @@ class EvidencePipelineTests(SimpleTestCase):
 
     def test_grounding_skips_provider_for_backend_deterministic_reply(self):
         state = self._state(reason_code="QUALIFICATION_NEXT")
+        state["requirements"] = [{"id": "tool", "question": "Which tool do you currently use?"}]
+        state["qualification_state"] = {"engagement_mode": "qualification", "requirement_states": {}}
         state["decision"] = EngagementDecision(
             should_engage=True,
             message="Which tool do you currently use?",
@@ -66,6 +68,7 @@ class EvidencePipelineTests(SimpleTestCase):
             reason="QUALIFICATION_NEXT",
             reason_code="QUALIFICATION_NEXT",
             model="deterministic",
+            next_requirement_id="tool",
         )
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
             result = check_grounding(state)

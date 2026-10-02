@@ -20,7 +20,7 @@ _DMY_DATE_RE = re.compile(
     r"\b(?P<day>0?[1-9]|[12]\d|3[01])[-/](?P<month>0?[1-9]|1[0-2])(?:[-/](?P<year>20\d{2}))?\b"
 )
 _RELATIVE_RE = re.compile(
-    r"\bin\s+(?P<amount>\d{1,3})\s*(?P<unit>minutes?|mins?|hours?|hrs?)\b",
+    r"\b(?:in|after)\s+(?P<amount>\d{1,3})\s*(?P<unit>minutes?|mins?|hours?|hrs?|days?|weeks?)\b",
     re.IGNORECASE,
 )
 _MONTH_DATE_RE = re.compile(
@@ -165,7 +165,16 @@ def parse_grounded_due_at(text: str) -> str | None:
     if relative:
         amount = int(relative.group("amount"))
         unit = relative.group("unit").casefold()
-        delta = timedelta(minutes=amount) if unit.startswith(("min", "minute")) else timedelta(hours=amount)
+        if amount <= 0:
+            return None
+        if unit.startswith(("min", "minute")):
+            delta = timedelta(minutes=amount)
+        elif unit.startswith(("hour", "hr")):
+            delta = timedelta(hours=amount)
+        elif unit.startswith("week"):
+            delta = timedelta(weeks=amount)
+        else:
+            delta = timedelta(days=amount)
         return (now + delta).isoformat()
 
     parsed_time = _parse_time(normalized)

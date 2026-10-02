@@ -92,6 +92,8 @@ class PlaygroundAPIView(APIView):
                 session_id=serializer.validated_data["session_id"],
                 message=serializer.validated_data["message"],
                 history=serializer.validated_data.get("history", []),
+                **{key: serializer.validated_data[key] for key in ("channel", "lead_source")
+                   if key in serializer.validated_data},
                 **({"stage_id": str(serializer.validated_data["stage_id"])} if serializer.validated_data.get("stage_id") else {}),
             )
         except PlaygroundError as exc:

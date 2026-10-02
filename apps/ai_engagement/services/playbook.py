@@ -118,7 +118,7 @@ def policy_blocks(text: str) -> list[str]:
     """Keep a numbered Rule/Mapping/Reminder and its children together."""
     blocks, current = [], []
     for line in text.splitlines():
-        if re.match(r"^\s*(?:#{1,6}\s*)?(?:Rule|Mapping|Reminder)\s+\d+\b", line, re.I):
+        if (re.match(r"^\s*(?:#{1,6}\s*)?(?:Rule|Mapping|Reminder)\s+\d+\b", line, re.I) or re.match(r"^\s*(?:when|if|once|after|move|shift|route)\b.*:\s*$", line, re.I)):
             if current:
                 blocks.append("\n".join(current).strip())
             current = [line]

@@ -53,6 +53,19 @@ block qualification:` does not add required fields. Unknown predicates still
 remain unresolved. Scalar comparisons support AND, OR, and `If ... then qualify
 else do not qualify`; unsupported exceptions are not guessed.
 
+Short mappings also accept `Question 1 -> Budget` and
+`Qualification Question 1 -> Budget`. Completion rules such as
+`When all questions are answered, move to Qualified` resolve the destination in
+the lead's current pipeline. To cross pipelines, name the destination explicitly,
+for example `move to Sales Review in the Enterprise Sales pipeline`. An unknown
+pipeline or multiple distinct destination stages remains unresolved.
+
+Completion routes can be conditioned on the saved acquisition source, for
+example `When lead source is Instagram and all questions are answered, move to
+Instagram Review`. `For Instagram leads` and `lead created from Instagram` are
+also accepted. This uses the CRM lead source even if the current conversation is
+on WhatsApp. Unsupported or conflicting source conditions are not guessed.
+
 Numbered Rule, Mapping and Reminder blocks retain their child conditions.
 Explicit stage rules take precedence over a looser stage description. Escalation
 conditions requiring contacts already provided need sent/delivered outbound
