@@ -3,13 +3,15 @@
 Carousel templates are always Marketing templates. Their local card actions must
 remain available after a Meta sync because Meta only returns the SHVYA tracking
 URL, not the server-held final website or phone action. Meta click tracking is
-also enabled before the first analytics read, and unique CTA clicks are counted
-by recipient rather than by outbound message.
+also enabled before the first analytics read. Total and unique tracked clicks
+are merged per button label so Meta and SHVYA never count the same action twice.
 """
 
 import copy
 from collections import defaultdict
 from datetime import datetime, time, timedelta, timezone as dt_timezone
+
+from django.db.models import Count, Q
 
 from apps.channels.models import WhatsAppTemplate
 from apps.channels.tracking_models import (
@@ -75,10 +77,14 @@ def install_template_cta_tracking_hardening():
         end_date,
         results,
     ):
-        # Keep provider/quick-reply unique counts before the core tracked-link
-        # augmentation. The core total-click calculation remains authoritative,
-        # while this layer replaces its per-message unique approximation with
-        # recipient-level sets across repeated sends.
+        # Preserve provider and quick-reply breakdowns before the core tracked
+        # augmentation. The core layer still establishes availability/source
+        # metadata; this layer recomputes tracked URL totals from the original
+        # rows plus recipient-linked SHVYA events, using a per-label maximum.
+        existing_clicks = {
+            str(meta_id): copy.deepcopy(result.get("clicks") or [])
+            for meta_id, result in (results or {}).items()
+        }
         existing_unique = {
             str(meta_id): copy.deepcopy(result.get("unique_clicks") or [])
             for meta_id, result in (results or {}).items()
@@ -100,10 +106,9 @@ def install_template_cta_tracking_hardening():
             time.min,
             tzinfo=dt_timezone.utc,
         )
-        action_types = {
-            WhatsAppTemplateTrackedLink.ActionType.WEBSITE: "url_button",
-            WhatsAppTemplateTrackedLink.ActionType.CALL: "call_button",
-            WhatsAppTemplateTrackedLink.ActionType.COPY_CODE: "copy_code_button",
+        totals = {
+            meta_id: defaultdict(int)
+            for meta_id in ids
         }
         recipients = {
             meta_id: defaultdict(set)
@@ -117,26 +122,52 @@ def install_template_cta_tracking_hardening():
                 is_active=True,
                 sent_at__gte=start_at,
                 sent_at__lt=end_at,
-                events__event_type=WhatsAppTemplateTrackedClick.EventType.CLICK,
+            )
+            .annotate(
+                tracked_click_total=Count(
+                    "events",
+                    filter=Q(
+                        events__event_type=(
+                            WhatsAppTemplateTrackedClick.EventType.CLICK
+                        )
+                    ),
+                )
             )
             .select_related("message")
-            .distinct()
         )
         for link in links:
             meta_id = str(link.meta_template_id or "")
             if meta_id not in augmented:
                 continue
-            kind = action_types.get(link.action_type, "button")
-            label = link.button_text or kind.replace("_", " ").title()
+            # All independently tracked actions are URL buttons in the Meta
+            # template. Keeping that canonical type makes Meta and SHVYA rows
+            # for Call/Copy landing actions merge instead of double count.
+            key = (
+                "url_button",
+                link.button_text or "CTA button",
+            )
+            click_total = int(link.tracked_click_total or 0)
+            totals[meta_id][key] += click_total
+            if click_total <= 0:
+                continue
             identity = (
                 str(link.lead_id or "")
                 or str(link.message.to_number or "").strip()
                 or str(link.message_id)
             )
-            recipients[meta_id][(kind, label)].add(identity)
+            recipients[meta_id][key].add(identity)
 
         for meta_id, result in augmented.items():
             local_rows = [
+                {
+                    "type": key[0],
+                    "button_content": key[1],
+                    "count": count,
+                }
+                for key, count in totals.get(meta_id, {}).items()
+                if count > 0
+            ]
+            local_unique_rows = [
                 {
                     "type": key[0],
                     "button_content": key[1],
@@ -145,15 +176,29 @@ def install_template_cta_tracking_hardening():
                 for key, values in recipients.get(meta_id, {}).items()
                 if values
             ]
+            result["clicks"] = tracking._merge_breakdowns(
+                existing_clicks.get(meta_id, []),
+                local_rows,
+            )
             result["unique_clicks"] = tracking._merge_breakdowns(
                 existing_unique.get(meta_id, []),
-                local_rows,
+                local_unique_rows,
+            )
+            clicked_total = sum(
+                int(row.get("count") or 0)
+                for row in result["clicks"]
             )
             unique_total = sum(
                 int(row.get("count") or 0)
                 for row in result["unique_clicks"]
             )
             delivered = int((result.get("totals") or {}).get("delivered") or 0)
+            result.setdefault("totals", {})["clicked"] = clicked_total
+            result.setdefault("rates", {})["clicked"] = (
+                round((clicked_total / delivered) * 100, 1)
+                if delivered
+                else None
+            )
             result["unique_click_total"] = unique_total
             result["unique_click_rate"] = (
                 round((unique_total / delivered) * 100, 1)
