@@ -7,7 +7,8 @@ semantics. Meta can return total and unique rows for the same button in one
 rows are exposed separately and are never added to the total.
 
 When Meta omits click metrics, SHVYA's contextual inbound quick-reply receipts
-provide a durable, non-duplicating fallback for buttons that send a reply.
+and confirmed first-party CTA events provide durable, non-duplicating fallback
+metrics for every trackable button type.
 """
 
 from collections import defaultdict
@@ -17,6 +18,7 @@ from .template_click_receipts import (
     augment_local_click_receipts,
     merge_local_click_receipts,
 )
+from .template_cta_tracking import augment_tracked_cta_events
 
 
 # Preserve the existing module API for callers and tests while overriding the
@@ -246,6 +248,13 @@ def fetch_template_analytics(*, account, template_ids, start_date, end_date):
         end_date=end_date,
     )
     local_results = augment_local_click_receipts(
+        account=account,
+        template_ids=ids,
+        start_date=start_date,
+        end_date=end_date,
+        local_results=local_results,
+    )
+    local_results = augment_tracked_cta_events(
         account=account,
         template_ids=ids,
         start_date=start_date,
