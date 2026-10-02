@@ -6,9 +6,9 @@ Business Accounts, including coexistence accounts, return error 200007 until
 Template Insights is enabled. SHVYA enables that field once and retries.
 
 Meta analytics must not be a single point of failure for the template screen.
-When Meta cannot provide analytics, SHVYA derives sent, delivered, and read
-figures from its own outbound-message rows and status webhooks. The local
-fallback is tenant/account/template scoped and never invents click metrics.
+SHVYA's outbound-message rows and status webhooks provide an immediate,
+tenant-scoped receipt floor for sent, delivered, and read figures. They fill
+Meta reporting delay or provider failure without fabricating click metrics.
 """
 
 from collections import defaultdict
@@ -215,8 +215,12 @@ def _request_all_meta_groups(*, account, template_ids, start_date, end_date):
                 end_date=end_date,
             )
         except TemplateAnalyticsError as exc:
+            disabled_message = "not been enabled" in str(exc).casefold()
             if (
-                exc.meta_error_code == TEMPLATE_INSIGHTS_NOT_ENABLED
+                (
+                    exc.meta_error_code == TEMPLATE_INSIGHTS_NOT_ENABLED
+                    or disabled_message
+                )
                 and not enable_attempted
             ):
                 _enable_template_insights(account=account)
@@ -290,15 +294,27 @@ def _initial_result_maps(template_ids, start_date, end_date):
     return results, daily_maps, click_maps
 
 
+def _refresh_totals_and_rates(result):
+    totals = {"sent": 0, "delivered": 0, "read": 0, "clicked": 0}
+    for row in result.get("days") or []:
+        for metric in totals:
+            totals[metric] += _as_int(row.get(metric))
+    result["totals"] = totals
+    result["rates"] = {
+        "delivered": _rate(totals["delivered"], totals["sent"]),
+        "read": _rate(totals["read"], totals["delivered"]),
+        "clicked": _rate(totals["clicked"], totals["delivered"]),
+    }
+    return result
+
+
 def _finalize_results(*, results, daily_maps, click_maps, source, source_label):
     for template_id, result in results.items():
         normalized_days = []
-        totals = {"sent": 0, "delivered": 0, "read": 0, "clicked": 0}
         for fallback in result["days"]:
-            row = daily_maps[template_id].get(fallback["date"], fallback)
-            normalized_days.append(row)
-            for metric in totals:
-                totals[metric] += _as_int(row.get(metric))
+            normalized_days.append(
+                daily_maps[template_id].get(fallback["date"], fallback)
+            )
 
         clicks = [
             {"type": key[0], "button_content": key[1], "count": count}
@@ -306,12 +322,7 @@ def _finalize_results(*, results, daily_maps, click_maps, source, source_label):
         ]
         clicks.sort(key=lambda item: (-item["count"], item["button_content"], item["type"]))
         result["days"] = normalized_days
-        result["totals"] = totals
-        result["rates"] = {
-            "delivered": _rate(totals["delivered"], totals["sent"]),
-            "read": _rate(totals["read"], totals["delivered"]),
-            "clicked": _rate(totals["clicked"], totals["delivered"]),
-        }
+        _refresh_totals_and_rates(result)
         result["clicks"] = clicks
         result["source"] = source
         result["source_label"] = source_label
@@ -505,13 +516,47 @@ def _fetch_meta_template_analytics(*, account, template_ids, start_date, end_dat
     )
 
 
+def _merge_local_receipt_floor(*, meta_results, local_results):
+    """Fill Meta reporting lag with known local receipts without summing twice."""
+
+    for template_id, meta_result in meta_results.items():
+        local_result = local_results.get(template_id)
+        if not local_result:
+            continue
+        local_days = {
+            row.get("date"): row
+            for row in local_result.get("days") or []
+            if row.get("date")
+        }
+        augmented = False
+        for meta_day in meta_result.get("days") or []:
+            local_day = local_days.get(meta_day.get("date"))
+            if not local_day:
+                continue
+            # Both sources represent the same sends. A per-day maximum is a
+            # receipt floor, not a sum, so the same message is never counted
+            # twice while delayed Meta aggregates are filled immediately.
+            for metric in ("sent", "delivered", "read"):
+                local_value = _as_int(local_day.get(metric))
+                if local_value > _as_int(meta_day.get(metric)):
+                    meta_day[metric] = local_value
+                    augmented = True
+
+        if augmented:
+            _refresh_totals_and_rates(meta_result)
+            meta_result["source"] = "meta+shvya"
+            meta_result["source_label"] = "Meta insights + SHVYA delivery receipts"
+            meta_result["local_receipts_applied"] = True
+    return meta_results
+
+
 def fetch_template_analytics(*, account, template_ids, start_date, end_date):
-    """Return analytics keyed by Meta template ID with a local fallback.
+    """Return analytics keyed by Meta template ID with immediate local receipts.
 
     Meta is attempted first. Error 200007 triggers a one-time WABA Template
-    Insights enablement and retry. Any remaining provider/credential/network
-    failure falls back to SHVYA's recorded send and webhook delivery statuses,
-    so sent templates continue to show delivered/read results.
+    Insights enablement and retry. SHVYA receipts then fill any reporting lag
+    using a per-day maximum. Any remaining provider, credential, or network
+    failure falls back fully to SHVYA's recorded send and webhook statuses.
     """
 
     ids = _validate_request(
@@ -522,25 +567,29 @@ def fetch_template_analytics(*, account, template_ids, start_date, end_date):
     if not ids:
         return {}
 
+    local_results = fetch_local_template_analytics(
+        account=account,
+        template_ids=ids,
+        start_date=start_date,
+        end_date=end_date,
+    )
     try:
         if not account.waba_id or not account.access_token:
             raise TemplateAnalyticsError(
                 "This WhatsApp business is missing the Meta credentials required for analytics."
             )
-        return _fetch_meta_template_analytics(
+        meta_results = _fetch_meta_template_analytics(
             account=account,
             template_ids=ids,
             start_date=start_date,
             end_date=end_date,
+        )
+        return _merge_local_receipt_floor(
+            meta_results=meta_results,
+            local_results=local_results,
         )
     except TemplateAnalyticsError as exc:
-        results = fetch_local_template_analytics(
-            account=account,
-            template_ids=ids,
-            start_date=start_date,
-            end_date=end_date,
-        )
-        for result in results.values():
+        for result in local_results.values():
             result["provider_warning"] = str(exc)
             result["provider_error_code"] = exc.meta_error_code
-        return results
+        return local_results
