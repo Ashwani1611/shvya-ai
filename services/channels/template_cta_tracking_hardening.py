@@ -3,8 +3,9 @@
 Carousel templates are always Marketing templates. Their local card actions must
 remain available after a Meta sync because Meta only returns the SHVYA tracking
 URL, not the server-held final website or phone action. Meta click tracking is
-also enabled before the first analytics read. Total and unique tracked clicks
-are merged per button label so Meta and SHVYA never count the same action twice.
+also enabled before the first analytics read, but only for templates that
+actually contain URL actions. Total and unique tracked clicks are merged per
+button label so Meta and SHVYA never count the same action twice.
 """
 
 import copy
@@ -56,6 +57,7 @@ def install_template_cta_tracking_hardening():
 
     current_augment_analytics = tracking.augment_tracked_cta_analytics
     current_carousel_button = template_service._carousel_button_payload
+    current_enable_meta_click_tracking = tracking._enable_meta_click_tracking
     current_fetch_analytics = template_analytics.fetch_template_analytics
     current_sync_templates = template_meta_fix.sync_templates
 
@@ -63,6 +65,22 @@ def install_template_cta_tracking_hardening():
         # Meta's dynamic URL template example is the variable suffix only, not
         # the fully expanded URL. The send-time parameter uses the same shape.
         return _META_DYNAMIC_URL_EXAMPLE_SUFFIX
+
+    def enable_meta_click_tracking(template):
+        try:
+            state = template.meta_state
+        except (
+            AttributeError,
+            WhatsAppTemplate.meta_state.RelatedObjectDoesNotExist,
+        ):
+            return False
+        components = state.components if isinstance(state.components, list) else []
+        if not _components_have_tracking(
+            components,
+            checker=lambda value: bool(str(value or "").strip()),
+        ):
+            return False
+        return current_enable_meta_click_tracking(template)
 
     def carousel_button(button):
         # Carousel templates are Marketing-only. Website and Call actions can
@@ -238,9 +256,9 @@ def install_template_cta_tracking_hardening():
             account_id=account.pk,
             meta_template_id__in=template_ids,
             status=WhatsAppTemplate.Status.APPROVED,
-        ).select_related("account")
+        ).select_related("account", "meta_state")
         for template in templates:
-            tracking._enable_meta_click_tracking(template)
+            enable_meta_click_tracking(template)
         return current_fetch_analytics(
             account=account,
             template_ids=template_ids,
@@ -290,6 +308,7 @@ def install_template_cta_tracking_hardening():
         return summary
 
     tracking.tracking_example_url = tracking_example_suffix
+    tracking._enable_meta_click_tracking = enable_meta_click_tracking
     template_service._carousel_button_payload = carousel_button
     template_analytics.fetch_template_analytics = fetch_analytics
     tracking.augment_tracked_cta_analytics = augment_analytics
