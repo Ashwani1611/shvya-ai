@@ -34,6 +34,20 @@ The packaged catalog now exposes 25 top-level skills. The operator routes work b
 
 This decomposition is guidance, not privilege. Loading a skill never adds a capability and never changes tenant context.
 
+## Production skill quality contract
+
+The 25 domain skills share a common evidence and recovery model. For material live work, clients should load the selected skill plus its `references/domain-checks.md`; the skill links to the shared framework resources. The contract requires:
+- read-before-write and real tenant-owned IDs;
+- attribution to the layer that actually produced the symptom;
+- separate states for configured/enabled/triggered/executed/delivered/observed;
+- distinct-lead or distinct-business-object impact counts rather than retry/job counts;
+- explicit conflict and missing-evidence handling;
+- dry-run/approval/read-back for consequential writes;
+- read-back before retry after ambiguous outcomes;
+- post-change behavioral verification.
+
+Every top-level skill also ships behavioral eval rubrics. They are test specifications, not claims of executed model/provider behavior.
+
 ## Discovery and preparation contracts
 
 | Tool | Purpose |
