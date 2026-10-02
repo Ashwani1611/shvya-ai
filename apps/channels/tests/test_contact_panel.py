@@ -602,6 +602,47 @@ class ContactPanelTests(TestCase):
         )
         self.assertContains(linked, 'name="phone"')
         self.assertContains(linked, 'placeholder="+919876543210"')
+        self.assertContains(linked, 'data-contact-tab="touchpoints"')
+        self.assertNotContains(linked, 'data-contact-tab="templates"')
+        self.assertNotContains(linked, ">Templates<")
+
+    def test_instagram_username_becomes_lead_name(self):
+        from apps.channels.instagram_models import InstagramAccount, InstagramConversation
+        from services.channels.instagram_leads import ensure_instagram_lead
+
+        account = InstagramAccount.objects.create(
+            organization=self.org,
+            ig_user_id="contact-panel-username",
+            access_token="test",
+            status="connected",
+        )
+        conversation = InstagramConversation.objects.create(
+            organization=self.org,
+            account=account,
+            participant_id="username-contact",
+            participant_username="taxbizmarketing_",
+            participant_name="Instagram user",
+        )
+
+        create_panel = self.client.get(
+            reverse("chat-instagram-contact", args=[conversation.pk])
+        )
+        self.assertContains(create_panel, 'value="taxbizmarketing_"')
+
+        conversation, lead = ensure_instagram_lead(
+            conversation_id=conversation.pk,
+        )
+        self.assertEqual(lead.name, "taxbizmarketing_")
+
+        conversation.participant_username = "taxbizmarketing_new"
+        conversation.save(
+            update_fields=["participant_username", "updated_at"]
+        )
+        from services.channels.instagram_leads import sync_instagram_lead_name
+
+        sync_instagram_lead_name(conversation)
+        lead.refresh_from_db()
+        self.assertEqual(lead.name, "taxbizmarketing_new")
 
     def test_instagram_source_phone_is_editable_and_normalized(self):
         from apps.channels.instagram_models import InstagramAccount, InstagramConversation
