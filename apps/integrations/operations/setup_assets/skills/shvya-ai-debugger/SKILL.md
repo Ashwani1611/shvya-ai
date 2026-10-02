@@ -31,3 +31,9 @@ Identify the producing layer before editing. A poor answer caused by missing ret
 ## Output
 
 Return a layer-by-layer trace with PASS/FAIL/UNKNOWN, the first verified failure, supporting IDs/timestamps, exact repair owner and post-fix verification. Do not expose raw secrets, hidden reasoning or unnecessary conversation content.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.
