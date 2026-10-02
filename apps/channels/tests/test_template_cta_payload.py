@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 
+from apps.accounts.models import User
 from apps.channels.models import WhatsAppAccount, WhatsAppTemplate
 from apps.channels.template_models import WhatsAppTemplateMetadata
 from apps.organizations.models import Organization
@@ -22,6 +23,13 @@ class TemplateCTAPayloadTests(TestCase):
             package="dfy",
             name="CTA Payload Test",
         )
+        self.user = User.objects.create_user(
+            email="cta-payload-admin@example.com",
+            organization=organization,
+            password="test-password",
+            name="CTA Payload Admin",
+            role=User.Role.ADMIN,
+        )
         self.account = WhatsAppAccount.objects.create(
             organization=organization,
             business_name="Test Sender",
@@ -37,6 +45,7 @@ class TemplateCTAPayloadTests(TestCase):
         template = WhatsAppTemplate.objects.create(
             organization=self.organization,
             account=self.account,
+            created_by=self.user,
             name=name,
             category=category,
             body="Hello",
