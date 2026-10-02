@@ -15,7 +15,11 @@ from apps.crm.models import AttributeDefinition, Lead, Pipeline, PipelinePermiss
 from apps.followups.models import FollowupSequence, FollowupStep, LeadSequenceState
 from apps.organizations.models import Organization
 from apps.crm.tasks import bulk_move_leads_task
-from services.crm.bulk_move_service import create_bulk_move_job, get_bulk_move_job
+from services.crm.bulk_move_service import (
+    create_bulk_move_job,
+    get_bulk_move_id_slice,
+    get_bulk_move_job,
+)
 from services.followup_service import FollowupError, assign_sequence
 
 
@@ -340,7 +344,13 @@ class BulkLeadTests(TestCase):
         self.assertEqual(payload["count"], 10000)
         job = get_bulk_move_job(payload["job_id"])
         self.assertEqual(job["total"], 10000)
-        self.assertEqual(len(job["lead_ids"]), 10000)
+        self.assertNotIn("lead_ids", job)
+        self.assertEqual(job["lead_id_chunks"], 20)
+        self.assertEqual(len(get_bulk_move_id_slice(payload["job_id"], 0, 500)), 500)
+        self.assertEqual(
+            len(get_bulk_move_id_slice(payload["job_id"], 9500, 10000)),
+            500,
+        )
         self.assertEqual(job["generation"], 0)
         queued.assert_called_once_with(
             args=[payload["job_id"], 0],
