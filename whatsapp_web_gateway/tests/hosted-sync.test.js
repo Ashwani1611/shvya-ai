@@ -7,6 +7,7 @@ const os = require('node:os');
 const path = require('node:path');
 const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
+const { deadline } = require('../src/realtime-delivery');
 
 // Exercise the same ordered source transformations as the production image.
 const root = path.resolve(__dirname, '..');
@@ -37,6 +38,7 @@ function context(names, overrides = {}) {
     HISTORY_SYNC_CONCURRENCY: 3, LID_RESOLVE_BATCH_SIZE: 50,
     serializedId: value => typeof value === 'string' ? value : value?._serialized || '',
     withTimeout: promise => promise,
+    deadline,
     callback: async () => true,
     resolveLidPhoneMap: async () => new Map(),
     sessions: new Map(), clearTimeout() {},
@@ -240,12 +242,33 @@ test('production patch chain applies and sync orders before truncating the chat 
 });
 
 test('callback retries retain gateway lease fencing metadata and failure metrics', () => {
-  const callbackSource = functionSource('callback');
+  // Live callbacks now enter a durable wrapper. The HTTP sender retains the
+  // original fencing metadata and bounded retries, including on outbox replay.
+  const callbackSource = functionSource('directCallback');
   assert.match(callbackSource, /gatewayShard: GATEWAY_SHARD/);
   assert.match(callbackSource, /gatewayOwner: INSTANCE_ID/);
   assert.match(callbackSource, /leaseExpiresAt:/);
   assert.match(callbackSource, /attempt <= 3/);
   assert.match(callbackSource, /gatewayMetrics\.callbacksFailed \+= 1/);
+});
+
+test('callback wrapper persists live messages and ACKs without delaying lifecycle or history callbacks', async () => {
+  const queued = [];
+  const direct = [];
+  const ctx = context(['callback'], {
+    callbackOutbox: { enqueue: async (...args) => { queued.push(args); return true; } },
+    directCallback: async (...args) => { direct.push(args); return true; },
+  });
+  const payload = { messageId: 'message-1' };
+  for (const event of ['message', 'message_ack', 'ready', 'message_history']) {
+    assert.equal(await ctx.callback('account-1', event, payload), true);
+  }
+  assert.deepEqual(queued.map(args => args[1]), ['message', 'message_ack']);
+  assert.deepEqual(direct.map(args => args[1]), ['ready', 'message_history']);
+  for (const args of [...queued, ...direct]) {
+    assert.equal(args[0], 'account-1');
+    assert.equal(args[2], payload);
+  }
 });
 
 test('failed chat does not stop other imports or falsely complete history', async () => {
