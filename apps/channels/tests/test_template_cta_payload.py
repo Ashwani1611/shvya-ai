@@ -1,4 +1,3 @@
-import re
 from urllib.parse import urlsplit
 from unittest.mock import patch
 
