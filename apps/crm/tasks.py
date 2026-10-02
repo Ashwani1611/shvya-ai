@@ -362,14 +362,13 @@ def bulk_move_leads_task(job_id):
 
     try:
         organization = Organization.objects.get(pk=job["organization_id"])
-        actor = User.objects.get(
+        actor = User.objects.filter(
             pk=job["actor_id"],
             organization=organization,
-        )
+        ).first()
         source_pipeline = Pipeline.objects.get(
             pk=job["source_pipeline_id"],
             organization=organization,
-            is_active=True,
         )
         target_pipeline = Pipeline.objects.get(
             pk=job["target_pipeline_id"],
@@ -389,54 +388,60 @@ def bulk_move_leads_task(job_id):
         for start in range(processed, total, BULK_MOVE_BATCH_SIZE):
             end = min(start + BULK_MOVE_BATCH_SIZE, total)
             batch_ids = lead_ids[start:end]
-            leads = {
-                str(lead.pk): lead
-                for lead in Lead.objects.filter(
-                    organization=organization,
-                    pk__in=batch_ids,
-                ).select_related("pipeline", "stage", "organization")
-            }
 
-            for lead_id in batch_ids:
-                lead = leads.get(str(lead_id))
-                if lead is None:
-                    skipped_count += 1
-                    continue
+            # Lock only this bounded batch. A worker failure rolls the entire
+            # uncheckpointed batch back, while other CRM work stays responsive.
+            with transaction.atomic():
+                leads = {
+                    str(lead.pk): lead
+                    for lead in Lead.objects.select_for_update(of=("self",))
+                    .filter(
+                        organization=organization,
+                        pk__in=batch_ids,
+                    )
+                    .select_related("pipeline", "stage", "organization")
+                }
 
-                # Redelivery after a worker loss is idempotent: leads already
-                # moved by an uncheckpointed batch count as completed work.
-                if (
-                    lead.pipeline_id == target_pipeline.id
-                    and lead.stage_id == target_stage.id
-                ):
+                for lead_id in batch_ids:
+                    lead = leads.get(str(lead_id))
+                    if lead is None:
+                        skipped_count += 1
+                        continue
+
+                    # Redelivery is idempotent if an earlier checkpoint was
+                    # persisted after this lead reached the requested target.
+                    if (
+                        lead.pipeline_id == target_pipeline.id
+                        and lead.stage_id == target_stage.id
+                    ):
+                        moved_count += 1
+                        continue
+
+                    if lead.pipeline_id != source_pipeline.id:
+                        skipped_count += 1
+                        continue
+                    if (
+                        selection_scope != "pipeline"
+                        and source_stage_id
+                        and str(lead.stage_id) != source_stage_id
+                    ):
+                        skipped_count += 1
+                        continue
+
+                    if lead.pipeline_id == target_pipeline.id:
+                        move_lead_to_stage(
+                            lead=lead,
+                            stage=target_stage,
+                            actor=actor,
+                        )
+                    else:
+                        move_lead_to_pipeline_stage(
+                            lead=lead,
+                            pipeline=target_pipeline,
+                            stage=target_stage,
+                            actor=actor,
+                        )
                     moved_count += 1
-                    continue
-
-                if lead.pipeline_id != source_pipeline.id:
-                    skipped_count += 1
-                    continue
-                if (
-                    selection_scope != "pipeline"
-                    and source_stage_id
-                    and str(lead.stage_id) != source_stage_id
-                ):
-                    skipped_count += 1
-                    continue
-
-                if lead.pipeline_id == target_pipeline.id:
-                    move_lead_to_stage(
-                        lead=lead,
-                        stage=target_stage,
-                        actor=actor,
-                    )
-                else:
-                    move_lead_to_pipeline_stage(
-                        lead=lead,
-                        pipeline=target_pipeline,
-                        stage=target_stage,
-                        actor=actor,
-                    )
-                moved_count += 1
 
             processed = end
             checkpoint("running")
@@ -445,7 +450,7 @@ def bulk_move_leads_task(job_id):
             "completed",
             "" if not skipped_count else f"{skipped_count} lead(s) were skipped because they changed or were deleted before processing.",
         )
-    except Exception as exc:
+    except Exception:
         logger.exception("Bulk CRM lead move failed: job=%s", job_id)
         checkpoint(
             "failed",
