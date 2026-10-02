@@ -41,6 +41,8 @@ RUN node scripts/patch-hosted-uploaded-media-send.js
 # Fix URL-backed follow-up media MIME handling, expose authenticated on-demand
 # message media downloads, and drop WhatsApp Status/broadcast callbacks.
 RUN node scripts/patch-hosted-media-download-and-filter.js
+# Durable live callbacks, disconnected-session recovery, and server-ACK sends.
+RUN node scripts/patch-hosted-realtime-delivery.js
 RUN node --check src/index.js
 
 # npm is required only while assembling node_modules. The production gateway

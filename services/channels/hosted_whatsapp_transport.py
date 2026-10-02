@@ -17,6 +17,7 @@ from apps.channels.providers.whatsapp_web import (
 _INSTALLED = False
 _ORIGINAL_SEND = None
 TRANSIENT_AUTOMATION_RETRY_SECONDS = 15
+ACK_WAIT_LIMIT_SECONDS = 300
 
 
 def _provider_sent_at(response):
@@ -81,6 +82,10 @@ def send_hosted_message(*, message, defer_on_pause=True):
     if not account.is_active:
         raise WhatsAppSendError("WhatsApp account is inactive.")
     if account.status != account.Status.CONNECTED:
+        if defer_on_pause and message_is_hosted_automation(message):
+            paused = HostedAutomationPaused(timezone.now() + timedelta(seconds=30))
+            paused.reason = "session_reconnecting"
+            raise paused
         raise WhatsAppSendError("Hosted WhatsApp session is not running.")
 
     raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
@@ -206,9 +211,9 @@ def send_hosted_message(*, message, defer_on_pause=True):
             _push_chat_refresh(message, "failed")
             raise WhatsAppSendError(message.error)
 
-        # Once the provider returns a message id the number has actually sent
-        # the message. Keep the reservation even if a later local DB write
-        # fails; the gateway callback/reconciliation will account for it.
+        # The gateway returns success only after a WhatsApp server ACK, not
+        # merely a locally-created ID. Retain the reservation after that ACK
+        # even if a later local write fails.
         provider_confirmed = True
     except WhatsAppWebGatewayError as exc:
         try:
@@ -223,6 +228,26 @@ def send_hosted_message(*, message, defer_on_pause=True):
             message.raw_payload = payload
             message.save(update_fields=["raw_payload", "updated_at"])
         transient = exc.status_code is None or exc.status_code >= 500
+        ack_pending = error_code == "provider_ack_pending"
+        if ack_pending:
+            # Query the existing request, never regenerate/resend the content.
+            # Bound this wait so an unacknowledged message cannot block every
+            # other lead on the same account indefinitely.
+            attempted_at = (message.raw_payload or {}).get("shvya_hosted_request", {}).get("attempted_at")
+            try:
+                started = datetime.fromisoformat(str(attempted_at))
+                elapsed = (timezone.now() - started).total_seconds()
+            except (ValueError, TypeError):
+                elapsed = ACK_WAIT_LIMIT_SECONDS
+            if elapsed >= ACK_WAIT_LIMIT_SECONDS:
+                transient = False
+                # All callers, including legacy Celery transports, must treat
+                # this as a terminal uncertain outcome, not another HTTP 503.
+                exc = WhatsAppWebGatewayError(
+                    "WhatsApp acknowledgement wait expired; outcome is uncertain.",
+                    status_code=409,
+                    response_body=json.dumps({"code": "provider_outcome_uncertain"}),
+                )
 
         # AI, welcome, and follow-up automation must survive temporary Hosted
         # gateway/network failures. Keep the exact generated message queued and
@@ -235,14 +260,18 @@ def send_hosted_message(*, message, defer_on_pause=True):
             paused = HostedAutomationPaused(
                 timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
             )
-            paused.reason = "provider_transient"
+            paused.reason = "provider_ack_pending" if ack_pending else "provider_transient"
             raise paused from exc
 
         message.status = WhatsAppMessage.Status.FAILED
-        message.error = str(exc)
+        message.error = (
+            "WhatsApp did not acknowledge this message within five minutes. "
+            "Delivery is unconfirmed; automatic resend is blocked to prevent duplicates."
+            if ack_pending and not transient else str(exc)
+        )
         message.save(update_fields=["status", "error", "updated_at"])
         _push_chat_refresh(message, "failed")
-        raise WhatsAppSendError(str(exc)) from exc
+        raise WhatsAppSendError(message.error) from exc
     finally:
         if reservation_acquired and not provider_confirmed:
             release_hosted_automation_reservation(account=account)
@@ -270,7 +299,10 @@ def send_hosted_message(*, message, defer_on_pause=True):
         if key in existing_payload:
             final_payload[key] = existing_payload[key]
 
-    message.status = WhatsAppMessage.Status.SENT
+    message.status = {
+        "read": WhatsAppMessage.Status.READ,
+        "delivered": WhatsAppMessage.Status.DELIVERED,
+    }.get(response.get("status"), WhatsAppMessage.Status.SENT)
     message.sent_at = _provider_sent_at(response)
     message.external_id = f"wweb:{raw_id}"
     message.raw_payload = final_payload
