@@ -234,7 +234,9 @@ def _present_thread(thread, organization):
     from apps.channels.instagram_models import InstagramConversation
     from apps.ai_engagement.services.intent_score import intent_score_for_lead
     conversation = InstagramConversation.objects.select_related("lead").get(pk=thread["id"], organization=organization, account__organization=organization)
-    lead = conversation.lead
+    from services.channels.instagram_leads import sync_instagram_lead_name
+
+    lead = sync_instagram_lead_name(conversation) or conversation.lead
     thread["lead_url"] = reverse("crm-instagram-link-lead", args=[thread["id"]])
     thread["lead_name"] = lead.name if lead and lead.organization_id == conversation.organization_id else ""
     thread["sidebar_url"] = (reverse("chat-contact-panel", args=[lead.pk]) + "?channel=instagram") if thread["lead_name"] else reverse("chat-instagram-contact", args=[thread["id"]])
