@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
 from django.utils import timezone
 
@@ -41,27 +40,26 @@ def move_lead_to_stage(
     old_stage = lead.stage
     pipeline = lead.pipeline
 
-    try:
-        with transaction.atomic():
-            lead.stage = stage
-            lead.stage_entered_at = timezone.now()
-            lead.full_clean()
-            lead.save(
-                update_fields=[
-                    "stage",
-                    "stage_entered_at",
-                    "updated_at",
-                ]
-            )
-            record_stage_changed(
-                lead=lead,
-                actor=_activity_actor(actor),
-                pipeline=pipeline,
-                old_stage=old_stage,
-                new_stage=stage,
-            )
-    except DjangoValidationError as exc:
-        raise LeadTransitionError("Lead stage transition validation failed.") from exc
+    # Routing invariants are validated explicitly above. Avoid full_clean()
+    # here: a pure stage move must not revalidate unrelated legacy phone/email
+    # fields, and full_clean() adds several database queries per lead.
+    with transaction.atomic():
+        lead.stage = stage
+        lead.stage_entered_at = timezone.now()
+        lead.save(
+            update_fields=[
+                "stage",
+                "stage_entered_at",
+                "updated_at",
+            ]
+        )
+        record_stage_changed(
+            lead=lead,
+            actor=_activity_actor(actor),
+            pipeline=pipeline,
+            old_stage=old_stage,
+            new_stage=stage,
+        )
 
     return lead
 
@@ -99,29 +97,27 @@ def move_lead_to_pipeline_stage(
     old_pipeline = lead.pipeline
     old_stage = lead.stage
 
-    try:
-        with transaction.atomic():
-            lead.pipeline = pipeline
-            lead.stage = stage
-            lead.stage_entered_at = timezone.now()
-            lead.full_clean()
-            lead.save(
-                update_fields=[
-                    "pipeline",
-                    "stage",
-                    "stage_entered_at",
-                    "updated_at",
-                ]
-            )
-            record_pipeline_changed(
-                lead=lead,
-                actor=_activity_actor(actor),
-                old_pipeline=old_pipeline,
-                new_pipeline=pipeline,
-                old_stage=old_stage,
-                new_stage=stage,
-            )
-    except DjangoValidationError as exc:
-        raise LeadTransitionError("Lead pipeline transition validation failed.") from exc
+    # The target organization/pipeline/stage relationship is validated above.
+    # Do not full_clean() unrelated lead fields during a routing-only change.
+    with transaction.atomic():
+        lead.pipeline = pipeline
+        lead.stage = stage
+        lead.stage_entered_at = timezone.now()
+        lead.save(
+            update_fields=[
+                "pipeline",
+                "stage",
+                "stage_entered_at",
+                "updated_at",
+            ]
+        )
+        record_pipeline_changed(
+            lead=lead,
+            actor=_activity_actor(actor),
+            old_pipeline=old_pipeline,
+            new_pipeline=pipeline,
+            old_stage=old_stage,
+            new_stage=stage,
+        )
 
     return lead
