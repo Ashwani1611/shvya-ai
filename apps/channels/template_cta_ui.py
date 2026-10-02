@@ -38,6 +38,27 @@ def _unique_name(template):
     return candidate
 
 
+def _source_attachment_type(source):
+    if source.attachment_type != WhatsAppTemplate.AttachmentType.NONE:
+        return source.attachment_type
+    if source.template_format != WhatsAppTemplate.Format.STANDARD:
+        return WhatsAppTemplate.AttachmentType.NONE
+    state = state_for(source)
+    for component in state.components or []:
+        if not isinstance(component, dict):
+            continue
+        if str(component.get("type") or "").upper() != "HEADER":
+            continue
+        header_format = str(component.get("format") or "").strip().lower()
+        if header_format in {
+            WhatsAppTemplate.AttachmentType.IMAGE,
+            WhatsAppTemplate.AttachmentType.VIDEO,
+            WhatsAppTemplate.AttachmentType.DOCUMENT,
+        }:
+            return header_format
+    return WhatsAppTemplate.AttachmentType.NONE
+
+
 def _copy_delivery_state(*, source, copied):
     source_state = state_for(source)
     copied_state = WhatsAppTemplateMetadata.objects.select_for_update().get(
@@ -142,7 +163,15 @@ def enable_template_cta_tracking(request, template_id):
         copied.name = _unique_name(source)
         if copied.template_format == WhatsAppTemplate.Format.STANDARD:
             copied.buttons = source_buttons_for_template(source)
-        copied.save(update_fields=["name", "buttons", "updated_at"])
+            copied.attachment_type = _source_attachment_type(source)
+        copied.save(
+            update_fields=[
+                "name",
+                "buttons",
+                "attachment_type",
+                "updated_at",
+            ]
+        )
         _copy_delivery_state(source=source, copied=copied)
 
     edit_url = reverse("whatsapp-template-edit", args=[copied.pk])
