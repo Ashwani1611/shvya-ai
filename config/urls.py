@@ -14,6 +14,9 @@ from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeV
 
 
 urlpatterns = [
+    # Public, signed WhatsApp template CTA actions. Keep these ahead of broad
+    # account/dashboard routes; recipients must not need a SHVYA login.
+    path("", include("apps.channels.public_cta_urls")),
     # Remote read-only SHVYA diagnostic MCP + OAuth discovery.
     path("", include("apps.integrations.urls.diagnostics")),
     path("health/live/", health_live, name="health-live"),
