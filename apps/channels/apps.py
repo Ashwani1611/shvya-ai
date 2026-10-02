@@ -34,8 +34,12 @@ class ChannelsConfig(AppConfig):
         from services.channels.template_cta_tracking import (
             install_template_cta_tracking,
         )
+        from services.channels.template_cta_safety import (
+            install_template_cta_safety,
+        )
 
         install_template_cta_tracking()
+        install_template_cta_safety()
 
         # Install the actual Meta template transport first. The failure layer
         # then wraps every transport, including templates, so exact Meta error
