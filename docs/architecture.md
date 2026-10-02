@@ -1,6 +1,6 @@
 # SHVYA architecture
 
-> **Implementation snapshot:** verified on 2026-09-24 against the staging-first architecture refactor. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Implementation note:** updated for the current architecture on 2026-10-03. Source code, Django models/migrations, tests, runtime configuration and live connector discovery remain the executable source of truth.
 
 For the detailed request, routing, AI, RAG, async and failure-model documents, start with [`system-architecture/README.md`](./system-architecture/README.md).
 
@@ -37,7 +37,13 @@ flowchart LR
 - **SHVYA Calendar** owns lead capture, availability, booking, Google Calendar/Meet and reminder delivery.
 - **Call Intelligence** owns Android/cloud/manual call identity, device state, CRM call linkage and call-analysis data.
 - **Support** owns organization tickets and the Shvya-Ops Client's Portal.
-- **Operations MCP** is a separate actor-bound external-AI control plane; it does not bypass normal tenant/service validation.
+- **Operations MCP** is a separate actor-bound external-AI control plane; it does not bypass normal tenant/service validation. Its current maximum catalog is 101 Operations-native tools plus 10 diagnostic tools. A backend-owned library exposes 25 domain skills that route reasoning across CRM, AI, automation, channels, Calendar and operations without adding permissions.
+
+## Operations MCP skill layer
+
+The skill layer sits above the tool catalog and below the external AI client's task interpretation. `shvya-operator` selects the smallest relevant skill; broad account setup orchestrates domain skills rather than owning every schema decision. Read-only diagnostics remain separate from repair, and `shvya-acceptance-testing` is the final readiness gate after setup or repair.
+
+Skill loading is not authorization. Actor role, selected organization, OAuth scopes, granted capabilities, live organization policy, exposed tools and canonical backend validation still determine what can run.
 
 ## Tenant architecture
 
