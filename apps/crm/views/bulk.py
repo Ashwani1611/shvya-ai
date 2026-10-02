@@ -342,33 +342,51 @@ def _queue_large_move(user, pipeline, queryset, lead_ids, data):
             "queued": False,
         })
 
-    job_id, job = create_bulk_move_job(
-        organization_id=user.organization_id,
-        actor_id=user.pk,
-        lead_ids=lead_ids,
-        selection_scope=data.get("selection_scope", "ids"),
-        source_pipeline_id=pipeline.pk,
-        source_stage_id=data.get("source_stage"),
-        target_pipeline_id=target.pk,
-        target_stage_id=stage.pk,
-    )
+    job_id = None
+    job = None
     try:
+        job_id, job = create_bulk_move_job(
+            organization_id=user.organization_id,
+            actor_id=user.pk,
+            lead_ids=lead_ids,
+            selection_scope=data.get("selection_scope", "ids"),
+            source_pipeline_id=pipeline.pk,
+            source_stage_id=data.get("source_stage"),
+            target_pipeline_id=target.pk,
+            target_stage_id=stage.pk,
+        )
         bulk_move_leads_task.apply_async(
             args=[job_id, 0],
             queue="ingestion",
         )
     except Exception:
-        logger.exception("Could not queue bulk CRM lead move: %s", job_id)
-        save_bulk_move_job(
+        logger.exception(
+            "Could not create or queue bulk CRM lead move: job=%s count=%s",
             job_id,
-            {
-                **job,
-                "status": "failed",
-                "message": "Could not start the bulk lead move. Please try again.",
-            },
+            len(lead_ids),
         )
+        if job_id and job:
+            try:
+                save_bulk_move_job(
+                    job_id,
+                    {
+                        **job,
+                        "status": "failed",
+                        "message": "Could not start the bulk lead move. Please try again.",
+                    },
+                )
+            except Exception:
+                logger.exception(
+                    "Could not persist failed bulk CRM lead move state: %s",
+                    job_id,
+                )
         return JsonResponse(
-            {"error": "Could not start the bulk lead move. Please try again."},
+            {
+                "error": (
+                    "Could not start the bulk lead move safely. "
+                    "Please try again."
+                )
+            },
             status=503,
         )
 
@@ -478,3 +496,18 @@ def bulk_leads(request):
     except (ValueError, ValidationError, LeadTransitionError, FollowupError) as exc:
         message = " ".join(exc.messages) if isinstance(exc, ValidationError) else str(exc)
         return JsonResponse({"error": message}, status=400)
+    except Exception:
+        logger.exception(
+            "Unexpected CRM bulk action failure: organization=%s action=%s",
+            request.crm_user.organization_id,
+            data.get("action") if isinstance(data, dict) else "",
+        )
+        return JsonResponse(
+            {
+                "error": (
+                    "The bulk action could not be started safely. "
+                    "Please try again."
+                )
+            },
+            status=500,
+        )
