@@ -216,10 +216,6 @@ urlpatterns = [
     ),
     path(
         "docs/",
-        DocumentationView.as_view(template_name="documentation.html"),
-        name="docs",
-    ) if False else path(
-        "docs/",
         DocumentationView.as_view(),
         name="docs",
     ),
