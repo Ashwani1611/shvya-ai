@@ -16,3 +16,9 @@ Start with `get_operations_context`, verify the intended tenant and effective Al
 5. Reuse the stable `(kind, section, external_id)` identity. Read the latest revision before editing; supply `expected_revision` for existing entries. Perform the standard reason, dry-run, approval and read-back sequence. Identical retries are no-ops; changed records retain revision history. Archive through the dedicated tool when requested, preserving provenance.
 6. Retrieve bounded pages until the intended scope is covered. A `body_truncated` flag is an evidence limit, never a complete replacement input. Include history only when needed to resolve a correction. Report the sections read, attachments, open questions, conflicts, provenance and limits.
 7. Hand approved facts to account setup as distinct About, FAQ, document and AI Playbook proposals. Intake writes never publish knowledge or send messages. Publication uses the destination's own authorized tools and validation; knowledge upload alone does not prove successful ingestion.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.

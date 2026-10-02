@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-cadence-builder",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Build a five-step WhatsApp/email/reminder nurture sequence.",
+      "expected_output": "The skill chooses verified provider/sender first, validates templates/variables/timing, creates an active Cadence isolated from enrollment while building, verifies order and simulates schedule before handoff to Workflow enrollment.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Change an existing API Cadence to Hosted WhatsApp without recreating it.",
+      "expected_output": "The skill detects provider/sender immutability, proposes a new Cadence and dependency migration rather than corrupting the existing one.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Sequence is active but no messages are sent.",
+      "expected_output": "The skill checks enrollment/trigger/routing/suppression and step eligibility, not just active status.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "A template is approved, so use an image header URL even though the template expects uploaded media.",
+      "expected_output": "The skill validates the actual template parameter/media contract and does not infer payload shape from approval state.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "A delivery attempt timed out; resend the same step immediately.",
+      "expected_output": "The skill inspects delivery/provider evidence before retry and avoids duplicate customer outreach.",
+      "result": null
+    }
+  ]
+}

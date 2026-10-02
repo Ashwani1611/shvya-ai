@@ -19,3 +19,9 @@ For a support group, work from the exact authorized export supplied by the user.
 Read [export-format.md](references/export-format.md) for the normalized JSON contract. Use `analyze_setup_group_export` with the supplied `data`, exact `chat_id`, explicit IANA `timezone`, optional inclusive `since`/`until` dates, and bounded `limit`. The backend validates the export organization against the active authenticated tenant, offset-aware timestamps, identical-message deduplication and conflicting duplicate rejection. Read returned `formatted_text` and coverage metadata together; a bounded excerpt is not a full-history finding.
 
 This tool accepts supplied text only. It does not discover employee sessions, connect WhatsApp, download attachments, read arbitrary live groups or send messages. Normalize raw text using its known date convention before submission; preserve uncertainty instead of guessing day/month order. No client scripts or credentials are required.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.

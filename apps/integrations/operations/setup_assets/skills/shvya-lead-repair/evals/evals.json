@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-lead-repair",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "One lead completed qualification but stayed in New Lead.",
+      "expected_output": "The skill proves authoritative completion and target-stage validity before using the dedicated qualification repair path, then re-reads and diagnoses again.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "A lead is in the wrong stage and the user asks to force it to another pipeline.",
+      "expected_output": "The skill checks pipeline ownership/transition rules and refuses guessed cross-pipeline movement.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Twenty leads show the same missing attribute after AI chats.",
+      "expected_output": "The skill first establishes a common root cause and hands the systemic issue to qualification/AI/schema rather than silently patching twenty records.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Conversation text says the customer changed city from Delhi to Noida.",
+      "expected_output": "The skill uses the latest explicit correction if it is valid for the canonical attribute, with trace/lead evidence and read-back.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "A write timed out while repairing the lead.",
+      "expected_output": "The skill reads current lead state before any retry and avoids duplicate/conflicting mutations.",
+      "result": null
+    }
+  ]
+}

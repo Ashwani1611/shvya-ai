@@ -61,6 +61,8 @@ The skill layer routes work to the smallest relevant domain while the backend re
 
 Loading a skill never grants authority. Effective access is still the intersection of actor role, explicit organization context, OAuth scopes, granted capabilities, live Superadmin policy, current tool exposure and backend resource state. Significant writes continue through dry-run, approval when required, canonical services, read-back verification and append-only audit.
 
+Each top-level skill also carries a production quality layer: shared evidence/recovery contracts, a domain-specific false-positive/verification checklist, and behavioral eval rubrics. This forces the agent to distinguish configuration from observed behavior, retry attempts from distinct customer impact, and successful writes from verified business outcomes.
+
 See [`docs/operations-mcp.md`](./docs/operations-mcp.md) and [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md).
 
 ---

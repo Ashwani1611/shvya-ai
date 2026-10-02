@@ -8,6 +8,17 @@ For a reusable package or draft, create artifacts only. For a live setup, identi
 
 Use the current discovered tool schemas and effective `capabilities`. A tool name in these reference files does not prove it is available. `policy_capabilities`, `granted_capabilities`, and effective `capabilities` are different: a newly allowed but ungranted capability requires fresh OAuth authorization. Do not request secrets or substitute raw database, server, REST-token, or browser access to bypass a rejected MCP operation.
 
+## Apply the skill quality framework
+
+Before a material live investigation or configuration task, load the shared framework progressively:
+- `framework/skill-quality-contract.md`
+- `framework/evidence-and-attribution.md`
+- `framework/known-trap-method.md`
+- `framework/execution-and-recovery.md`
+- `framework/context-and-delegation.md`
+
+Then load the selected skill's `references/domain-checks.md`. These files encode the cross-skill rules for read-before-write, producing-layer attribution, configured-vs-live state, conflict handling, distinct-business-object impact counts, ambiguous outcome recovery and post-write verification. Behavioral `evals/evals.json` files are rubrics only; they never prove a production test ran.
+
 ## Load only the relevant workflow
 
 Use one primary skill for a narrow task and add a second skill only when a verified dependency crosses domains. Do not load every skill into every run.

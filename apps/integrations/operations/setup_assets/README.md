@@ -24,6 +24,15 @@ The operator routes a task to the smallest relevant skill instead of loading one
 
 For broad onboarding, `shvya-account-setup` remains the coordinator. Domain skills own detailed decisions and verification. For incidents, diagnose first, repair only the verified producing layer, then run acceptance checks.
 
+## Skill quality framework
+
+Every top-level skill is now paired with:
+- a shared cross-skill contract for authorization, evidence, producing-layer attribution, safe mutation and recovery;
+- a domain-specific `references/domain-checks.md` covering evidence, false-positive traps, verification and handoffs;
+- a domain-specific `evals/evals.json` with at least five behavioral scenarios.
+
+Read `framework/skill-matrix.json` for the 25-skill routing map. The framework deliberately separates configured state from live/observed behavior, retries from distinct customer impact, and successful writes from verified business outcomes. Evaluation files remain `NOT_MODEL_EXECUTED` until an actual evaluator records results.
+
 ## Workflows and backend actions
 
 | Workflow | Native path |

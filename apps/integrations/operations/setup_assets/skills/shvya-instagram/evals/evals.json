@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-instagram",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Instagram login/approval succeeds but returns to the Connect page.",
+      "expected_output": "The skill traces callback/state/token/account/subscription layers, distinguishes Meta permission/review issues from SHVYA callback failures, and does not assume consent means connected.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "New Instagram DM has no phone number.",
+      "expected_output": "The skill allows lead creation using Instagram identity/username, leaves phone optional/unlocked and engages AI according to channel policy.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Lead later sends 9876543210 in DM.",
+      "expected_output": "The skill validates/normalizes the explicit number (for India +919876543210 when context supports it) before mapping; it does not infer a number from username.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Instagram inbox works but AI never replies.",
+      "expected_output": "The skill checks AI eligibility/runtime/outbound Send API separately from webhook/inbox health.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Reconnect Instagram using an MCP tool that is not exposed.",
+      "expected_output": "The skill reports the capability/tool gap and uses the supported lifecycle/operational handoff instead of fabricating an action.",
+      "result": null
+    }
+  ]
+}

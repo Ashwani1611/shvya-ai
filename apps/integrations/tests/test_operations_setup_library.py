@@ -104,6 +104,58 @@ class SetupLibraryTests(SimpleTestCase):
         self.assertIn("deterministic", acceptance.casefold())
         self.assertIn("provider", acceptance.casefold())
 
+    def test_every_top_level_skill_has_quality_contract_domain_checks_and_evals(self):
+        matrix = json.loads(library._read_asset("framework/skill-matrix.json"))
+        self.assertEqual(matrix["schema_version"], 1)
+        skills = [item["name"] for item in matrix["skills"]]
+        self.assertEqual(len(skills), 25)
+        self.assertEqual(len(skills), len(set(skills)))
+
+        required_framework = (
+            "framework/skill-quality-contract.md",
+            "framework/evidence-and-attribution.md",
+            "framework/known-trap-method.md",
+            "framework/execution-and-recovery.md",
+            "framework/eval-contract.md",
+            "framework/customer-content-gates.md",
+            "framework/context-and-delegation.md",
+        )
+        for resource in required_framework:
+            self.assertTrue(library._read_asset(resource).strip())
+
+        for name in skills:
+            with self.subTest(skill=name):
+                skill = library._read_asset(f"skills/{name}/SKILL.md")
+                self.assertIn("## Shared quality contract", skill)
+                self.assertIn("../../framework/skill-quality-contract.md", skill)
+                self.assertIn("../../framework/evidence-and-attribution.md", skill)
+                self.assertIn("../../framework/known-trap-method.md", skill)
+                self.assertIn("../../framework/execution-and-recovery.md", skill)
+                self.assertIn("references/domain-checks.md", skill)
+                self.assertIn("evals/evals.json", skill)
+
+                checks = library._read_asset(
+                    f"skills/{name}/references/domain-checks.md"
+                )
+                self.assertIn("## Known traps", checks)
+                self.assertIn("## Verification", checks)
+
+                evals = json.loads(
+                    library._read_asset(f"skills/{name}/evals/evals.json")
+                )
+                self.assertEqual(evals["skill_name"], name)
+                self.assertEqual(evals["status"], "NOT_MODEL_EXECUTED")
+                self.assertGreaterEqual(len(evals["evals"]), 5)
+                self.assertTrue(
+                    all(item["result"] is None for item in evals["evals"])
+                )
+                self.assertTrue(
+                    all(item["prompt"].strip() for item in evals["evals"])
+                )
+                self.assertTrue(
+                    all(item["expected_output"].strip() for item in evals["evals"])
+                )
+
     def test_manifest_is_complete_text_only_and_every_link_is_packaged(self):
         entries = library.library_entries()
         paths = {item["resource_id"] for item in entries}

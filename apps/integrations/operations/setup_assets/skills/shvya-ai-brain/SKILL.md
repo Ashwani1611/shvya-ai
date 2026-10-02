@@ -24,3 +24,9 @@ The AI should answer from available approved business evidence, ask targeted cla
 ## Output
 
 Report AI configuration state, evidence sources, conflicts fixed, tests run, remaining ingestion/provider gaps and whether the result is DRAFT, APPLIED_AND_VERIFIED or BLOCKED.
+
+## Shared quality contract
+
+Before material live work, read the shared [skill quality contract](../../framework/skill-quality-contract.md), [evidence and attribution model](../../framework/evidence-and-attribution.md), [known-trap method](../../framework/known-trap-method.md), [execution and recovery contract](../../framework/execution-and-recovery.md), and this skill's [domain checks](references/domain-checks.md). Load only what the task needs, but do not report a defect before applying the relevant trap check.
+
+Treat `evals/evals.json` as behavioral acceptance rubrics, not executed test evidence. A successful tool response is never sufficient on its own: verify authoritative read-back and the requested business effect at the strongest evidence level available. Keep UNKNOWN, conflicting and unavailable evidence explicit instead of guessing.

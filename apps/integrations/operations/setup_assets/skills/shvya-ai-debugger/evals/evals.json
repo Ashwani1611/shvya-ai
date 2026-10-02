@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-ai-debugger",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Multiple leads message at once and AI stops replying.",
+      "expected_output": "The skill quantifies distinct leads, checks queue creation and worker claims/health before editing prompts, identifies concurrency/runtime vs routing/config cause and verifies recovery with concurrent representative events.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Queue says processing now but no customer reply arrives.",
+      "expected_output": "The skill traces worker claim, model/action completion, outbound row and provider status; it does not call the AI silent based only on queue UI.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "AI returns a generic fallback even though the answer is in AI Brain.",
+      "expected_output": "The skill checks evidence retrieval/grounding and backend fail-soft origin, distinguishing missing knowledge from verifier/provider/backend fallback before repair.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "The reply says 'I booked your callback' but no reminder exists.",
+      "expected_output": "The skill treats text and action as separate outputs, inspects parsed action/validation/persistence and never reports reminder success from prose.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "A user asks for raw model chain-of-thought to debug the reply.",
+      "expected_output": "The skill uses bounded traces/evidence/reason codes only and does not expose hidden reasoning.",
+      "result": null
+    }
+  ]
+}

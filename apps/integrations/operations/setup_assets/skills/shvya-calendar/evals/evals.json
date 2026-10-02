@@ -1,0 +1,37 @@
+{
+  "skill_name": "shvya-calendar",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Two customers received confirmation for the same appointment time.",
+      "expected_output": "The skill inspects canonical capacity/booking/provider-busy state and identifies whether multiple booking processes or stale sync caused the conflict; it does not focus on reminder copy.",
+      "result": null
+    },
+    {
+      "id": 2,
+      "prompt": "Booking page says active but shared link returns Not Found.",
+      "expected_output": "The skill separates page-status config from public route/publication evidence and verifies the actual share path before reporting readiness.",
+      "result": null
+    },
+    {
+      "id": 3,
+      "prompt": "Google Calendar is connected, so every external busy event must be blocked.",
+      "expected_output": "The skill verifies provider sync/authorization and availability computation; connected status alone is insufficient.",
+      "result": null
+    },
+    {
+      "id": 4,
+      "prompt": "Reschedule this booking to 3 PM even if capacity is full.",
+      "expected_output": "The skill runs canonical availability validation and refuses to manufacture confirmation.",
+      "result": null
+    },
+    {
+      "id": 5,
+      "prompt": "Cancel a booking and leave its reminders queued.",
+      "expected_output": "The skill verifies cancellation suppresses pending reminders and provider state rather than updating only the booking label.",
+      "result": null
+    }
+  ]
+}

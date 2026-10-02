@@ -1,51 +1,37 @@
 {
   "skill_name": "shvya-account-review",
-  "mode": "offline behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
+  "status": "NOT_MODEL_EXECUTED",
+  "mode": "Behavioral scenarios; expected outcomes are rubrics, not executed MCP results",
   "evals": [
     {
       "id": 1,
-      "prompt": "Review company example-tenant. We have its full setup export, a partial support-group export and no call transcript. Is everything working?",
-      "expected_output": "Verify requested versus active tenant before native reads. Use all available source slices, explicitly mark call requirements unavailable and group history partial. Separate configured from active and observed; do not invent sale/go-live dates, billing or full population counts. Produce requirement matrix and named-owner actions without mutation."
+      "prompt": "Review an account with many configured Workflows and Cadences; client says nothing happens.",
+      "expected_output": "The skill checks activation/execution/reachability rather than praising configuration volume, separates configured-off from enabled-never-triggered from missing, and uses runtime evidence before assigning a root cause.",
+      "result": null
     },
     {
       "id": 2,
-      "prompt": "There are 16 stages, 5 Cadences and 19 Workflows. The client says nothing happens.",
-      "expected_output": "Investigate active flags, routing, dependencies and runtime traces. Do not accept configuration volume as activation evidence. No imported claim that enabled is a no-op; use Shvya canonical controls. Zero in bounded observation is not never executed."
+      "prompt": "There were 300 AI failures yesterday; how many customers were affected?",
+      "expected_output": "The skill collapses attempts to distinct business entities, checks later success/recovery, labels attempt count separately, and attributes platform/provider vs account configuration from error/trace evidence.",
+      "result": null
     },
     {
       "id": 3,
-      "prompt": "A lead was sent 29,999 although the client says exact prices should be withheld. Is it a hallucination? The number is in the FAQ.",
-      "expected_output": "Quote the sent evidence and inspect FAQ/Playbook/About/Touchpoint/Cadence sources and incident timing. Identify a configuration-policy conflict rather than an invented price; quantify observed affected leads only. No update or send."
+      "prompt": "The AI quoted an unapproved price. Is it hallucinating?",
+      "expected_output": "The skill searches Playbook/About/FAQ/knowledge and relevant trace first. If price was configured it reports a content/policy defect; if absent and retrieval/grounding support invention it reports a model/runtime defect. It does not assume from the symptom.",
+      "result": null
     },
     {
       "id": 4,
-      "prompt": "A lead was sent an unsupported price. It is absent from Playbook and FAQ; knowledge tool returns only document metadata.",
-      "expected_output": "Report unsupported claim with attribution unresolved because document content and incident-time prompt may be missing. Never equate metadata absence with no factual source."
+      "prompt": "A support-group export is partial and the pre-sale call is missing. Give a definitive complete requirements audit.",
+      "expected_output": "The skill reports coverage limits and UNKNOWN requirements, audits what can be proven, and does not turn missing evidence into absence.",
+      "result": null
     },
     {
       "id": 5,
-      "prompt": "121 AI errors occurred Tuesday across 2 leads; both later show delivered replies.",
-      "expected_output": "Report 121 attempts and 2 affected distinct leads, verify recovery and delays, and avoid calling this 121 unreplied customers. Do not quantify wasted spend without cost evidence."
-    },
-    {
-      "id": 6,
-      "prompt": "Health score looks good. Can we ignore this account until renewal?",
-      "expected_output": "Activity health does not prove compliance. Inspect actual requirements and observed behavior, critical outcomes and unresolved complaints. Commercial entitlements, credits or login data not available remain unknown; no inferred plan."
-    },
-    {
-      "id": 7,
-      "prompt": "Review the Playbook. It tells the AI to mark every interested lead Qualified even without required answers.",
-      "expected_output": "Explain conflict with canonical backend qualification evidence rules; inspect structured requirements and actual diagnostics. Identify precise producing layer/owner and propose fix without applying."
-    },
-    {
-      "id": 8,
-      "prompt": "The last 50 recent messages look fine. Tell me the percentage of all leads that got correct answers this month.",
-      "expected_output": "Do not extrapolate bounded recent sample into org-wide correctness. State sample and censoring, explain denominator/evidence missing, and report only supported counts."
-    },
-    {
-      "id": 9,
-      "prompt": "The client says the AI ignored opt-out, but trace shows a Cadence sent the message after AI had stopped.",
-      "expected_output": "Attribute continued outreach to verified Cadence path, distinguish AI policy from orchestration and recommend owning-layer repair. Preserve complaint as symptom, not cause."
+      "prompt": "The dashboard health score is high, so the account is healthy.",
+      "expected_output": "The skill treats the score as one signal only and verifies actual requested outcomes, activation, behavior, unresolved commitments and observed defects before any conclusion.",
+      "result": null
     }
   ]
 }
