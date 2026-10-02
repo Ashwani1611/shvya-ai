@@ -1748,6 +1748,15 @@
       "description": "Immutable Shvya evaluation guidance: skills/shvya-acceptance-testing/evals/evals.json",
       "kind": "evaluation",
       "mimeType": "application/json"
+    },
+    {
+      "resource_id": "framework/customer-content-gates.md",
+      "uri": "shvya-kit:///framework/customer-content-gates.md",
+      "name": "framework/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable Shvya reference guidance: framework/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
     }
   ]
 }
