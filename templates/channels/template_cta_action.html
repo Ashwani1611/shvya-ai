@@ -6,7 +6,7 @@
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>{{ action_label }} · SHVYA</title>
   <style>
-    :root{color-scheme:light;--ink:#1d1d1f;--muted:#6e6e73;--line:#d2d2d7;--blue:#0071e3;--green:#248a3d}
+    :root{color-scheme:light;--ink:#1d1d1f;--muted:#6e6e73;--blue:#0071e3;--green:#248a3d}
     *{box-sizing:border-box}
     body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(circle at 50% -20%,#eaf4ff 0,#f5f5f7 38%,#fff 75%);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;color:var(--ink)}
     .shell{width:min(460px,100%)}
@@ -19,8 +19,7 @@
     .copy{margin:11px auto 0;max-width:350px;color:var(--muted);font-size:14px;line-height:1.55}
     .business{margin-top:16px;font-size:12px;font-weight:650;color:#86868b}
     .action{display:flex;width:100%;min-height:50px;align-items:center;justify-content:center;margin-top:24px;border:0;border-radius:15px;background:var(--blue);padding:13px 18px;color:#fff;font:inherit;font-size:15px;font-weight:750;text-decoration:none;cursor:pointer;transition:transform .14s ease,opacity .14s ease}
-    .action:hover{transform:translateY(-1px)}.action:disabled{opacity:.55;cursor:wait;transform:none}
-    .secondary{background:#f2f2f7;color:var(--ink)}
+    .action:hover{transform:translateY(-1px)}.action:disabled{opacity:.65;cursor:default;transform:none}
     .status{display:none;margin-top:14px;border-radius:12px;background:#edf8ef;padding:10px 12px;color:var(--green);font-size:13px;font-weight:650}
     .status.error{display:block;background:#fff1f0;color:#b42318}
     .status.show{display:block}
@@ -58,7 +57,7 @@
           {% endif %}
           <div id="action-status" class="status show">Action confirmed.</div>
         {% else %}
-          <form id="cta-form" method="post">
+          <form id="cta-form" method="post" data-action-type="{{ action_type }}" data-destination="{{ destination }}">
             {% csrf_token %}
             <input type="hidden" name="event_token" value="{{ form_token }}">
             <button id="cta-submit" class="action" type="submit">
@@ -82,46 +81,43 @@
     async function copyCode(value,button){
       try{
         await navigator.clipboard.writeText(value);
-        if(button) button.textContent='Copied';
+        if(button){button.textContent='Copied';button.disabled=true;}
         if(status){status.textContent='Code copied to clipboard.';status.className='status show';}
       }catch(error){
+        if(button) button.disabled=false;
         if(status){status.textContent='Copy was blocked by the browser. Press and hold to copy: '+value;status.className='status error';}
       }
+    }
+
+    function recordConfirmation(payload){
+      if(navigator.sendBeacon&&navigator.sendBeacon(window.location.href,payload)) return;
+      fetch(window.location.href,{
+        method:'POST',
+        body:payload,
+        credentials:'same-origin',
+        keepalive:true
+      }).catch(()=>{});
     }
 
     if(copyConfirmed){copyConfirmed.addEventListener('click',()=>copyCode(copyConfirmed.dataset.code||'',copyConfirmed));}
     if(!form) return;
 
-    form.addEventListener('submit',async(event)=>{
+    form.addEventListener('submit',(event)=>{
       event.preventDefault();
       const button=document.getElementById('cta-submit');
+      const actionType=form.dataset.actionType||'';
+      const destination=form.dataset.destination||'';
       button.disabled=true;
-      const original=button.textContent;
-      button.textContent='Confirming…';
-      status.className='status';
-      try{
-        const response=await fetch(window.location.href,{
-          method:'POST',
-          headers:{'X-Requested-With':'XMLHttpRequest','Accept':'application/json'},
-          body:new FormData(form),
-          credentials:'same-origin'
-        });
-        const data=await response.json();
-        if(!response.ok||!data.ok) throw new Error(data.error||'The action could not be confirmed.');
-        if(data.action_type==='copy_code'){
-          await copyCode(data.destination||'',button);
-          button.disabled=false;
-          return;
-        }
-        status.textContent=data.action_type==='call'?'Opening your dialler…':'Opening website…';
-        status.className='status show';
-        window.location.assign(data.destination);
-      }catch(error){
-        status.textContent=error.message||'The action could not be confirmed.';
-        status.className='status error';
-        button.disabled=false;
-        button.textContent=original;
+      recordConfirmation(new FormData(form));
+
+      if(actionType==='copy_code'){
+        copyCode(destination,button);
+        return;
       }
+
+      status.textContent=actionType==='call'?'Opening your dialler…':'Opening website…';
+      status.className='status show';
+      window.location.assign(destination);
     });
   })();
   </script>
