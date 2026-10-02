@@ -126,6 +126,63 @@
         return response;
     }
 
+    const sleep = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+    async function refreshLeads() {
+        if (!window.htmx) return;
+        try {
+            await window.htmx.ajax('GET', refreshUrl, {
+                target: '#lead-table-container',
+                swap: 'innerHTML',
+            });
+        } catch (_error) {
+            status('Changes were saved. Refresh the CRM to see the latest leads.');
+        }
+    }
+
+    async function pollBulkMove(statusUrl, total) {
+        let transientFailures = 0;
+        while (true) {
+            await sleep(1000);
+            let response;
+            try {
+                response = await fetch(statusUrl, {
+                    method: 'GET',
+                    credentials: 'same-origin',
+                    headers: {'Accept': 'application/json'},
+                });
+            } catch (error) {
+                transientFailures += 1;
+                if (transientFailures < 5) continue;
+                throw error;
+            }
+
+            const contentType = response.headers.get('Content-Type') || '';
+            if (response.redirected || !contentType.includes('json')) {
+                transientFailures += 1;
+                if (transientFailures < 5) continue;
+                throw new Error('Bulk move status is temporarily unavailable. Refresh the CRM to check progress.');
+            }
+
+            const result = await response.json();
+            if (!response.ok) {
+                throw new Error(result.error || 'Unable to check bulk move progress.');
+            }
+            transientFailures = 0;
+
+            const processed = Number(result.processed || 0);
+            const expected = Number(result.total || total || 0);
+            status(`Moving ${processed} of ${expected} leads…`);
+            el('description').textContent =
+                `This large update is running safely in the background. ${processed} of ${expected} leads have been processed.`;
+
+            if (result.status === 'completed') return result;
+            if (result.status === 'failed') {
+                throw new Error(result.message || 'The bulk lead move stopped before completion.');
+            }
+        }
+    }
+
     function fillSelect(select, items, placeholder) {
         select.replaceChildren(new Option(placeholder, ''));
         items.forEach(item => select.add(new Option(item.name, item.id)));
@@ -199,6 +256,7 @@
         dialog.querySelectorAll('[data-bulk-section]').forEach(section => { section.hidden = true; });
         el('submit').classList.toggle('crm-bulk-danger', action === 'delete');
         el('submit').classList.toggle('crm-bulk-primary', action !== 'delete');
+        el('submit').hidden = false;
         setBusy(false);
         dialog.showModal();
         const ticket = ++generation;
@@ -310,15 +368,30 @@
             } else {
                 const result = await response.json();
                 clearSelection();
-                status(`${result.count} lead${result.count === 1 ? '' : 's'} ${action === 'delete' ? 'deleted' : 'updated'} successfully.`);
-                // The saved query retains search and custom filters after mutation.
-                if (window.htmx) {
-                    window.htmx.ajax('GET', refreshUrl, {target: '#lead-table-container', swap: 'innerHTML'}).catch(() => {
-                        status('Changes were saved. Refresh the CRM to see the latest leads.');
-                    });
+
+                if (result.queued) {
+                    setBusy(false);
+                    el('submit').hidden = true;
+                    status(`Moving 0 of ${result.count} leads…`);
+                    el('description').textContent =
+                        'This large update is running safely in the background. You can close this window; the move will continue.';
+                    const completed = await pollBulkMove(result.status_url, result.count);
+                    const skipped = Number(completed.skipped_count || 0);
+                    status(
+                        skipped
+                            ? `${completed.moved_count} leads moved; ${skipped} skipped because they changed before processing.`
+                            : `${completed.moved_count} lead${completed.moved_count === 1 ? '' : 's'} updated successfully.`
+                    );
+                    await refreshLeads();
+                    el('submit').hidden = false;
+                    if (dialog.open) dialog.close();
+                    return;
                 }
+
+                status(`${result.count} lead${result.count === 1 ? '' : 's'} ${action === 'delete' ? 'deleted' : 'updated'} successfully.`);
+                await refreshLeads();
             }
-            dialog.close();
+            if (dialog.open) dialog.close();
         } catch (error) {
             showError(error instanceof TypeError
                 ? 'The connection was interrupted. Refresh the CRM to check the result before retrying.'
