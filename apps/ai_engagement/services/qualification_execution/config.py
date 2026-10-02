@@ -144,15 +144,42 @@ def _config(
         if not _COMPLETION_RULE.search(line):
             continue
         normalized = _norm(line)
+        # Resolve stage names from the transition target clause rather than the
+        # whole qualification rule. Otherwise ordinary wording such as
+        # "qualification questions" can accidentally match a stage literally
+        # named "Qualification" while the intended target is "Qualified".
+        target_match = re.search(
+            r"\\b(?:move|shift|transition)(?:\\s+(?:the\\s+)?lead|\\s+it)?"
+            r"(?:\\s+stage)?\\s+(?:to|into)\\s+(?P<target>.+)$",
+            normalized,
+            re.I,
+        )
+        target_text = target_match.group("target").strip() if target_match else normalized
         matches = [
             stage
             for stage in stages
             if _norm(stage["name"])
             and re.search(
                 rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])",
-                normalized,
+                target_text,
             )
         ]
+        # Prefer the most specific overlapping stage name in the explicit
+        # target clause (for example "Lead Won" over a stage named "Lead").
+        if target_match and len(matches) > 1:
+            specific_matches = []
+            for stage in matches:
+                stage_name = _norm(stage["name"])
+                if any(
+                    stage_name != _norm(other["name"])
+                    and stage_name
+                    and stage_name in _norm(other["name"])
+                    for other in matches
+                ):
+                    continue
+                specific_matches.append(stage)
+            matches = specific_matches or matches
+
         # Even an ambiguous completion rule must not let a model route to one
         # of its possible targets through the generic CRM action path.
         possible_targets = matches
@@ -161,7 +188,7 @@ def _config(
                 stage
                 for stage in matches
                 if _norm(stage["pipeline__name"])
-                and _norm(stage["pipeline__name"]) in normalized
+                and _norm(stage["pipeline__name"]) in target_text
             ]
         protected_completion_stage_ids.update(str(stage["id"]) for stage in (matches or possible_targets))
         if len(matches) == 1:
