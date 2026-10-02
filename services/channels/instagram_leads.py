@@ -56,13 +56,40 @@ def _preferred_pipeline_stage(organization):
     return pipeline, stage
 
 
+def _instagram_username(conversation):
+    return str(
+        getattr(conversation, "participant_username", "") or ""
+    ).strip().lstrip("@")[:150]
+
+
 def _lead_name(conversation, supplied=""):
     return (
         str(supplied or "").strip()
+        or _instagram_username(conversation)
         or str(conversation.participant_name or "").strip()
-        or str(conversation.participant_username or "").strip()
         or "Instagram user"
     )[:150]
+
+
+def sync_instagram_lead_name(conversation):
+    """Keep Instagram-created CRM lead names aligned to the Instagram username."""
+    if not getattr(conversation, "lead_id", None):
+        return None
+
+    lead = getattr(conversation, "lead", None)
+    if lead is None:
+        lead = Lead.objects.filter(
+            pk=conversation.lead_id,
+            organization_id=conversation.organization_id,
+        ).first()
+    if lead is None or lead.lead_source != "instagram":
+        return lead
+
+    username = _instagram_username(conversation)
+    if username and lead.name != username:
+        lead.name = username
+        lead.save(update_fields=["name", "updated_at"])
+    return lead
 
 
 def normalize_instagram_phone(value, *, country_code=""):
@@ -142,8 +169,9 @@ def ensure_instagram_lead(*, conversation_id):
     if conversation.lead_id:
         from apps.ai_engagement.services.intent_score import persist_intent_score
 
-        persist_intent_score(lead=conversation.lead)
-        return conversation, conversation.lead
+        lead = sync_instagram_lead_name(conversation) or conversation.lead
+        persist_intent_score(lead=lead)
+        return conversation, lead
 
     pipeline, stage = _preferred_pipeline_stage(conversation.organization)
     if pipeline is None or stage is None:
