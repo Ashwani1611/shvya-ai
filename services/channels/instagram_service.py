@@ -797,14 +797,21 @@ def _upsert_conversation(
             else:
                 setattr(conversation, field, value)
         conversation.save()
+        from services.channels.instagram_leads import sync_instagram_lead_name
+
+        sync_instagram_lead_name(conversation)
         return conversation
 
-    return InstagramConversation.objects.create(
+    conversation = InstagramConversation.objects.create(
         account=account,
         participant_id=participant_id,
         meta_conversation_id=meta_conversation_id or None,
         **defaults,
     )
+    from services.channels.instagram_leads import sync_instagram_lead_name
+
+    sync_instagram_lead_name(conversation)
+    return conversation
 
 
 def _upsert_graph_message(

@@ -224,4 +224,5 @@ def instagram_contact(request, conversation_id):
     if conversation.lead_id:
         return redirect(reverse("chat-contact-panel", args=[conversation.lead_id]) + "?channel=instagram")
     return render(request, "channels/contact_unlinked.html", {"instagram": True, "can_create": True,
-        "contact_name": conversation.participant_name, "pipelines": accessible_pipelines(request.crm_user)})
+        "contact_name": conversation.participant_username or conversation.participant_name,
+        "pipelines": accessible_pipelines(request.crm_user)})
