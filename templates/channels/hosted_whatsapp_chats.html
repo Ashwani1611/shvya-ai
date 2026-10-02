@@ -115,7 +115,8 @@
           {% if message.direction == 'outbound' %}
             {% if message.status == 'read' %}<span class="bubble-status read">✓✓</span>
             {% elif message.status == 'delivered' %}<span class="bubble-status">✓✓</span>
-            {% elif message.status == 'queued' %}<span class="bubble-status">◷</span>
+            {% elif message.status == 'queued' %}<span class="bubble-status" title="Not yet confirmed sent">◷ Queued</span>
+            {% elif message.status == 'sending' %}<span class="bubble-status" title="Awaiting confirmation">◷ Sending</span>
             {% elif message.status == 'failed' %}<span class="bubble-status">!</span>
             {% else %}<span class="bubble-status">✓</span>{% endif %}
           {% endif %}
@@ -150,5 +151,6 @@
 
 <link rel="stylesheet" href="{% static 'css/contact_panel.css' %}">
 <script src="{% static 'js/contact_panel.js' %}" defer></script>
-<script src="{% static 'js/hosted_whatsapp_chat.js' %}" defer></script>
+<script src="{% static 'js/hosted_chat_live_state.js' %}?v=20261003-live1" defer></script>
+<script src="{% static 'js/hosted_whatsapp_chat.js' %}?v=20261003-live1" defer></script>
 {% endblock %}

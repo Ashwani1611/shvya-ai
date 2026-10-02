@@ -72,30 +72,37 @@ class HostedInboxReliabilityTests(TestCase):
             account=self.account, selected_chat=self.phone, **kwargs,
         )
 
-    def test_pending_ai_messages_stay_in_queue_until_successful_send(self):
+    def test_pending_ai_messages_are_visible_with_their_real_pending_status(self):
         inbound = self.message(1, status="received")
+        pending = []
         for marker in (
             {"shvya_welcome": {"trigger": "lead_created"}},
             {"shvya_ai": {"origin": "engagement"}},
         ):
             for status in ("queued", "sending"):
-                self.message(2, outbound=True, status=status, raw_payload=marker)
+                pending.append(self.message(2, outbound=True, status=status, raw_payload=marker))
         snapshot = self.snapshot()
-        self.assertEqual([msg.pk for msg in snapshot["thread"]], [inbound.pk])
-        self.assertEqual(snapshot["conversations"][0]["last_message"], inbound.body)
+        self.assertEqual({msg.pk for msg in snapshot["thread"]}, {inbound.pk, *(msg.pk for msg in pending)})
+        self.assertEqual({msg.status for msg in snapshot["thread"] if msg.direction == "outbound"}, {"queued", "sending"})
+        self.assertEqual(snapshot["conversations"][0]["last_message"], pending[-1].body)
+        self.assertEqual(snapshot["conversations"][0]["unread"], 1)
 
         sent = self.message(3, outbound=True, status="sent", raw_payload={
             "shvya_welcome": {"trigger": "lead_created"},
         })
         snapshot = self.snapshot()
-        self.assertEqual([msg.pk for msg in snapshot["thread"]], [inbound.pk, sent.pk])
+        self.assertEqual({msg.pk for msg in snapshot["thread"]}, {inbound.pk, sent.pk, *(msg.pk for msg in pending)})
         self.assertEqual(snapshot["conversations"][0]["last_message"], sent.body)
 
-    def test_bulk_pending_welcomes_do_not_create_ghost_chats(self):
-        for index in range(5):
+    def test_pending_welcomes_are_visible_without_being_marked_sent(self):
+        pending = [
             self.message(index, phone=f"+91980000000{index}", outbound=True,
                          status="queued", raw_payload={"shvya_welcome": {"trigger": "lead_created"}})
-        self.assertEqual(self.snapshot()["conversations"], [])
+            for index in range(5)
+        ]
+        self.assertEqual(len(self.snapshot()["conversations"]), 5)
+        self.assertEqual({message.status for message in pending}, {"queued"})
+        self.assertTrue(all(message.sent_at is None for message in pending))
 
     def test_manual_queued_message_remains_visible(self):
         manual = self.message(1, outbound=True, status="queued")

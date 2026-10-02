@@ -35,6 +35,7 @@ class HostedWhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
         self.group_name = f"hosted_whatsapp_{account_id}"
         await self.channel_layer.group_add(self.group_name, self.channel_name)
         await self.accept()
+        await self.send_json({"kind": "ready", "account_id": account_id})
         await sync_to_async(touch_websocket_metric, thread_sensitive=False)(
             "hosted_whatsapp", self.channel_name, self.organization_id
         )
@@ -61,29 +62,49 @@ class HostedWhatsAppChatConsumer(AsyncJsonWebsocketConsumer):
             )
 
     async def receive_json(self, content, **kwargs):
-        # Hosted chat sending remains on the CSRF-protected HTTP endpoint.
-        # Accept an optional client ping as well so future clients can actively
-        # confirm liveness without changing the chat transport contract.
+        # Provider sends stay on the authenticated, CSRF-protected HTTP path.
         if isinstance(content, dict) and content.get("kind") == "ping":
             await self.send_json({"kind": "pong"})
         return None
 
+    async def _renew_subscription(self):
+        # Redis restarts/expiry can remove a group's members while its browser
+        # socket is still OPEN. Renew membership, not just the TCP heartbeat.
+        if not await self._account_belongs_to_org(self.account_id, self.organization_id):
+            await self.close(code=4003)
+            return False
+        await self.channel_layer.group_add(self.group_name, self.channel_name)
+        return True
+
     async def _heartbeat_loop(self):
-        """Keep idle Hosted chat sockets alive through proxies/load balancers."""
         try:
             while True:
                 await asyncio.sleep(HEARTBEAT_INTERVAL_SECONDS)
-                if hasattr(self, "channel_name") and hasattr(self, "organization_id"):
-                    await sync_to_async(
-                        touch_websocket_metric, thread_sensitive=False
-                    )("hosted_whatsapp", self.channel_name, self.organization_id)
+                if not await self._renew_subscription():
+                    return
+                await sync_to_async(touch_websocket_metric, thread_sensitive=False)(
+                    "hosted_whatsapp", self.channel_name, self.organization_id,
+                )
                 await self.send_json({"kind": "heartbeat"})
         except asyncio.CancelledError:
             raise
         except Exception:
-            # A failed send means the connection is already unusable; Channels
-            # will run disconnect cleanup while the browser reconnects normally.
+            # Force recovery instead of leaving an apparently healthy socket
+            # with a dead subscription. HTTP polling remains independently live.
+            with suppress(Exception):
+                await self.close(code=1011)
+
+    async def hosted_message(self, event):
+        if (str(event.get("account_id")) != self.account_id
+                or str(event.get("organization_id")) != self.organization_id):
             return
+        await self.send_json({
+            "kind": "message",
+            **{key: event[key] for key in (
+                "account_id", "chat_key", "aliases", "message_id", "updated_at",
+                "operation", "message", "conversation",
+            ) if key in event},
+        })
 
     async def hosted_refresh(self, event):
         await self.send_json(

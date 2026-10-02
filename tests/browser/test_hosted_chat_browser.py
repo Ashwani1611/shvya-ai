@@ -5,6 +5,7 @@ real WhatsApp session or send a customer message.
 """
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import parse_qs, urlparse
@@ -51,7 +52,8 @@ def inbox(browser):
         {"key": A, "phone": A, "name": "First Lead", "stage_name": "New Lead", "unread": 2, "last_at": "2026-09-01T12:03:00Z", "last_message": "Hello"},
         {"key": B, "phone": B, "name": "Second Lead", "stage_name": "Qualified", "unread": 0, "last_at": "2026-09-01T12:02:00Z", "last_message": "Hi"},
     ]
-    control = {"delay": None, "pending": [], "requests": [], "receipts": [], "status": "connected", "older": False, "media": False, "tick": "sent"}
+    control = {"delay": None, "pending": [], "requests": [], "receipts": [], "status": "connected", "older": False, "media": False, "tick": "sent", "extra": [], "errors": []}
+    page.on("pageerror", lambda error: control["errors"].append(str(error)))
     template = (ROOT / "templates/channels/hosted_whatsapp_chats.html").read_text()
     engine = Engine(
         loaders=[("django.template.loaders.locmem.Loader", {
@@ -82,6 +84,8 @@ def inbox(browser):
             messages = [message(180, body="Second conversation")]
         if control["media"] and chat == A:
             messages = [message(1, message_type="video", media_url="/video.mp4", direction="outbound", status=control["tick"])]
+        if chat == A and not before:
+            messages += control["extra"]
         return {
             "ok": True, "conversations": rows, "selected_chat": chat,
             "selected_name": "First Lead" if chat == A else "Second Lead",
@@ -106,8 +110,10 @@ def inbox(browser):
             control["receipts"].append(request.request.post_data_json)
             rows[0]["unread"] = 0
             request.fulfill(json={"ok": True, "marked_read": 2})
-        elif url.path.endswith("hosted_whatsapp_chat.js"):
-            request.fulfill(body=(ROOT / "static/js/hosted_whatsapp_chat.js").read_text(), content_type="application/javascript; charset=utf-8")
+        elif url.path.endswith(("hosted_whatsapp_chat.js", "hosted_chat_live_state.js")):
+            request.fulfill(body=(ROOT / "static/js" / Path(url.path).name).read_text(), content_type="application/javascript; charset=utf-8")
+        elif url.path.endswith("contact_panel.js"):
+            request.fulfill(body="", content_type="application/javascript; charset=utf-8")
         elif url.path.endswith("hosted_whatsapp_chat.css"):
             request.fulfill(body=(ROOT / "static/css/hosted_whatsapp_chat.css").read_text(), content_type="text/css; charset=utf-8")
         elif url.path == "/video.mp4":
@@ -193,3 +199,82 @@ def test_socket_failure_uses_polling_without_claiming_whatsapp_disconnected(inbo
     page, control = inbox
     control["socket"].close(code=1011, reason="test transient socket outage")
     expect(page.locator("[data-live-label]")).to_have_text("Connected · polling")
+
+
+def push(control, item, *, chat=A, operation="upsert", conversation=None):
+    control["socket"].send(json.dumps({
+        "kind": "message", "account_id": ACCOUNT, "chat_key": chat,
+        "aliases": [chat], "operation": operation,
+        "message_id": item["id"], "updated_at": item["updated_at"],
+        "message": item, "conversation": conversation,
+    }))
+
+
+def test_live_inbound_and_ai_bubbles_do_not_wait_for_snapshot_response(inbox):
+    page, control = inbox
+    page.locator(f'[data-chat-key="{A}"]').click()
+    expect(page.locator("#thread-scroll .bubble")).to_have_count(60)
+    control["delay"] = A
+    control["socket"].send('{"kind":"refresh","reason":"message"}')
+    page.wait_for_timeout(250)
+    assert control["pending"]
+    inbound = message(181, body="Live inbound without refresh", updated_at="2026-10-03T00:00:01Z")
+    push(control, inbound)
+    expect(page.locator('[data-message-id="message-0181"]')).to_contain_text(inbound["body"], timeout=2000)
+    reply = message(182, body="Live AI reply", direction="outbound", status="queued", updated_at="2026-10-03T00:00:02Z")
+    push(control, reply)
+    bubble = page.locator('[data-message-id="message-0182"]')
+    expect(bubble.locator(".bubble-status")).to_contain_text("Queued", timeout=2000)
+    bubble.evaluate("node => node.dataset.keep = 'same-node'")
+    for index, status in enumerate(("sending", "sent", "read"), start=3):
+        reply = {**reply, "status": status, "updated_at": f"2026-10-03T00:00:0{index}Z"}
+        push(control, reply)
+        expect(bubble.locator(".bubble-status")).to_have_attribute("title", {
+            "sending": "Sending — awaiting confirmation", "sent": "Sent", "read": "Read",
+        }[status])
+        expect(bubble).to_have_attribute("data-keep", "same-node")
+    push(control, reply)
+    push(control, {**reply, "status": "sent", "updated_at": "2026-10-03T00:00:03Z"})
+    expect(bubble).to_have_count(1)
+    expect(bubble.locator(".bubble-status")).to_have_attribute("title", "Read")
+    pending, stale = control["pending"].pop(0)
+    pending.fulfill(json=stale)
+    page.wait_for_timeout(200)
+    expect(bubble.locator(".bubble-status")).to_have_attribute("title", "Read")
+    expect(page.locator('[data-message-id="message-0181"]')).to_have_count(1)
+    assert control["errors"] == []
+
+
+def test_other_chat_delta_updates_sidebar_without_leaking_into_open_thread(inbox):
+    page, control = inbox
+    page.locator(f'[data-chat-key="{A}"]').click()
+    expect(page.locator("#thread-scroll .bubble")).to_have_count(60)
+    control["delay"] = A
+    item = message(183, body="Other conversation live", updated_at="2026-10-03T00:00:01Z")
+    push(control, item, chat=B, conversation={
+        "key": B, "name": "Second Lead", "phone": B, "last_message": item["body"],
+        "last_at": item["created_at"], "last_message_id": item["id"],
+    })
+    expect(page.locator(f'[data-chat-key="{B}"] .hosted-conversation-preview')).to_have_text(item["body"], timeout=2000)
+    expect(page.locator('#thread-scroll [data-message-id="message-0183"]')).to_have_count(0)
+
+
+def test_missed_socket_event_is_recovered_even_when_socket_is_open(inbox):
+    page, control = inbox
+    page.locator(f'[data-chat-key="{A}"]').click()
+    expect(page.locator("#thread-scroll .bubble")).to_have_count(60)
+    item = message(184, body="Recovered missed live event")
+    control["extra"].append(item)
+    expect(page.locator('[data-message-id="message-0184"]')).to_contain_text(item["body"], timeout=5000)
+
+
+def test_cancelled_draft_is_removed_by_direct_event(inbox):
+    page, control = inbox
+    item = message(185, body="Draft to be cancelled", direction="outbound", status="queued", updated_at="2026-10-03T00:00:01Z")
+    control["extra"].append(item)
+    page.locator(f'[data-chat-key="{A}"]').click()
+    bubble = page.locator('[data-message-id="message-0185"]')
+    expect(bubble).to_have_count(1)
+    control["delay"] = A
+    push(control, {**item, "updated_at": "2026-10-03T00:00:02Z"}, operation="remove")
+    expect(bubble).to_have_count(0, timeout=2000)
