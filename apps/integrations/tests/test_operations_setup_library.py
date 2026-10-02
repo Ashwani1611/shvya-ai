@@ -118,6 +118,7 @@ class SetupLibraryTests(SimpleTestCase):
             "framework/execution-and-recovery.md",
             "framework/eval-contract.md",
             "framework/customer-content-gates.md",
+            "framework/context-and-delegation.md",
         )
         for resource in required_framework:
             self.assertTrue(library._read_asset(resource).strip())
