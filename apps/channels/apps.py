@@ -37,9 +37,16 @@ class ChannelsConfig(AppConfig):
         from services.channels.template_cta_safety import (
             install_template_cta_safety,
         )
+        from services.channels.template_cta_meta_compat import (
+            install_template_cta_meta_compat,
+        )
 
         install_template_cta_tracking()
         install_template_cta_safety()
+        # Run compatibility last so Meta receives positional URL parameters and
+        # suffix-only examples while the signed action payload retains SHVYA's
+        # original destination and CRM placeholder semantics.
+        install_template_cta_meta_compat()
 
         # Install the actual Meta template transport first. The failure layer
         # then wraps every transport, including templates, so exact Meta error
