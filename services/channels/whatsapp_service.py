@@ -975,6 +975,12 @@ def _send_outbound_media_message(
                 )
             )
 
+        raw_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        if raw_payload.get("shvya_ai") and not str(document.share_instruction or "").strip():
+            raise WhatsAppSendError(
+                "The selected file is no longer configured for AI-guided sharing."
+            )
+
         if not document.file:
             raise ValueError(
                 "The requested WhatsApp document has no file."

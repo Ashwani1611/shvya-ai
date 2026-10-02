@@ -186,6 +186,16 @@
             stageStatus.textContent = [payload.stage.pipeline, payload.stage.name].filter(Boolean).join(" / ");
         }
         for (const event of payload.events || []) {
+            if (event.type === "attribute_updates") {
+                const values = (event.updates || []).map(function (item) {
+                    return String(item.name || item.key) + ": " + String(item.value ?? "");
+                });
+                appendMessage("assistant", "Preview — attributes updated: " + values.join("; "));
+            } else if (event.type === "reminder") {
+                const due = new Date(event.due_at);
+                const time = Number.isNaN(due.getTime()) ? String(event.due_at) : due.toLocaleString();
+                appendMessage("assistant", "Preview — reminder: " + String(event.title || "Follow up") + " · " + time + ". No live reminder was scheduled.");
+            }
             if (event.type === "stage_transition") {
                 const notice = appendMessage("assistant", "Test lead moved to " + event.stage + " (" + event.pipeline + ").");
                 if (notice) {
@@ -350,6 +360,8 @@
                     message: messageText,
                     history: history.slice(-MAX_HISTORY_MESSAGES),
                     stage_id: document.querySelector("#playground-start-stage")?.value || null,
+                    channel: document.querySelector("#playground-channel")?.value || "sandbox",
+                    lead_source: document.querySelector("#playground-lead-source")?.value || "system",
                 }),
             });
 
@@ -360,6 +372,9 @@
             const payload = await response.json();
             const stagePicker = document.querySelector("#playground-start-stage");
             if (stagePicker) stagePicker.disabled = true;
+            document.querySelectorAll("#playground-channel, #playground-lead-source").forEach(function (picker) {
+                picker.disabled = true;
+            });
             const responseText = typeof payload.response === "string"
                 ? payload.response.trim()
                 : "";
@@ -437,6 +452,9 @@
             hasStarted = true;
             const stagePicker = document.querySelector("#playground-start-stage");
             if (stagePicker) stagePicker.disabled = false;
+            document.querySelectorAll("#playground-channel, #playground-lead-source").forEach(function (picker) {
+                picker.disabled = false;
+            });
             const stageStatus = document.querySelector("#playground-current-stage");
             if (stageStatus) stageStatus.textContent = "New test. Send a message to begin.";
 

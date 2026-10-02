@@ -35,6 +35,12 @@ def exact_evidence_reply(decision, resolution, *, allow_price_template=False) ->
         return False
     if not language_only(decision):
         return False
+    # Complete authored FAQs may be supplied without a lexical match for a
+    # multilingual question. Copying one verbatim proves source fidelity, not
+    # that it answers this question. Such turns require the independent guard.
+    if any((getattr(item, 'metadata', None) or {}).get('requires_relevance_verification')
+           for item in getattr(resolution, 'evidence', ()) or ()):
+        return False
     if str(getattr(resolution, "question_type", "")) not in {
         "pricing", "policy", "location", "working_hours", "product_or_service",
     }:

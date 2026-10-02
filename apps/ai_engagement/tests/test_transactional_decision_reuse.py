@@ -158,3 +158,59 @@ class TransactionalDecisionReuseTests(TestCase):
         payload = json.loads(EngagementService()._build_input(context=context))
         self.assertNotIn("operational_state", payload)
         self.assertNotIn("Private reminder", json.dumps(payload))
+
+    def test_grounding_and_generation_share_committed_reminder_evidence(self):
+        import json
+        from types import SimpleNamespace
+        from unittest.mock import patch
+
+        from django.utils import timezone
+
+        from apps.ai_engagement.graph.evidence import check_grounding
+        from apps.ai_engagement.services.context import AIContextBuilder
+        from apps.ai_engagement.services.engagement import EngagementService
+        from apps.crm.models import LeadReminder
+
+        source = self._inbound("confirmed-reminder-evidence")
+        LeadReminder.objects.create(
+            lead=self.lead, title="Requested callback", due_at=timezone.now(),
+        )
+        context = AIContextBuilder().build(organization=self.organization, lead=self.lead)
+        generation = json.loads(EngagementService()._build_input(context=context))
+        decision = EngagementDecision(
+            should_engage=True, message="Your callback reminder has been saved.",
+            file_document_id=None, crm_actions=[], reason="NORMAL_CONVERSATION",
+            reason_code="NORMAL_CONVERSATION", model="test",
+        )
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.return_value = SimpleNamespace(
+                text='{"approved":true,"reason":"approved"}',
+            )
+            result = check_grounding({
+                "organization": self.organization, "lead": self.lead,
+                "context": context, "decision": decision, "requirements": [],
+                "latest_message_id": str(source.pk), "latest_text": source.body,
+            })
+        self.assertTrue(result["grounding_approved"])
+        verifier = json.loads(provider.return_value.generate_text.call_args.kwargs["input_text"])
+        self.assertEqual(verifier["operational_state"], generation["operational_state"])
+        self.assertEqual(
+            verifier["operational_state"]["pending_reminders"][0]["title"],
+            "Requested callback",
+        )
+
+    def test_sandbox_operational_evidence_stays_explicitly_simulated(self):
+        from types import SimpleNamespace
+
+        from apps.ai_engagement.services.transactional_decision_reuse import operational_state_for_context
+
+        preview = {"execution_mode": "sandbox_preview", "resolved_actions": {"action_types": ["create_reminder"]}}
+        context = SimpleNamespace(
+            organization={"id": str(self.organization.pk)},
+            lead={"id": str(self.lead.pk), "operational_state": preview},
+        )
+        with self.assertNumQueries(0):
+            evidence = operational_state_for_context(context)
+        self.assertEqual(evidence, preview)
+        evidence["resolved_actions"]["action_types"].append("file_share")
+        self.assertEqual(preview["resolved_actions"]["action_types"], ["create_reminder"])

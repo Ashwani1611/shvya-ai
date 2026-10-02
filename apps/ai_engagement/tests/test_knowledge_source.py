@@ -18,6 +18,7 @@ from apps.ai_engagement.services.knowledge_source import (
     KnowledgeSourceService,
     KnowledgeSourceServiceError,
 )
+from apps.ai_engagement.tests.test_knowledge_url_security import public_dns
 from apps.organizations.models import Organization
 
 
@@ -46,6 +47,12 @@ class KnowledgeSourceServiceTests(TestCase):
         cls.other_organization = Organization.objects.create(
             name="Other Knowledge Organization",
         )
+
+    def setUp(self):
+        dns = patch('apps.ai_engagement.services.knowledge_url_security.socket.getaddrinfo',
+                    side_effect=public_dns)
+        dns.start()
+        self.addCleanup(dns.stop)
 
     # ========================================================
     # URL SOURCE

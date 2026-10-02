@@ -15,6 +15,88 @@ from .common import (
 )
 
 
+def _completion_destinations(line, stages):
+    """Resolve destination mentions, excluding a rule's source-stage name."""
+    destinations = re.findall(
+        r"\b(?:move|shift|route|transition)\b[^\n;]*?\b(?:to|into)\s+([^\n;]+)",
+        str(line or ""), re.I,
+    )
+    target_text = " ".join(
+        re.split(r"\s+(?:when|once|after|if|provided that)\b", item, maxsplit=1, flags=re.I)[0]
+        for item in destinations
+    ) if destinations else str(line or "")
+    normalized = _norm(target_text)
+    matches = [
+        stage for stage in stages
+        if _norm(stage["name"]) and re.search(
+            rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])", normalized,
+        )
+    ]
+    if destinations:
+        # A stage named "Lead" or "Qualification" must not shadow the
+        # explicitly authored "Lead Won" or "Qualification Complete".
+        matches = [stage for stage in matches if not any(
+            _norm(stage["name"]) != _norm(other["name"])
+            and re.search(
+                rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])",
+                _norm(other["name"]),
+            )
+            for other in matches
+        )]
+    if re.search(r"\bcurrent pipeline\b", normalized):
+        return matches, True
+
+    # An unqualified stage name always belongs to the lead's current pipeline.
+    # Every pipeline has a default Qualified stage, so organization-wide name
+    # ambiguity is normal and must be resolved only when a lead is available.
+    pipeline_scopes = set()
+    for stage in matches:
+        mention = re.search(re.escape(_norm(stage["name"])), normalized)
+        suffix = normalized[mention.end():] if mention else ""
+        scope = re.match(r"[\"'`]?\s+(?:in|within|into)\s+(?:the\s+)?(.+)", suffix)
+        if scope:
+            name = re.split(r"[.;\n]|\s+(?:when|once|after|if)\b", scope.group(1), maxsplit=1)[0]
+            name = re.sub(r"^pipeline\s+|\s+pipeline$", "", name.strip()).strip("\"'` ")
+            pipeline_scopes.add(name)
+    if pipeline_scopes:
+        # Resolve the whole pipeline name: "Missing Sales" cannot match Sales.
+        return [stage for stage in matches if _norm(stage["pipeline__name"]) in pipeline_scopes], False
+    return matches, True
+
+
+def _completion_source_scope(line, source_choices):
+    """Bind explicit acquisition-source predicates to CRM's source enum.
+
+    This deliberately does not interpret the current messaging channel as the
+    acquisition source. Unsupported source expressions stay unresolved.
+    """
+    aliases = {
+        _norm(alias): key for key, label in source_choices
+        for alias in (key, key.replace("_", " "), label)
+    }
+    choices = "|".join(re.escape(alias) for alias in sorted(aliases, key=len, reverse=True))
+    pattern = re.compile(
+        rf"\b(?:(?:lead[_ ]source|source)\s*(?:is|equals?|=|:)\s*|"
+        rf"leads?\s+(?:created\s+|originating\s+)?from\s+(?:source\s+)?)"
+        rf"[\"'`]*(?P<source>{choices})[\"'`]*(?![a-z0-9_])|"
+        rf"\bfor\s+[\"'`]*(?P<for_source>{choices})[\"'`]*\s+leads?\b",
+        re.I,
+    )
+    matches = list(pattern.finditer(str(line)))
+    if matches:
+        # Do not silently reduce a multi-source/negated predicate to one source.
+        supported = len(matches) == 1 and not re.search(
+            r"\b(?:not|never|unless|except)\b", str(line), re.I,
+        ) and not re.match(r"\s+or\b", str(line)[matches[0].end():], re.I)
+        return [aliases[_norm(match.group("source") or match.group("for_source"))] for match in matches], supported
+    has_source_predicate = bool(re.search(
+        r"\b(?:lead[_ ]source|source)\s*(?:is|equals?|=|:)|"
+        r"\bleads?\s+(?:created|originating)\s+from\b|\bfor\s+\w+\s+leads?\b",
+        str(line), re.I,
+    ))
+    return None, not has_source_predicate
+
+
 def _config(
     *,
     organization,
@@ -29,7 +111,7 @@ def _config(
     """
     from apps.ai_engagement.models import OrgInfo
     from apps.ai_engagement.services.engagement_instruction_policy import section_lines
-    from apps.crm.models import AttributeDefinition, Stage
+    from apps.crm.models import AttributeDefinition, Lead, Stage
 
     info = OrgInfo.objects.filter(organization=organization).first()
     from apps.ai_engagement.services.playbook import parse_playbook
@@ -139,69 +221,31 @@ def _config(
         ).values("id", "name", "pipeline_id", "pipeline__name")
     )
     stage_targets = []
+    current_pipeline_targets = []
+    completion_routes = []
     protected_completion_stage_ids = set()
-    for line in section_lines(raw, "stage_shifting"):
-        if not _COMPLETION_RULE.search(line):
-            continue
-        normalized = _norm(line)
-        # Resolve stage names from the transition target clause rather than the
-        # whole qualification rule. Otherwise ordinary wording such as
-        # "qualification questions" can accidentally match a stage literally
-        # named "Qualification" while the intended target is "Qualified".
-        target_match = re.search(
-            r"\b(?:move|shift|transition)(?:\s+(?:the\s+)?lead|\s+it)?"
-            r"(?:\s+stage)?\s+(?:to|into)\s+(?P<target>.+)$",
-            normalized,
-            re.I,
-        )
-        target_text = target_match.group("target").strip() if target_match else normalized
-        matches = [
-            stage
-            for stage in stages
-            if _norm(stage["name"])
-            and re.search(
-                rf"(?<![a-z0-9]){re.escape(_norm(stage['name']))}(?![a-z0-9])",
-                target_text,
-            )
-        ]
-        # Prefer the most specific overlapping stage name in the explicit
-        # target clause (for example "Lead Won" over a stage named "Lead").
-        if target_match and len(matches) > 1:
-            specific_matches = []
-            for stage in matches:
-                stage_name = _norm(stage["name"])
-                if any(
-                    stage_name != _norm(other["name"])
-                    and stage_name
-                    and stage_name in _norm(other["name"])
-                    for other in matches
-                ):
-                    continue
-                specific_matches.append(stage)
-            matches = specific_matches or matches
-
-        # Even an ambiguous completion rule must not let a model route to one
-        # of its possible targets through the generic CRM action path.
-        possible_targets = matches
-        if len(matches) > 1:
-            matches = [
-                stage
-                for stage in matches
-                if _norm(stage["pipeline__name"])
-                and _norm(stage["pipeline__name"]) in target_text
-            ]
-        protected_completion_stage_ids.update(str(stage["id"]) for stage in (matches or possible_targets))
-        if len(matches) == 1:
+    completion_rules = [
+        line for line in section_lines(raw, "stage_shifting")
+        if _COMPLETION_RULE.search(line)
+    ]
+    for line in completion_rules:
+        matches, current_pipeline_only = _completion_destinations(line, stages)
+        sources, source_supported = _completion_source_scope(line, Lead._meta.get_field("lead_source").flatchoices)
+        completion_routes.append({
+            "targets": matches, "current_pipeline_only": current_pipeline_only,
+            "sources": sources, "source_supported": source_supported,
+        })
+        protected_completion_stage_ids.update(str(stage["id"]) for stage in matches)
+        if current_pipeline_only:
+            # Organization compilation has no lead; bind at execution.
+            current_pipeline_targets.append(matches)
+        elif len(matches) == 1 and sources is None:
             stage_targets.append(matches[0])
-        else:
-            errors.append(
-                {
-                    "type": "configuration_error",
-                    "status": "failed",
-                    "code": "unresolved_completion_stage_rule",
-                    "detail": line,
-                }
-            )
+        elif len(matches) != 1:
+            errors.append({
+                "type": "configuration_error", "status": "failed",
+                "code": "unresolved_completion_stage_rule", "detail": line,
+            })
     unique_targets = {str(stage["id"]): stage for stage in stage_targets}
     completion_stage = (
         next(iter(unique_targets.values())) if len(unique_targets) == 1 else None
@@ -222,6 +266,9 @@ def _config(
         "mapping_value_rules": value_rules,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
+        "completion_rules": completion_rules,
+        "completion_routes": completion_routes,
+        "current_pipeline_completion_targets": current_pipeline_targets,
         "protected_completion_stage_ids": sorted(protected_completion_stage_ids),
         "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,

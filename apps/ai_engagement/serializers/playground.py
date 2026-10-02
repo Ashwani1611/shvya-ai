@@ -1,5 +1,7 @@
 from rest_framework import serializers
 
+from apps.crm.models import Lead
+
 
 class PlaygroundRequestSerializer(
     serializers.Serializer
@@ -15,6 +17,10 @@ class PlaygroundRequestSerializer(
     )
 
     stage_id = serializers.UUIDField(required=False, allow_null=True)
+    channel = serializers.ChoiceField(choices=("sandbox", "whatsapp", "instagram"), required=False)
+    lead_source = serializers.ChoiceField(
+        choices=Lead._meta.get_field("lead_source").choices, required=False,
+    )
 
     history = serializers.ListField(
         child=serializers.DictField(),
@@ -57,3 +63,6 @@ class PlaygroundResponseSerializer(
     stage = serializers.DictField(required=False)
     events = serializers.ListField(required=False)
     files = serializers.ListField(required=False)
+    channel = serializers.CharField(required=False)
+    lead_source = serializers.CharField(required=False)
+    execution_mode = serializers.CharField(required=False)
