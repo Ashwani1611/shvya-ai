@@ -22,6 +22,8 @@ from apps.crm.models.lead import normalize_phone
 from apps.organizations.models import Organization
 from services.crm.bulk_move_service import (
     acquire_bulk_move_lock,
+    delete_bulk_move_ids,
+    get_bulk_move_id_slice,
     get_bulk_move_job,
     refresh_bulk_move_lock,
     release_bulk_move_lock,
@@ -389,8 +391,7 @@ def bulk_move_leads_task(self, job_id, generation=0):
         if generation > current_generation:
             raise self.retry(countdown=2)
 
-        lead_ids = list(job.get("lead_ids") or [])
-        total = len(lead_ids)
+        total = max(int(job.get("total") or 0), 0)
         processed = min(max(int(job.get("processed") or 0), 0), total)
         moved_count = int(job.get("moved_count") or 0)
         skipped_count = int(job.get("skipped_count") or 0)
@@ -439,7 +440,11 @@ def bulk_move_leads_task(self, job_id, generation=0):
         )
         for start in range(processed, slice_end, BULK_MOVE_BATCH_SIZE):
             end = min(start + BULK_MOVE_BATCH_SIZE, slice_end)
-            batch_ids = lead_ids[start:end]
+            batch_ids = get_bulk_move_id_slice(job_id, start, end)
+            if batch_ids is None:
+                raise RuntimeError(
+                    "Bulk move frozen lead selection expired before processing completed."
+                )
             batch_moved = 0
             batch_skipped = 0
 
@@ -513,6 +518,7 @@ def bulk_move_leads_task(self, job_id, generation=0):
                     "or were deleted before processing."
                 ),
             )
+            delete_bulk_move_ids(job_id, job.get("lead_id_chunks"))
             return
 
         # Publish the successor before advancing the generation. If it starts
