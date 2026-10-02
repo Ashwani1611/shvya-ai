@@ -226,7 +226,7 @@ The production baseline now also includes:
 - read-only organization-scoped diagnostic MCP/OAuth access with hashed token material and safe audit metadata;
 - actor-bound Operations MCP/OAuth for ChatGPT/Claude with explicit Superadmin tenant context, Superadmin-owned organization capability policy, dry-run/approval gates, verified writes, workspace support-presence visibility and append-only audit.
 
-## Current staging business workspaces
+## Current business workspaces
 
 The architecture map now also includes these first-class staging domains:
 
