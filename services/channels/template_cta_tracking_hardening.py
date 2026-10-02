@@ -3,12 +3,19 @@
 Carousel templates are always Marketing templates. Their local card actions must
 remain available after a Meta sync because Meta only returns the SHVYA tracking
 URL, not the server-held final website or phone action. Meta click tracking is
-also enabled before the first analytics read.
+also enabled before the first analytics read, and unique CTA clicks are counted
+by recipient rather than by outbound message.
 """
 
 import copy
+from collections import defaultdict
+from datetime import datetime, time, timedelta, timezone as dt_timezone
 
 from apps.channels.models import WhatsAppTemplate
+from apps.channels.tracking_models import (
+    WhatsAppTemplateTrackedClick,
+    WhatsAppTemplateTrackedLink,
+)
 
 
 _INSTALLED = False
@@ -44,6 +51,7 @@ def install_template_cta_tracking_hardening():
     from . import template_meta_fix
     from . import template_service
 
+    current_augment_analytics = tracking.augment_tracked_cta_analytics
     current_carousel_button = template_service._carousel_button_payload
     current_fetch_analytics = template_analytics.fetch_template_analytics
     current_sync_templates = template_meta_fix.sync_templates
@@ -58,6 +66,101 @@ def install_template_cta_tracking_hardening():
         ):
             return tracking._tracked_meta_button(button)
         return current_carousel_button(button)
+
+    def augment_analytics(
+        *,
+        account,
+        template_ids,
+        start_date,
+        end_date,
+        results,
+    ):
+        # Keep provider/quick-reply unique counts before the core tracked-link
+        # augmentation. The core total-click calculation remains authoritative,
+        # while this layer replaces its per-message unique approximation with
+        # recipient-level sets across repeated sends.
+        existing_unique = {
+            str(meta_id): copy.deepcopy(result.get("unique_clicks") or [])
+            for meta_id, result in (results or {}).items()
+        }
+        augmented = current_augment_analytics(
+            account=account,
+            template_ids=template_ids,
+            start_date=start_date,
+            end_date=end_date,
+            results=results,
+        )
+
+        ids = list(dict.fromkeys(str(value) for value in template_ids if value))
+        if not ids or not augmented:
+            return augmented
+        start_at = datetime.combine(start_date, time.min, tzinfo=dt_timezone.utc)
+        end_at = datetime.combine(
+            end_date + timedelta(days=1),
+            time.min,
+            tzinfo=dt_timezone.utc,
+        )
+        action_types = {
+            WhatsAppTemplateTrackedLink.ActionType.WEBSITE: "url_button",
+            WhatsAppTemplateTrackedLink.ActionType.CALL: "call_button",
+            WhatsAppTemplateTrackedLink.ActionType.COPY_CODE: "copy_code_button",
+        }
+        recipients = {
+            meta_id: defaultdict(set)
+            for meta_id in ids
+        }
+        links = (
+            WhatsAppTemplateTrackedLink.objects.filter(
+                organization_id=account.organization_id,
+                account_id=account.pk,
+                meta_template_id__in=ids,
+                is_active=True,
+                sent_at__gte=start_at,
+                sent_at__lt=end_at,
+                events__event_type=WhatsAppTemplateTrackedClick.EventType.CLICK,
+            )
+            .select_related("message")
+            .distinct()
+        )
+        for link in links:
+            meta_id = str(link.meta_template_id or "")
+            if meta_id not in augmented:
+                continue
+            kind = action_types.get(link.action_type, "button")
+            label = link.button_text or kind.replace("_", " ").title()
+            identity = (
+                str(link.lead_id or "")
+                or str(link.message.to_number or "").strip()
+                or str(link.message_id)
+            )
+            recipients[meta_id][(kind, label)].add(identity)
+
+        for meta_id, result in augmented.items():
+            local_rows = [
+                {
+                    "type": key[0],
+                    "button_content": key[1],
+                    "count": len(values),
+                }
+                for key, values in recipients.get(meta_id, {}).items()
+                if values
+            ]
+            result["unique_clicks"] = tracking._merge_breakdowns(
+                existing_unique.get(meta_id, []),
+                local_rows,
+            )
+            unique_total = sum(
+                int(row.get("count") or 0)
+                for row in result["unique_clicks"]
+            )
+            delivered = int((result.get("totals") or {}).get("delivered") or 0)
+            result["unique_click_total"] = unique_total
+            result["unique_click_rate"] = (
+                round((unique_total / delivered) * 100, 1)
+                if delivered
+                else None
+            )
+        return augmented
 
     def fetch_analytics(*, account, template_ids, start_date, end_date):
         # Confirm Meta's own URL tracking before the read so the first insights
@@ -120,5 +223,6 @@ def install_template_cta_tracking_hardening():
 
     template_service._carousel_button_payload = carousel_button
     template_analytics.fetch_template_analytics = fetch_analytics
+    tracking.augment_tracked_cta_analytics = augment_analytics
     template_meta_fix.sync_templates = sync_templates
     _INSTALLED = True
