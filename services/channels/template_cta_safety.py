@@ -52,6 +52,7 @@ def install_template_cta_safety():
     from .template_service import TemplateError
 
     original_definition = tracking._definition
+    original_tracking_url = tracking._tracking_url
     original_apply = tracking.apply_tracking_to_meta_payload
     original_has_trackable_cta = tracking.template_has_trackable_cta
 
@@ -92,6 +93,21 @@ def install_template_cta_safety():
                 )
         return result
 
+    def tracking_url(*, template, definition, button_index, card_index=None):
+        url = original_tracking_url(
+            template=template,
+            definition=definition,
+            button_index=button_index,
+            card_index=card_index,
+        )
+        # Meta requires the sole dynamic URL variable to be the final part of
+        # the URL. The base implementation adds a slash for normal Django
+        # routes; remove it only for dynamic buttons and keep the static route
+        # unchanged.
+        if definition.get("placeholder") and url.endswith("}}/"):
+            return url[:-1]
+        return url
+
     def apply_tracking_to_meta_payload(*, template, payload, base):
         # Authentication templates have Meta-defined OTP/copy-code semantics.
         # Converting those buttons to URL actions would make the template
@@ -106,6 +122,7 @@ def install_template_cta_safety():
         return original_has_trackable_cta(template)
 
     tracking._definition = definition
+    tracking._tracking_url = tracking_url
     tracking.apply_tracking_to_meta_payload = apply_tracking_to_meta_payload
     tracking.template_has_trackable_cta = template_has_trackable_cta
     WhatsAppTemplate.has_trackable_cta = property(template_has_trackable_cta)
