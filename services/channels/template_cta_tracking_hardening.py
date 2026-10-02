@@ -2,14 +2,13 @@
 
 Carousel templates are always Marketing templates. Their local card actions must
 remain available after a Meta sync because Meta only returns the SHVYA tracking
-URL, not the server-held final website or phone action. Tracking tokens also
-remain inactive until the provider accepts the outbound message.
+URL, not the server-held final website or phone action. Meta click tracking is
+also enabled before the first analytics read.
 """
 
 import copy
 
 from apps.channels.models import WhatsAppTemplate
-from apps.channels.tracking_models import WhatsAppTemplateTrackedLink
 
 
 _INSTALLED = False
@@ -47,7 +46,6 @@ def install_template_cta_tracking_hardening():
 
     current_carousel_button = template_service._carousel_button_payload
     current_fetch_analytics = template_analytics.fetch_template_analytics
-    current_prepare_message_tracking = tracking.prepare_message_tracking
     current_sync_templates = template_meta_fix.sync_templates
 
     def carousel_button(button):
@@ -78,20 +76,6 @@ def install_template_cta_tracking_hardening():
             start_date=start_date,
             end_date=end_date,
         )
-
-    def prepare_message_tracking(*, message, template, components):
-        rendered, links = current_prepare_message_tracking(
-            message=message,
-            template=template,
-            components=components,
-        )
-        if links:
-            WhatsAppTemplateTrackedLink.objects.filter(
-                id__in=[link.id for link in links]
-            ).update(is_active=False)
-            for link in links:
-                link.is_active = False
-        return rendered, links
 
     def sync_templates(*, organization, account):
         preserved = {}
@@ -136,6 +120,5 @@ def install_template_cta_tracking_hardening():
 
     template_service._carousel_button_payload = carousel_button
     template_analytics.fetch_template_analytics = fetch_analytics
-    tracking.prepare_message_tracking = prepare_message_tracking
     template_meta_fix.sync_templates = sync_templates
     _INSTALLED = True
