@@ -168,7 +168,8 @@ class RecoveryValidationTests(TestCase):
     def test_foreign_stage_rejected_before_provider(self):
         other_pipeline = Pipeline.objects.create(organization=self.other, name="Other sales",
             country_code="+91", phone_number="9000000863")
-        data = scenario(); data["cases"][0]["stage_id"] = str(other_pipeline.stages.first().pk)
+        data = scenario()
+        data["cases"][0]["stage_id"] = str(other_pipeline.stages.first().pk)
         with patch.object(evaluation, "_memory_playground") as runner, self.assertRaises(RecoveryEvaluationError):
             evaluation.evaluate(self.organization, data)
         runner.assert_not_called()
