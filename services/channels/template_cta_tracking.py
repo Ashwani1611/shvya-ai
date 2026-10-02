@@ -16,11 +16,10 @@ from urllib.parse import quote, urlsplit
 
 from django.conf import settings
 from django.core import signing
-from django.utils import timezone
 
 from apps.channels.models import WhatsAppTemplate
 
-from . import template_analytics_base as _analytics_base
+from . import template_analytics_base as analytics_base
 
 
 TRACKING_SALT = "shvya.whatsapp.template.cta.v1"
@@ -64,12 +63,13 @@ def _destination_tokens(value):
 
 
 def _definition(button):
-    """Normalize a local button to a trackable action definition."""
+    """Normalize one local button to a trackable action definition."""
 
     if not isinstance(button, dict):
         return None
     kind = str(button.get("type") or "").strip().lower()
-    text = _normalized_text(button.get("text"))
+    label = _normalized_text(button.get("text"))
+
     if kind == "visit_website":
         destination = str(button.get("url") or "").strip()
         tokens = _destination_tokens(destination)
@@ -79,9 +79,7 @@ def _definition(button):
             raise TemplateError(
                 "A tracked website button can contain at most one URL parameter."
             )
-        sample = destination
-        if tokens:
-            sample = _VARIABLE.sub("example", destination, count=1)
+        sample = _VARIABLE.sub("example", destination, count=1) if tokens else destination
         try:
             parsed = urlsplit(sample)
         except ValueError:
@@ -93,29 +91,30 @@ def _definition(button):
         return {
             "action_type": "url",
             "destination": destination,
-            "label": (text or "Visit website")[:80],
+            "label": (label or "Visit website")[:80],
             "placeholder": tokens[0] if tokens else "",
         }
+
     if kind == "call_phone":
         destination = str(button.get("phone_number") or "").strip()
-        if not destination:
-            return None
-        return {
-            "action_type": "call",
-            "destination": destination,
-            "label": (text or "Call")[:80],
-            "placeholder": "",
-        }
+        if destination:
+            return {
+                "action_type": "call",
+                "destination": destination,
+                "label": (label or "Call")[:80],
+                "placeholder": "",
+            }
+
     if kind == "copy_offer":
         destination = str(button.get("coupon_code") or "").strip()
-        if not destination:
-            return None
-        return {
-            "action_type": "copy_code",
-            "destination": destination,
-            "label": (text or "Copy code")[:80],
-            "placeholder": "",
-        }
+        if destination:
+            return {
+                "action_type": "copy_code",
+                "destination": destination,
+                "label": (label or "Copy code")[:80],
+                "placeholder": "",
+            }
+
     return None
 
 
@@ -149,8 +148,7 @@ def decode_cta_token(token):
     data = signing.loads(str(token or ""), salt=TRACKING_SALT)
     if not isinstance(data, dict) or data.get("v") != 1:
         raise signing.BadSignature("Unsupported CTA token.")
-    action_type = str(data.get("a") or "")
-    if action_type not in ACTION_TO_BREAKDOWN_TYPE:
+    if str(data.get("a") or "") not in ACTION_TO_BREAKDOWN_TYPE:
         raise signing.BadSignature("Unsupported CTA action.")
     return data
 
@@ -165,9 +163,8 @@ def _tracking_url(*, template, definition, button_index, card_index=None):
         card_index=card_index,
         placeholder=definition.get("placeholder", ""),
     )
-    # Django's path converter decodes this back to the original signed token.
-    safe_token = quote(token, safe="._-~:")
-    url = f"{_public_origin()}{TRACKING_PATH}{safe_token}/"
+    token = quote(token, safe="._-~:")
+    url = f"{_public_origin()}{TRACKING_PATH}{token}/"
     placeholder = definition.get("placeholder")
     if placeholder:
         url += "{{" + str(placeholder) + "}}/"
@@ -202,23 +199,24 @@ def _tracked_meta_button(*, template, local_button, button_index, card_index=Non
 
 
 def _buttons_component(components):
-    for component in components or []:
-        if (
-            isinstance(component, dict)
+    return next(
+        (
+            component
+            for component in components or []
+            if isinstance(component, dict)
             and str(component.get("type") or "").upper() == "BUTTONS"
-        ):
-            return component
-    return None
+        ),
+        None,
+    )
 
 
 def _transform_standard(*, template, components, base):
     component = _buttons_component(components)
     if component is None:
         return False
-    remote_buttons = component.get("buttons") or []
-    local_buttons = base._ordered_buttons(template.buttons or [])
+    remote_buttons = list(component.get("buttons") or [])
     changed = False
-    for index, local_button in enumerate(local_buttons):
+    for index, local_button in enumerate(base._ordered_buttons(template.buttons or [])):
         if index >= len(remote_buttons):
             break
         tracked = _tracked_meta_button(
@@ -245,19 +243,20 @@ def _transform_carousel(*, template, components, state):
     )
     if carousel is None:
         return False
+
     config = state.carousel_config if isinstance(state.carousel_config, dict) else {}
-    local_cards = config.get("cards") or []
     remote_cards = carousel.get("cards") or []
     changed = False
-    for card_index, local_card in enumerate(local_cards):
+    for card_index, local_card in enumerate(config.get("cards") or []):
         if card_index >= len(remote_cards) or not isinstance(local_card, dict):
             break
-        remote_component = _buttons_component(
-            (remote_cards[card_index] or {}).get("components") or []
-        )
-        if remote_component is None:
+        remote_card = remote_cards[card_index]
+        if not isinstance(remote_card, dict):
             continue
-        remote_buttons = remote_component.get("buttons") or []
+        component = _buttons_component(remote_card.get("components") or [])
+        if component is None:
+            continue
+        remote_buttons = list(component.get("buttons") or [])
         for button_index, local_button in enumerate(local_card.get("buttons") or []):
             if button_index >= len(remote_buttons):
                 break
@@ -270,7 +269,7 @@ def _transform_carousel(*, template, components, state):
             if tracked is not None:
                 remote_buttons[button_index] = tracked
                 changed = True
-        remote_component["buttons"] = remote_buttons
+        component["buttons"] = remote_buttons
     return changed
 
 
@@ -321,10 +320,10 @@ def is_tracking_url(value):
 
 def components_have_tracking(components):
     return any(
-        str(button.get("type") or "").upper() == "URL"
+        isinstance(button, dict)
+        and str(button.get("type") or "").upper() == "URL"
         and is_tracking_url(button.get("url"))
         for button in _walk_buttons(components)
-        if isinstance(button, dict)
     )
 
 
@@ -337,6 +336,7 @@ def _decode_tracking_button(button):
         data = decode_cta_token(token)
     except (IndexError, ValueError, signing.BadSignature):
         return None
+
     action_type = data["a"]
     if action_type == "url":
         return {
@@ -354,15 +354,54 @@ def _decode_tracking_button(button):
         }
     return {
         "type": "copy_offer",
-        "text": data.get("l") or "Copy code",
+        "text": data.get("l") or button.get("text") or "Copy code",
         "url": "",
         "phone_number": "",
         "coupon_code": data.get("d") or "",
     }
 
 
+def _native_button(button):
+    if not isinstance(button, dict):
+        return None
+    kind = str(button.get("type") or "").upper()
+    if kind == "URL":
+        return {
+            "type": "visit_website",
+            "text": button.get("text") or "Visit website",
+            "url": button.get("url") or "",
+            "phone_number": "",
+        }
+    if kind == "PHONE_NUMBER":
+        return {
+            "type": "call_phone",
+            "text": button.get("text") or "Call",
+            "url": "",
+            "phone_number": button.get("phone_number") or "",
+        }
+    if kind == "COPY_CODE":
+        example = button.get("example")
+        if isinstance(example, list):
+            example = example[0] if example else ""
+        return {
+            "type": "copy_offer",
+            "text": button.get("text") or "Copy code",
+            "url": "",
+            "phone_number": "",
+            "coupon_code": example or button.get("coupon_code") or "",
+        }
+    if kind == "QUICK_REPLY":
+        return {
+            "type": "text_back",
+            "text": button.get("text") or "Quick reply",
+            "url": "",
+            "phone_number": "",
+        }
+    return None
+
+
 def source_buttons_for_template(template):
-    """Return editable local buttons, including remote-only legacy templates."""
+    """Return editable local buttons, including remote-only templates."""
 
     if template.buttons:
         return copy.deepcopy(template.buttons)
@@ -373,72 +412,32 @@ def source_buttons_for_template(template):
     component = _buttons_component(state.components)
     if component is None:
         return []
-    result = []
-    for button in component.get("buttons") or []:
-        decoded = _decode_tracking_button(button)
-        if decoded is not None:
-            result.append(decoded)
-            continue
-        kind = str((button or {}).get("type") or "").upper()
-        if kind == "URL":
-            result.append(
-                {
-                    "type": "visit_website",
-                    "text": button.get("text") or "Visit website",
-                    "url": button.get("url") or "",
-                    "phone_number": "",
-                }
-            )
-        elif kind == "PHONE_NUMBER":
-            result.append(
-                {
-                    "type": "call_phone",
-                    "text": button.get("text") or "Call",
-                    "url": "",
-                    "phone_number": button.get("phone_number") or "",
-                }
-            )
-        elif kind == "COPY_CODE":
-            example = button.get("example")
-            if isinstance(example, list):
-                example = example[0] if example else ""
-            result.append(
-                {
-                    "type": "copy_offer",
-                    "text": button.get("text") or "Copy code",
-                    "url": "",
-                    "phone_number": "",
-                    "coupon_code": example or button.get("coupon_code") or "",
-                }
-            )
-        elif kind == "QUICK_REPLY":
-            result.append(
-                {
-                    "type": "text_back",
-                    "text": button.get("text") or "Quick reply",
-                    "url": "",
-                    "phone_number": "",
-                }
-            )
-    return result
+    buttons = []
+    for remote in component.get("buttons") or []:
+        parsed = _decode_tracking_button(remote) or _native_button(remote)
+        if parsed is not None:
+            buttons.append(parsed)
+    return buttons
 
 
 def template_has_trackable_cta(template):
     if any(
-        str(button.get("type") or "") in TRACKABLE_LOCAL_TYPES
+        isinstance(button, dict)
+        and str(button.get("type") or "") in TRACKABLE_LOCAL_TYPES
         for button in source_buttons_for_template(template)
-        if isinstance(button, dict)
     ):
         return True
     try:
         config = template.meta_state.carousel_config
     except (AttributeError, WhatsAppTemplate.meta_state.RelatedObjectDoesNotExist):
         config = {}
-    for card in (config or {}).get("cards") or []:
-        for button in (card or {}).get("buttons") or []:
-            if str((button or {}).get("type") or "") in TRACKABLE_LOCAL_TYPES:
-                return True
-    return False
+    return any(
+        isinstance(button, dict)
+        and str(button.get("type") or "") in TRACKABLE_LOCAL_TYPES
+        for card in (config or {}).get("cards") or []
+        if isinstance(card, dict)
+        for button in card.get("buttons") or []
+    )
 
 
 def template_tracking_enabled(template):
@@ -448,24 +447,20 @@ def template_tracking_enabled(template):
         return False
 
 
-def _breakdown(rows):
-    values = [
+def _breakdown(mapping):
+    rows = [
         {
             "type": key[0],
             "button_content": key[1],
             "count": count,
         }
-        for key, count in rows.items()
+        for key, count in mapping.items()
         if count > 0
     ]
-    values.sort(
-        key=lambda item: (
-            -item["count"],
-            item["button_content"],
-            item["type"],
-        )
+    rows.sort(
+        key=lambda row: (-row["count"], row["button_content"], row["type"])
     )
-    return values
+    return rows
 
 
 def augment_tracked_cta_events(
@@ -476,7 +471,7 @@ def augment_tracked_cta_events(
     end_date,
     local_results,
 ):
-    """Add confirmed Website, Call, and Copy Code actions to analytics."""
+    """Add confirmed Website, Call and Copy Code actions to analytics."""
 
     ids = list(dict.fromkeys(str(value) for value in template_ids if value))
     if not ids or not local_results:
@@ -494,34 +489,41 @@ def augment_tracked_cta_events(
         for template in templates
         if template.meta_template_id
     }
-    tracked_meta_ids = {
+    tracked_ids = {
         str(template.meta_template_id)
         for template in templates
         if template.meta_template_id and template_tracking_enabled(template)
     }
-    if not tracked_meta_ids:
+    if not tracked_ids:
         return local_results
 
     day_maps = {
-        meta_id: {
+        template_id: {
             str(row.get("date")): row
             for row in (result.get("days") or [])
             if row.get("date")
         }
-        for meta_id, result in local_results.items()
+        for template_id, result in local_results.items()
     }
-    click_maps = {meta_id: defaultdict(int) for meta_id in ids}
-    unique_maps = {meta_id: defaultdict(set) for meta_id in ids}
-    prior_unique = {meta_id: defaultdict(int) for meta_id in ids}
-    for meta_id, result in local_results.items():
+    click_counts = {template_id: defaultdict(int) for template_id in ids}
+    existing_unique = {template_id: defaultdict(int) for template_id in ids}
+    event_unique = {template_id: defaultdict(set) for template_id in ids}
+
+    for template_id, result in local_results.items():
         for row in result.get("clicks") or []:
-            click_maps[meta_id][
-                (str(row.get("type") or "button"), _normalized_text(row.get("button_content")))
-            ] += _analytics_base._as_int(row.get("count"))
+            key = (
+                str(row.get("type") or "button"),
+                _normalized_text(row.get("button_content")),
+            )
+            click_counts[template_id][key] += analytics_base._as_int(row.get("count"))
         for row in result.get("unique_clicks") or []:
-            prior_unique[meta_id][
-                (str(row.get("type") or "button"), _normalized_text(row.get("button_content")))
-            ] += _analytics_base._as_int(row.get("count"))
+            key = (
+                str(row.get("type") or "button"),
+                _normalized_text(row.get("button_content")),
+            )
+            existing_unique[template_id][key] += analytics_base._as_int(
+                row.get("count")
+            )
 
     start_at = datetime.combine(start_date, time.min, tzinfo=dt_timezone.utc)
     end_at = datetime.combine(
@@ -534,7 +536,7 @@ def augment_tracked_cta_events(
     events = WhatsAppTemplateCTAEvent.objects.filter(
         organization_id=account.organization_id,
         account_id=account.pk,
-        template_id__in=local_to_meta,
+        template_id__in=set(local_to_meta),
         clicked_at__gte=start_at,
         clicked_at__lt=end_at,
     ).values(
@@ -544,60 +546,59 @@ def augment_tracked_cta_events(
         "visitor_hash",
         "clicked_at",
     )
-    applied = {meta_id: 0 for meta_id in ids}
+    applied = {template_id: 0 for template_id in ids}
     for event in events.iterator(chunk_size=1000):
-        meta_id = local_to_meta.get(str(event["template_id"]))
-        if meta_id not in local_results:
+        template_id = local_to_meta.get(str(event["template_id"]))
+        if template_id not in local_results:
             continue
-        day_key = event["clicked_at"].astimezone(dt_timezone.utc).date().isoformat()
-        day_row = day_maps.get(meta_id, {}).get(day_key)
+        day = event["clicked_at"].astimezone(dt_timezone.utc).date().isoformat()
+        day_row = day_maps.get(template_id, {}).get(day)
         if day_row is None:
             continue
-        day_row["clicked"] = _analytics_base._as_int(day_row.get("clicked")) + 1
+        day_row["clicked"] = analytics_base._as_int(day_row.get("clicked")) + 1
         key = (
             ACTION_TO_BREAKDOWN_TYPE.get(event["action_type"], "button"),
             _normalized_text(event["button_label"]) or "Button",
         )
-        click_maps[meta_id][key] += 1
-        unique_maps[meta_id][key].add(event["visitor_hash"])
-        applied[meta_id] += 1
+        click_counts[template_id][key] += 1
+        event_unique[template_id][key].add(event["visitor_hash"])
+        applied[template_id] += 1
 
-    for meta_id in tracked_meta_ids:
-        result = local_results.get(meta_id)
-        if not result:
+    for template_id in tracked_ids:
+        result = local_results.get(template_id)
+        if result is None:
             continue
         availability = result.setdefault("availability", {})
         availability["clicked"] = True
         availability["unique_clicked"] = True
-        result["clicks"] = _breakdown(click_maps[meta_id])
-        unique_rows = defaultdict(int)
-        for key, count in prior_unique[meta_id].items():
-            unique_rows[key] += count
-        for key, visitors in unique_maps[meta_id].items():
-            unique_rows[key] += len(visitors)
-        result["unique_clicks"] = _breakdown(unique_rows)
+        result["clicks"] = _breakdown(click_counts[template_id])
+
+        unique_counts = defaultdict(int, existing_unique[template_id])
+        for key, visitors in event_unique[template_id].items():
+            unique_counts[key] += len(visitors)
+        result["unique_clicks"] = _breakdown(unique_counts)
+
         clicked_total = sum(
-            _analytics_base._as_int(row.get("clicked"))
+            analytics_base._as_int(row.get("clicked"))
             for row in result.get("days") or []
         )
         unique_total = sum(
-            _analytics_base._as_int(row.get("count"))
+            analytics_base._as_int(row.get("count"))
             for row in result["unique_clicks"]
         )
         result.setdefault("totals", {})["clicked"] = clicked_total
-        result.setdefault("rates", {})["clicked"] = _analytics_base._rate(
+        result.setdefault("rates", {})["clicked"] = analytics_base._rate(
             clicked_total,
-            (result.get("totals") or {}).get("delivered", 0),
+            result.get("totals", {}).get("delivered", 0),
         )
         result["unique_click_total"] = unique_total
-        result["unique_click_rate"] = _analytics_base._rate(
+        result["unique_click_rate"] = analytics_base._rate(
             unique_total,
-            (result.get("totals") or {}).get("delivered", 0),
+            result.get("totals", {}).get("delivered", 0),
         )
-        previous_basis = str(result.get("click_count_basis") or "")
         result["click_count_basis"] = (
             "local_all_buttons"
-            if previous_basis == "local_quick_reply"
+            if result.get("click_count_basis") == "local_quick_reply"
             else "shvya_tracked_cta"
         )
         result["click_source"] = "shvya_cta_receipts"
@@ -606,15 +607,16 @@ def augment_tracked_cta_events(
         result["click_data_partial"] = False
         result["local_click_receipts_available"] = True
         result["local_click_receipts_applied"] = bool(
-            result.get("local_click_receipts_applied") or applied[meta_id]
+            result.get("local_click_receipts_applied") or applied[template_id]
         )
         if result.get("source") == "shvya":
             result["source_label"] = "SHVYA delivery and CTA receipts"
+
     return local_results
 
 
 def install_template_cta_tracking():
-    """Install payload transformation before any template transport imports."""
+    """Install payload transformation before template transports import it."""
 
     global _INSTALLED
     if _INSTALLED:
@@ -651,9 +653,6 @@ def install_template_cta_tracking():
 
     base._validate_button_set = validate_button_set
     base.build_meta_payload = build_meta_payload
-
-    # Safe read-only properties let the template list expose one-click upgrade
-    # actions without adding columns to the canonical WhatsAppTemplate model.
     WhatsAppTemplate.has_trackable_cta = property(template_has_trackable_cta)
     WhatsAppTemplate.cta_tracking_enabled = property(template_tracking_enabled)
     _INSTALLED = True
