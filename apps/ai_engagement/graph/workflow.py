@@ -183,7 +183,10 @@ def _deterministic_extract(state: EngagementGraphState, *, reply_text: str | Non
         source_message_id=state.get("latest_message_id", ""),
     )
     qualification_state = direct["state"]
-    updates: dict = {"qualification_state": qualification_state}
+    updates: dict = {
+        "qualification_state": qualification_state,
+        "answer_extracted": bool(direct.get("changed") and direct.get("answer_status") == REQUIREMENT_ANSWERED),
+    }
 
     direct_next = direct.get("next_requirement")
     # Keep high-confidence answer extraction deterministic, but let the normal
@@ -244,6 +247,10 @@ def _route_turn(state: EngagementGraphState) -> dict:
     service = state["service"]
     if requested:
         return {"route": "rag", "retrieval_query": requested}
+    if state.get("answer_extracted"):
+        # A validated short answer such as "Referrals" needs Playbook/language
+        # composition, not an embedding search for the customer's own fact.
+        return {"route": "generate"}
     if service._should_retrieve_knowledge(context=state["context"]):
         query = service._build_knowledge_query(context=state["context"])
         if query:
@@ -313,12 +320,16 @@ def _with_file_candidates(state: EngagementGraphState, context):
     from apps.ai_engagement.services.file_sharing import FileSharingService
     from apps.organizations.models import Organization
     candidates = (context.organization or {}).get("_file_candidates")
-    if candidates is None:
-        # Pure policy previews may use synthetic organizations; they have no
-        # document store. Real tenants can share guided files without a pipeline.
-        candidates = FileSharingService().build_file_candidates(
-            organization=state["organization"], context=context,
-        ) if isinstance(state["organization"], Organization) and state["organization"].pk else []
+    if candidates is not None:
+        return context
+    # Pure policy previews may use synthetic organizations; they have no
+    # document store. Preserve their authored context without synthetic fields.
+    organization = state["organization"]
+    if not isinstance(organization, Organization) or not organization.pk:
+        return context
+    candidates = FileSharingService().build_file_candidates(
+        organization=organization, context=context,
+    )
     return replace(context, organization={**context.organization, "_file_candidates": candidates})
 
 

@@ -46,6 +46,16 @@ class QualificationResponseCompositionTests(SimpleTestCase):
         self.assertNotIn("direct_decision", updates)
         self.assertEqual(_route_turn({**state, **updates})["route"], "generate")
 
+    def test_validated_text_option_skips_rag_but_keeps_response_composition(self):
+        state = self.state(languages="English")
+        state["latest_text"] = "Referrals"
+        updates = self.extract(state)
+        with patch.object(state["service"], "_should_retrieve_knowledge") as retrieve:
+            self.assertEqual(_route_turn({**state, **updates})["route"], "generate")
+            retrieve.assert_not_called()
+        explicit = _route_turn({**state, **updates, "requested_knowledge_query": "referral policy"})
+        self.assertEqual(explicit, {"route": "rag", "retrieval_query": "referral policy"})
+
     def test_source_specific_playbook_and_attribute_mapping_require_composition(self):
         for settings in (
             {"playbook": "## Rules\nFor Instagram leads acknowledge in Hinglish."},
