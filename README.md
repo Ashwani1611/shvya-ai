@@ -590,7 +590,7 @@ POST /api/v1/auth/token/refresh/
 /api/v1/telephony/
 ```
 
-See [`docs/api.md`](./docs/api.md) for the current staging API and MCP boundary map.
+See [`docs/api.md`](./docs/api.md) for the current API and MCP boundary map.
 
 API writes and external side effects should preserve tenant isolation and idempotency guarantees.
 
