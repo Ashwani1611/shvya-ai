@@ -140,10 +140,11 @@
         }
     }
 
-    async function pollBulkMove(statusUrl, total) {
+    async function pollBulkMove(statusUrl, total, ticket) {
         let transientFailures = 0;
         while (true) {
             await sleep(1000);
+            if (generation !== ticket || !dialog.open) return null;
             let response;
             try {
                 response = await fetch(statusUrl, {
@@ -342,6 +343,7 @@
         event.preventDefault();
         if (busy || loading || el('submit').disabled || !form.reportValidity()) return;
         showError('');
+        const submissionTicket = generation;
         const payload = {action};
         if (action === 'update') {
             Object.assign(payload, {
@@ -375,7 +377,8 @@
                     status(`Moving 0 of ${result.count} leads…`);
                     el('description').textContent =
                         'This large update is running safely in the background. You can close this window; the move will continue.';
-                    const completed = await pollBulkMove(result.status_url, result.count);
+                    const completed = await pollBulkMove(result.status_url, result.count, submissionTicket);
+                    if (!completed) return;
                     const skipped = Number(completed.skipped_count || 0);
                     status(
                         skipped
@@ -396,7 +399,12 @@
             showError(error instanceof TypeError
                 ? 'The connection was interrupted. Refresh the CRM to check the result before retrying.'
                 : error.message);
-        } finally { el('submit').hidden = false; setBusy(false); }
+        } finally {
+            if (generation === submissionTicket) {
+                el('submit').hidden = false;
+                setBusy(false);
+            }
+        }
     });
 
     // The legacy CRM also inserts/moves cards directly, outside HTMX swaps.
