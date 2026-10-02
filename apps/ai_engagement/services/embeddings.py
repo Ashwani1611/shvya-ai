@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import math
 
 from typing import Sequence
 
@@ -51,6 +52,7 @@ class EmbeddingService:
         *,
         api_key: str | None = None,
         model: str | None = None,
+        timeout_seconds: float | None = None,
     ) -> None:
 
         self.api_key = (
@@ -73,6 +75,14 @@ class EmbeddingService:
             or self.DEFAULT_MODEL
         ).strip()
 
+        # Query-time callers opt into a bounded request with no SDK retries.
+        # Ingestion callers retain their existing defaults.
+        self._request_options = {}
+        if timeout_seconds is not None:
+            timeout_seconds = float(timeout_seconds)
+            if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= 60:
+                raise ValueError("Embedding timeout must be finite and between 0 and 60 seconds.")
+            self._request_options = {"timeout": timeout_seconds, "max_retries": 0}
         self._client: OpenAI | None = None
 
     def _get_client(self) -> OpenAI:
@@ -98,6 +108,7 @@ class EmbeddingService:
         if self._client is None:
             self._client = OpenAI(
                 api_key=self.api_key,
+                **self._request_options,
             )
 
         return self._client
