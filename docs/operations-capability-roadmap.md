@@ -1,8 +1,15 @@
 # SHVYA Operations capability expansion
 
 This document describes the production-safe capability layer added around the
-existing Operations MCP. It excludes Voice Agent and Vault; both remain
-separate products.
+existing Operations MCP. Live voice-provider provisioning remains outside this
+capability layer, and no external Vault product is exposed. The MCP setup library
+may still provide the artifact-only `shvya-voice-agent` skill and tenant-scoped
+`shvya-vault` intake workflow; those skills do not create provider authority or a
+separate secret store.
+
+## Skill layer
+
+The current backend-owned setup library exposes 25 top-level domain skills plus eight specialist setup/review sub-prompts. Skills organize how an authorized external AI uses the capability layer; they are not capabilities themselves. `get_capability_discovery` and authenticated `tools/list` remain authoritative for what the current connection can actually execute.
 
 ## Operating contract
 
