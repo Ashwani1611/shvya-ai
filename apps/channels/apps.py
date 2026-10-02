@@ -37,6 +37,9 @@ class ChannelsConfig(AppConfig):
         from services.channels.template_cta_tracking import (
             install_template_cta_tracking,
         )
+        from services.channels.template_cta_tracking_hardening import (
+            install_template_cta_tracking_hardening,
+        )
         from services.channels.whatsapp_failure_patch import (
             install_whatsapp_failure_diagnostics,
         )
@@ -68,6 +71,7 @@ class ChannelsConfig(AppConfig):
         install_whatsapp_phone_registration()
         install_whatsapp_template_transport()
         install_template_cta_tracking()
+        install_template_cta_tracking_hardening()
         install_hosted_whatsapp_transport()
         install_whatsapp_failure_diagnostics()
         install_whatsapp_api_runtime()
