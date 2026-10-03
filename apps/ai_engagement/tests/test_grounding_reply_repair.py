@@ -131,7 +131,7 @@ class GroundingReplyRepairTests(SimpleTestCase):
         self.assertEqual(result["decision"].crm_actions, [])
 
     def test_unsupported_file_or_facts_are_not_retried_as_wording_errors(self):
-        for reason in ("invalid_file", "unsupported_claim", "invalid_qualification", "unperformed_action"):
+        for reason in ("invalid_file", "invalid_qualification", "unperformed_action"):
             with self.subTest(reason=reason):
                 _, result, calls, _ = self.run_guard([{"approved": False, "reason": reason}])
                 self.assertFalse(result["grounding_approved"])
@@ -175,7 +175,7 @@ class GroundingReplyRepairTests(SimpleTestCase):
                 {"approved": True, "reason": "approved"},
             )]
             check_grounding(self.state())
-        self.assertEqual(provider.call_args.kwargs, {"timeout_seconds": 10})
+        self.assertEqual(provider.call_args.kwargs, {"timeout_seconds": 20})
 
     def test_checker_failure_recovers_from_ai_brain_and_revalidates(self):
         state = self.state()
@@ -242,3 +242,47 @@ class GroundingReplyRepairTests(SimpleTestCase):
         self.assertTrue(result["grounding_approved"])
         self.assertEqual(result["decision"].message, "Basic costs ₹2999 per month.")
         self.assertEqual(result["decision"].crm_actions, [])
+
+    def test_playbook_only_answer_is_recovered_with_qualification_updates(self):
+        state = self.state()
+        state["context"].organization["about"] = ""
+        state["context"].organization["ai_playbook"] = "Our starter plan costs ₹1999 monthly. Explain it when asked."
+        state["decision"] = replace(state["decision"], file_document_id=None,
+            message="Our plan costs ₹99999.", qualification_updates=[{"requirement_id": "industry", "value": "Retail"}])
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                {"approved": False, "reason": "unsupported_claim"},
+                {"message": "Our starter plan costs ₹1999 monthly."},
+                {"approved": True, "reason": "approved"},
+            )]
+            result = check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertIn("₹1999", result["decision"].message)
+        self.assertEqual(result["decision"].qualification_updates, state["decision"].qualification_updates)
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+
+    def test_technical_fallback_is_recovered_even_with_normal_reason(self):
+        from apps.ai_engagement.services.response_fallbacks import fallback_message
+        state = self.state()
+        state["decision"] = replace(state["decision"], file_document_id=None,
+            reason_code="NORMAL_CONVERSATION", message=fallback_message(kind="technical"))
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                {"approved": True, "reason": "approved"},
+                {"message": "हम फ़ॉलो-अप को स्वचालित करते हैं।"},
+                {"approved": True, "reason": "approved"},
+            )]
+            result = check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertIn("फ़ॉलो-अप", result["decision"].message)
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+
+    def test_recovered_business_answer_with_file_still_requires_independent_approval(self):
+        _, result, calls, _ = self.run_guard([
+            {"approved": False, "reason": "unsupported_claim"},
+            {"message": "We automate follow-ups."},
+            {"approved": False, "reason": "invalid_file"},
+        ])
+        self.assertFalse(result["grounding_approved"])
+        self.assertEqual(len(calls), 3)
+        self.assertIsNone(result["decision"].file_document_id)

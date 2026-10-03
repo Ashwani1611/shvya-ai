@@ -1,4 +1,9 @@
+import json
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+from apps.ai_engagement.services.context import AIContext
+from apps.ai_engagement.services.tenant_guard import TenantScopeError
 
 from django.test import SimpleTestCase
 
@@ -147,3 +152,63 @@ class PlaygroundConnectedKnowledgeRecoveryTests(SimpleTestCase):
         self.assertIn("Lead capture & qualification", message)
         self.assertIn("WhatsApp CRM", message)
         self.assertLess(len(message), 500)
+
+
+class SandboxBrainRecoveryTests(SimpleTestCase):
+    def state(self):
+        provider = Mock()
+        provider.generate_text.return_value = SimpleNamespace(text=json.dumps({"message": "Starter is ₹1999 monthly."}), model="org-model")
+        context = AIContext(organization={"id": "org-a", "about": "We automate sales.",
+            "ai_playbook": "Explain starter pricing.", "bot_languages": "English",
+            "sales_support_model": "gpt-5-mini"}, lead={}, pipeline={}, stage={"name": "Qualified"},
+            contacts=[], attributes=[], conversation={}, conversation_summary=None,
+            qualification_notes=[], knowledge=[])
+        return {"organization": SimpleNamespace(id="org-a"),
+            "lead": SimpleNamespace(id="playground:session", organization_id="org-a"),
+            "context": context, "service": SimpleNamespace(provider=provider),
+            "latest_text": "How much is starter?"}
+
+    def test_recovery_reads_all_authored_brain_fields_and_organization_model(self):
+        from apps.ai_engagement.services.playground_graph_recovery import _ai_brain_recovery
+        state = self.state()
+        faqs = [{"source_id": "faq:1", "content": "Starter is ₹1999 monthly."}]
+        with patch("apps.ai_engagement.services.authored_knowledge.authored_answer_candidates", return_value=faqs):
+            result = _ai_brain_recovery(state)
+        call = state["service"].provider.generate_text.call_args.kwargs
+        payload = json.loads(call["input_text"])
+        self.assertEqual(payload["organization_facts"], "We automate sales.")
+        self.assertEqual(payload["ai_playbook"], "Explain starter pricing.")
+        self.assertEqual(payload["authored_faq_candidates"], faqs)
+        self.assertEqual(call["metadata"]["model_override"], "gpt-5-mini")
+        self.assertEqual(result["context"].organization["_authored_faq_candidates"], faqs)
+        self.assertIn("₹1999", result["decision"].message)
+        self.assertEqual(result["decision"].crm_actions, [])
+        self.assertEqual(result["decision"].qualification_updates, [])
+        self.assertIsNone(result["decision"].file_document_id)
+
+    def test_recovery_never_reads_another_organization(self):
+        from apps.ai_engagement.services.playground_graph_recovery import _ai_brain_recovery
+        state = self.state()
+        state["context"].organization["id"] = "other-org"
+        with patch("apps.ai_engagement.services.authored_knowledge.authored_answer_candidates") as faqs:
+            with self.assertRaises(TenantScopeError):
+                _ai_brain_recovery(state)
+        faqs.assert_not_called()
+        state["service"].provider.generate_text.assert_not_called()
+
+    def test_old_technical_replies_are_removed_from_sandbox_history(self):
+        from apps.ai_engagement.services.playground import PlaygroundService
+        from apps.ai_engagement.services.response_fallbacks import fallback_message
+        history = [{"role": "user", "content": "What do you do?"},
+                   {"role": "assistant", "content": "We automate sales."}]
+        for language in ("English", "Hindi", "Hinglish"):
+            history.append({"role": "assistant", "content": fallback_message(kind="technical", bot_languages=language)})
+        result = PlaygroundService()._normalize_role_history(history)
+        self.assertEqual(result, history[:2])
+
+    def test_failed_sandbox_fallback_raises_test_error_instead_of_fake_reply(self):
+        from apps.ai_engagement.services.playground import PlaygroundService, PlaygroundError
+        with patch("apps.ai_engagement.services.playground.build_deterministic_fallback_decision", side_effect=RuntimeError("test failure")):
+            with self.assertRaisesMessage(PlaygroundError, "No test reply was saved"):
+                PlaygroundService()._fallback_decision(organization=SimpleNamespace(id="org-a"),
+                    visitor=SimpleNamespace(), message="Price?", cause=RuntimeError("provider failure"))

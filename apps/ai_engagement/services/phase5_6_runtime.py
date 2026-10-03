@@ -1125,8 +1125,16 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None):
     requirements = profile.get("qualification", {}).get("requirements", [])
     intent = IntentEngine(provider=provider).classify(organization=organization, lead=lead,
         message=message, requirements=requirements, qualification_state=state_for_lead(lead, requirements=requirements))
-    resolution = EvidenceResolver().resolve(organization=organization, lead=lead, question=message,
-                                           intent_decision=intent, structured_memory={})
+    try:
+        resolution = EvidenceResolver().resolve(organization=organization, lead=lead, question=message,
+                                               intent_decision=intent, structured_memory={})
+    except TenantScopeError:
+        raise
+    except Exception as exc:
+        # Search/index availability must not prevent the response model from
+        # reading the authored About, FAQs and Playbook in its normal context.
+        _mark_runtime_error(step="sandbox_evidence_resolution", exc=exc, code="EVIDENCE_RESOLUTION_FAILED")
+        resolution = _fail_closed_resolution(intent)
     evidence_token = _ACTIVE_EVIDENCE.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk), "resolution": resolution})
     memory_token = _ACTIVE_MEMORY.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk),
                                      "snapshot": {}, "settings": dict(organization.settings or {}), "intent_decision": intent})

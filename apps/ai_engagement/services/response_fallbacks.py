@@ -66,6 +66,12 @@ def fallback_message(*, kind="technical", bot_languages="", latest_text="", ques
     return messages.get(kind, messages["technical"])
 
 
+def is_technical_fallback(message):
+    normalized = " ".join(str(message or "").casefold().split())
+    return any(" ".join(messages["technical"].casefold().split()) in normalized
+               for messages in _MESSAGES.values())
+
+
 def failure_kind(state, *, reason=""):
     coverage = state.get("evidence_coverage")
     status = str(getattr(coverage, "status", "") or "")

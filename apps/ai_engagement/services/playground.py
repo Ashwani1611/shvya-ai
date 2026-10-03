@@ -42,6 +42,7 @@ from apps.ai_engagement.services.playground_finalization import (
     resolved_preview_actions,
 )
 from apps.ai_engagement.services.retrieval import KnowledgeRetrievalService
+from apps.ai_engagement.services.response_fallbacks import is_technical_fallback
 from apps.ai_engagement.services.runtime_state import (
     STATE_KEY,
     contract,
@@ -550,6 +551,14 @@ class PlaygroundService:
                 decision=decision, files=files, events=events,
             )
 
+        # A failed generation/check is a Sandbox test error, not an AI Brain
+        # answer. Do not save it as assistant history or advance preview state.
+        if is_technical_fallback(decision.message):
+            raise PlaygroundError(
+                "The AI response could not be generated or validated. "
+                "Your AI Brain data has not been removed. No test reply was saved."
+            )
+
         # Apply the live welcome helper only to the final customer-facing copy.
         decision = apply_first_inbound_welcome(
             decision=decision,
@@ -675,7 +684,7 @@ class PlaygroundService:
                     }},
                 )
                 service.context_builder = context_builder
-                service.provider = previous_provider or OpenAIProvider(timeout_seconds=5)
+                service.provider = previous_provider or OpenAIProvider(timeout_seconds=20)
                 evidence_scope = (
                     sandbox_evidence_context(
                         organization=organization, lead=visitor, message=message,
@@ -723,19 +732,10 @@ class PlaygroundService:
                 "AI Sandbox deterministic fallback also failed for organization %s",
                 getattr(organization, "id", ""),
             )
-            # Final response contains no organization-specific claim, so it is
-            # safe even when both the provider and backend fallback are impaired.
-            return EngagementDecision(
-                should_engage=True,
-                message=(
-                    "I couldn’t retrieve the answer just now. Please try your question again shortly."
-                ),
-                file_document_id=None,
-                crm_actions=[],
-                reason="UNKNOWN_INFORMATION",
-                reason_code="UNKNOWN_INFORMATION",
-                model="sandbox-safe-fallback",
-            )
+            raise PlaygroundError(
+                "The AI response could not be generated. Check the organization's "
+                "AI model and provider connection. No test reply was saved."
+            ) from cause
 
     def _resolve_new_lead_stage(self, *, organization):
         """Use a real active New Lead stage when available, without creating data."""
@@ -850,6 +850,8 @@ class PlaygroundService:
             role = str(item.get("role") or "").strip().lower()
             body = str(item.get("content") or item.get("message") or "").strip()
             if role not in {"user", "assistant"} or not body:
+                continue
+            if role == "assistant" and is_technical_fallback(body):
                 continue
             normalized.append(
                 {
