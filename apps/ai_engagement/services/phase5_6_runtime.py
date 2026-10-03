@@ -1013,7 +1013,7 @@ def _install_live_availability_guard() -> None:
                 verified=False,
                 evidence=(),
                 controlled_fallback=(
-                    "I can help with the booking details, but live slot availability "
+                    "I can help with the booking details, but live appointment availability "
                     "needs to be checked for the date and time you want."
                 ),
             )
