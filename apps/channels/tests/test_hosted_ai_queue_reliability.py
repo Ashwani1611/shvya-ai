@@ -470,7 +470,7 @@ class HostedQueueSourceOfTruthTests(TestCase):
         AIMessageSendState.objects.create(account=self.account, next_send_at=next_send)
         row, = self._queue()["items"]
         self.assertEqual(row["available_at"], next_send.isoformat())
-        self.assertIn("5-second minimum gap", row["origin"])
+        self.assertIn(f"{AI_SEND_GAP_SECONDS}-second minimum gap", row["origin"])
         self.stage.ai_on = False
         self.stage.save(update_fields=["ai_on"])
         row, = self._queue()["items"]
