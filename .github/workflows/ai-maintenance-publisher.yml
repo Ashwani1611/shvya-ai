@@ -1,0 +1,43 @@
+name: Prepare reviewed AI reliability correction
+on:
+  push:
+    branches: [build/ai-reliability-publisher-20261003]
+    paths: [.github/workflows/ai-maintenance-publisher.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.repository == 'Ashwani1611/shvya-ai' && github.ref == 'refs/heads/build/ai-reliability-publisher-20261003'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create reviewed correction commit without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import base64, json, os, urllib.request
+          root = 'https://api.github.com/repos/Ashwani1611/shvya-ai'
+          parent = '7efd084612eb036fd1bd271fb476c0209d802ba8'
+          def api(path, data=None):
+              request = urllib.request.Request(root + path, data=json.dumps(data).encode() if data is not None else None,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          path = 'services/channels/instagram_service.py'
+          original = api('/contents/' + path + '?ref=' + parent)
+          text = base64.b64decode(original['content']).decode()
+          old = 'from django.db import transaction\n'
+          new = old + 'from django.db.models import Q\n'
+          if text.count(old) != 1 or 'from django.db.models import Q' in text:
+              raise SystemExit('Correction precondition failed')
+          text = text.replace(old, new, 1)
+          compile(text, path, 'exec')
+          blob = api('/git/blobs', {'content': text, 'encoding': 'utf-8'})
+          base = api('/git/commits/' + parent)
+          tree = api('/git/trees', {'base_tree': base['tree']['sha'], 'tree': [{'path': path, 'mode': '100644', 'type': 'blob', 'sha': blob['sha']}]})
+          commit = api('/git/commits', {'message': 'Fix Instagram outcome guard query import caught by full CI', 'tree': tree['sha'], 'parents': [parent]})
+          print('REVIEWED_COMMIT=' + commit['sha'])
+          print('REVIEWED_TREE=' + tree['sha'])
+          print('SOURCE_BLOB=' + blob['sha'])
+          PY
