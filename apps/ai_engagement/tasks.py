@@ -112,10 +112,53 @@ def _execute_ai_engagement_response(*, task, lead_id):
 )
 def generate_ai_engagement_response(self, lead_id: str):
     """Canonical production AI engagement worker; payload contains Lead ID only."""
-    from django.conf import settings
+    from datetime import timedelta
 
+    from django.conf import settings
+    from django.utils import timezone
+
+    from apps.ai_engagement.services.turn_burst import turn_burst_seconds
+    from apps.channels.models import WhatsAppMessage
     from apps.core.fairness import admit_ai_start
     from apps.crm.models import Lead
+
+    # Enforce a real quiet window from the newest inbound message, not merely a
+    # fixed delay from whichever webhook task happened to wake first. Only
+    # source rows published through the canonical queue carry the durable queued
+    # marker, so direct service tests and previews are unaffected.
+    source = (
+        WhatsAppMessage.objects.filter(
+            lead_id=lead_id,
+            direction=WhatsAppMessage.Direction.INBOUND,
+        )
+        .order_by("-created_at", "-id")
+        .first()
+    )
+    execution = (
+        (source.raw_payload or {}).get("shvya_ai_execution")
+        if source is not None and isinstance(source.raw_payload, dict)
+        else {}
+    ) or {}
+    burst = turn_burst_seconds()
+    if (
+        source is not None
+        and burst > 0
+        and execution.get("status") in {"queued", "retrying"}
+        and source.created_at is not None
+    ):
+        quiet_until = source.created_at + timedelta(seconds=burst)
+        remaining = (quiet_until - timezone.now()).total_seconds()
+        if remaining > 0:
+            self.apply_async(
+                args=[str(lead_id)],
+                countdown=max(1, min(burst, int(remaining + 0.999))),
+            )
+            return {
+                "status": "deferred",
+                "reason": "conversation_burst_active",
+                "lead_id": str(lead_id),
+                "source_message_id": str(source.pk),
+            }
 
     organization_id = (
         Lead.objects.filter(pk=lead_id)
