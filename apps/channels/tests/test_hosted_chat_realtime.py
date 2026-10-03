@@ -297,8 +297,9 @@ class HostedChatRealtimeTests(TestCase):
         self.assertEqual(len(payload["conversations"]), 1)
         self.assertEqual(payload["conversations"][0]["name"], "Searchable Person")
 
-    @patch("apps.channels.hosted_chat_ui.send_hosted_whatsapp_message_task.delay")
-    def test_lid_chat_can_be_queued_without_treating_lid_as_phone(self, delay):
+    @patch("apps.channels.hosted_gateway_routing.gateway_client_for_account")
+    def test_lid_chat_sends_immediately_without_treating_lid_as_phone(self, gateway):
+        gateway.return_value.send_message.return_value = {"messageId": "manual-lid"}
         response = self.client.post(
             reverse(
                 "whatsapp-hosted-session-chat-send",
@@ -316,7 +317,9 @@ class HostedChatRealtimeTests(TestCase):
         message = WhatsAppMessage.objects.get(id=response.json()["message"]["id"])
         self.assertEqual(message.to_number, "555555555555@lid")
         self.assertEqual(message.raw_payload["peerKey"], "555555555555@lid")
-        delay.assert_called_once_with(str(message.id))
+        self.assertEqual(message.status, WhatsAppMessage.Status.SENT)
+        self.assertEqual(message.external_id, "wweb:manual-lid")
+        gateway.return_value.send_message.assert_called_once()
 
     @patch("apps.channels.hosted_chat_ui._request_history_refresh", return_value=False)
     @patch("apps.channels.hosted_chat_ui._repair_live_status")
