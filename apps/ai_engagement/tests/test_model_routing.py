@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase, override_settings
 
+import apps.ai_engagement.services.ai_provider as ai_provider_module
 from apps.ai_engagement.services.ai_provider import OpenAIProvider
 
 
@@ -94,3 +95,44 @@ class OpenAIModelRoutingTests(SimpleTestCase):
             ),
             "explicit-model",
         )
+
+    @patch.dict(
+        os.environ,
+        {"OPENAI_ENGAGEMENT_MODEL": "platform-engagement-model"},
+        clear=False,
+    )
+    def test_unavailable_org_override_falls_back_to_platform_model(self):
+        class FakeBadRequest(Exception):
+            pass
+
+        client = self._client()
+        client.responses.create.side_effect = [
+            FakeBadRequest(
+                "The model 'retired-org-model' does not exist or you do not have access to it."
+            ),
+            SimpleNamespace(output_text="fallback ok", model="platform-engagement-model"),
+        ]
+        provider = OpenAIProvider(client=client)
+
+        with patch.object(ai_provider_module, "BadRequestError", FakeBadRequest):
+            result = provider.generate_text(
+                instructions="Follow SHVYA instructions.",
+                input_text="Hello",
+                metadata={
+                    "task": "engagement",
+                    "model_override": "retired-org-model",
+                },
+            )
+
+        self.assertEqual(result.text, "fallback ok")
+        self.assertEqual(result.model, "platform-engagement-model")
+        self.assertEqual(client.responses.create.call_count, 2)
+        self.assertEqual(
+            client.responses.create.call_args_list[0].kwargs["model"],
+            "retired-org-model",
+        )
+        self.assertEqual(
+            client.responses.create.call_args_list[1].kwargs["model"],
+            "platform-engagement-model",
+        )
+
