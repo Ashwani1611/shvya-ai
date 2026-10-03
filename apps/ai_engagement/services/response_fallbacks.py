@@ -12,13 +12,13 @@ import re
 
 _MESSAGES = {
     "english": {
-        "technical": "I couldn’t retrieve the answer just now. Please try your question again shortly.",
-        "unverified": "I couldn’t verify that specific detail from the information available here.",
-        "pricing": "I couldn’t verify the price for that option from the information available here.",
-        "policy": "I couldn’t verify the policy for that situation from the information available here.",
+        "technical": "I hit a temporary lookup issue on that detail. Could you ask me that once more?",
+        "unverified": "I want to give you the right detail. Which product, plan or service are you referring to?",
+        "pricing": "Which plan or setup are you asking about? I’ll use the configured pricing for that option.",
+        "policy": "Which product or situation should I check the policy for?",
         "ambiguous": "Which product, plan or service are you asking about?",
-        "conflicting": "The available information gives conflicting details, so I can’t confirm that point yet.",
-        "action": "I couldn’t confirm that the requested action was completed.",
+        "conflicting": "I have more than one configured detail for that. Which option are you referring to?",
+        "action": "That action is not confirmed yet. I can continue helping here while it is checked.",
         "qualification": "Thanks for sharing that — that helps me understand your needs.",
     },
     "hindi": {
@@ -32,13 +32,13 @@ _MESSAGES = {
         "qualification": "जानकारी देने के लिए धन्यवाद — इससे आपकी ज़रूरत समझने में मदद मिली।",
     },
     "hinglish": {
-        "technical": "Abhi aapke sawaal ka jawab retrieve nahi ho paaya. Kripya thodi der baad dobara poochhein.",
-        "unverified": "Yahan available information se main is specific detail ko verify nahi kar paaya.",
-        "pricing": "Yahan available information se main us option ki price verify nahi kar paaya.",
-        "policy": "Yahan available information se main us situation ki policy verify nahi kar paaya.",
+        "technical": "Is detail ko check karte waqt temporary issue aaya. Aap ek baar sawaal dobara bhej den?",
+        "unverified": "Main sahi detail dena chahta hoon. Aap kis product, plan ya service ki baat kar rahe hain?",
+        "pricing": "Aap kis plan ya setup ki pricing poochh rahe hain? Main usi option ki configured pricing use karunga.",
+        "policy": "Aap kis product ya situation ki policy check karna chahte hain?",
         "ambiguous": "Aap kis product, plan ya service ke baare mein poochh rahe hain?",
-        "conflicting": "Available information mein alag-alag details hain, isliye abhi is point ko confirm nahi kar sakta.",
-        "action": "Main confirm nahi kar paaya ki requested action complete hua hai.",
+        "conflicting": "Is point ke liye multiple configured details mil rahi hain. Aap kis option ki baat kar rahe hain?",
+        "action": "Woh action abhi confirmed nahi hai. Tab tak main yahin aapki help continue kar sakta hoon.",
         "qualification": "Details share karne ke liye thanks — aapki need samajhne mein madad mili.",
     },
 }
