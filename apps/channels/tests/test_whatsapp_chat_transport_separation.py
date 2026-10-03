@@ -182,8 +182,9 @@ class WhatsAppChatTransportSeparationTests(TestCase):
         self.assertEqual(queued.account.connection_type, WhatsAppAccount.ConnectionType.API)
         delay.assert_called_once_with(str(queued.id))
 
-    @patch("apps.channels.hosted_send_ui.send_hosted_whatsapp_message_task.delay")
-    def test_hosted_photo_upload_queues_hosted_media_task(self, delay):
+    @patch("apps.channels.hosted_gateway_routing.gateway_client_for_account")
+    def test_hosted_photo_upload_sends_immediately_via_hosted_transport(self, gateway):
+        gateway.return_value.send_uploaded_media.return_value = {"messageId": "manual-photo"}
         lead = self.make_lead("Hosted Media Lead", "+919555555555")
         upload = SimpleUploadedFile(
             "photo.jpg",
@@ -208,7 +209,9 @@ class WhatsAppChatTransportSeparationTests(TestCase):
         self.assertEqual(message.body, "Photo caption")
         self.assertEqual(message.media_payload["source"], "storage")
         self.assertTrue(message.media_payload["storage_path"])
-        delay.assert_called_once_with(str(message.id))
+        self.assertEqual(message.status, WhatsAppMessage.Status.SENT)
+        self.assertEqual(message.external_id, "wweb:manual-photo")
+        gateway.return_value.send_uploaded_media.assert_called_once()
 
     @patch("apps.channels.hosted_chat_ui._request_history_refresh", return_value=False)
     def test_hosted_chat_page_exposes_attachment_picker(self, _refresh):

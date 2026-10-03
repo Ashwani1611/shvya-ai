@@ -1,7 +1,9 @@
-"""Hosted Account send endpoints using the whatsapp-web.js transport only."""
+"""Hosted Account manual sends using the whatsapp-web.js transport only."""
 
 import json
+import logging
 
+from django.db import transaction
 from django.http import Http404, JsonResponse
 from django.views.decorators.http import require_POST
 
@@ -18,6 +20,8 @@ from services.channels.hosted_whatsapp_service import (
 
 from .hosted_send_tasks import send_hosted_whatsapp_message_task
 from .models import WhatsAppAccount, WhatsAppMessage
+
+logger = logging.getLogger(__name__)
 
 
 def _organization(request):
@@ -61,6 +65,60 @@ def _lead_for_chat(account, chat):
     ).first()
 
 
+def _send_manual_response(*, message, chat_key):
+    """Try the durable message now; only genuine provider retries use Celery."""
+    try:
+        result = send_hosted_whatsapp_message_task.run(str(message.id), immediate=True)
+    except Exception:
+        # The sender persists terminal failures and never blindly resends an
+        # uncertain request. Still return its authoritative row to the inbox.
+        logger.exception("Hosted manual send failed for %s", message.id)
+        result = {"status": "failed", "reason": "send_failed"}
+    message.refresh_from_db()
+    try:
+        queue_hosted_chat_refresh(
+            account_id=message.account_id,
+            reason=message.status,
+            chat_key=chat_key,
+        )
+    except Exception:
+        logger.exception("Could not publish Hosted manual result for %s", message.id)
+
+    sent = message.status in {
+        WhatsAppMessage.Status.SENT,
+        WhatsAppMessage.Status.DELIVERED,
+        WhatsAppMessage.Status.READ,
+    }
+    retry_scheduled = (
+        result.get("status") == "deferred"
+        and message.status == WhatsAppMessage.Status.QUEUED
+    )
+    pending = retry_scheduled or message.status == "sending"
+    error = message.error or result.get("error", "")
+    if not sent and not pending and not error:
+        error = "The message was not sent. Check the Hosted WhatsApp connection."
+    payload = {
+        "ok": sent or pending,
+        "message": {
+            "id": str(message.id),
+            "body": message.body,
+            "message_type": message.message_type,
+            "status": message.status,
+            "error": error,
+        },
+        "retry_scheduled": retry_scheduled,
+    }
+    if retry_scheduled:
+        payload["retry_after"] = result.get("retry_after")
+    if not payload["ok"]:
+        payload["error"] = error
+    status = 201 if sent else 202 if pending else 502
+    if result.get("reason") == "session_not_connected":
+        status = 409
+    return JsonResponse(payload, status=status)
+
+
+@transaction.non_atomic_requests
 @crm_login_required
 @require_POST
 def hosted_session_chat_send_view(request, account_id):
@@ -72,6 +130,8 @@ def hosted_session_chat_send_view(request, account_id):
         data = json.loads(request.body.decode("utf-8") or "{}")
     except (ValueError, UnicodeDecodeError):
         data = request.POST.dict()
+    if not isinstance(data, dict):
+        return JsonResponse({"ok": False, "error": "Invalid message payload."}, status=400)
 
     chat = str(data.get("chat") or "").strip()
     body = str(data.get("body") or "").strip()
@@ -112,25 +172,10 @@ def hosted_session_chat_send_view(request, account_id):
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
-    send_hosted_whatsapp_message_task.delay(str(message.id))
-    queue_hosted_chat_refresh(
-        account_id=account.id,
-        reason="queued",
-        chat_key=normalized_chat,
-    )
-    return JsonResponse(
-        {
-            "ok": True,
-            "message": {
-                "id": str(message.id),
-                "body": message.body,
-                "status": message.status,
-            },
-        },
-        status=201,
-    )
+    return _send_manual_response(message=message, chat_key=normalized_chat)
 
 
+@transaction.non_atomic_requests
 @crm_login_required
 @require_POST
 def hosted_session_chat_media_send_view(request, account_id):
@@ -171,20 +216,4 @@ def hosted_session_chat_media_send_view(request, account_id):
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=400)
 
-    send_hosted_whatsapp_message_task.delay(str(message.id))
-    queue_hosted_chat_refresh(
-        account_id=account.id,
-        reason="queued_media",
-        chat_key=normalized_chat,
-    )
-    return JsonResponse(
-        {
-            "ok": True,
-            "message": {
-                "id": str(message.id),
-                "message_type": message.message_type,
-                "status": message.status,
-            },
-        },
-        status=201,
-    )
+    return _send_manual_response(message=message, chat_key=normalized_chat)

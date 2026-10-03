@@ -1,7 +1,8 @@
-"""Celery transport for Hosted Account outbound messages.
+"""Delivery for Hosted Account outbound messages.
 
-Meta WhatsApp API sends stay in apps.channels.tasks. Hosted sends always use the
-private whatsapp-web.js gateway so the two connection types cannot cross-route.
+Manual inbox replies make their first attempt in the request process. Automation
+and provider retries use Celery; both share the same durable claim and gateway.
+Meta WhatsApp API sends stay in apps.channels.tasks.
 """
 
 import logging
@@ -17,6 +18,24 @@ from apps.channels.providers.whatsapp_web import WhatsAppWebGatewayError
 logger = logging.getLogger(__name__)
 
 _HOSTED_SENDING_STATUS = "sending"
+
+
+def _is_manual_hosted_message(message):
+    """Only server-labelled agent messages may bypass automation admission."""
+    payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+    metadata = payload.get("shvya_hosted")
+    return (
+        message.direction == WhatsAppMessage.Direction.OUTBOUND
+        and isinstance(metadata, dict)
+        and metadata.get("origin") == "agent"
+        and not any(
+            key in payload
+            for key in (
+                "shvya_ai", "shvya_welcome", "shvya_auto_followup",
+                "shvya_workflow", "shvya_sales",
+            )
+        )
+    )
 
 
 def _hosted_retry_delay(*, message_id, retries, retry_after=None):
@@ -66,9 +85,9 @@ def _cleanup_upload(message):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=20)
-def send_hosted_whatsapp_message_task(self, message_id):
-    # Claim the durable row before any provider call. Multiple Celery
-    # deliveries for the same message can therefore never race into Chromium.
+def send_hosted_whatsapp_message_task(self, message_id, *, immediate=False):
+    # Claim the durable row before any provider call. A direct manual attempt
+    # and a Celery delivery therefore cannot race into Chromium for this row.
     with transaction.atomic():
         message = (
             WhatsAppMessage.objects.select_for_update()
@@ -82,6 +101,9 @@ def send_hosted_whatsapp_message_task(self, message_id):
         account = message.account
         if account.connection_type != "hosted":
             return {"status": "skipped", "reason": "not_hosted"}
+        manual = _is_manual_hosted_message(message)
+        if immediate and not manual:
+            return {"status": "skipped", "reason": "not_manual"}
         if message.status in {
             WhatsAppMessage.Status.SENT,
             WhatsAppMessage.Status.DELIVERED,
@@ -106,10 +128,11 @@ def send_hosted_whatsapp_message_task(self, message_id):
             from apps.core.fairness import admit_provider_start
             from services.channels.ai_send_gate import is_ai_message
 
-            # AI admission belongs inside its shared 45-second send gate.
-            # Waiting legacy tasks must not consume every provider token.
+            # Human replies do not consume or wait for automation admission.
+            # Gateway rate limits, connection checks and ACKs still apply.
+            # AI admission stays inside its shared 45-second send gate.
             allowed, retry_after, scope = True, None, "account"
-            if not is_ai_message(message):
+            if not manual and not is_ai_message(message):
                 allowed, retry_after, scope = admit_provider_start(
                     provider="hosted_whatsapp",
                     account_id=account.id,
@@ -148,6 +171,20 @@ def send_hosted_whatsapp_message_task(self, message_id):
     from services.channels.hosted_whatsapp_transport import send_hosted_message
     from services.channels.whatsapp_service import WhatsAppSendError
 
+    if immediate:
+        from services.channels.hosted_chat_service import (
+            chat_key_for_message, queue_hosted_chat_refresh,
+        )
+        try:
+            queue_hosted_chat_refresh(
+                account_id=message.account_id,
+                reason="sending",
+                chat_key=chat_key_for_message(message),
+            )
+        except Exception:
+            # Realtime infrastructure must not prevent a manual provider call.
+            logger.exception("Could not publish Hosted sending state for %s", message.id)
+
     def retry_gateway_error(exc, *, safe_replay=False):
         try:
             code = (json.loads(exc.response_body or "{}") or {}).get("code")
@@ -170,6 +207,28 @@ def send_hosted_whatsapp_message_task(self, message_id):
             if exc.status_code == 429:
                 from apps.core.observability import increment
                 increment("messaging.provider_throttled", labels={"provider": "hosted_whatsapp"})
+            if immediate:
+                # Celery.retry() in a direct call raises into the HTTP request;
+                # eager apply() can instead retry immediately in a loop. Publish
+                # only an actual provider retry, retaining this row/request ID.
+                try:
+                    self.apply_async(
+                        args=[str(message.id)], countdown=countdown,
+                        retries=self.request.retries + 1, retry=False,
+                    )
+                except Exception:
+                    logger.exception("Could not schedule Hosted manual retry for %s", message.id)
+                    error = (
+                        "WhatsApp has not confirmed this message and the retry service "
+                        "is unavailable. Check delivery before sending it again."
+                    )
+                    _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=error)
+                    _cleanup_upload(message)
+                    return {"status": "failed", "reason": "retry_unavailable", "error": error}
+                return {
+                    "status": "deferred", "reason": code or "gateway_retry",
+                    "retry_after": countdown,
+                }
             raise self.retry(exc=exc, countdown=countdown)
         uncertain = exc.status_code is None or exc.status_code >= 500
         _set_message_state(
