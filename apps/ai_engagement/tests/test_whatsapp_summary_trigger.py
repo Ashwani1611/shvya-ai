@@ -218,7 +218,11 @@ class WhatsAppSummaryTriggerTests(TestCase):
                 },
             )
 
-        mocked_cache_add.assert_called_once()
+        mocked_cache_add.assert_any_call(
+            f"shvya:ai:post-turn-summary:{inbound.pk}",
+            "1",
+            timeout=3600,
+        )
         mocked_enrichment.assert_called_once_with(
             lead_id=str(inbound.lead_id),
             force=True,
@@ -284,7 +288,11 @@ class WhatsAppSummaryTriggerTests(TestCase):
                 },
             )
 
-        mocked_cache_add.assert_called_once()
+        mocked_cache_add.assert_any_call(
+            f"shvya:ai:post-turn-summary:{inbound.pk}",
+            "1",
+            timeout=3600,
+        )
         mocked_enrichment.assert_called_once_with(
             lead_id=str(lead.pk),
             force=True,
