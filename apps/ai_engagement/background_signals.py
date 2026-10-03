@@ -2,6 +2,7 @@
 
 import logging
 
+from django.core.cache import cache
 from django.db import transaction
 from django.db.models.signals import post_save
 from django.dispatch import receiver
@@ -29,6 +30,7 @@ def _refresh_intent_score(lead_id):
 
 @receiver(post_save, sender=WhatsAppMessage)
 def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
+    """Keep inbound work cheap; the reply row schedules the summary second pass."""
     if not created or not instance.lead_id:
         return
     if instance.direction != WhatsAppMessage.Direction.INBOUND:
@@ -36,13 +38,50 @@ def queue_internal_ai_enrichment(sender, instance, created, **kwargs):
 
     lead_id = str(instance.lead_id)
     transaction.on_commit(
-        lambda lead_id=lead_id: queue_background_enrichment(lead_id=lead_id),
-        robust=True,
-    )
-    transaction.on_commit(
         lambda lead_id=lead_id: _refresh_intent_score(lead_id),
         robust=True,
     )
+
+
+@receiver(post_save, sender=WhatsAppMessage)
+def queue_post_turn_summary(sender, instance, created, **kwargs):
+    """Run one post-turn summary job after an AI reply has been persisted.
+
+    API and Hosted WhatsApp stamp shvya_ai metadata on their outbound row. A
+    short cache claim prevents delivery-status updates from scheduling the same
+    source turn repeatedly. Summary data is derived context only: validated
+    qualification and CRM state was already committed before this job.
+    """
+    if not instance.lead_id:
+        return
+    if instance.direction != WhatsAppMessage.Direction.OUTBOUND:
+        return
+    payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
+    ai_meta = payload.get("shvya_ai")
+    if not isinstance(ai_meta, dict):
+        return
+    source_id = str(ai_meta.get("source_inbound_message_id") or "").strip()
+    if not source_id:
+        return
+
+    key = f"shvya:ai:post-turn-summary:{source_id}"
+    if not cache.add(key, "1", timeout=3600):
+        return
+
+    lead_id = str(instance.lead_id)
+
+    def _queue():
+        try:
+            queue_background_enrichment(
+                lead_id=lead_id,
+                force=True,
+                include_qualification=False,
+            )
+        except Exception:
+            cache.delete(key)
+            logger.exception("Post-turn summary scheduling failed for lead %s", lead_id)
+
+    transaction.on_commit(_queue, robust=True)
 
 
 @receiver(post_save, sender=WhatsAppMessage)
