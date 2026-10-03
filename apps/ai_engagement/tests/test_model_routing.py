@@ -136,3 +136,42 @@ class OpenAIModelRoutingTests(SimpleTestCase):
             "platform-engagement-model",
         )
 
+
+    def test_gpt5_mini_and_nano_leave_room_for_visible_output(self):
+        for model in ("gpt-5-mini", "gpt-5-nano", "gpt-5-mini-2025-08-07"):
+            with self.subTest(model=model):
+                client = self._client()
+                OpenAIProvider(client=client, model=model).generate_text(instructions="Reply", input_text="Hi")
+                self.assertEqual(client.responses.create.call_args.kwargs["reasoning"], {"effort": "minimal"})
+                self.assertGreaterEqual(client.responses.create.call_args.kwargs["max_output_tokens"], 2000)
+
+    def test_non_reasoning_model_does_not_receive_reasoning_parameter(self):
+        client = self._client()
+        OpenAIProvider(client=client, model="gpt-4.1-nano").generate_text(instructions="Reply", input_text="Hi")
+        self.assertNotIn("reasoning", client.responses.create.call_args.kwargs)
+
+    @patch.dict(os.environ, {"OPENAI_ENGAGEMENT_MODEL": "platform-model"})
+    def test_incomplete_override_falls_back_without_returning_partial_json(self):
+        client = self._client()
+        client.responses.create.side_effect = [
+            SimpleNamespace(status="incomplete", incomplete_details=SimpleNamespace(reason="max_output_tokens"), output_text='{', model="gpt-5-mini"),
+            SimpleNamespace(status="completed", output_text="Recovered reply", model="platform-model"),
+        ]
+        result = OpenAIProvider(client=client).generate_text(instructions="Reply", input_text="Hi", metadata={"task": "engagement", "model_override": "gpt-5-mini"})
+        self.assertEqual(result.text, "Recovered reply")
+        self.assertEqual(client.responses.create.call_count, 2)
+        self.assertNotIn("model_override", client.responses.create.call_args.kwargs["metadata"])
+
+    def test_incomplete_platform_response_uses_existing_bounded_retry(self):
+        client = self._client()
+        client.responses.create.return_value = SimpleNamespace(status="incomplete", incomplete_details={"reason": "max_output_tokens"}, output_text="")
+        with self.assertRaises(ai_provider_module.AIProviderTransientError):
+            OpenAIProvider(client=client).generate_text(instructions="Reply", input_text="Hi")
+        self.assertEqual(client.responses.create.call_count, 1)
+
+    def test_content_filtered_response_does_not_fallback(self):
+        client = self._client()
+        client.responses.create.return_value = SimpleNamespace(status="incomplete", incomplete_details={"reason": "content_filter"}, output_text="partial")
+        with self.assertRaises(ai_provider_module.AIProviderPermanentError):
+            OpenAIProvider(client=client).generate_text(instructions="Reply", input_text="Hi", metadata={"model_override": "gpt-5-mini"})
+        self.assertEqual(client.responses.create.call_count, 1)

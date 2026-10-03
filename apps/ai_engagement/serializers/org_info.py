@@ -37,6 +37,9 @@ class OrgInfoSerializer(
 
         read_only_fields = [
             "id",
+            "qualification_model",
+            "sales_support_model",
+            "summary_model",
             "created_at",
             "updated_at",
         ]
@@ -59,6 +62,10 @@ class OrgInfoSerializer(
             raise serializers.ValidationError(str(exc)) from exc
 
     def to_internal_value(self, data):
+        from apps.ai_engagement.services.org_info import MODEL_ROUTING_FIELDS
+        protected = MODEL_ROUTING_FIELDS.intersection(data)
+        if protected:
+            raise serializers.ValidationError({key: "Only superadmin can change AI model routing." for key in protected})
         removed = {"qualification_requirements", "engagement_instructions"} & set(data)
         if removed:
             raise serializers.ValidationError({key: "Use ai_playbook instead." for key in removed})

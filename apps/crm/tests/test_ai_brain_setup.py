@@ -34,9 +34,6 @@ class AIBrainViewTests(SimpleTestCase):
             "organization_name": "Example Business",
             "about": "We help teams schedule appointments.",
             "bot_languages": "English, Hindi",
-            "qualification_model": "",
-            "sales_support_model": "",
-            "summary_model": "",
             "ai_playbook": "##Rules\nUse only our approved information.",
             **overrides,
         }
@@ -52,8 +49,8 @@ class AIBrainViewTests(SimpleTestCase):
         values = save.call_args.kwargs
         self.assertIs(values["organization"], self.organization)
         self.assertEqual(set(values["data"]), {
-            "organization_name", "about", "bot_languages", "qualification_model",
-            "sales_support_model", "summary_model", "ai_playbook",
+            "organization_name", "about", "bot_languages",
+            "ai_playbook",
         })
         self.assertEqual(values["data"]["ai_playbook"], self.payload()["ai_playbook"])
 
@@ -157,8 +154,8 @@ class AIBrainTemplateTests(SimpleTestCase):
         self.assertNotIn('name="engagement_instructions"', html)
         self.assertNotIn('name="bump_up_enabled"', html)
         for field in (
-            "organization_name", "about", "bot_languages", "qualification_model",
-            "sales_support_model", "summary_model", "knowledge_urls", "knowledge_file",
+            "organization_name", "about", "bot_languages",
+            "knowledge_urls", "knowledge_file",
             "share_instruction",
         ):
             self.assertIn(f'name="{field}"', html)
@@ -194,18 +191,20 @@ class AIBrainPersistenceTests(TestCase):
         self.assertTrue(self.info.bump_up_enabled)
         self.assertEqual(self.info.bump_up_count, 4)
 
-    def test_model_routing_overrides_persist_with_ai_brain(self):
+    def test_model_routing_overrides_cannot_be_saved_with_ai_brain(self):
         payload = {
             **self.data,
             "qualification_model": "gpt-qualification-org",
             "sales_support_model": "gpt-sales-org",
             "summary_model": "gpt-summary-org",
         }
-        save_ai_brain_configuration(organization=self.organization, data=payload)
+        from apps.ai_engagement.services.org_info import OrgInfoServiceError
+        with self.assertRaisesMessage(OrgInfoServiceError, "Only superadmin"):
+            save_ai_brain_configuration(organization=self.organization, data=payload)
         self.info.refresh_from_db()
-        self.assertEqual(self.info.qualification_model, "gpt-qualification-org")
-        self.assertEqual(self.info.sales_support_model, "gpt-sales-org")
-        self.assertEqual(self.info.summary_model, "gpt-summary-org")
+        self.assertEqual(self.info.qualification_model, "")
+        self.assertEqual(self.info.sales_support_model, "")
+        self.assertEqual(self.info.summary_model, "")
 
     @patch('apps.crm.views.ai_setup.messages.success')
     def test_save_and_reload_json_confirms_database_content(self, success):

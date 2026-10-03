@@ -37,22 +37,6 @@
                         <p id="languages-help" class="brain-help">Separate languages with commas, with your primary language first. Leave blank to mirror the lead's language.</p>
                         <input id="bot_languages" name="bot_languages" type="text" maxlength="500" value="{{ form_values.bot_languages }}" placeholder="e.g. English, Hindi, Hinglish" aria-describedby="languages-help">
                     </div>
-                    <details class="brain-format-guide">
-                        <summary>Advanced model routing</summary>
-                        <p class="brain-help">Optional. Leave blank to use SHVYA's platform model defaults. New Lead uses the qualification model; every other active stage uses the sales-support model. Summary runs after a successful AI reply.</p>
-                        <div class="brain-field">
-                            <label for="qualification_model">Qualification model</label>
-                            <input id="qualification_model" name="qualification_model" type="text" maxlength="100" value="{{ form_values.qualification_model }}" placeholder="Platform default">
-                        </div>
-                        <div class="brain-field">
-                            <label for="sales_support_model">Sales-support model</label>
-                            <input id="sales_support_model" name="sales_support_model" type="text" maxlength="100" value="{{ form_values.sales_support_model }}" placeholder="Platform default">
-                        </div>
-                        <div class="brain-field">
-                            <label for="summary_model">Post-turn summary model</label>
-                            <input id="summary_model" name="summary_model" type="text" maxlength="100" value="{{ form_values.summary_model }}" placeholder="Platform default">
-                        </div>
-                    </details>
                     <div class="brain-field brain-playbook-field">
                         <div class="brain-field-title"><label for="ai_playbook">AI Playbook</label><span class="brain-tag">The complete operating spec</span></div>
                         <p id="playbook-help" class="brain-help">Who your AI is, the questions it asks and in what order, what it must never say, when to send a file, and when to move a lead to another pipeline or stage. Include attribute mapping and reminders.</p>

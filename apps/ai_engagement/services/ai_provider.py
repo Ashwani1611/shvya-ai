@@ -490,6 +490,12 @@ class OpenAIProvider:
             "input": input_text,
             "max_output_tokens": self._max_output_tokens(metadata),
         }
+        # GPT-5 mini/nano share their output cap with hidden reasoning. The
+        # short non-reasoning reply cap can otherwise expire before any JSON.
+        reasoning_model = request_model in {"gpt-5-mini", "gpt-5-nano"} or request_model.startswith(("gpt-5-mini-", "gpt-5-nano-"))
+        if reasoning_model:
+            request_kwargs["reasoning"] = {"effort": "minimal"}
+            request_kwargs["max_output_tokens"] = max(request_kwargs["max_output_tokens"], 2000)
         if metadata:
             request_kwargs["metadata"] = metadata
         text_config = self._structured_text_config(response_schema)
@@ -729,6 +735,24 @@ class OpenAIProvider:
                         "AI credit settlement deferred for reservation %s",
                         getattr(reservation, "id", reservation),
                     )
+
+        # Never send partial JSON or mistake token exhaustion for a permanent
+        # configuration failure. Usage above is settled even for incomplete
+        # responses. Existing channel task retry budgets own recovery.
+        if getattr(response, "status", None) == "incomplete":
+            details = getattr(response, "incomplete_details", None)
+            reason = details.get("reason") if isinstance(details, dict) else getattr(details, "reason", None)
+            if reason == "max_output_tokens":
+                fallback_metadata = self._metadata_without_model_override(metadata)
+                if (metadata or {}).get("model_override") and self._model_for_metadata(fallback_metadata) != request_model:
+                    # Text generation has no transport side effect. Retry once
+                    # through the platform model, preserving the admin's choice.
+                    return self.generate_text(
+                        instructions=instructions, input_text=input_text,
+                        metadata=fallback_metadata, response_schema=response_schema,
+                    )
+                raise AIProviderTransientError("OpenAI response exhausted its output token budget.")
+            raise AIProviderPermanentError("OpenAI returned an incomplete response.")
 
         output_text = (getattr(response, "output_text", "") or "").strip()
         if not output_text:

@@ -172,6 +172,10 @@ def update_ai_configuration(*, identity, arguments):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
 
+    from apps.ai_engagement.services.org_info import MODEL_ROUTING_FIELDS
+    if MODEL_ROUTING_FIELDS.intersection(changes) and identity.role != ROLE_SUPERADMIN:
+        raise OperationsPermissionError("Only superadmin can change AI model routing.")
+
     allowed = {
         "about",
         "bot_languages",

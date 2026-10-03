@@ -1,3 +1,4 @@
+from .model_routing_views import organization_model_routing_update_view
 from .platform_email import platform_email_view
 from django.urls import path
 from .bac_views import bac_list
@@ -43,6 +44,7 @@ from .views import (
 from .plan_controls import organization_modules_view, organization_delete_view, organization_tag_manage_view
 
 urlpatterns = [
+    path("organization/<uuid:organization_id>/ai-model-routing/", organization_model_routing_update_view, name="superadmin-organization-model-routing-update"),
     path("email/", platform_email_view, name="superadmin-platform-email"),
     path("tags/", organization_tag_manage_view, name="superadmin-tags"),
     path("organization/<uuid:organization_id>/modules/", organization_modules_view, name="superadmin-organization-modules"),

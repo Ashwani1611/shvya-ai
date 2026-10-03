@@ -6,6 +6,9 @@ from django.db import transaction
 from apps.ai_engagement.models import OrgInfo
 
 
+MODEL_ROUTING_FIELDS = frozenset({"qualification_model", "sales_support_model", "summary_model"})
+
+
 class OrgInfoServiceError(Exception):
     """
     Raised when organization AI configuration cannot be safely
@@ -75,6 +78,7 @@ class OrgInfoService:
         *,
         organization,
         data: dict,
+        allow_model_routing: bool = False,
     ) -> OrgInfo:
         """
         Update the organization's AI configuration.
@@ -86,6 +90,9 @@ class OrgInfoService:
             raise OrgInfoServiceError(
                 "Organization is required."
             )
+
+        if not allow_model_routing and MODEL_ROUTING_FIELDS.intersection(data):
+            raise OrgInfoServiceError("Only superadmin can change AI model routing.")
 
         unknown_fields = (
             set(data.keys())

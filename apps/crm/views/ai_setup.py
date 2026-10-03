@@ -83,9 +83,6 @@ def ai_setup_view(request):
                 "organization_name": request.POST.get("organization_name", "").strip(),
                 "about": request.POST.get("about", "").strip(),
                 "bot_languages": request.POST.get("bot_languages", "").strip(),
-                "qualification_model": request.POST.get("qualification_model", "").strip(),
-                "sales_support_model": request.POST.get("sales_support_model", "").strip(),
-                "summary_model": request.POST.get("summary_model", "").strip(),
                 "ai_playbook": request.POST.get("ai_playbook", "").strip(),
             }
             try:
@@ -446,9 +443,6 @@ def _render_ai_setup(request, organization, *, form_values=None, status=200):
         "organization_name": organization.name,
         "about": org_info.about,
         "bot_languages": org_info.bot_languages,
-        "qualification_model": org_info.qualification_model,
-        "sales_support_model": org_info.sales_support_model,
-        "summary_model": org_info.summary_model,
         "ai_playbook": org_info.ai_playbook,
     }
     sections = parse_playbook(values["ai_playbook"])

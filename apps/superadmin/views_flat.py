@@ -546,6 +546,7 @@ def organization_detail_view(
         "superadmin/org_detail.html",
         {
             "organization": organization,
+            "model_routing_info": getattr(organization, "org_info", None),
             "organization_form": organization_form,
             "package_module_controls": module_controls(organization),
             "payment_form": payment_form,
