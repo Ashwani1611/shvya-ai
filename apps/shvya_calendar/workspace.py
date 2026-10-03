@@ -218,7 +218,7 @@ def booking_slots(request, booking_id):
 def booking_update(request, booking_id):
     booking = get_object_or_404(_bookings(request.crm_user), pk=booking_id)
     try:
-        action = request.POST.get("action")
+        action = request.POST.get("booking_action") or request.POST.get("action")
         if action == "reschedule":
             if booking.status not in [
                 CalendarBooking.Status.SCHEDULED,

@@ -4,7 +4,7 @@
 {% block header %}Calendar{% endblock %}
 {% block extra_head %}{{ block.super }}
 <link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=1">
-<script src="{% static 'shvya_calendar/workspace.js' %}?v=1" defer></script>
+<script src="{% static 'shvya_calendar/workspace.js' %}?v=2" defer></script>
 {% endblock %}
 {% block content %}
 <section class="cw" id="calendar-workspace" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}">
