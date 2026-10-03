@@ -14,6 +14,7 @@ from apps.crm.models import Lead, Pipeline, Stage
 from apps.hosted_automation.models import HostedAutomationJob
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message, resolve_pipeline
+from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 
 
 @override_settings(OPENAI_API_KEY="test-key-never-sent", CELERY_TASK_ALWAYS_EAGER=False)
@@ -90,10 +91,10 @@ class WhatsAppRoutingDiagnosticsTests(TestCase):
             .evaluate(organization=self.org, lead=message.lead)
             .allowed
         )
-        enrichment.assert_called_once_with(lead_id=str(message.lead_id))
+        enrichment.assert_not_called()
         engage.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     def test_number_match_is_organization_scoped(self):
