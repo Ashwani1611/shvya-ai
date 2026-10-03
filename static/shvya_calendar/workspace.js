@@ -6,7 +6,7 @@
   const zone = root.dataset.timezone;
   const today = root.dataset.today;
   let selected = root.dataset.selectedDate || today, view = 'day', events = [], requestId = 0, detailId = 0;
-  let controller;
+  let controller, dragged = null, savingDrop = false;
   const date = key => new Date(`${key}T12:00:00Z`);
   const key = d => d.toISOString().slice(0, 10);
   const add = (d, n) => { const value = date(d); value.setUTCDate(value.getUTCDate() + n); return key(value); };
@@ -35,8 +35,71 @@
     button.append(el('strong', '', event.title), el('small', '', `${timeLabel(event.start)} – ${timeLabel(event.end)} · ${event.pipeline}`));
     button.setAttribute('aria-label', `${event.title}, ${format(localKey(event.start), {month: 'short', day: 'numeric'})}, ${timeLabel(event.start)} to ${timeLabel(event.end)}, ${event.pipeline}, ${event.status}`);
     button.title = button.getAttribute('aria-label');
-    button.addEventListener('click', () => openDetail(event.detail_url));
+    button.addEventListener('click', () => { if (!dragged && !savingDrop) openDetail(event.detail_url); });
+    if (event.editable) {
+      button.draggable = true;
+      button.title += '. Drag to move, or click to reschedule.';
+      button.addEventListener('dragstart', e => {
+        if (savingDrop) { e.preventDefault(); return; }
+        dragged = {event, offset: view === 'month' ? 0 : e.clientY - button.getBoundingClientRect().top};
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', event.id);
+        button.classList.add('cw-dragging');
+      });
+      button.addEventListener('dragend', () => {
+        dragged = null; button.classList.remove('cw-dragging'); clearDropTargets();
+      });
+    }
     return button;
+  }
+  function clearDropTargets() {
+    root.querySelectorAll('.cw-drop-target').forEach(node => node.classList.remove('cw-drop-target'));
+    root.querySelectorAll('.cw-drop-marker').forEach(node => node.remove());
+  }
+  function wireDrop(target, day, month) {
+    target.dataset.date = day;
+    const targetMinute = e => month ? minutes(dragged.event.start) : Math.max(0, Math.min(1439, Math.round(e.clientY - target.getBoundingClientRect().top - dragged.offset)));
+    target.addEventListener('dragover', e => {
+      if (!dragged || savingDrop) return;
+      e.preventDefault(); e.dataTransfer.dropEffect = 'move'; clearDropTargets();
+      target.classList.add('cw-drop-target');
+      if (!month) {
+        const minute = targetMinute(e), marker = el('div', 'cw-drop-marker', `${String(Math.floor(minute / 60)).padStart(2,'0')}:${String(minute % 60).padStart(2,'0')}`);
+        marker.style.top = `${minute}px`; target.append(marker);
+      }
+    });
+    target.addEventListener('drop', async e => {
+      if (!dragged || savingDrop) return;
+      e.preventDefault();
+      const event = dragged.event, minute = targetMinute(e);
+      dragged = null; clearDropTargets();
+      if (day === localKey(event.start) && Math.abs(minute - minutes(event.start)) < 2) return;
+      savingDrop = true; $('cw-grid').setAttribute('aria-busy','true');
+      $('cw-message').textContent = 'Checking availability…';
+      try {
+        // Availability belongs to the booking page; the grid uses the organization timezone.
+        const dates = event.booking_timezone === zone ? [day] : [add(day,-1), day, add(day,1)];
+        const results = await Promise.all(dates.map(async value => {
+          const url = new URL(event.slots_url, location.origin); url.searchParams.set('date', value);
+          const response = await fetch(url);
+          if (response.status === 400 && dates.length > 1) return {slots: []};
+          return jsonResponse(response);
+        }));
+        const slots = results.flatMap(result => result.slots).filter(slot => localKey(slot.value) === day);
+        slots.sort((a,b) => Math.abs(minutes(a.value)-minute) - Math.abs(minutes(b.value)-minute));
+        const slot = slots[0];
+        if (!slot || Math.abs(minutes(slot.value)-minute) > (month ? 0 : 15)) throw new Error('That time is unavailable. Drop closer to an available slot or choose Reschedule in booking details.');
+        $('cw-message').textContent = 'Moving booking…';
+        const body = new FormData();
+        body.set('action', 'reschedule'); body.set('slot_start', slot.value);
+        body.set('csrfmiddlewaretoken', root.dataset.csrfToken);
+        await jsonResponse(await fetch(event.update_url, {method:'POST', body, headers:{'X-Requested-With':'XMLHttpRequest'}}));
+        const scroll = $('cw-grid').scrollTop;
+        await load(); $('cw-grid').scrollTop = scroll;
+        $('cw-message').textContent = 'Booking moved.';
+      } catch (error) { $('cw-message').textContent = error.message; }
+      finally { savingDrop = false; $('cw-grid').removeAttribute('aria-busy'); }
+    });
   }
   function dayEvents(day) {
     return events.filter(e => localKey(e.start) <= day && (localKey(e.end) > day || (localKey(e.end) === day && minutes(e.end) > 0)));
@@ -62,6 +125,7 @@
       ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d => month.append(el('div', 'cw-month-weekday', d)));
       for (let i = 0; i < days; i++) {
         const day = add(start, i), cell = el('div', `cw-month-cell${day.slice(0,7) !== selected.slice(0,7) ? ' cw-outside' : ''}`);
+        wireDrop(cell, day, true);
         const button = el('button', `cw-month-date${day === today ? ' cw-is-today' : ''}`, date(day).getUTCDate());
         button.setAttribute('aria-label', `Show ${format(day, {month:'long', day:'numeric'})}`);
         button.addEventListener('click', () => { selected = day; view = 'day'; load(); }); cell.append(button);
@@ -76,6 +140,7 @@
     body.append(hours);
     for (let i = 0; i < days; i++) {
       const day = add(start, i), column = el('div', 'cw-day-column');
+      wireDrop(column, day, false);
       header.append(el('div', '', format(day, { weekday:'short', day:'numeric' })));
       const items = dayEvents(day).map(event => ({event, start: localKey(event.start) < day ? 0 : minutes(event.start), end: localKey(event.end) > day ? 1440 : minutes(event.end)})).sort((a,b) => a.start - b.start || b.end - a.end);
       // Overlap groups get separate columns, including short event hit areas.
@@ -194,5 +259,5 @@
   $('cw-close').addEventListener('click', () => $('cw-detail').close());
   $('cw-detail').addEventListener('close', () => { detailId++; });
   load().then(() => { if (root.dataset.focusedBookingUrl) openDetail(root.dataset.focusedBookingUrl); });
-  setInterval(() => { if (!document.hidden && !$('cw-detail').open) load(); }, 30000);
+  setInterval(() => { if (!document.hidden && !$('cw-detail').open && !dragged && !savingDrop) load(); }, 30000);
 })();

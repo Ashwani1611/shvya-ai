@@ -162,3 +162,52 @@ def test_upcoming_expands_and_posts_delete_to_real_booking_endpoint(calendar_bro
     assert 'cancel' in posts[0][1] and 'test-csrf' in posts[0][1]
     page.get_by_text('Gaurav Singh', exact=True).click()
     expect(page.locator('[data-booking-details]')).not_to_have_attribute('open', '')
+
+
+@pytest.mark.parametrize('view,accepted', [('day', True), ('week', False), ('month', True)])
+def test_drag_booking_checks_slots_and_saves_or_keeps_original(calendar_browser, view, accepted):
+    from django.template import engines
+    page = calendar_browser
+    source = (ROOT / 'templates/shvya_calendar/workspace.html').read_text()
+    content = source.split('{% block content %}', 1)[1].split('{% endblock %}', 1)[0]
+    shell = engines['django'].from_string(content).render({
+        'calendar_timezone': 'Asia/Kolkata', 'calendar_today': '2026-10-05',
+        'csrf_token': 'test-csrf',
+    })
+    event = {'id': ID, 'title': 'Demo', 'start': '2026-10-05T04:30:00Z',
+             'end': '2026-10-05T05:00:00Z', 'pipeline_id': ID, 'pipeline': 'Sales',
+             'status': 'scheduled', 'editable': True, 'booking_timezone': 'Asia/Kolkata',
+             'detail_url': '/detail/', 'slots_url': '/slots/', 'update_url': '/update/'}
+    posts, errors = [], []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    def route(r):
+        path = urlsplit(r.request.url).path
+        if path == reverse('shvya_calendar:events'):
+            r.fulfill(json={'events': [event], 'next_offset': None})
+        elif path == '/slots/':
+            r.fulfill(json={'slots': [{'value': '2026-10-06T04:30:00Z', 'label': '10 AM'}] if view == 'month' else [{'value': '2026-10-05T05:30:00Z', 'label': '11 AM'}], 'timezone': 'Asia/Kolkata'})
+        elif path == '/update/':
+            posts.append(r.request.post_data)
+            if accepted:
+                event['start'] = '2026-10-06T04:30:00Z' if view == 'month' else '2026-10-05T05:30:00Z'
+            r.fulfill(status=200 if accepted else 400, json={'ok': True} if accepted else {'error': 'That slot was just booked.'})
+        else:
+            r.fulfill(content_type='text/html', body=shell)
+    page.route('**/*', route)
+    page.goto('http://localhost/')
+    page.add_style_tag(content=(ROOT / 'static/shvya_calendar/workspace.css').read_text())
+    page.add_script_tag(content=(ROOT / 'static/shvya_calendar/workspace.js').read_text())
+    if view != 'day':
+        page.locator(f'[data-view="{view}"]').click()
+    button = page.locator('.cw-event')
+    expect(button).to_have_attribute('draggable', 'true')
+    # Dispatch the native drag lifecycle with a real DataTransfer and grid coordinates.
+    target = page.locator('[data-date="2026-10-06"]' if view == 'month' else '.cw-day-column').first
+    button.evaluate('node => {window.transfer = new DataTransfer(); node.dispatchEvent(new DragEvent("dragstart", {bubbles:true, dataTransfer:window.transfer, clientY:node.getBoundingClientRect().top}));}')
+    target.evaluate('(node, minute) => {const y = node.getBoundingClientRect().top + minute; node.dispatchEvent(new DragEvent("dragover", {bubbles:true,cancelable:true,dataTransfer:window.transfer,clientY:y})); node.dispatchEvent(new DragEvent("drop", {bubbles:true,cancelable:true,dataTransfer:window.transfer,clientY:y}));}', 660)
+    expect(page.locator('#cw-message')).to_have_text('Booking moved.' if accepted else 'That slot was just booked.')
+    assert len(posts) == 1
+    assert 'reschedule' in posts[0] and 'test-csrf' in posts[0]
+    assert errors == []
+    if not accepted:
+        expect(button.locator('small')).to_contain_text('10:00')

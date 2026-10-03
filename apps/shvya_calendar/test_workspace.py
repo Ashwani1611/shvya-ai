@@ -112,7 +112,21 @@ class CalendarWorkspaceTests(TestCase):
         after = self.client.get(endpoint, {"start": "2026-09-23", "end": "2026-09-24"})
         self.assertEqual(before.json()["events"], [])
         self.assertEqual(after.json()["events"][0]["id"], str(self.booking.pk))
+        event = after.json()["events"][0]
+        self.assertTrue(event["editable"])
+        self.assertEqual(event["booking_timezone"], "Asia/Kolkata")
+        self.assertEqual(event["slots_url"], self.url("booking_slots"))
+        self.assertEqual(event["update_url"], self.url("booking_update"))
         self.assertNotIn("cancel_token", str(after.json()))
+
+    def test_completed_booking_cannot_be_dragged(self):
+        self.booking.status = CalendarBooking.Status.COMPLETED
+        self.booking.save()
+        data = self.client.get(
+            reverse("shvya_calendar:events"),
+            {"start": "2026-09-23", "end": "2026-09-24"},
+        ).json()
+        self.assertFalse(data["events"][0]["editable"])
 
     def test_overlap_at_range_start_is_included(self):
         self.booking.start_at = datetime(2026, 9, 22, 18, 0, tzinfo=UTC)
