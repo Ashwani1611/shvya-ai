@@ -8,6 +8,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message
+from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 
 
 class WhatsAppEngagementTriggerTests(TestCase):
@@ -78,12 +79,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 raw_payload={"test": True},
             )
 
-        background_enrichment.assert_called_once_with(
-            lead_id=str(self.lead.id)
-        )
+        background_enrichment.assert_not_called()
         engagement_apply_async.assert_called_once_with(
             args=[str(self.lead.id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     @patch(
@@ -119,12 +118,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
             ).count(),
             1,
         )
-        background_enrichment.assert_called_once_with(
-            lead_id=str(self.lead.id)
-        )
+        background_enrichment.assert_not_called()
         engagement_apply_async.assert_called_once_with(
             args=[str(self.lead.id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     @patch(
