@@ -78,7 +78,7 @@ def import_google_booking(booking):
             current.start_at, current.end_at = start, end
             current.status = CalendarBooking.Status.RESCHEDULED
             current.save(update_fields=["previous_start_at", "previous_end_at", "start_at", "end_at", "status", "updated_at"])
-        _save_event_details(current, event)
+        _save_event_details(current, event, touch_updated_at=False)
         if changed:
             from .reminder_services import schedule_booking_reminders
             schedule_booking_reminders(current)

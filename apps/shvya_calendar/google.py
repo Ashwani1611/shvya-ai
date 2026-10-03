@@ -262,7 +262,7 @@ def _event_error(booking, response, message):
     return _google_error(response, message)
 
 
-def _save_event_details(booking, event):
+def _save_event_details(booking, event, *, touch_updated_at=True):
     check_platform_event(booking, event)
     link, conference_id = _conference_details(event)
     if booking.page.meeting_location == CalendarPage.MeetingLocation.CUSTOM:
@@ -277,8 +277,11 @@ def _save_event_details(booking, event):
                                     else CalendarBooking.SyncStatus.PENDING if pending
                                     else CalendarBooking.SyncStatus.SYNCED)
     booking.calendar_sync_error = "Google could not create this Meet conference. Check the organiser's Meet permissions." if failed else ""
-    booking.save(update_fields=["google_event_url", "meeting_link", "google_conference_id",
-                                "calendar_sync_status", "calendar_sync_error", "updated_at"])
+    fields = ["google_event_url", "meeting_link", "google_conference_id",
+              "calendar_sync_status", "calendar_sync_error"]
+    if touch_updated_at:
+        fields.append("updated_at")
+    booking.save(update_fields=fields)
     if failed:
         raise GoogleCalendarError(booking.calendar_sync_error)
     return booking

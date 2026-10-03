@@ -56,7 +56,10 @@ class GoogleBookingImportTests(TestCase):
         reminders.assert_called_once()
         self.assertEqual(request.call_args.args[0], 'GET')
         self.assertIn('host%40example.com', request.call_args.args[1])
+        revision = self.booking.updated_at
         result, _ = self.import_event(event)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.updated_at, revision)
         self.assertEqual(result, 'unchanged')
         reminders.assert_called_once()
 
