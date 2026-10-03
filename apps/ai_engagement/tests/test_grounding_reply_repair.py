@@ -11,6 +11,31 @@ from apps.ai_engagement.services.engagement import EngagementDecision
 
 
 class GroundingReplyRepairTests(SimpleTestCase):
+    def test_authored_brain_business_answer_is_checked_without_retrieval_hit(self):
+        for question_type in ("pricing", "policy", "availability", "product_or_service"):
+            with self.subTest(question_type=question_type):
+                state = self.state()
+                state["decision"] = replace(state["decision"], file_document_id=None,
+                    message="The introductory offer is ₹1999, as described in our company information.")
+                state["context"].organization.update(about="Introductory offer: ₹1999.",
+                    ai_playbook="Explain the introductory offer when asked about plans.")
+                resolution = SimpleNamespace(sensitive=True, verified=False, question_type=question_type,
+                    prompt_dict=lambda: {"verified": False, "evidence": []})
+                with patch("apps.ai_engagement.graph.evidence._active_grounding", return_value=resolution), \
+                     patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+                    provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"approved"}'
+                    result = check_grounding(state)
+                self.assertTrue(result["grounding_approved"])
+                provider.return_value.generate_text.assert_called_once()
+                payload = json.loads(provider.return_value.generate_text.call_args.kwargs["input_text"])
+                self.assertEqual(payload["organization_facts"], "Introductory offer: ₹1999.")
+
+    def test_authored_business_policy_does_not_authorize_crm_or_live_bookings(self):
+        from apps.ai_engagement.services.organization_profile import may_answer_from_ai_brain
+        brain = {"about": "Our services", "ai_playbook": "Answer freely."}
+        for question_type in ("internal_crm_status", "appointment_availability"):
+            self.assertFalse(may_answer_from_ai_brain(brain, {"question_type": question_type}))
+
     def test_graph_supplies_authored_faqs_without_vector_search(self):
         from apps.ai_engagement.graph.workflow import _generate
         from apps.ai_engagement.services.context import AIContext

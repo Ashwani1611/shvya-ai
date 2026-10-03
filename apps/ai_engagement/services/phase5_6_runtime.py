@@ -39,14 +39,10 @@ _ACTIVE_MEMORY: ContextVar[dict[str, Any] | None] = ContextVar(
 
 _GROUNDING_INSTRUCTIONS = """
 BACKEND EVIDENCE / MEMORY CONTRACT
-- `grounding` is produced by the backend EvidenceResolver and is the authority
-  for where factual claims on this turn may come from.
-- For pricing, refunds/policies, locations, schedules/hours and availability,
-  use ONLY `grounding.evidence` when `grounding.verified` is true. Never fill a
-  missing business fact from general model knowledge, a customer claim, or a
-  previous assistant claim.
-- When `grounding.verified` is false for an evidence-bound business question,
-  do not guess. The backend will enforce a controlled unknown response.
+- `grounding` supplies useful retrieved business context. Read it together with
+  About/company description, FAQs and AI Playbook, not as an exclusive source.
+- Follow the organization's AI Playbook for business-response rules and handling
+  of missing details. A false retrieval verdict does not mean AI Brain is empty.
 - `structured_lead_memory` contains tenant-scoped customer facts. It may be used
   for lead-specific continuity, but it is never evidence for company pricing,
   policy, location, schedule or availability.
@@ -473,9 +469,21 @@ def _patch_engagement() -> None:
             )
 
             resolution = current_evidence_resolution(organization_id=organization.pk, lead_id=lead.pk) or resolution
+            from apps.ai_engagement.services.organization_profile import may_answer_from_ai_brain
+            brain_context = getattr(kwargs.get("context"), "organization", {}) or {}
+            if (resolution.sensitive and not resolution.verified
+                    and resolution.question_type in {"pricing", "policy", "location", "availability", "working_hours", "product_or_service"}
+                    and not may_answer_from_ai_brain(brain_context, resolution)):
+                from apps.ai_engagement.models import OrgInfo
+                brain_context = OrgInfo.objects.filter(organization=organization).values("about", "ai_playbook").first() or {}
+                from apps.ai_engagement.services.authored_knowledge import authored_answer_candidates
+                brain_context["_authored_faq_candidates"] = authored_answer_candidates(
+                    organization=organization, question=question,
+                )
             if (
                 resolution.sensitive
                 and not resolution.verified
+                and not may_answer_from_ai_brain(brain_context, resolution)
                 and getattr(decision, "should_engage", False)
                 and not _must_preserve_policy_precedence(intent)
             ):

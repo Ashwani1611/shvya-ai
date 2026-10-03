@@ -576,7 +576,8 @@ UNKNOWN_INFORMATION, NO_ACTION, ORG_INSTRUCTION.
 Use the original turn context to correct the reported validation error, including
 qualification evidence and the next question. Drop unsupported answer updates.
 Recompute the first unresolved requirement after supported updates and rewrite
-the question to match it. Never invent evidence, identifiers or business facts.
+the question to match it. Never invent qualification evidence or identifiers.
+Compose business answers using AI Brain and the organization's AI Playbook.
 Do not add explanations, markdown, or chain-of-thought.
 """.strip()
         repair_input = json.dumps(

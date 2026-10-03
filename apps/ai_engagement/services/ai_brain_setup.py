@@ -426,8 +426,9 @@ requirement allowed for this turn. If qualification is complete, acknowledge it
 without another qualification question. For an informational/call interruption
 that did not answer the active requirement, answer the interruption and leave
 next_requirement_id null rather than repeating the pending question.
-Drop unsupported evidence/actions. Never invent evidence, identifiers, business
-facts, stage ids, or file ids. Do not add explanations or chain-of-thought.
+Drop unsupported qualification evidence/actions. Never invent identifiers,
+stage ids, or file ids. Compose business answers using AI Brain and AI Playbook.
+Do not add explanations or chain-of-thought.
 """.strip()
         repair_input = json.dumps(
             {

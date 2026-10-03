@@ -312,7 +312,7 @@ def _publish(state: dict, verdict: Coverage) -> dict:
             "Verify each supported part against its actual sources; address unresolved parts specifically. "
             "An empty or failed search does not prove business information is absent. "
             "When the reference remains ambiguous, ask one specific clarification. "
-            "Do not invent missing facts or expose internal diagnostics. Preserve the configured "
+            "Follow the AI Playbook's missing-information rules. Keep diagnostics internal. Preserve the configured "
             "language, source rules and backend-selected qualification question. "
             "This assessment never authorizes actions, files or claims of completed operations."
         ),
