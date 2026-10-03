@@ -379,6 +379,9 @@ def get_ai_configuration(*, identity, arguments):
                 "about": "",
                 "bot_languages": "",
                 "ai_playbook": "",
+                "qualification_model": "",
+                "sales_support_model": "",
+                "summary_model": "",
                 "redactions": {
                     "about": False,
                     "bot_languages": False,
@@ -437,6 +440,9 @@ def get_ai_configuration(*, identity, arguments):
                 str(info.ai_playbook or "")
             ),
             "ai_playbook_truncated": playbook_truncated,
+            "qualification_model": str(info.qualification_model or ""),
+            "sales_support_model": str(info.sales_support_model or ""),
+            "summary_model": str(info.summary_model or ""),
             "ai_enabled": bool(info.ai_enabled),
             "bump_up_enabled": bool(
                 info.bump_up_enabled
