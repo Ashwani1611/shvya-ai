@@ -9,7 +9,7 @@ from django.test import TestCase, override_settings
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.ai_engagement.models import Document, OrgInfo
-from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
+from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider, AIProviderPermanentError
 from apps.ai_engagement.services.embeddings import EmbeddingError
 from apps.ai_engagement.services.playground import PlaygroundService
 from apps.ai_engagement.services.qualification_state import QUALIFICATION_STATE_KEY
@@ -402,3 +402,47 @@ class SandboxAPIEngineTests(TestCase):
         )
         self.assertEqual(repeated, [])
         self.assertEqual(self._business_counts(), before)
+
+    def test_sandbox_search_failure_still_answers_from_about_and_playbook(self):
+        self.reply = "We automate customer conversations."
+        with patch("apps.ai_engagement.services.phase5_6_runtime.EvidenceResolver.resolve", side_effect=RuntimeError("search unavailable")):
+            result = self._request(session_id="search-failed", message="What does your company do?", stage=self.qualified)
+        self.assertIn("automate customer conversations", result["response"])
+        self.assertEqual(self.grounding_messages[-1]["organization_facts"], self.info.about)
+        self.assertEqual(self.grounding_messages[-1]["ai_playbook"], self.info.ai_playbook)
+
+    def test_sandbox_generation_failure_recovers_with_message_only_brain_call(self):
+        calls = []
+        def provider(**kwargs):
+            phase = kwargs.get("metadata", {}).get("phase")
+            calls.append(phase)
+            if phase == "ai_brain_reply_recovery":
+                payload = json.loads(kwargs["input_text"])
+                self.assertEqual(payload["organization_facts"], self.info.about)
+                return AITextResult('{"message":"We automate customer conversations."}', "test-recovery")
+            if phase in {"grounding", "intent_classification"}:
+                return self._provider(**kwargs)
+            raise AIProviderPermanentError("initial generation failed")
+        before = self._business_counts()
+        with patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=provider):
+            result = self._request(session_id="generation-recovered", message="What does your company do?", stage=self.qualified)
+        self.assertIn("automate customer conversations", result["response"])
+        self.assertIn("ai_brain_reply_recovery", calls)
+        self.assertIn("grounding", calls)
+        self.assertEqual(self._business_counts(), before)
+
+    def test_technical_fallback_is_http_error_and_does_not_save_test_history(self):
+        from apps.ai_engagement.services.engagement import EngagementDecision
+        from apps.ai_engagement.services.response_fallbacks import fallback_message
+        service = PlaygroundService()
+        key = service._session_cache_key(organization=self.org, session_id="technical-error")
+        decision = EngagementDecision(should_engage=True, message=fallback_message(kind="technical"),
+            file_document_id=None, crm_actions=[], reason="UNKNOWN_INFORMATION", model="test-failure")
+        request = self.factory.post("/api/v1/ai-engagement/playground/",
+            {"session_id": "technical-error", "message": "What do you do?", "stage_id": str(self.qualified.pk)}, format="json")
+        force_authenticate(request, user=SimpleNamespace(is_authenticated=True, organization=self.org))
+        with patch("apps.ai_engagement.services.engagement.EngagementService.engage", return_value=decision):
+            response = PlaygroundAPIView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("No test reply was saved", response.data["error"])
+        self.assertIsNone(cache.get(key))
