@@ -203,6 +203,17 @@ def _deterministic_extract(state: EngagementGraphState, *, reply_text: str | Non
     }
 
     direct_next = direct.get("next_requirement")
+
+    # Default live behavior keeps extraction deterministic but lets the response
+    # model compose the acknowledgement/transition naturally. This mirrors the
+    # smooth two-pass conversation pattern without making the later summary the
+    # source of qualification truth.
+    compose_simple = str(
+        os.getenv("AI_SIMPLE_QUALIFICATION_COMPOSE_WITH_LLM", "1")
+    ).strip().casefold() not in {"0", "false", "no", "off"}
+    if compose_simple and updates["answer_extracted"]:
+        return updates
+
     # Keep high-confidence answer extraction deterministic, but let the normal
     # response path apply language, Playbook actions and guided-file conditions.
     # Knowing the next question does not prove that raw English copy is a valid
