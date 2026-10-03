@@ -309,10 +309,7 @@ def _execute_ai_engagement_response_impl(
         CRMActionExecutionError,
         CRMActionExecutor,
     )
-    from apps.ai_engagement.services.engagement import (
-        EngagementError,
-        EngagementService,
-    )
+    from apps.ai_engagement.services.engagement import EngagementError
     from apps.channels.models import (
         WhatsAppMessage,
     )
