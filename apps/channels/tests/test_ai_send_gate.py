@@ -97,7 +97,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
     def test_first_send_after_upgrade_respects_recent_delivery_without_state(self):
         previous = self._message()
         WhatsAppMessage.objects.filter(pk=previous.pk).update(
-            status="sent", sent_at=self.now - timedelta(seconds=30),
+            status="sent", sent_at=self.now - timedelta(seconds=max(AI_SEND_GAP_SECONDS - 2, 0)),
         )
         message = self._message()
         provider = Mock(side_effect=self._provider_send)
@@ -108,17 +108,17 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             for _ in range(2):
                 with self.assertRaises(AIMessageDeferred) as deferred:
                     send(message=message)
-                self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=15))
+                self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=2))
                 # The failed reservation rolls back state creation. Repeating
                 # the check must re-seed safely instead of allowing a burst.
                 self.assertFalse(AIMessageSendState.objects.exists())
         provider.assert_not_called()
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=15)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=2)):
             send(message=message)
         provider.assert_called_once()
         self.assertEqual(
             AIMessageSendState.objects.get(account=self.account).next_send_at,
-            self.now + timedelta(seconds=60),
+            self.now + timedelta(seconds=2 + AI_SEND_GAP_SECONDS),
         )
 
     def test_api_replies_send_by_arrival_when_generation_finishes_out_of_order(self):
@@ -204,19 +204,19 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
         self.assertIsNone(reply.sent_at)
         self.assertEqual(provider.call_count, 1)
 
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=44)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS - 1)):
             with self.assertRaises(AIMessageDeferred):
                 send(message=reply)
         with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS)):
             send(message=reply)
             with self.assertRaises(AIMessageDeferred):
                 send(message=bump)
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=90)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 2)):
             send(message=bump)
         self.assertEqual(provider.call_count, 3)
         state = AIMessageSendState.objects.get(account=self.account)
-        self.assertEqual(state.last_sent_at, self.now + timedelta(seconds=90))
-        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=135))
+        self.assertEqual(state.last_sent_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 2))
+        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 3))
 
     def test_reply_defers_to_welcome_and_fifo_within_each_type(self):
         reply_job = self._job(created_at=self.now - timedelta(seconds=30))
@@ -293,12 +293,12 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             # Model a worker descheduled after its initial read while another
             # worker sent successfully and its configured conversational cooldown elapsed.
             WhatsAppMessage.objects.filter(pk=message.pk).update(
-                status="sent", sent_at=self.now - timedelta(seconds=46),
+                status="sent", sent_at=self.now - timedelta(seconds=AI_SEND_GAP_SECONDS + 1),
                 external_id="other-worker-provider-id",
             )
             AIMessageSendState.objects.create(
                 account=self.account, next_send_at=self.now - timedelta(seconds=1),
-                last_sent_at=self.now - timedelta(seconds=46),
+                last_sent_at=self.now - timedelta(seconds=AI_SEND_GAP_SECONDS + 1),
             )
             return _reserve(message)
 
