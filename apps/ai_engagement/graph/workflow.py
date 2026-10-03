@@ -204,16 +204,6 @@ def _deterministic_extract(state: EngagementGraphState, *, reply_text: str | Non
 
     direct_next = direct.get("next_requirement")
 
-    # Default live behavior keeps extraction deterministic but lets the response
-    # model compose the acknowledgement/transition naturally. This mirrors the
-    # smooth two-pass conversation pattern without making the later summary the
-    # source of qualification truth.
-    compose_simple = str(
-        os.getenv("AI_SIMPLE_QUALIFICATION_COMPOSE_WITH_LLM", "1")
-    ).strip().casefold() not in {"0", "false", "no", "off"}
-    if compose_simple and updates["answer_extracted"]:
-        return updates
-
     # Keep high-confidence answer extraction deterministic, but let the normal
     # response path apply language, Playbook actions and guided-file conditions.
     # Knowing the next question does not prove that raw English copy is a valid
@@ -367,18 +357,25 @@ def _build_business_plan(state: EngagementGraphState) -> dict:
     )
 
     context = _with_file_candidates(state, state["context"])
+    turn_policy = state.get("turn_policy")
+    if turn_policy is None:
+        from apps.ai_engagement.services.turn_controller import build_turn_policy
+        turn_policy = build_turn_policy(
+            context=context,
+            qualification_state=state.get("qualification_state") or {},
+        )
     plan = build_business_plan(
         service=state["service"],
         context=context,
         qualification_state=state.get("qualification_state") or {},
         requirements=state.get("requirements") or [],
         latest_text=state.get("latest_text", ""),
-        turn_policy=state["turn_policy"],
+        turn_policy=turn_policy,
     )
     org_context = dict(context.organization or {})
     org_context["_business_plan"] = plan
     context = replace(context, organization=org_context)
-    record_turn_policy(policy=state["turn_policy"], business_plan=plan)
+    record_turn_policy(policy=turn_policy, business_plan=plan)
     return {"context": context, "business_plan": plan}
 
 
