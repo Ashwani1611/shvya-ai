@@ -18,6 +18,7 @@ from apps.followups.models import (
 )
 from apps.hosted_automation.models import HostedAutomationJob, HostedFollowupStepConfig
 from apps.organizations.models import Organization
+from services.channels.ai_send_gate import AI_SEND_GAP_SECONDS
 from services.channels.hosted_chat_service import handle_hosted_gateway_event
 
 
