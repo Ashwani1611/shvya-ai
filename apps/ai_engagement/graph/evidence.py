@@ -228,7 +228,7 @@ def check_grounding(state):
     resolution = _active_grounding(state)
     from apps.ai_engagement.services.organization_profile import may_answer_from_ai_brain
     if (resolution is not None and resolution.sensitive and not resolution.verified
-            and not may_answer_from_ai_brain(state["context"].organization, resolution)):
+            and not may_answer_from_ai_brain(getattr(state.get("context"), "organization", {}), resolution)):
         # No second model call is useful when Python already proved that no
         # permitted evidence exists. Fail closed deterministically; the outer
         # Phase 5 runtime restores the policy-selected next qualification question
