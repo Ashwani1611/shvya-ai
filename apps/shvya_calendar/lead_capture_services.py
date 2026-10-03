@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
-from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import IntegrityError, transaction
 from django.db.models import Max
@@ -443,7 +442,8 @@ def notify_submission(submission_id):
         return
     page = submission.page
     recipients = set()
-    if page.notify_host_on_submission and page.host and page.host.email:
+    if (page.notify_host_on_submission and page.host and page.host.email
+            and page.host.is_active and page.host.organization_id == page.organization_id):
         recipients.add(page.host.email)
     if page.notify_user_ids:
         recipients.update(
@@ -472,17 +472,22 @@ def notify_submission(submission_id):
         )
     recipients.discard("")
     if recipients:
-        send_mail(
-            subject=f"New SHVYA Calendar lead · {page.name}",
-            message=(
-                f"{submission.lead.name} submitted {page.name}.\n"
-                f"Phone: {submission.lead.phone}\n"
-                f"Status: {submission.get_status_display()}\n"
-            ),
-            from_email=settings.DEFAULT_FROM_EMAIL,
-            recipient_list=sorted(recipients),
-            fail_silently=True,
-        )
+        try:
+            sent = send_organization_email(
+                organization=submission.organization,
+                to=sorted(recipients),
+                subject=f"New SHVYA Calendar lead · {page.name}",
+                text_body=(
+                    f"{submission.lead.name} submitted {page.name}.\n"
+                    f"Phone: {submission.lead.phone}\n"
+                    f"Email: {submission.lead.email or 'Not provided'}\n"
+                    f"Status: {submission.get_status_display()}\n"
+                ),
+            )
+            if not sent:
+                raise EmailConfigurationError("The connected mailbox did not send the notification.")
+        except Exception:
+            logger.exception("Calendar internal notification failed for submission %s", submission.id)
 
     if page.acknowledgement_enabled and submission.lead.email:
         variables = {
@@ -514,5 +519,4 @@ def notify_submission(submission_id):
                 "SHVYA Calendar acknowledgement delivery failed for submission %s",
                 submission.id,
             )
-
 

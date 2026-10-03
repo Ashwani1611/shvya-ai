@@ -305,17 +305,34 @@ def recover_pending_google_meet():
     )
     for booking_id in booking_ids:
         refresh_booking_conference.delay(str(booking_id))
-    return {"queued": len(booking_ids) + len(unsynced_ids)}
+    cancellation_ids = list(CalendarBooking.objects.filter(
+        status=CalendarBooking.Status.CANCELLED,
+        calendar_sync_status=CalendarBooking.SyncStatus.PENDING,
+    ).values_list("pk", flat=True)[:100])
+    for booking_id in cancellation_ids:
+        sync_booking_calendar.delay(str(booking_id))
+    return {"queued": len(booking_ids) + len(unsynced_ids) + len(cancellation_ids)}
 
 
 @shared_task(bind=True, max_retries=5, name="shvya_calendar.sync_booking_calendar")
 def sync_booking_calendar(self, booking_id):
     """Retry-safe Google create/update after the CRM reservation commits."""
-    from .google import GoogleCalendarError, update_booking_event
+    from .google import GoogleCalendarError, cancel_booking_event, update_booking_event
     booking = CalendarBooking.objects.select_related("page", "lead", "host", "organization").filter(pk=booking_id).first()
-    if booking is None or booking.status not in (CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED):
+    if booking is None:
         return {"status": "inactive"}
     try:
+        if booking.status == CalendarBooking.Status.CANCELLED:
+            cancel_booking_event(booking)
+            CalendarBooking.objects.filter(pk=booking.pk).update(
+                calendar_sync_status=CalendarBooking.SyncStatus.SYNCED,
+                calendar_sync_error="", meeting_link="", google_event_url="",
+            )
+            return {"status": "cancelled"}
+        if booking.status not in (CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED):
+            return {"status": "inactive"}
+        if booking.calendar_sync_status == CalendarBooking.SyncStatus.SYNCED:
+            return {"status": "synced"}
         update_booking_event(booking)
     except GoogleCalendarError as exc:
         retry = exc.transient and self.request.retries < self.max_retries
@@ -329,3 +346,45 @@ def sync_booking_calendar(self, booking_id):
             ))
         return {"status": "failed"}
     return {"status": booking.calendar_sync_status}
+
+
+@shared_task(name="shvya_calendar.import_google_changes")
+def import_google_changes():
+    """Bounded rotating polling for known, synced events, including recently past ones."""
+    from datetime import timedelta
+    now = timezone.now()
+    with transaction.atomic():
+        rows = list(CalendarBooking.objects.select_for_update(skip_locked=True).filter(
+            status__in=[CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
+            calendar_sync_status=CalendarBooking.SyncStatus.SYNCED,
+            organization__is_active=True, end_at__gte=now - timedelta(days=30),
+        ).exclude(google_event_id="").filter(
+            models.Q(google_checked_at__isnull=True) | models.Q(google_checked_at__lt=now - timedelta(seconds=60)),
+        ).order_by(models.F("google_checked_at").asc(nulls_first=True), "pk")[:100])
+        CalendarBooking.objects.filter(pk__in=[row.pk for row in rows]).update(google_checked_at=now)
+        for row in rows:
+            transaction.on_commit(lambda pk=row.pk: import_google_booking_task.delay(str(pk)))
+    return {"queued": len(rows)}
+
+
+@shared_task(bind=True, max_retries=4, name="shvya_calendar.import_google_booking")
+def import_google_booking_task(self, booking_id):
+    from .google import GoogleCalendarError
+    from .google_reconciliation import import_google_booking
+    booking = CalendarBooking.objects.select_related("page", "organization", "host", "lead").filter(
+        pk=booking_id, organization__is_active=True,
+        page__organization_id=models.F("organization_id"),
+        lead__organization_id=models.F("organization_id"),
+        submission__organization_id=models.F("organization_id"),
+    ).first()
+    if booking is None:
+        return {"status": "missing"}
+    try:
+        return {"status": import_google_booking(booking)}
+    except GoogleCalendarError as exc:
+        CalendarBooking.objects.filter(pk=booking.pk).update(calendar_sync_error=str(exc)[:1000])
+        if exc.transient and self.request.retries < self.max_retries:
+            raise self.retry(exc=exc, countdown=_google_retry_delay(
+                booking_id=booking.pk, retries=self.request.retries, retry_after=exc.retry_after,
+            ))
+        return {"status": "failed"}

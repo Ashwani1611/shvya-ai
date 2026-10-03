@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from django.core import signing
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
-from django.http import Http404
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.clickjacking import xframe_options_exempt
@@ -23,7 +23,6 @@ from .google import GoogleCalendarError
 from .models import (
     CalendarBooking,
     CalendarPage,
-    CalendarReminderDelivery,
     CalendarSubmission,
 )
 from .services import (
@@ -418,6 +417,7 @@ def public_confirmation(request, booking_id, cancel_token):
             "booking": booking,
             "page": booking.page,
             "booking_local_start": booking.start_at.astimezone(booking_zone),
+            "cancelled": booking.status == CalendarBooking.Status.CANCELLED,
         },
     )
 
@@ -509,36 +509,8 @@ def public_cancel(request, booking_id, cancel_token):
         id=booking_id,
         cancel_token=cancel_token,
     )
-    if booking.status != CalendarBooking.Status.CANCELLED:
-        booking.status = CalendarBooking.Status.CANCELLED
-        booking.cancelled_at = timezone.now()
-        booking.save(
-            update_fields=["status", "cancelled_at", "updated_at"]
-        )
-        CalendarReminderDelivery.objects.filter(
-            booking=booking,
-            status__in=[
-                CalendarReminderDelivery.Status.PENDING,
-                CalendarReminderDelivery.Status.FAILED,
-            ],
-        ).update(
-            status=CalendarReminderDelivery.Status.SKIPPED,
-            error="Booking cancelled.",
-        )
-        from .google import cancel_booking_event
-        try:
-            cancel_booking_event(booking)
-        except GoogleCalendarError:
-            logger.warning(
-                "Google Calendar cancellation sync failed for booking %s",
-                booking.id,
-                exc_info=True,
-            )
-        except Exception:
-            logger.exception(
-                "Unexpected Google cancellation failure for booking %s",
-                booking.id,
-            )
+    from .cancellation_services import cancel_booking
+    cancel_booking(booking)
     return render(
         request,
         "shvya_calendar/confirmation.html",
@@ -548,3 +520,20 @@ def public_cancel(request, booking_id, cancel_token):
             "cancelled": True,
         },
     )
+
+
+@require_GET
+def public_booking_status(request, booking_id, cancel_token):
+    from .booking_presentation import safe_meeting_link
+    booking = get_object_or_404(CalendarBooking.objects.select_related("page"),
+                                pk=booking_id, cancel_token=cancel_token)
+    active = booking.status != CalendarBooking.Status.CANCELLED
+    response = JsonResponse({
+        "status": booking.status,
+        "sync_status": booking.calendar_sync_status,
+        "event_url": safe_meeting_link(booking.google_event_url) if active and booking.page.show_add_calendar else "",
+        "meeting_link": safe_meeting_link(booking.meeting_link) if active else "",
+    })
+    response["Cache-Control"] = "no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response

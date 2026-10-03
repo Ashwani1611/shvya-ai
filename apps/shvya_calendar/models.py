@@ -554,6 +554,7 @@ class CalendarBooking(models.Model):
         default=SyncStatus.NOT_CONNECTED,
     )
     calendar_sync_error = models.TextField(blank=True)
+    google_checked_at = models.DateTimeField(null=True, blank=True, db_index=True)
     cancel_token = models.CharField(max_length=64, unique=True, editable=False)
     reschedule_token = models.CharField(max_length=64, unique=True, editable=False)
     cancelled_at = models.DateTimeField(null=True, blank=True)

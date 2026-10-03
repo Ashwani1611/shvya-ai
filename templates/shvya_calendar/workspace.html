@@ -4,10 +4,10 @@
 {% block header %}Calendar{% endblock %}
 {% block extra_head %}{{ block.super }}
 <link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=1">
-<script src="{% static 'shvya_calendar/workspace.js' %}?v=2" defer></script>
+<script src="{% static 'shvya_calendar/workspace.js' %}?v=3" defer></script>
 {% endblock %}
 {% block content %}
-<section class="cw" id="calendar-workspace" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}">
+<section class="cw" id="calendar-workspace" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}" data-selected-date="{{ calendar_selected_date }}" data-focused-booking-url="{{ focused_booking_url }}">
   <header class="cw-heading"><div><p class="cw-eyebrow">SHVYA CALENDAR</p><h1>Your time, together.</h1><p class="cw-subtitle">Every booking. One clear view.</p></div><a class="cw-button" href="{% url 'shvya_calendar:bookings' %}"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Manage bookings</a></header>
   <div class="cw-card">
     <div class="cw-toolbar">
