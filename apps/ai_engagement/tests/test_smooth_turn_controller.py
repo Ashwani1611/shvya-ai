@@ -48,6 +48,14 @@ class SmoothTurnControllerTests(SimpleTestCase):
         self.assertEqual(policy.prompt_mode, SALES_SUPPORT_MODE)
         self.assertEqual(policy.model_override, "gpt-sales-org")
 
+    def test_real_non_new_stage_overrides_stale_qualification_mode(self):
+        policy = build_turn_policy(
+            context=self._context(stage="Qualified"),
+            qualification_state={"engagement_mode": "qualification"},
+        )
+        self.assertEqual(policy.prompt_mode, SALES_SUPPORT_MODE)
+        self.assertEqual(policy.model_override, "gpt-sales-org")
+
     def test_business_plan_answers_question_before_next_qualification(self):
         context = self._context(
             knowledge=[{"chunk_id": "1", "content": "Plan details", "similarity": 0.9}]
