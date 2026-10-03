@@ -575,6 +575,35 @@ class OpenAIProvider:
             provider_error = "api_status"
             self._release_credit_reservation(reservation)
             status_code = getattr(exc, "status_code", None)
+            if (
+                status_code is not None
+                and status_code < 500
+                and self._model_override_unavailable(
+                    exc,
+                    metadata=metadata,
+                    request_model=request_model,
+                )
+            ):
+                fallback_metadata = self._metadata_without_model_override(metadata)
+                fallback_model = self._model_for_metadata(fallback_metadata)
+                if fallback_model != request_model:
+                    increment(
+                        "ai.model_override_fallbacks",
+                        labels={"provider": "openai", "reason": "api_status"},
+                    )
+                    emit_event(
+                        "ai.model_override.fallback",
+                        provider="openai",
+                        organization_id=organization_id,
+                        requested_model=request_model,
+                        fallback_model=fallback_model,
+                    )
+                    return self.generate_text(
+                        instructions=instructions,
+                        input_text=input_text,
+                        metadata=fallback_metadata,
+                        response_schema=response_schema,
+                    )
             if status_code is not None and status_code >= 500:
                 raise AIProviderTransientError(
                     f"OpenAI server error: {exc}",
