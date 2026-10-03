@@ -35,8 +35,10 @@ class TurnPolicy:
 
 
 def build_turn_policy(*, context, qualification_state: dict | None = None) -> TurnPolicy:
-    organization = context.organization if isinstance(context.organization, dict) else {}
-    stage = context.stage if isinstance(context.stage, dict) else {}
+    raw_organization = getattr(context, "organization", {})
+    raw_stage = getattr(context, "stage", {})
+    organization = raw_organization if isinstance(raw_organization, dict) else {}
+    stage = raw_stage if isinstance(raw_stage, dict) else {}
     state = qualification_state if isinstance(qualification_state, dict) else {}
 
     stage_name = normalize_stage_name(stage.get("name"))
