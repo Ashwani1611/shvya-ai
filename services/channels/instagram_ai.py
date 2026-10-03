@@ -26,7 +26,7 @@ from apps.ai_engagement.services.crm_executor import (
     CRMActionExecutionError,
     CRMActionExecutor,
 )
-from apps.ai_engagement.services.engagement import EngagementError
+from apps.ai_engagement.services.engagement import EngagementError, EngagementService
 from apps.ai_engagement.services.engagement_failsoft import (
     build_deterministic_fallback_decision,
 )
@@ -492,7 +492,8 @@ def execute_instagram_ai_engagement(*, task, message_id):
     service = TurnController(
         context_builder=InstagramAIContextBuilder(
             conversation_id=conversation.pk,
-        )
+        ),
+        service_class=EngagementService,
     )
     from apps.ai_engagement.services.runtime_state import state_revision
     from apps.ai_engagement.services.transactional_turn_runtime import _state_changing_decision
