@@ -96,8 +96,13 @@ def enrichment_due(*, lead) -> bool:
     return chars >= 180 or average_chars >= 30
 
 
-def queue_background_enrichment(*, lead_id, force=False) -> dict:
-    """Queue slow internal AI work without blocking or starving WhatsApp replies."""
+def queue_background_enrichment(*, lead_id, force=False, include_qualification=True) -> dict:
+    """Queue post-turn enrichment without blocking the customer reply.
+
+    The normal customer turn uses one response model call plus one summary call.
+    Qualification state/CRM fields are already committed synchronously; the
+    optional qualification-note job remains a slower secondary enrichment.
+    """
     lead = (
         Lead.objects.select_related("organization")
         .filter(id=lead_id)
@@ -149,7 +154,9 @@ def queue_background_enrichment(*, lead_id, force=False) -> dict:
 
     org_info = OrgInfo.objects.filter(organization=lead.organization).first()
     qualification_queued = bool(
-        org_info and (org_info.ai_playbook or "").strip()
+        include_qualification
+        and org_info
+        and (org_info.ai_playbook or "").strip()
     )
     if qualification_queued:
         generate_lead_qualification.apply_async(
