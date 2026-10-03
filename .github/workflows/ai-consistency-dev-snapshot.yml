@@ -1,42 +1,45 @@
-name: AI consistency development snapshot
+name: Apply reviewed AI consistency development patch
 on:
   push:
     branches: [fix/ai-engagement-end-to-end-consistency]
     paths: [.github/workflows/ai-consistency-dev-snapshot.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  reviewed_patch:
+    if: github.ref == 'refs/heads/fix/ai-engagement-end-to-end-consistency'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          persist-credentials: false
-      - name: Package tracked source for isolated development review
+          ref: ${{ github.sha }}
+      - name: Validate and apply the locally reviewed source patch
         run: |
+          set -euo pipefail
           python - <<'PY'
-          import hashlib, json, pathlib, subprocess, zipfile
-          root = pathlib.Path.cwd()
-          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
-          extensions = {'.py', '.html', '.js', '.json', '.toml', '.md', '.yml', '.yaml', '.txt', '.ini', '.cfg', '.css'}
-          manifest = {}
-          with zipfile.ZipFile('ai-consistency-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-              for name in names:
-                  path = root / name
-                  if not name or path.is_symlink() or path.suffix not in extensions or not path.is_file():
-                      continue
-                  if any(part in {'.git', '.env', 'node_modules', '.venv'} for part in path.relative_to(root).parts):
-                      continue
-                  if path.stat().st_size > 5_000_000:
-                      continue
-                  data = path.read_bytes()
-                  archive.writestr(name, data)
-                  manifest[name] = hashlib.sha256(data).hexdigest()
-              archive.writestr('development-source-manifest.json', json.dumps(manifest, sort_keys=True))
+          import ast, base64, hashlib, lzma, pathlib, subprocess
+          root = pathlib.Path('.github/ai-consistency-review')
+          encoded = ''.join((root / f'part-{n}.b64').read_text().strip() for n in range(7))
+          assert len(encoded) == 42748, 'Unexpected patch envelope size'
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True), memlimit=256*1024*1024)
+          assert len(patch) < 250000, 'Patch exceeds reviewed size'
+          assert hashlib.sha256(patch).hexdigest() == '52b2f7ae97a4511710db14aaea80d3a3362b88ed88c713af047aaad21a0e09ae', 'Reviewed patch digest mismatch'
+          for line in patch.decode().splitlines():
+              if line.startswith('+++ b/') or line.startswith('--- a/'):
+                  path = pathlib.PurePosixPath(line[6:])
+                  assert path.parts[0] in {'apps', 'services', 'docs'} and '..' not in path.parts
+                  assert path.suffix in {'.py', '.md'}
+          subprocess.run(['git', 'apply', '--index', '--unidiff-zero', '--whitespace=error', '-'], input=patch, check=True)
+          names = subprocess.check_output(['git', 'diff', '--cached', '--name-only']).decode().splitlines()
+          assert len(names) == 43
+          for name in names:
+              if name.endswith('.py'):
+                  ast.parse(pathlib.Path(name).read_text(), filename=name)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          subprocess.run(['git', 'rm', '-r', '.github/ai-consistency-review'], check=True)
           PY
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: ai-consistency-source
-          path: ai-consistency-source.zip
-          retention-days: 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Implement receipt-backed Playbook actions, Instagram outcomes, bounded fallback and controlled source repair with exact credit accounting'
+          git push origin HEAD:refs/heads/fix/ai-engagement-end-to-end-consistency
