@@ -463,6 +463,11 @@ class InternalSummaryService:
             )
 
         try:
+            from apps.ai_engagement.models import OrgInfo
+
+            org_info = OrgInfo.objects.filter(organization=organization).only(
+                "summary_model"
+            ).first()
             provider = OpenAIProvider()
 
             result = provider.generate_text(
@@ -476,6 +481,9 @@ class InternalSummaryService:
                         lead.id
                     ),
                     "purpose": "internal_conversation_summary",
+                    "model_override": str(
+                        getattr(org_info, "summary_model", "") or ""
+                    ).strip(),
                 },
             )
 
