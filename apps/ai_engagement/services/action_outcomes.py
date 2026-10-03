@@ -79,7 +79,8 @@ def action_outcomes(*, lead, source) -> dict:
         kind = ACTION_NAMES.get(receipt.action_type)
         if kind is None or result.get("type") != kind:
             continue
-        status = result.get("status") if result.get("status") in {"executed", "no_op", "failed"} else "unknown"
+        status = result.get("status")
+        status = status if isinstance(status, str) and status in {"executed", "no_op", "failed"} else "unknown"
         row = {"type": kind, "status": status, "recorded_at": receipt.created_at.isoformat()}
         if kind == "attribute_updates":
             keys = result.get("keys")

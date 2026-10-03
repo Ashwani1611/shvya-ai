@@ -93,11 +93,14 @@ class UsageObservationIntegrationTests(TestCase):
         self.assertTrue(Organization.objects.filter(pk=self.organization.pk).exists())
 
     def test_paired_runner_reports_incremental_actual_credits(self):
-        records = []
+        records, charged = [], []
         def charge():
             reservation = self.reserve()
+            # Cross a real billing bucket; 100 and 1,000 tokens share one bucket.
             AICreditService.settle(reservation=reservation, input_tokens=1000,
-                output_tokens=1000 if len(records) == 2 else 100)
+                output_tokens=2000 if records[-1] else 100)
+            reservation.refresh_from_db()
+            charged.append(reservation.actual_credits)
         def runner():
             return fixtures.RecoveryValidationTests.fake_runner(self, records, callback=charge)
         with patch.object(evaluation, "_memory_playground", side_effect=runner):
@@ -105,6 +108,10 @@ class UsageObservationIntegrationTests(TestCase):
         self.assertTrue(report["comparison_valid"])
         self.assertTrue(report["credit_usage_measured"])
         self.assertTrue(report["usage"]["incremental_complete"])
+        self.assertEqual(records, [False, True])
+        self.assertEqual(report["usage"]["baseline"]["settled_credits"], charged[0])
+        self.assertEqual(report["usage"]["recovery"]["settled_credits"], charged[1])
+        self.assertEqual(report["usage"]["incremental_credits"], charged[1] - charged[0])
         self.assertGreater(report["usage"]["incremental_credits"], 0)
         self.assertFalse(report["customer_messages_sent"])
         self.assertFalse(report["semantic_accuracy_verified"])
@@ -122,3 +129,18 @@ class UsageObservationIntegrationTests(TestCase):
         self.assertIsNone(report["usage"]["incremental_credits"])
         self.assertGreater(report["usage"]["baseline"]["settled_credits"], 0)
         self.assertNotIn("PRIVATE", json.dumps(report))
+
+    def test_equal_billing_buckets_have_zero_incremental_credits(self):
+        records = []
+        def charge():
+            reserved = self.reserve()
+            AICreditService.settle(reservation=reserved, input_tokens=1000,
+                output_tokens=1000 if records[-1] else 100)
+        with patch.object(evaluation, "_memory_playground", side_effect=lambda:
+                fixtures.RecoveryValidationTests.fake_runner(self, records, callback=charge)):
+            report = evaluation.evaluate(self.organization, fixtures.scenario())
+        self.assertEqual(records, [False, True])
+        self.assertTrue(report["usage"]["incremental_complete"])
+        self.assertEqual(report["usage"]["incremental_credits"], 0)
+        self.assertEqual(report["usage"]["baseline"]["settled_credits"],
+                         report["usage"]["recovery"]["settled_credits"])

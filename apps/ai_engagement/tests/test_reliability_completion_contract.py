@@ -226,6 +226,14 @@ class ActionPolicyContracts(unittest.TestCase):
         lead.attributes[STATE_KEY]["history"].append({"event": "trace"})
         self.assertEqual(before, state_revision(lead))
 
+    def test_business_fields_named_like_audit_data_still_invalidate_reply(self):
+        for key in ("history", "updated_at", "created_at"):
+            lead = self.lead()
+            lead.attributes[key] = "Original customer fact"
+            before = state_revision(lead)
+            lead.attributes[key] = "Corrected customer fact"
+            self.assertNotEqual(before, state_revision(lead))
+
     def test_policy_hash_does_not_mutate_configuration(self):
         profile, data = self.profile()
         before = deepcopy(data)

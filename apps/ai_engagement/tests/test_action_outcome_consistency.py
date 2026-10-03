@@ -132,3 +132,14 @@ class ActionOutcomeConsistencyTests(TestCase):
         resolved = operational_state_for_context(self.context())["resolved_actions"]
         self.assertEqual(len(resolved["outcomes"]), 2)
         self.assertEqual(resolved["outcomes"][0].get("keys", []), [])
+
+    def test_malformed_status_values_cannot_break_final_composition(self):
+        source = self._inbound()
+        for index, value in enumerate((["executed"], {"status": "executed"}, None, True)):
+            AIActionReceipt.objects.create(organization=self.organization, lead=self.lead,
+                source_message_id=source.pk, idempotency_key="bad-status-" + str(index),
+                action_type="CREATE_REMINDER", result={"type": "create_reminder", "status": value})
+        resolved = operational_state_for_context(self.context())["resolved_actions"]
+        self.assertEqual(len(resolved["outcomes"]), 4)
+        self.assertEqual(resolved["action_types"], [])
+        self.assertTrue(all(row["status"] == "unknown" for row in resolved["outcomes"]))
