@@ -17,6 +17,10 @@ Own customer-facing AI behavior: persona, response policy, qualification convers
 6. Validate the draft with the canonical template/qualification compiler where available, then use `update_ai_configuration(changes.ai_playbook)` with dry-run and approval.
 7. Read back the full saved Playbook. Run policy and conversation simulations after publication.
 
+## Customer-copy formatting
+
+Before changing message blocks, read [customer-facing content gates](../../framework/customer-content-gates.md). Keep the canonical eight headings and message tags intact while authoring the customer-visible body as plain text. Retain supported first-name tokens in authored blocks, then verify populated/missing-name previews. Do not expose tags, internal labels or unresolved placeholders in final replies. Never run whole-document Markdown removal over a Playbook. Report prompt/source tests separately from model and runtime checks.
+
 ## Guardrails
 
 Never publish unresolved `{{SHVYA_*}}` authoring variables, hard-coded recipient names, secrets, unsupported runtime placeholders or instructions that conflict with backend consent/routing rules.

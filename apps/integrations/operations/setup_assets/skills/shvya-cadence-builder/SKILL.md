@@ -17,6 +17,10 @@ Own ordered follow-up sequences and their delivery prerequisites.
 6. Run `validate_cadence_batch` for planned batches and `simulate_cadence` for timing. Check business hours, opt-out/handoff exits, duplicate follow-up risk and pipeline routing.
 7. Apply through dry-run/approval/read-back and verify the final contiguous order and active state.
 
+## Customer-copy formatting
+
+Before writing steps or related Touchpoints, read [customer-facing content gates](../../framework/customer-content-gates.md). Use plain-text copy, one useful purpose/CTA and natural first-name personalization without repeated greetings. Preview populated/missing names, links, options and any caption on the selected provider. Preserve approved-template text/mappings rather than silently converting a template to free text. Formatting validation does not authorize sends, enrollment, activation or timing changes; report untested delivery surfaces as UNKNOWN.
+
 ## Guardrails
 
 Do not send test messages just because a Cadence was configured. API free text remains subject to provider service-window rules. Do not silently convert an API template step into Hosted free-form copy.

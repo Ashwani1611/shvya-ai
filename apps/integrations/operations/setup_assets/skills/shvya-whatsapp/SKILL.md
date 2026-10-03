@@ -17,6 +17,10 @@ Use for WhatsApp account discovery, Hosted/API routing, template lifecycle, AI/f
 6. Trace delivery issues through message trace, runtime health, provider/integration evidence and Cadence/Workflow dependencies.
 7. Never replay an uncertain send automatically. Verify provider outcome first.
 
+## Customer-copy formatting
+
+Before authoring or reviewing messages, read [customer-facing content gates](../../framework/customer-content-gates.md). Use plain-text customer copy; keep internal skill/report Markdown separate. Preview actual API, Coexistence or Hosted output, including populated/missing names, links and reply options. Preserve approved-template text and mappings. Report untested surfaces as UNKNOWN; a clean preview does not prove delivery. Formatting work does not change business hours, active-conversation delay, routing or the AI-toggle hierarchy.
+
 ## Guardrails
 
 Do not expose QR/session credentials through skill output. Do not route a lead through a number unrelated to its current pipeline. Do not treat an approved template as proof a personalized payload will validate.
