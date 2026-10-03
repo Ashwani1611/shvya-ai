@@ -46,7 +46,11 @@
         backdrop.setAttribute('aria-label', 'Close navigation');
         backdrop.setAttribute('tabindex', '-1');
         backdrop.setAttribute('aria-hidden', 'true');
-        document.body.appendChild(backdrop);
+        // CRM fixes the shell to the viewport, creating a stacking context.
+        // Keep the backdrop beside the sidebar so it cannot cover the entire
+        // shell (including navigation) from a higher, body-level context.
+        // Append last to preserve the #app-sidebar + div workspace selectors.
+        sidebar.parentElement.appendChild(backdrop);
         if (header) header.insertBefore(trigger, header.firstChild);
         else document.body.appendChild(trigger);
 
