@@ -352,6 +352,12 @@ def _source_state(organization) -> str:
     from apps.ai_engagement.models import Chunk, Document
     documents = Document.objects.filter(organization=organization, is_active=True)
     if not documents.exists():
+        # Failed imports are normally inactive: they are not absent knowledge.
+        all_documents = Document.objects.filter(organization=organization)
+        if all_documents.filter(processing_status="failed").exists():
+            return "source_failed"
+        if all_documents.filter(processing_status__in=["pending", "processing"]).exists():
+            return "source_not_ready"
         return "no_documents"
     if not documents.filter(processing_status="completed").exists():
         return ("source_not_ready" if documents.exclude(processing_status="failed").exists()

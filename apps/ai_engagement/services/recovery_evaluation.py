@@ -42,7 +42,8 @@ def preflight(organization) -> dict:
     from apps.ai_engagement.services.evidence_recovery import enabled
 
     info = OrgInfo.objects.filter(organization=organization).first()
-    documents = Document.objects.filter(organization=organization, is_active=True)
+    all_documents = Document.objects.filter(organization=organization)
+    documents = all_documents.filter(is_active=True)
     chunks = Chunk.objects.filter(
         organization=organization, is_active=True, document__organization=organization,
         document__is_active=True, document__processing_status="completed",
@@ -53,8 +54,8 @@ def preflight(organization) -> dict:
     counts = {"active_documents": documents.count(), "searchable_chunks": chunks.count(),
               "embedded_chunks": chunks.filter(embedding__isnull=False).count(),
               "active_faqs": FAQ.objects.filter(organization=organization, is_active=True).count(),
-              "failed_documents": documents.filter(processing_status="failed").count(),
-              "unready_documents": documents.exclude(processing_status__in=["completed", "failed"]).count(),
+              "failed_documents": all_documents.filter(processing_status="failed").count(),
+              "unready_documents": all_documents.exclude(processing_status__in=["completed", "failed"]).count(),
               "completed_documents_without_chunks": missing_chunks.count(),
               "guided_files_marked_ready": documents.filter(file_sharing_ready=True).count()}
     return {
@@ -73,6 +74,9 @@ def preflight(organization) -> dict:
         "runtime_scope": "current_process_only",
         "file_bytes_accessibility_checked": False,
         "activation_changed": False,
+        "repair_document_ids": list(all_documents.filter(processing_status="failed")
+            .order_by("-updated_at", "pk").values_list("pk", flat=True)[:20]),
+        "repair_command": "repair_ai_knowledge; dry-run first, --apply requires an exact fingerprint",
     }
 
 
@@ -162,6 +166,7 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
     """
     from apps.ai_engagement.services.evidence_recovery import sandbox_recovery_preview
     from apps.ai_engagement.services.trace_service import TraceBuffer, _CURRENT
+    from apps.ai_engagement.services.usage_observation import observe_usage, usage_report, summarize_usage
     from apps.crm.models import Lead, Stage
 
     cases = validate_scenarios(payload)
@@ -218,11 +223,17 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
                     token = _CURRENT.set(buffer)
                     turn_started = monotonic()
                     try:
-                        with sandbox_recovery_preview(organization_id=organization.pk,
-                                                      use_recovery=variant == "recovery"):
+                        with observe_usage(organization.pk) as usage, sandbox_recovery_preview(
+                                organization_id=organization.pk, use_recovery=variant == "recovery"):
                             result = runner.run(organization=organization, session_id=session_id,
                                 message=turn["message"], channel=case["channel"],
                                 lead_source=case.get("lead_source"), stage_id=case.get("stage_id"))
+                    except Exception:
+                        entry[variant].append({"turn": number, "model": "", "check_count": 0,
+                            "failed_checks": 0, "completed": False, "usage": usage_report(usage),
+                            "latency_ms": max(0, int((monotonic() - turn_started) * 1000)),
+                            "recovery_events": _safe_recovery_events(buffer), "execution_mode": "sandbox_preview"})
+                        raise
                     finally:
                         _CURRENT.reset(token)
                     checks = check_preview(result=result, expected=turn.get("expect", {}),
@@ -233,7 +244,7 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
                         report["recovery_exercised"] = True
                     entry[variant].append({"turn": number, "model": model, **checks,
                         "latency_ms": max(0, int((monotonic() - turn_started) * 1000)),
-                        "recovery_events": events,
+                        "recovery_events": events, "usage": usage_report(usage),
                         "execution_mode": "sandbox_preview"})
                     report["completed_turns"] += 1
                     # A fallback/deterministic result is not evidence that a live
@@ -261,5 +272,9 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
         report["acceptance"][variant] = {"check_count": checks, "failed_checks": failed,
             "passed": (failed == 0) if checks else None,
             "unscored_turns": sum(turn["check_count"] == 0 for turn in rows)}
+    report["usage"] = summarize_usage(report["cases"], comparison_valid=report["comparison_valid"])
+    report["credit_usage_measured"] = bool(report["usage"]["incremental_complete"] and any(
+        turn.get("usage", {}).get("observed_reservations", 0)
+        for case in report["cases"] for variant in ("baseline", "recovery") for turn in case[variant]))
     report["elapsed_ms"] = max(0, int((monotonic() - started) * 1000))
     return report

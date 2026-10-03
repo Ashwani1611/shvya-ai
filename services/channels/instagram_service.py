@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 import requests
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -1076,7 +1077,8 @@ def queue_text_message(
 def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     """Deliver one queued row once; callers decide whether a failure is retriable."""
     message = InstagramMessage.objects.select_related("account", "conversation").get(pk=message.pk)
-    if message.status == InstagramMessage.Status.SENT and message.external_id:
+    if message.external_id or message.status == InstagramMessage.Status.READ:
+        # An acknowledged or uncertain accepted send must not be replayed.
         return message
     if message.status not in {InstagramMessage.Status.QUEUED, InstagramMessage.Status.FAILED}:
         return message
@@ -1105,6 +1107,18 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
         raise InstagramAPIError("Meta accepted the request without returning a message ID.")
 
     with transaction.atomic():
+        # Match webhook lock order and refresh after network I/O. The earlier
+        # object may predate an echo/read receipt or source-metadata update.
+        InstagramConversation.objects.select_for_update().get(
+            pk=message.conversation_id, organization_id=message.organization_id,
+            account_id=message.account_id)
+        current = InstagramMessage.objects.select_for_update().get(
+            pk=message.pk, organization_id=message.organization_id,
+            account_id=message.account_id, conversation_id=message.conversation_id,
+            direction=InstagramMessage.Direction.OUTBOUND)
+        if current.external_id and current.external_id != external_id:
+            raise InstagramAPIError("Instagram send outcome requires reconciliation.")
+        message = current
         # If an outbound echo reached the webhook first, never violate unique external_id.
         duplicate = InstagramMessage.objects.select_for_update().filter(external_id=external_id).exclude(pk=message.pk).first()
         if duplicate:
@@ -1121,6 +1135,8 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
                 # bot response into a human reply and break retry/history checks.
                 if duplicate.status == InstagramMessage.Status.READ:
                     message.status = InstagramMessage.Status.READ
+                    message.is_read = True
+                message.sent_at = message.sent_at or duplicate.sent_at
                 duplicate.delete()
             else:
                 message.delete()
@@ -1129,7 +1145,7 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
         message.external_id = external_id
         if message.status != InstagramMessage.Status.READ:
             message.status = InstagramMessage.Status.SENT
-        message.sent_at = timezone.now()
+        message.sent_at = message.sent_at or timezone.now()
         message.error = ""
         existing_payload = (
             dict(message.raw_payload)
@@ -1141,13 +1157,17 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
             "provider_response": result,
         }
         message.save(
-            update_fields=["external_id", "status", "sent_at", "error", "raw_payload", "updated_at"]
+            update_fields=["external_id", "status", "is_read", "sent_at", "error", "raw_payload", "updated_at"]
         )
     return message
 
 
 def fail_message(message_id, error: Exception) -> None:
-    InstagramMessage.objects.filter(pk=message_id).update(
+    # Late failures cannot overwrite a provider acceptance or a read receipt.
+    # Claimed rows without acceptance retain their claim for reconciliation.
+    InstagramMessage.objects.filter(pk=message_id, direction=InstagramMessage.Direction.OUTBOUND,
+        status__in=[InstagramMessage.Status.QUEUED, InstagramMessage.Status.FAILED]).filter(
+            Q(external_id__isnull=True) | Q(external_id="")).update(
         status=InstagramMessage.Status.FAILED,
         error=str(error)[:2000],
         updated_at=timezone.now(),
@@ -1162,7 +1182,8 @@ def requeue_explicitly_rejected_message(message_id) -> bool:
         .filter(pk=message_id)
         .first()
     )
-    if message is None or message.external_id:
+    if (message is None or message.external_id or message.direction != InstagramMessage.Direction.OUTBOUND
+            or message.status not in {InstagramMessage.Status.QUEUED, InstagramMessage.Status.FAILED}):
         return False
     payload = (
         dict(message.raw_payload)
@@ -1299,7 +1320,7 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
                     outbound = outbound.filter(sent_at__lte=watermark)
                 else:
                     continue
-                if outbound.update(status=InstagramMessage.Status.READ, is_read=True):
+                if outbound.update(status=InstagramMessage.Status.READ, is_read=True, updated_at=timezone.now()):
                     processed += 1
                 continue
 

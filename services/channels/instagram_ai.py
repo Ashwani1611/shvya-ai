@@ -90,11 +90,11 @@ class InstagramAIContextBuilder(AIContextBuilder):
                     ),
                 }
             )
-        return {"message_count": len(normalized), "messages": normalized, "channel": "instagram", "execution_mode": "live"}
+        return {"message_count": len(normalized), "messages": normalized, "channel": "instagram", "id": str(self.conversation_id), "execution_mode": "live"}
 
     def _build_lead_context(self, *, lead):
         context = super()._build_lead_context(lead=lead)
-        # Count only confirmed delivery in this exact Instagram conversation.
+        # Count provider-accepted/read files only in this exact conversation.
         # The inherited runtime history belongs to WhatsApp delivery. A file
         # sent there (or in another Instagram thread) has not been delivered in
         # this conversation and must remain available to Instagram's playbook.

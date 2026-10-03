@@ -83,11 +83,16 @@ def _semantic_state(value):
 
 def state_revision(lead):
     attributes = lead.attributes if isinstance(getattr(lead, "attributes", None), dict) else {}
-    return response_hash(json.dumps(_semantic_state({
-        "qualification": attributes.get("_shvya_ai_qualification"),
-        "runtime": attributes.get(STATE_KEY),
+    return response_hash(json.dumps({
+        "qualification": _semantic_state(attributes.get("_shvya_ai_qualification")),
+        "runtime": _semantic_state(attributes.get(STATE_KEY)),
         "stage": str(getattr(lead, "stage_id", "")),
-    }), sort_keys=True, default=str))
+        "pipeline": str(getattr(lead, "pipeline_id", "")),
+        "lead_source": str(getattr(lead, "lead_source", "")),
+        # Ordinary business fields named history/updated_at are still facts;
+        # only internal runtime audit bookkeeping may be ignored.
+        "attributes": {key: value for key, value in attributes.items() if not key.startswith("_")},
+    }, sort_keys=True, default=str))
 
 
 def response_hash(message):

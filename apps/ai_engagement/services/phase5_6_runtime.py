@@ -483,6 +483,12 @@ def _patch_engagement() -> None:
                     requirement_id=next_id,
                 )
                 message = resolution.controlled_fallback.strip()
+                if resolution.question_type in {"pricing", "policy", "location", "working_hours", "product_or_service"}:
+                    from apps.ai_engagement.models import OrgInfo
+                    from apps.ai_engagement.services.response_fallbacks import fallback_message
+                    languages = OrgInfo.objects.filter(organization=organization).values_list("bot_languages", flat=True).first()
+                    message = fallback_message(kind="unverified", bot_languages=languages,
+                        latest_text=question, question_type=resolution.question_type)
                 if next_question:
                     message = f"{message}\n\n{next_question}".strip()
                 decision = replace(
@@ -1055,7 +1061,7 @@ def _install_grounding_cost_guard() -> None:
         forbidden = configured_forbidden_claims(getattr(state.get("organization"), "settings", {}))
         reply = normalized_text(getattr(decision, "message", ""))
         if any(normalized_text(claim) in reply for claim in forbidden):
-            return {"decision": evidence_graph._safe_unknown_decision(decision),
+            return {"decision": evidence_graph._safe_unknown_decision(decision, state=state),
                     "grounding_approved": False, "grounding_validation_path": "forbidden_claim"}
 
         # Factual equivalence does not prove compliance with a language rule.
