@@ -1,12 +1,15 @@
-"""One durable, non-configurable 45 second AI send gate per WhatsApp sender.
+"""One durable conversational AI send gate per WhatsApp sender.
 
+The old fixed 45-second gap made healthy AI feel stalled. Normal conversational
+AI now uses a short configurable pacing gap after the inbound burst collector;
+follow-up cadence timing still controls when bump-ups/follow-ups are created.
 Redis/Celery determine when to wake work; PostgreSQL decides who may send.
-Reservations commit before provider I/O and survive a worker crash. Failed or
-uncertain attempts retain a cooldown rather than opening the gate to a burst.
+Reservations commit before provider I/O and survive a worker crash.
 """
 
 from datetime import timedelta
 from functools import wraps
+import os
 import uuid
 
 from django.db import transaction
@@ -20,7 +23,15 @@ from apps.channels.models import AIMessageSendState, WhatsAppAccount, WhatsAppMe
 from services.channels.hosted_automation_service import HostedAutomationPaused
 
 
-AI_SEND_GAP_SECONDS = 45
+def _conversation_send_gap_seconds() -> int:
+    try:
+        value = int(os.getenv("AI_CONVERSATION_SEND_GAP_SECONDS", "5"))
+    except (TypeError, ValueError):
+        value = 5
+    return min(max(value, 1), 45)
+
+
+AI_SEND_GAP_SECONDS = _conversation_send_gap_seconds()
 # Longer than the transport's longest bounded HTTP send (90 seconds).
 AI_SEND_LEASE_SECONDS = 300
 SENT_STATUSES = ("sent", "delivered", "read")
