@@ -238,7 +238,9 @@ def execute_hosted_ai_engagement(*, task, job):
     if not permission.allowed:
         return {"status": "skipped", "reason": permission.reason, "lead_id": str(lead.id)}
 
-    service = EngagementService(
+    from apps.ai_engagement.services.turn_controller import TurnController
+
+    service = TurnController(
         context_builder=HostedAIContextBuilder(account_id=account.id),
     )
     try:
