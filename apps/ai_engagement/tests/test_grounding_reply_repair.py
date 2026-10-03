@@ -11,6 +11,24 @@ from apps.ai_engagement.services.engagement import EngagementDecision
 
 
 class GroundingReplyRepairTests(SimpleTestCase):
+    def test_graph_supplies_authored_faqs_without_vector_search(self):
+        from apps.ai_engagement.graph.workflow import _generate
+        from apps.ai_engagement.services.context import AIContext
+        from apps.organizations.models import Organization
+        state = self.state()
+        state["context"] = AIContext(**vars(state["context"]), pipeline={}, contacts=[],
+            attributes=[], conversation_summary=None, qualification_notes=[])
+        state["organization"] = Organization(name="Example")
+        faqs = [{"source_id": "faq:1", "content": "Question: Price?\nAnswer: ₹2999 monthly."}]
+        state["service"] = SimpleNamespace()
+        with patch("apps.ai_engagement.graph.workflow._with_file_candidates", return_value=state["context"]), \
+             patch("apps.ai_engagement.services.authored_knowledge.authored_answer_candidates", return_value=faqs), \
+             patch("apps.ai_engagement.services.engagement.EngagementService.engage") as generate:
+            state["legacy_engage"] = generate
+            result = _generate(state)
+        self.assertEqual(generate.call_args.kwargs["context"].organization["_authored_faq_candidates"], faqs)
+        self.assertEqual(result["context"].organization["about"], "We automate follow-ups.")
+
     def test_deterministic_label_does_not_bypass_configured_language_validation(self):
         state = self.state()
         state["requirements"] = [{"id": "budget", "question": "What is your budget?"}]
@@ -112,15 +130,17 @@ class GroundingReplyRepairTests(SimpleTestCase):
         self.assertEqual(len(calls), 1)
         self.assertNotIn("private customer detail", str(trace.call_args_list))
 
-    def test_slow_turn_does_not_add_repair_calls(self):
+    def test_slow_generation_does_not_starve_answer_recovery(self):
         state = {**self.state(), "started_at": 1.0}
-        with patch("apps.ai_engagement.graph.evidence.monotonic", return_value=20.0):
-            with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-                provider.return_value.generate_text.return_value = SimpleNamespace(
-                    text='{"approved":false,"reason":"language_mismatch"}')
-                result = check_grounding(state)
-        provider.return_value.generate_text.assert_called_once()
-        self.assertFalse(result["grounding_approved"])
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                {"approved": False, "reason": "language_mismatch"},
+                {"message": "हम फ़ॉलो-अप को स्वचालित करते हैं।"},
+                {"approved": True, "reason": "approved"},
+            )]
+            result = check_grounding(state)
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+        self.assertTrue(result["grounding_approved"])
 
     def test_repair_uses_short_provider_timeout(self):
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
@@ -130,7 +150,43 @@ class GroundingReplyRepairTests(SimpleTestCase):
                 {"approved": True, "reason": "approved"},
             )]
             check_grounding(self.state())
-        self.assertEqual(provider.call_args.kwargs, {"timeout_seconds": 5})
+        self.assertEqual(provider.call_args.kwargs, {"timeout_seconds": 10})
+
+    def test_checker_failure_recovers_from_ai_brain_and_revalidates(self):
+        state = self.state()
+        state["decision"] = replace(state["decision"], file_document_id=None)
+        with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+            provider.return_value.generate_text.side_effect = [
+                AIProviderPermanentError("check failed"),
+                SimpleNamespace(text=json.dumps({"message": "हम फ़ॉलो-अप को स्वचालित करते हैं।"})),
+                SimpleNamespace(text='{"approved":true,"reason":"approved"}'),
+            ]
+            result = check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertEqual(provider.return_value.generate_text.call_count, 3)
+
+    def test_faq_only_brain_recovers_unknown_reply_in_all_stages(self):
+        for stage in ("New Leads", "Qualified", "Won"):
+            with self.subTest(stage=stage):
+                state = self.state()
+                state["context"].stage = {"name": stage}
+                state["context"].organization["about"] = ""
+                state["context"].organization["_authored_faq_candidates"] = [
+                    {"source_id": "faq:1", "content": "Question: Price?\nAnswer: Basic costs ₹2999 monthly."}
+                ]
+                state["decision"] = replace(state["decision"], file_document_id=None,
+                    reason_code="UNKNOWN_INFORMATION", message="I don’t have that information.")
+                with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
+                    provider.return_value.generate_text.side_effect = [SimpleNamespace(text=json.dumps(item)) for item in (
+                        {"approved": True, "reason": "approved"},
+                        {"message": "Basic costs ₹2999 monthly."},
+                        {"approved": True, "reason": "approved"},
+                    )]
+                    result = check_grounding(state)
+                self.assertTrue(result["grounding_approved"])
+                self.assertEqual(result["decision"].message, "Basic costs ₹2999 monthly.")
+                payload = json.loads(provider.return_value.generate_text.call_args.kwargs["input_text"])
+                self.assertEqual(len(payload["authored_faq_candidates"]), 1)
 
     def test_unknown_reply_with_available_facts_is_regenerated_even_if_verifier_approves(self):
         state = self.state()

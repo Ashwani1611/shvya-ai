@@ -862,6 +862,7 @@ Do not add explanations, markdown, or chain-of-thought.
             "recent_conversation": self._compact_conversation(data["conversation"] or {}),
             "next_requirement": next_item,
             "knowledge": data["knowledge"],
+            "authored_faq_candidates": organization_data.get("_authored_faq_candidates") or [],
         }
         return json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
 

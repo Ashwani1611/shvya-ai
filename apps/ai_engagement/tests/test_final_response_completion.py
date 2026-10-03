@@ -74,12 +74,18 @@ class FinalResponseCompletionTests(SimpleTestCase):
         self.assertEqual(result["decision"].crm_actions, [])
         self.assertIsNone(result["decision"].file_document_id)
 
-    def test_final_timeout_obeys_existing_budget(self):
+    def test_final_recovery_has_its_own_bounded_allowance(self):
         state = self.state()
         state["started_at"] = monotonic() - 20
-        result, calls = self.run_final([{"approved": False, "reason": "language_mismatch"}], state)
-        self.assertEqual(len(calls), 1)
-        self.assertFalse(result["grounding_approved"])
+        result, calls = self.run_final([
+            {"approved": False, "reason": "language_mismatch"},
+            {"message": "हम फ़ॉलो-अप को स्वचालित करते हैं।"},
+            {"approved": True, "reason": "approved"},
+        ], state)
+        self.assertEqual(len(calls), 3)
+        self.assertTrue(result["grounding_approved"])
+        self.assertEqual(calls[1].kwargs["metadata"]["phase"], "grounding_reply_repair")
+        self.assertEqual(calls[2].kwargs["metadata"]["phase"], "grounding")
 
     def test_provider_error_is_localized_and_strips_unverified_effects(self):
         result, calls = self.run_final([AIProviderPermanentError("SECRET_PROVIDER_BODY")])

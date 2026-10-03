@@ -384,6 +384,20 @@ def _generate(state: EngagementGraphState) -> dict:
     # persisted flow snapshot as this graph; serializing questions back to prose
     # destroys explicit IDs, conditional rules and flow-version metadata.
     context = _with_file_candidates(state, state["context"])
+    # FAQs are authored AI Brain facts, not dependent on vector indexing or
+    # English lexical overlap. Keep complete Q/A pairs for semantic validation.
+    from apps.organizations.models import Organization
+    if isinstance(state["organization"], Organization):
+        from apps.ai_engagement.services.authored_knowledge import authored_answer_candidates
+        try:
+            faqs = authored_answer_candidates(
+                organization=state["organization"], question=state.get("latest_text", ""),
+            )
+            context = replace(context, organization={
+                **context.organization, "_authored_faq_candidates": faqs,
+            })
+        except Exception:
+            logger.exception("AI Brain FAQ context unavailable organization=%s", state["organization"].pk)
 
     decision = state["legacy_engage"](
         state["service"],
