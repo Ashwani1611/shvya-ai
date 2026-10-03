@@ -159,19 +159,24 @@ class TurnController:
     contract while keeping transport delivery separate.
     """
 
-    def __init__(self, *, provider=None, context_builder=None) -> None:
+    def __init__(self, *, provider=None, context_builder=None, service_class=None) -> None:
         self.provider = provider
         self.context_builder = context_builder
+        self.service_class = service_class
 
     def service(self):
-        from apps.ai_engagement.services.engagement import EngagementService
+        if self.service_class is None:
+            from apps.ai_engagement.services.engagement import EngagementService
+            service_class = EngagementService
+        else:
+            service_class = self.service_class
 
         kwargs = {}
         if self.provider is not None:
             kwargs["provider"] = self.provider
         if self.context_builder is not None:
             kwargs["context_builder"] = self.context_builder
-        return EngagementService(**kwargs)
+        return service_class(**kwargs)
 
     def engage(self, *, organization, lead, knowledge_query=None, context=None):
         return self.service().engage(
