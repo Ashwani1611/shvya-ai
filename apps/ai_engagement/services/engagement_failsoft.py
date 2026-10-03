@@ -10,6 +10,7 @@ business facts, pipeline movement, attributes, reminders, or identifiers.
 from __future__ import annotations
 
 from apps.ai_engagement.services.playbook import qualification_questions
+from apps.ai_engagement.services.response_fallbacks import fallback_message
 
 import logging
 import re
