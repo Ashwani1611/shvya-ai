@@ -72,6 +72,6 @@ class ConversationContinuityIntegrationTests(SimpleTestCase):
         self.assertEqual([item["document_id"] for item in candidates], [7])
         self.assertEqual(self.service._latest_inbound_message_id(context=ctx), "nudge")
 
-    def test_hosted_send_interval_remains_45_seconds(self):
+    def test_hosted_send_interval_uses_conversational_gap(self):
         from services.channels.ai_send_gate import AI_SEND_GAP_SECONDS
-        self.assertEqual(AI_SEND_GAP_SECONDS, 45)
+        self.assertEqual(AI_SEND_GAP_SECONDS, 5)
