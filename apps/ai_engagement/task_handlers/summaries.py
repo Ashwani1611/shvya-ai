@@ -39,7 +39,7 @@ def generate_internal_conversation_summary(
     level:
 
         - no Lead -> skip
-        - no WhatsApp messages -> skip
+        - no supported conversation messages -> skip
         - current summary already covers latest message -> skip
         - another summary task is already running -> skip
         - stale summary -> generate/publish
@@ -120,26 +120,19 @@ def generate_internal_conversation_summary(
             }
 
         # ----------------------------------------------------
-        # RE-READ LATEST WHATSAPP MESSAGE
+        # RE-READ LATEST SUPPORTED CONVERSATION MESSAGE
         # ----------------------------------------------------
 
-        latest_message = (
-            lead.whatsapp_messages
-            .filter(
-                organization=lead.organization,
-            )
-            .order_by(
-                "-created_at",
-                "-id",
-            )
-            .first()
+        latest_message = service.latest_message(
+            organization=lead.organization,
+            lead=lead,
         )
 
         if latest_message is None:
 
             logger.info(
                 "generate_internal_conversation_summary: "
-                "no WhatsApp messages for lead %s",
+                "no supported conversation messages for lead %s",
                 lead_id,
             )
 
