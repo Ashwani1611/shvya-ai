@@ -40,9 +40,13 @@ def build_turn_policy(*, context, qualification_state: dict | None = None) -> Tu
     state = qualification_state if isinstance(qualification_state, dict) else {}
 
     stage_name = normalize_stage_name(stage.get("name"))
+    # Stage is the primary prompt-mode authority: New Lead/New Leads runs the
+    # qualification conversation; every other concrete stage runs sales support.
+    # State is used only when a synthetic/preview context has no real stage.
     qualification_mode = (
-        state.get("engagement_mode") == MODE_QUALIFICATION
-        or stage_name == "new lead"
+        stage_name == "new lead"
+        if stage_name
+        else state.get("engagement_mode") == MODE_QUALIFICATION
     )
     prompt_mode = QUALIFICATION_MODE if qualification_mode else SALES_SUPPORT_MODE
     model_key = "qualification_model" if qualification_mode else "sales_support_model"
