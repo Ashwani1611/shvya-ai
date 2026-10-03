@@ -27,9 +27,9 @@ jobs:
           path = 'services/channels/instagram_service.py'
           original = api('/contents/' + path + '?ref=' + parent)
           text = base64.b64decode(original['content']).decode()
-          old = 'from django.db import transaction\n'
+          old = '\nfrom django.db import transaction\n'
           new = old + 'from django.db.models import Q\n'
-          if text.count(old) != 1 or 'from django.db.models import Q' in text:
+          if text.count(old) != 1 or '\nfrom django.db.models import Q\n' in text:
               raise SystemExit('Correction precondition failed')
           text = text.replace(old, new, 1)
           compile(text, path, 'exec')
