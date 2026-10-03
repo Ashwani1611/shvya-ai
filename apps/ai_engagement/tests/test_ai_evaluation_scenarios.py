@@ -40,7 +40,7 @@ def assert_expected(condition, category, message):
 @pytest.mark.django_db
 @pytest.mark.parametrize("transport", ["api", "hosted"])
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario["id"])
-def test_conversation_scenario(scenario, transport, record_property):
+def test_conversation_scenario(scenario, transport, record_property, grounding_provider):
     record_property("evaluation_category", scenario.get("category", "behaviour"))
     record_property("transport", transport)
     cache.clear()
@@ -59,7 +59,8 @@ def test_conversation_scenario(scenario, transport, record_property):
     requirements_text = "\n".join(f"[id: {item['id']}] {item['question']}" for item in questions)
     if questions:
         requirements_text += "\nAll questions are required"
-    instructions = ("Be concise and answer customer questions using verified organization information.\n"
+    instructions = ("Answer customer questions using this organization's AI Brain and AI Playbook.\n"
+                    + str(scenario.get("rules", "")) + "\n"
                     "## Attribute mapped\n" + "\n".join(f"{q['id']} -> {q['field']}" for q in questions) +
                     "\n## Stage shifting\nWhen all required qualification questions are answered, move to Ready for review.\n"
                     'Acknowledgment message: "Your details are complete. Thank you."')
@@ -101,13 +102,15 @@ def test_conversation_scenario(scenario, transport, record_property):
                            "requested_action": None, "language": turn.get("language", "en"),
                            "requires_knowledge": True, "requires_human": False}
             elif phase == "grounding":
-                payload = {"approved": True, "reason": "Recorded verifier response"}
+                payload = turn.get("grounding_verdict", {"approved": True, "reason": "approved"})
             else:
                 payload = {"should_engage": True, "silence_rule": None,
                            "message": turn.get("model_reply", "Thank you.") + ("\n\n" + next(q["question"] for q in questions if q["id"] == expected["next"]) if expected.get("next") else ""), "file_document_id": None,
                            "crm_actions": [], "qualification_updates": [],
                            "next_requirement_id": requirement_ids.get(expected.get("next")), "reason_code": "NORMAL_CONVERSATION"}
             return AITextResult(json.dumps(payload, ensure_ascii=False), "recorded-fixture-model")
+
+        grounding_provider.return_value.generate_text.side_effect = recorded_provider
 
         with (patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.__init__", return_value=None),
               patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=recorded_provider),
@@ -163,3 +166,5 @@ def test_conversation_scenario(scenario, transport, record_property):
             run()
             assert_expected(outbound.count() == before, "actions", "Replay produced a duplicate reply")
             assert_expected(calls.count("intent_classification") <= 1, "actions", f"Repeated intent provider calls: {calls}")
+            if turn.get("grounding_verdict"):
+                assert_expected("grounding" in calls, "grounding", "Authored business policy was not independently checked")

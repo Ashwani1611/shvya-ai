@@ -23,7 +23,8 @@ class TestSHVYABaseInstructions:
     def test_instructions_contain_general_behavior_rules(self):
         instructions = SHVYABaseInstructions.get()
 
-        assert "Do not invent facts" in instructions
+        assert "Follow this organization's AI Playbook" in instructions
+        assert "Do not invent facts" not in instructions
         assert "Do not claim that an action was completed" in instructions
 
     def test_instructions_contain_privacy_boundaries(self):

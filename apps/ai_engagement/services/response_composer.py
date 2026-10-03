@@ -32,13 +32,12 @@ Confirmed action outcomes are source-bound committed receipts, not proposals. A 
   Playbook FAQ. Do not repeat the qualification completion acknowledgment or
   restart qualification. Use recent messages to continue the actual discussion.
 - Use the organization's tone/language; follow the customer's supported language.
-  Be concise and natural. Do not repeat a greeting when already_greeted is true.
+  Apply the AI Playbook's style and length. Do not repeat a greeting when already_greeted is true.
   Acknowledge the actual content, not a generic repeated 'got it'. Use the first
   name sparingly and only if supplied. Never manufacture a name.
-- Use only allowed_facts for business claims. Missing evidence means uncertainty,
-  not an invented price, promise, refund, guarantee, deadline or live availability.
-- objection_strategy can guide tone/approach but authorizes no new claims. Offers
-  or discounts require explicit organization-approved evidence. Respect all
+- Use About/company description, FAQs, Playbook and allowed_facts together.
+  Follow the organization's authored business rules and missing-information policy.
+- objection_strategy can guide tone/approach under the AI Playbook. Respect all
   forbidden_claims. Never claim a handoff/callback/booking was completed merely
   because it was requested or proposed.
 """.strip()
@@ -131,7 +130,7 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     objections = ObjectionEngine().detect(text=latest, settings=settings, intent_decision=intent_decision)
     strategies = tuple({"category": item.category, "strategy": item.strategy,
                         "escalation_requested": item.escalate} for item in objections)
-    from apps.ai_engagement.services.organization_profile import _languages
+    from apps.ai_engagement.services.organization_profile import _languages, may_answer_from_ai_brain
     languages = communication.get("languages") or _languages(str(org.get("bot_languages") or ""))
     instructions = str(communication.get("custom_instructions") or org.get("ai_playbook") or "")
     # Profile compaction deliberately moves these fields to organization. Never
@@ -155,5 +154,10 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         already_greeted=any(isinstance(item, dict) and item.get("direction") == "outbound" for item in messages),
         first_name=str(lead.get("name") or "").strip().split(" ")[0][:80],
         objection_strategy=strategies, forbidden_claims=configured_forbidden_claims(settings),
-        unknown_information=bool(grounding.get("sensitive") and not grounding.get("verified")),
+        unknown_information=bool(grounding.get("sensitive") and not grounding.get("verified")
+            and not may_answer_from_ai_brain({
+                "about": payload.get("organization_operating_spec", {}).get("about") or profile.get("identity", {}).get("about"),
+                "ai_playbook": instructions,
+                "_authored_faq_candidates": payload.get("authored_faq_candidates"),
+            }, grounding)),
     )

@@ -341,7 +341,7 @@ def _empty_profile(organization_name: str) -> dict[str, Any]:
         },
         "knowledge_policy": {
             "source": "approved_organization_and_retrieved_knowledge",
-            "unknown_fact": "human_confirmation",
+            "unknown_fact": "follow_organization_ai_playbook",
         },
         "instruction_precedence": [
             "platform_rules",
@@ -385,7 +385,7 @@ def _profile_from_values(
         "qualification": qualification,
         "knowledge_policy": {
             "source": "approved_organization_and_retrieved_knowledge",
-            "unknown_fact": "human_confirmation",
+            "unknown_fact": "follow_organization_ai_playbook",
         },
         "instruction_precedence": _empty_profile(organization_name)["instruction_precedence"],
     }
@@ -413,6 +413,19 @@ def compile_org_ai_profile(*, organization_name: str, org_info) -> dict[str, Any
     )
     cache.set(cache_key, profile, PROFILE_CACHE_SECONDS)
     return deepcopy(profile)
+
+
+def may_answer_from_ai_brain(organization_context, resolution) -> bool:
+    """Authored business policy does not require a separate retrieval verdict."""
+    question_type = resolution.get("question_type", "") if isinstance(resolution, dict) else getattr(resolution, "question_type", "")
+    if question_type not in {
+        "pricing", "policy", "location", "availability", "working_hours", "product_or_service",
+    }:
+        return False
+    context = organization_context if isinstance(organization_context, dict) else {}
+    return bool(str(context.get("about") or "").strip()
+                or str(context.get("ai_playbook") or "").strip()
+                or context.get("_authored_faq_candidates"))
 
 
 def compile_org_ai_profile_from_context(organization_context: dict[str, Any]) -> dict[str, Any]:
