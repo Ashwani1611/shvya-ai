@@ -225,7 +225,16 @@ class CRMActionExecutor:
 
         if str(plan.organization_id) != str(lead.organization_id) or str(plan.lead_id) != str(lead.pk):
             raise CRMActionExecutionError("Action plan identity changed before execution.")
+        from apps.ai_engagement.services.action_outcomes import action_policy_revision
+        from apps.ai_engagement.services.organization_runtime_profile import OrganizationAIRuntimeProfileBuilder
         allowed = configured_action_types(lead.organization.settings)
+        revisions = {item.state_snapshot.get("authored_policy_revision") for item in plan.accepted_actions
+                     if item.state_snapshot.get("authored_policy_revision")}
+        if revisions:
+            current = action_policy_revision(OrganizationAIRuntimeProfileBuilder().build(
+                organization=lead.organization, lead=lead))
+            if revisions != {current}:
+                raise CRMActionExecutionError("Authored action policy changed before execution.")
         for proposal in plan.accepted_actions:
             if proposal.executor_action_type in EXECUTOR_ACTION_TYPES and proposal.executor_action_type not in allowed:
                 raise CRMActionExecutionError("Action permission changed before execution.")
@@ -310,6 +319,7 @@ class CRMActionExecutor:
                 )
             requested_values[definition.key] = item["value"]
 
+        previous_values = deepcopy(lead.attributes or {})
         try:
             update_lead_attribute_values(
                 organization=organization,
@@ -318,10 +328,12 @@ class CRMActionExecutor:
             )
         except DjangoValidationError as exc:
             raise CRMActionExecutionError("Lead attribute update failed.") from exc
+        changed_keys = [key for key in requested_values if previous_values.get(key) != (lead.attributes or {}).get(key)]
         return {
             "type": "attribute_updates",
-            "status": "executed",
+            "status": "executed" if changed_keys or created_keys else "no_op",
             "keys": list(requested_values.keys()),
+            "changed_keys": changed_keys,
             "created_keys": created_keys,
         }
 

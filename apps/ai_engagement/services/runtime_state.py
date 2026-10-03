@@ -87,6 +87,9 @@ def state_revision(lead):
         "qualification": attributes.get("_shvya_ai_qualification"),
         "runtime": attributes.get(STATE_KEY),
         "stage": str(getattr(lead, "stage_id", "")),
+        "pipeline": str(getattr(lead, "pipeline_id", "")),
+        "lead_source": str(getattr(lead, "lead_source", "")),
+        "attributes": {key: value for key, value in attributes.items() if not key.startswith("_")},
     }), sort_keys=True, default=str))
 
 

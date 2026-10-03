@@ -328,7 +328,7 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
 
     org_info = (
         OrgInfo.objects.filter(organization_id=organization.pk)
-        .only("ai_playbook", "about")
+        .only("ai_playbook", "about", "bot_languages")
         .first()
     )
     compiled = compile_qualification_requirements(
@@ -408,6 +408,10 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
             inbound=latest_text,
             organization_name=organization_name,
         )
+        if reason == "UNKNOWN_INFORMATION":
+            from apps.ai_engagement.services.response_fallbacks import fallback_message
+            message = fallback_message(bot_languages=org_info.bot_languages if org_info else "",
+                                       latest_text=latest_text)
         return EngagementDecision(
             should_engage=True,
             message=message,
@@ -443,6 +447,10 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         inbound=latest_text,
         organization_name=organization_name,
     )
+    if reason == "UNKNOWN_INFORMATION":
+        from apps.ai_engagement.services.response_fallbacks import fallback_message
+        message = fallback_message(bot_languages=org_info.bot_languages if org_info else "",
+                                   latest_text=latest_text)
     return EngagementDecision(
         should_engage=True,
         message=message,

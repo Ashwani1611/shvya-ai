@@ -4,6 +4,8 @@ import logging
 
 from celery import shared_task
 
+from apps.ai_engagement.services.knowledge_repair import tracked_repair_task
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +53,7 @@ def _indexable_chunk_count(document):
     default_retry_delay=30,
     name="ai.ingest_and_index_document",
 )
+@tracked_repair_task
 def ingest_and_index_document(
     self,
     document_id: int,
@@ -275,6 +278,7 @@ def ingest_and_index_document(
     default_retry_delay=30,
     name="ai.ingest_and_index_url_source",
 )
+@tracked_repair_task
 def ingest_and_index_url_source(
     self,
     source_id: int,
@@ -502,10 +506,12 @@ def ingest_and_index_url_source(
     default_retry_delay=30,
     name="ai.reindex_document_embeddings",
 )
+@tracked_repair_task
 def reindex_document_embeddings(
     self,
     document_id: int,
     organization_id: int,
+    only_missing: bool | None = None,
 ):
     """
     Re-generate embeddings for an already-extracted Document
@@ -552,7 +558,7 @@ def reindex_document_embeddings(
         indexed_count = (
             EmbeddingIndexService().index_document(
                 document,
-                only_missing=recovering,
+                only_missing=recovering if only_missing is None else only_missing,
             )
         )
         if recovering:
@@ -565,7 +571,8 @@ def reindex_document_embeddings(
     except EmbeddingIndexError as exc:
 
         _retry_indexing(self, document=document, exc=exc,
-                        kwargs={'document_id': document.id, 'organization_id': organization_id})
+                        kwargs={'document_id': document.id, 'organization_id': organization_id,
+                                'only_missing': only_missing})
 
         logger.error(
             "reindex_document_embeddings: "

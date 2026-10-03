@@ -60,6 +60,7 @@ Reject answer updates whose normalized values are not supported by the newest in
 When a file is selected, require an eligible file candidate and verify its
 share_instruction conditions against the actual conversation and current stage.
 A candidate appearing in the input does not itself authorize sending it.
+Confirmed action outcomes are source-bound committed receipts, not proposals. A no_op is not a newly completed action; a missing receipt is not proof of failure. Historical execution does not prove a reminder is still active or a stage is still current. Respect still_exists, current_status and current_state_matches. A queued file is not sent; sent means provider acceptance, not recipient delivery. Never promise a human callback merely because a reminder exists.
 Reject unsupported booking confirmations, callbacks, handoffs, payment or stage
 transitions. A user claim is not operational confirmation. Preserve configured
 options in order. Check every question in the customer message is addressed.
@@ -122,7 +123,7 @@ SAFE_UNKNOWN_REPLY = (
 )
 
 
-def _safe_unknown_decision(decision, *, qualification_turn=False):
+def _safe_unknown_decision(decision, *, qualification_turn=False, state=None, failure_reason=""):
     """Keep the conversation alive without forwarding an ungrounded claim.
 
     Qualification acknowledgements are not business-fact answers. When grounding
@@ -131,11 +132,26 @@ def _safe_unknown_decision(decision, *, qualification_turn=False):
     This prevents UNKNOWN_INFORMATION text from being prepended to the next
     configured question or final qualification acknowledgement.
     """
+    from apps.ai_engagement.services.response_fallbacks import failure_kind, fallback_message
+    state = state or {}
+    context = state.get("context")
+    org_context = getattr(context, "organization", {}) or {}
+    resolution = _active_grounding(state) if state.get("organization") is not None else None
+    question_type = str(getattr(resolution, "question_type", ""))
+    # A mixed business question/qualification answer needs a factual response or
+    # precise uncertainty, not an acknowledgement that silently drops the ask.
+    coverage = state.get("evidence_coverage")
+    factual_request = (question_type not in {"", "not_evidence_bound"}
+                       or bool(getattr(coverage, "parts", ())))
+    qualification_turn = qualification_turn and not factual_request
+    kind = "qualification" if qualification_turn else failure_kind(state, reason=failure_reason)
+    reply = fallback_message(kind=kind, bot_languages=org_context.get("bot_languages", ""),
+                             latest_text=state.get("latest_text", ""), question_type=question_type)
     if qualification_turn:
         return replace(
             decision,
             should_engage=True,
-            message="Thanks for sharing that — that helps me understand your needs.",
+            message=reply,
             file_document_id=None,
             next_requirement_id=None,
             qualification_updates=[],
@@ -146,7 +162,7 @@ def _safe_unknown_decision(decision, *, qualification_turn=False):
     return replace(
         decision,
         should_engage=True,
-        message=SAFE_UNKNOWN_REPLY,
+        message=reply,
         file_document_id=None,
         next_requirement_id=None,
         qualification_updates=[],
@@ -209,7 +225,7 @@ def check_grounding(state):
         # Phase 5 runtime restores the policy-selected next qualification question
         # when this is an ANSWER_THEN_QUALIFY turn.
         return {
-            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn),
+            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn, state=state),
             "grounding_approved": False,
             "grounding_category": resolution.category.value,
         }
@@ -295,13 +311,15 @@ def check_grounding(state):
     except AIProviderError:
         _record_verdict(approved=False, reason="provider_error")
         return {
-            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn),
+            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn, state=state, failure_reason="provider_error"),
             "grounding_approved": False,
         }
 
     # A wording/language rejection should not turn every later-stage answer into
     # the same English fallback. One language-only correction may reuse approved
     # evidence, but cannot authorize new actions or bypass the independent gate.
+    # This also applies to the final post-commit pass: only message text can
+    # change, never resolved actions, qualification or selected files.
     # Leave room for two short calls inside synchronous Sandbox requests. Slow
     # original turns use the existing safe fallback rather than compounding delay.
     # A generator can incorrectly report missing information despite available
@@ -321,7 +339,6 @@ def check_grounding(state):
     recoverable_claim = (reason == "unsupported_claim" and has_facts
                          and language_only(decision))
     repair_attempted = (not approved and (reason in _REPAIRABLE_REASONS or recoverable_claim)
-                        and not _FINAL_LANGUAGE_ONLY.get()
                         and monotonic() - state.get("started_at", monotonic()) < 15)
     if repair_attempted:
         try:
@@ -354,6 +371,7 @@ def check_grounding(state):
             "decision": _safe_unknown_decision(
                 decision,
                 qualification_turn=qualification_turn,
+                state=state, failure_reason=reason,
             ),
             "grounding_approved": False,
         }

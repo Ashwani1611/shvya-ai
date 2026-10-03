@@ -385,6 +385,10 @@ class KnowledgeIngestionService:
                     "Only completed documents can be published."
                 )
 
+            from apps.ai_engagement.services.knowledge_repair import repair_publication_allowed
+            if not repair_publication_allowed(locked_document):
+                return locked_document
+
             if recover_failed or locked_document.processing_error:
                 locked_document.processing_status = Document.ProcessingStatus.COMPLETED
                 locked_document.processing_error = ''

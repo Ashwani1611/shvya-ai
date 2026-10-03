@@ -114,7 +114,7 @@ def operational_state_for_context(context) -> dict:
     organization_id = (getattr(context, "organization", None) or {}).get("id")
     persisted_lead = Lead.objects.filter(
         pk=lead_id, organization_id=organization_id,
-    ).only("attributes").first()
+    ).only("attributes", "organization_id", "stage_id", "pipeline_id").first()
     if persisted_lead is None:
         return {}
 
@@ -166,6 +166,31 @@ def operational_state_for_context(context) -> dict:
             "status": state.get(_PRE_RESOLVED_FILE_STATUS_KEY) or "resolved_pending_send",
             "document_name": document.name if document is not None else "configured file",
         }
+
+    from apps.ai_engagement.services.action_outcomes import action_outcomes, source_for_context
+    from apps.ai_engagement.services.instagram_outcomes import file_outcome
+    source = source_for_context(context=context, lead=persisted_lead)
+    receipts = action_outcomes(lead=persisted_lead, source=source)
+    resolved_actions.update(receipts)
+    # Legacy markers remain evidence of resolution, not individual execution.
+    resolved_actions["action_types"] = [item["type"] for item in receipts["outcomes"]
+                                        if item["status"] == "executed"]
+    if source is not None:
+        resolved_actions["source_message_id"] = str(source.pk)
+        if "qualification_state" in (state.get(runtime._PRE_RESOLVED_ACTIONS_KEY) or []):
+            resolved_actions["action_types"].append("qualification_state")
+        if (context.conversation or {}).get("channel") == "instagram":
+            # Never project WhatsApp runtime file markers into an Instagram DM.
+            resolved_actions.pop("file_share", None)
+            instagram_file = file_outcome(source=source, lead=persisted_lead)
+            if instagram_file is not None:
+                resolved_actions["file_share"] = instagram_file
+        if resolved_actions.get("file_share"):
+            resolved_actions["action_types"].append("file_share")
+    else:
+        resolved_actions.pop("file_share", None)
+        resolved_actions["source_message_id"] = None
+    resolved_actions["action_types"] = list(dict.fromkeys(resolved_actions["action_types"]))
 
     return {
         "pending_reminders": reminders,

@@ -186,10 +186,12 @@ class ActionPlanner:
             source_evidence=source_evidence,
         )
         memory_references = self._memory(source_memory)
+        from apps.ai_engagement.services.action_outcomes import action_policy_revision
         state_snapshot = {
             "pipeline_id": str(getattr(lead, "pipeline_id", "") or "") or None,
             "stage_id": str(getattr(lead, "stage_id", "") or "") or None,
             "runtime_profile_revision": runtime_profile.revision,
+            "authored_policy_revision": action_policy_revision(runtime_profile),
         }
 
         proposals: list[ActionProposal] = []

@@ -336,6 +336,10 @@ def _resolve_state_before_response(
             )
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
+        # Only committed outcomes may support a claim that an action ran.
+        executed_types = [kind for kind in executed_types if kind == "qualification_state"]
+        executed_types.extend(result["type"] for result in results
+                              if result.get("status") == "executed" and result.get("type"))
         _mark_state_resolved(
             lead=locked_lead,
             inbound=inbound,

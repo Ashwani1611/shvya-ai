@@ -121,7 +121,7 @@ and must not be interpreted as live evaluation when tests mock the provider.
 These are operator-authored acceptance checks, **not a semantic correctness judge**.
 Naturalness, language quality, contradictions and unnecessary refusal rates still
 require reviewing controlled conversations in Sandbox. Usage remains metered;
-this report does not yet calculate incremental credits/cost.
+the report now includes source-attributed AI-credit usage and comparable OFF/ON incremental credits (not currency prices). See `ai-engagement-reliability-completion.md`.
 
 The default limit is eight combined OFF/ON turns (hard maximum 40); fixture size is
 128 KiB and at most 20 input turns. The comparison time budget stops new turns, but
@@ -145,6 +145,6 @@ CI passed. Customer activation still requires the explicit global enable flag an
 organization allow-list described in `ai-brain-evidence-recovery.md`, consistent
 worker configuration, satisfactory live comparison and controlled test recipients.
 
-Still outside this patch: production activation, automatic re-indexing, a new
+The initial patch left the following outside its scope (see `ai-engagement-reliability-completion.md` for subsequent source-repair and cost-reporting implementation): production activation, automatic re-indexing, a new
 source-rule interpreter, the wider CRM action/delivery lifecycle upgrade, real
 recipient tests, removal of every fallback, and persistent graph checkpoints.
