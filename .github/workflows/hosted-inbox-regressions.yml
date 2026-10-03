@@ -69,7 +69,7 @@ jobs:
       - name: Verify committed publication, subscriptions and client ordering
         run: |
           set -o pipefail
-          pytest -v --tb=short apps/channels/tests/test_hosted_live_push.py apps/channels/tests/test_hosted_consumer_heartbeat.py tests/test_hosted_live_state.py 2>&1 | tee hosted-inbox-test.log
+          pytest -v --tb=short apps/channels/tests/test_hosted_live_push.py apps/channels/tests/test_hosted_consumer_heartbeat.py apps/channels/tests/test_hosted_callback_replay.py tests/test_hosted_live_state.py 2>&1 | tee hosted-inbox-test.log
       - name: Retain test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
