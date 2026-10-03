@@ -40,7 +40,7 @@ def assert_expected(condition, category, message):
 @pytest.mark.django_db
 @pytest.mark.parametrize("transport", ["api", "hosted"])
 @pytest.mark.parametrize("scenario", SCENARIOS, ids=lambda scenario: scenario["id"])
-def test_conversation_scenario(scenario, transport, record_property):
+def test_conversation_scenario(scenario, transport, record_property, grounding_provider):
     record_property("evaluation_category", scenario.get("category", "behaviour"))
     record_property("transport", transport)
     cache.clear()
@@ -110,6 +110,8 @@ def test_conversation_scenario(scenario, transport, record_property):
                            "next_requirement_id": requirement_ids.get(expected.get("next")), "reason_code": "NORMAL_CONVERSATION"}
             return AITextResult(json.dumps(payload, ensure_ascii=False), "recorded-fixture-model")
 
+        grounding_provider.return_value.generate_text.side_effect = recorded_provider
+
         with (patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.__init__", return_value=None),
               patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=recorded_provider),
               patch("apps.ai_engagement.services.embeddings.EmbeddingService.embed_text", side_effect=EmbeddingError("Recorded keyword fallback"))):
@@ -130,7 +132,7 @@ def test_conversation_scenario(scenario, transport, record_property):
             assert_expected(outbound.count() == (1 if expected.get("reply", True) else 0), "actions", "Unexpected reply/silence or duplicate reply")
             body = outbound.first().body if outbound.exists() else ""
             for text in expected.get("forbidden", []):
-                assert_expected(text.casefold() not in body.casefold(), "hallucination", f"Unsupported content: {text}; calls={calls}; trace={AITrace.objects.filter(organization=org, source_inbound_message_id=source.pk).latest("started_at").details}")
+                assert_expected(text.casefold() not in body.casefold(), "hallucination", f"Unsupported content: {text}")
             for text in expected.get("contains", []):
                 assert_expected(text in body, "language", f"Expected grounded content: {text}")
             lead.refresh_from_db()
