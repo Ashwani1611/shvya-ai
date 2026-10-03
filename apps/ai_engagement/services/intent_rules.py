@@ -113,7 +113,7 @@ def deterministic_intents(text: str) -> set[Intent]:
     ):
         intents.add(Intent.OPT_OUT)
     mappings = (
-        (Intent.PRICING_QUESTION, ("price", "pricing", "cost", "charges", "charge", "fee", "fees", "how much", "kitna charge", "kitne charge", "price kya", "cost kya")),
+        (Intent.PRICING_QUESTION, ("price", "pricing", "cost", "charges", "charge", "fee", "fees", "how much", "kitna charge", "kitne charge", "price kya", "cost kya", "कीमत", "फीस कितनी", "कितनी फीस", "कितना खर्च")),
         (Intent.POLICY_QUESTION, ("refund policy", "refund", "cancellation policy", "cancel policy", "terms and conditions", "policy kya", "your policy", "policies")),
         (Intent.LOCATION_QUESTION, ("where are you", "where is your", "your location", "location kya", "located", "address kya", "your address", "office address")),
         (Intent.AVAILABILITY_QUESTION, ("availability", "available today", "available tomorrow", "are you available", "slot available", "slots available", "any slot", "open today")),
