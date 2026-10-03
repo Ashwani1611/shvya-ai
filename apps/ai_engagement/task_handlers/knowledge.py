@@ -4,6 +4,8 @@ import logging
 
 from celery import shared_task
 
+from apps.ai_engagement.services.source_repair_runtime import tracked_repair
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,7 +34,8 @@ def _retry_indexing(task, *, document, exc, kwargs):
         document.save(update_fields=['processing_error', 'updated_at'])
         # Retain the extracted chunks and original document identity. A retry
         # must not fetch a newer URL version or charge again for extraction.
-        raise task.retry(exc=exc, args=(), kwargs=kwargs,
+        from apps.ai_engagement.services.source_repair_runtime import preserve_repair_retry
+        raise task.retry(exc=exc, args=(), kwargs=preserve_repair_retry(kwargs),
                          countdown=min(30 * (2 ** task.request.retries), 120))
 
 
@@ -51,10 +54,12 @@ def _indexable_chunk_count(document):
     default_retry_delay=30,
     name="ai.ingest_and_index_document",
 )
+@tracked_repair("retry_upload")
 def ingest_and_index_document(
     self,
     document_id: int,
     organization_id=None,
+    repair_request_id=None,
 ):
     """
     Extract, chunk, and embed one uploaded knowledge Document.
@@ -275,11 +280,13 @@ def ingest_and_index_document(
     default_retry_delay=30,
     name="ai.ingest_and_index_url_source",
 )
+@tracked_repair("retry_url")
 def ingest_and_index_url_source(
     self,
     source_id: int,
     organization_id: int,
     document_id: int | None = None,
+    repair_request_id=None,
 ):
     """
     Fetch, chunk, and embed one URL KnowledgeSource.
@@ -412,6 +419,9 @@ def ingest_and_index_url_source(
             "source_id": source_id,
         }
 
+    from apps.ai_engagement.services.source_repair_runtime import bind_repair_document
+    bind_repair_document(document)
+
     try:
         indexed_count = (
             EmbeddingIndexService().index_document(
@@ -502,10 +512,13 @@ def ingest_and_index_url_source(
     default_retry_delay=30,
     name="ai.reindex_document_embeddings",
 )
+@tracked_repair("reindex_missing")
 def reindex_document_embeddings(
     self,
     document_id: int,
     organization_id: int,
+    only_missing: bool | None = None,
+    repair_request_id=None,
 ):
     """
     Re-generate embeddings for an already-extracted Document
@@ -552,7 +565,7 @@ def reindex_document_embeddings(
         indexed_count = (
             EmbeddingIndexService().index_document(
                 document,
-                only_missing=recovering,
+                only_missing=recovering if only_missing is None else only_missing,
             )
         )
         if recovering:

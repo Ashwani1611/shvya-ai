@@ -121,7 +121,7 @@ and must not be interpreted as live evaluation when tests mock the provider.
 These are operator-authored acceptance checks, **not a semantic correctness judge**.
 Naturalness, language quality, contradictions and unnecessary refusal rates still
 require reviewing controlled conversations in Sandbox. Usage remains metered;
-this report does not yet calculate incremental credits/cost.
+the follow-up reports exact incremental internal credits, not provider currency cost. See `ai-engagement-consistency.md`.
 
 The default limit is eight combined OFF/ON turns (hard maximum 40); fixture size is
 128 KiB and at most 20 input turns. The comparison time budget stops new turns, but
@@ -148,3 +148,11 @@ worker configuration, satisfactory live comparison and controlled test recipient
 Still outside this patch: production activation, automatic re-indexing, a new
 source-rule interpreter, the wider CRM action/delivery lifecycle upgrade, real
 recipient tests, removal of every fallback, and persistent graph checkpoints.
+
+## Follow-up implementation
+
+See `ai-engagement-consistency.md` for the receipt-backed live action context,
+Instagram source-bound outcomes, bounded final correction, operator source repair
+and exact reservation-based credit reporting. Earlier remaining-work notes above
+describe the scope of that original patch; live activation and real-recipient
+verification are still separate from implementation and CI.

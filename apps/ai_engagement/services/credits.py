@@ -419,7 +419,7 @@ class AICreditService:
 
         wallet.reserved_credits += credits
         wallet.save(update_fields=["reserved_credits", "updated_at"])
-        return AICreditReservation.objects.create(
+        reservation = AICreditReservation.objects.create(
             organization_id=organization_id,
             wallet=wallet,
             feature=(feature or "other")[:64],
@@ -429,6 +429,9 @@ class AICreditService:
             estimated_input_tokens=max(int(estimated_input_tokens), 0),
             estimated_output_tokens=max(int(estimated_output_tokens), 0),
         )
+        from apps.ai_engagement.services.usage_attribution import capture_reservation
+        capture_reservation(reservation)
+        return reservation
 
     @classmethod
     @transaction.atomic

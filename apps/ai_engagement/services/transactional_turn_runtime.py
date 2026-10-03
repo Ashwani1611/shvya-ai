@@ -266,6 +266,8 @@ def _resolve_state_before_response(
         attribute_actions, proposed_stage_actions, other_actions = _split_actions(
             getattr(decision, "crm_actions", []) or []
         )
+        from apps.ai_engagement.services.turn_action_consistency import assert_policy_current, applied_action_types
+        assert_policy_current(organization=organization, decision=decision)
         executor = CRMActionExecutor()
         executed_types: list[str] = []
         results: list[dict[str, Any]] = []
@@ -279,7 +281,7 @@ def _resolve_state_before_response(
                     source_message=inbound,
                 )
             )
-            executed_types.append("attribute_updates")
+            executed_types = applied_action_types(results)
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
         qualification_state = _persist_qualification_updates(
@@ -318,8 +320,7 @@ def _resolve_state_before_response(
                 source_message=inbound,
             )
             results.extend(stage_results)
-            if stage_results:
-                executed_types.append("pipeline_transition")
+            executed_types.extend(applied_action_types(stage_results))
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
         if other_actions:
@@ -331,9 +332,7 @@ def _resolve_state_before_response(
                     source_message=inbound,
                 )
             )
-            executed_types.extend(
-                str(action.get("type") or "") for action in other_actions
-            )
+            executed_types.extend(applied_action_types(results))
             locked_lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
         _mark_state_resolved(
@@ -375,6 +374,8 @@ def _persist_engagement_answers_effective(lead, decision, source_message_id):
     if (payload.get("shvya_ai_processing") or {}).get("processed"):
         return False
 
+    from apps.ai_engagement.services.turn_action_consistency import assert_policy_current
+    assert_policy_current(organization=lead.organization, decision=decision)
     requirements = _requirements_for_turn(
         organization=lead.organization,
         lead=lead,

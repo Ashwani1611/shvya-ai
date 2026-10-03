@@ -49,9 +49,9 @@ def preview_effects(*, organization, visitor, decision, requirements, qualificat
     for requirement_id, answer in (qualification.get('requirement_states') or {}).items():
         if answer.get('status') != 'answered':
             continue
-        for key in _mapping_keys(config, requirement_id):
+        for key in _mapping_keys(config, requirement_id, lead_source=getattr(visitor, "lead_source", None), channel=getattr(visitor, "preview_channel", "sandbox")):
             if key in definitions:
-                values[key] = _mapped_value(config, key, answer.get('value'))
+                values[key] = _mapped_value(config, key, answer.get('value'), lead_source=getattr(visitor, 'lead_source', None), channel=getattr(visitor, 'preview_channel', 'sandbox'))
     # Mirror the live attribute service normalization, without calling save().
     values = {key: "" if value is None else str(value).strip() for key, value in values.items()}
     attribute_changes = [

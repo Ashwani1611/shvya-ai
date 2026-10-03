@@ -29,6 +29,8 @@ def _persist_engagement_answers(lead, decision, source_message_id):
     payload = dict(inbound.raw_payload or {})
     if (payload.get("shvya_ai_processing") or {}).get("processed"):
         return False
+    from apps.ai_engagement.services.turn_action_consistency import assert_policy_current
+    assert_policy_current(organization=lead.organization, decision=decision)
     org_info = OrgInfo.objects.filter(organization_id=lead.organization_id).first()
     from apps.ai_engagement.services.playbook import qualification_questions
     requirements = compile_qualification_requirements(qualification_questions(org_info.ai_playbook if org_info else ""))["requirements"]

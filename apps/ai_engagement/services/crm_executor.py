@@ -262,6 +262,7 @@ class CRMActionExecutor:
         }
         requested_values = {}
         created_keys = []
+        skipped_keys = []
 
         for item in updates:
             requested_key = str(item["key"]).strip().lower()
@@ -294,6 +295,7 @@ class CRMActionExecutor:
                         # Dynamic capture is enrichment, not a reason to lose a
                         # valid customer reply. Capacity/name/type validation can
                         # safely skip this optional candidate.
+                        skipped_keys.append(requested_key)
                         continue
                     created_keys.append(definition.key)
                 existing[definition.key] = definition
@@ -320,8 +322,9 @@ class CRMActionExecutor:
             raise CRMActionExecutionError("Lead attribute update failed.") from exc
         return {
             "type": "attribute_updates",
-            "status": "executed",
+            "status": ("partial" if skipped_keys else "executed") if requested_values else "not_applied",
             "keys": list(requested_values.keys()),
+            "skipped_keys": skipped_keys,
             "created_keys": created_keys,
         }
 

@@ -435,6 +435,7 @@ class PlaygroundService:
             stage_id=getattr(stage, "id", None),
             name="Playground Visitor", phone="", email="",
             lead_source=lead_source,
+            preview_channel=channel,
             preview_reminder=deepcopy(saved.get("reminder")),
             shared_document_ids=list(saved.get("sent_files") or []),
             attributes=deepcopy(saved.get("attributes") or {}),

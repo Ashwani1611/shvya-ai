@@ -64,3 +64,11 @@ Run the no-send readiness and OFF/ON comparison documented in
 Then verify real test-recipient delivery separately. Complete broader Playbook
 and Sandbox post-effect consistency, Instagram outcome parity, cost reporting
 and source-repair work in separately tested changes. Checkpointing stays deferred.
+
+## Follow-up implementation
+
+See `ai-engagement-consistency.md` for the receipt-backed live action context,
+Instagram source-bound outcomes, bounded final correction, operator source repair
+and exact reservation-based credit reporting. Earlier remaining-work notes above
+describe the scope of that original patch; live activation and real-recipient
+verification are still separate from implementation and CI.

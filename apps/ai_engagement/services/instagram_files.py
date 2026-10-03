@@ -82,6 +82,8 @@ def queue_guided_file_reply(*, organization, conversation, document_id, ai_metad
     type(conversation).objects.filter(
         pk=conversation.pk, organization=organization,
     ).update(last_message_text=message.body)
+    from apps.ai_engagement.services.instagram_delivery_outcomes import safely_record_instagram_delivery
+    transaction.on_commit(lambda: safely_record_instagram_delivery(message.pk))
     return message
 
 

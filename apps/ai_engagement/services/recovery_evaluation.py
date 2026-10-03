@@ -25,6 +25,7 @@ MODEL_SETTINGS = (
     "OPENAI_AI_MODEL", "OPENAI_ENGAGEMENT_MODEL", "OPENAI_QUALIFICATION_MODEL",
     "OPENAI_EMBEDDING_MODEL", "OPENAI_ENGAGEMENT_MAX_OUTPUT_TOKENS",
     "OPENAI_TIMEOUT_SECONDS", "AI_RAG_MIN_SIMILARITY", "AI_BRAIN_RECOVERY_BUDGET_SECONDS",
+    "AI_CREDIT_MODEL_RATES_JSON", "AI_CREDIT_RESERVED_OUTPUT_TOKENS",
 )
 
 
@@ -42,15 +43,15 @@ def preflight(organization) -> dict:
     from apps.ai_engagement.services.evidence_recovery import enabled
 
     info = OrgInfo.objects.filter(organization=organization).first()
-    documents = Document.objects.filter(organization=organization, is_active=True)
+    documents = Document.objects.filter(organization=organization)
     chunks = Chunk.objects.filter(
         organization=organization, is_active=True, document__organization=organization,
         document__is_active=True, document__processing_status="completed",
     )
-    missing_chunks = documents.filter(processing_status="completed").annotate(
+    missing_chunks = documents.filter(processing_status="completed", is_active=True).annotate(
         has_chunks=Exists(chunks.filter(document_id=OuterRef("pk"))),
     ).filter(has_chunks=False)
-    counts = {"active_documents": documents.count(), "searchable_chunks": chunks.count(),
+    counts = {"active_documents": documents.filter(is_active=True).count(), "searchable_chunks": chunks.count(),
               "embedded_chunks": chunks.filter(embedding__isnull=False).count(),
               "active_faqs": FAQ.objects.filter(organization=organization, is_active=True).count(),
               "failed_documents": documents.filter(processing_status="failed").count(),
@@ -73,6 +74,9 @@ def preflight(organization) -> dict:
         "runtime_scope": "current_process_only",
         "file_bytes_accessibility_checked": False,
         "activation_changed": False,
+        "repair_candidate_document_ids": list(documents.filter(processing_status="failed").order_by("-updated_at").values_list("pk", flat=True)[:20]),
+        "repair_candidate_scope": "inspection_candidates_not_authorization_to_reprocess",
+        "repair_command": "repair_ai_sources",
     }
 
 
@@ -106,7 +110,7 @@ def snapshot_fingerprint(organization) -> str:
     queries = (
         ("info", OrgInfo.objects.filter(organization=organization)),
         ("faq", FAQ.objects.filter(organization=organization, is_active=True)),
-        ("document", Document.objects.filter(organization=organization, is_active=True)),
+        ("document", Document.objects.filter(organization=organization)),
         ("chunk", Chunk.objects.filter(organization=organization, is_active=True,
             document__organization=organization, document__is_active=True)),
         ("pipeline", Pipeline.objects.filter(organization=organization, is_active=True)),
@@ -186,6 +190,8 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
     if not readiness["provider_key_configured"]:
         raise RecoveryEvaluationError("provider_not_configured")
 
+    from apps.ai_engagement.services.usage_attribution import UsageCapture, capture_usage, comparison_cost, merge_capture, usage_report
+    usage = {variant: UsageCapture(str(organization.pk)) for variant in ("baseline", "recovery")}
     started = monotonic()
     fingerprint = snapshot_fingerprint(organization)
     report = {"mode": "live_model_sandbox_comparison", "organization_id": str(organization.pk),
@@ -217,14 +223,17 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
                                          started_perf=perf_counter())
                     token = _CURRENT.set(buffer)
                     turn_started = monotonic()
+                    captured = None
                     try:
-                        with sandbox_recovery_preview(organization_id=organization.pk,
+                        with capture_usage(organization.pk) as captured, sandbox_recovery_preview(organization_id=organization.pk,
                                                       use_recovery=variant == "recovery"):
                             result = runner.run(organization=organization, session_id=session_id,
                                 message=turn["message"], channel=case["channel"],
                                 lead_source=case.get("lead_source"), stage_id=case.get("stage_id"))
                     finally:
                         _CURRENT.reset(token)
+                        if captured is not None:
+                            merge_capture(usage[variant], captured)
                     checks = check_preview(result=result, expected=turn.get("expect", {}),
                         attributes=runner.attributes_for(organization=organization, session_id=session_id))
                     model = str(result.model or "")[:100]
@@ -234,7 +243,7 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
                     entry[variant].append({"turn": number, "model": model, **checks,
                         "latency_ms": max(0, int((monotonic() - turn_started) * 1000)),
                         "recovery_events": events,
-                        "execution_mode": "sandbox_preview"})
+                        "execution_mode": "sandbox_preview", "usage": usage_report(captured)})
                     report["completed_turns"] += 1
                     # A fallback/deterministic result is not evidence that a live
                     # model was evaluated successfully on this conversation.
@@ -261,5 +270,7 @@ def evaluate(organization, payload: dict, *, max_turns=8, budget_seconds=120.0) 
         report["acceptance"][variant] = {"check_count": checks, "failed_checks": failed,
             "passed": (failed == 0) if checks else None,
             "unscored_turns": sum(turn["check_count"] == 0 for turn in rows)}
+    report["cost"] = comparison_cost(usage["baseline"], usage["recovery"])
+    report["credit_usage_measured"] = report["cost"]["accounting_complete"]
     report["elapsed_ms"] = max(0, int((monotonic() - started) * 1000))
     return report

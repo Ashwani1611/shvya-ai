@@ -107,10 +107,7 @@ def operational_state_for_context(context) -> dict:
     except (AttributeError, TypeError, ValueError):
         return {}
 
-    from apps.crm.models import Lead, LeadReminder
-    from apps.ai_engagement.services import transactional_turn_runtime as runtime
-    from apps.ai_engagement.services.runtime_state import STATE_KEY
-
+    from apps.crm.models import Lead
     organization_id = (getattr(context, "organization", None) or {}).get("id")
     persisted_lead = Lead.objects.filter(
         pk=lead_id, organization_id=organization_id,
@@ -118,59 +115,8 @@ def operational_state_for_context(context) -> dict:
     if persisted_lead is None:
         return {}
 
-    reminders = list(
-        LeadReminder.objects.filter(
-            lead_id=lead_id,
-            lead__organization_id=organization_id,
-            status="pending",
-        )
-        .order_by("due_at", "created_at")
-        .values("title", "description", "due_at", "status")[:10]
-    )
-    for reminder in reminders:
-        due_at = reminder.get("due_at")
-        if due_at is not None:
-            reminder["due_at"] = due_at.isoformat()
-
-    # Customer-safe context intentionally strips internal runtime attributes.
-    # Read the committed, tenant-scoped state and expose only these explicit
-    # operational fields, never the rest of the internal attribute payload.
-    attributes = persisted_lead.attributes
-    attributes = attributes if isinstance(attributes, dict) else {}
-    state = attributes.get(STATE_KEY)
-    state = state if isinstance(state, dict) else {}
-    source_id = next((
-        str(message.get("id") or "")
-        for message in reversed((context.conversation or {}).get("messages") or [])
-        if isinstance(message, dict) and message.get("direction") == "inbound"
-    ), "")
-    if not source_id or str(state.get(runtime._PRE_RESOLVED_MESSAGE_KEY) or "") != source_id:
-        state = {}
-    resolved_actions = {
-        "source_message_id": state.get(runtime._PRE_RESOLVED_MESSAGE_KEY),
-        "action_types": state.get(runtime._PRE_RESOLVED_ACTIONS_KEY) or [],
-    }
-    resolved_file_id = state.get(_PRE_RESOLVED_FILE_KEY)
-    if resolved_file_id is not None:
-        from apps.ai_engagement.models import Document
-
-        document = (
-            Document.objects.filter(
-                id=resolved_file_id,
-                organization_id=getattr(context, "organization", {}).get("id"),
-            )
-            .only("name")
-            .first()
-        )
-        resolved_actions["file_share"] = {
-            "status": state.get(_PRE_RESOLVED_FILE_STATUS_KEY) or "resolved_pending_send",
-            "document_name": document.name if document is not None else "configured file",
-        }
-
-    return {
-        "pending_reminders": reminders,
-        "resolved_actions": resolved_actions,
-    }
+    from apps.ai_engagement.services.turn_action_consistency import live_operational_state
+    return live_operational_state(lead=persisted_lead, context=context)
 
 
 def install_transactional_decision_reuse() -> None:
@@ -362,7 +308,7 @@ def install_transactional_decision_reuse() -> None:
             decision,
             crm_actions=[],
             qualification_updates=[],
-            file_document_id=resolved_file_id,
+            file_document_id=None if getattr(decision, "final_validation_failed", False) else resolved_file_id,
         )
 
     EngagementService.engage = engage_from_committed_state

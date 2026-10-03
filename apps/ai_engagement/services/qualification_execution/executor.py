@@ -154,9 +154,9 @@ def resolve_before_generation(
         # Build the complete authoritative execution plan before mutating state.
         mapped_updates = []
         for item in updates:
-            for attribute_key in _mapping_keys(config, item["requirement_id"]):
+            for attribute_key in _mapping_keys(config, item["requirement_id"], lead_source=locked.lead_source, channel="whatsapp"):
                 mapped_updates.append(
-                    {"key": attribute_key, "value": _mapped_value(config, attribute_key, item["value"])}
+                    {"key": attribute_key, "value": _mapped_value(config, attribute_key, item["value"], lead_source=locked.lead_source, channel="whatsapp")}
                 )
         # A repeated authored mapping to the same key is harmless; keep only the
         # final value for that key in this turn.

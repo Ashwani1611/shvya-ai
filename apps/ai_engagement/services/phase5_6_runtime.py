@@ -482,7 +482,8 @@ def _patch_engagement() -> None:
                     lead=lead,
                     requirement_id=next_id,
                 )
-                message = resolution.controlled_fallback.strip()
+                from apps.ai_engagement.services.response_fallbacks import organization_failure_text
+                message = organization_failure_text(organization, "unverified", latest_text=question)
                 if next_question:
                     message = f"{message}\n\n{next_question}".strip()
                 decision = replace(
@@ -490,6 +491,7 @@ def _patch_engagement() -> None:
                     message=message,
                     file_document_id=None,
                     crm_actions=[],
+                    final_validation_failed=True,
                     next_requirement_id=next_id,
                     reason="UNKNOWN_INFORMATION",
                     reason_code="UNKNOWN_INFORMATION",

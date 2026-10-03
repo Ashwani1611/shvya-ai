@@ -90,7 +90,7 @@ class InstagramAIContextBuilder(AIContextBuilder):
                     ),
                 }
             )
-        return {"message_count": len(normalized), "messages": normalized, "channel": "instagram", "execution_mode": "live"}
+        return {"message_count": len(normalized), "messages": normalized, "channel": "instagram", "execution_mode": "live", "conversation_id": str(self.conversation_id)}
 
     def _build_lead_context(self, *, lead):
         context = super()._build_lead_context(lead=lead)
@@ -373,13 +373,13 @@ def _resolve_instagram_state(*, organization, lead, source, decision, revision):
             from services.channels.instagram_inbox import assert_reply_allowed
 
             assert_reply_allowed(conversation)
+        from apps.ai_engagement.services.turn_action_consistency import assert_policy_current
+        assert_policy_current(organization=organization, decision=decision)
         results = _apply_decision_state(
             organization=organization, lead=locked_lead, source=inbound, decision=decision, finalize=False,
         )
-        action_types = [
-            str(result.get("type") or "") for result in results
-            if isinstance(result, dict) and result.get("status") == "executed"
-        ]
+        from apps.ai_engagement.services.turn_action_consistency import applied_action_types
+        action_types = applied_action_types(results)
         if getattr(decision, "qualification_updates", []):
             action_types.append("qualification_state")
         token = _PENDING_FILE_RESOLUTION.set({
@@ -404,13 +404,18 @@ def _generate_instagram_decision(*, service, organization, lead, source):
     finally:
         _FINAL_LANGUAGE_ONLY.reset(token)
     if resolved:
-        processing = source.raw_payload["shvya_ai_processing"]
-        decision = replace(
-            decision, crm_actions=[], qualification_updates=[],
-            file_document_id=processing.get("resolved_file_document_id"),
-        )
+        decision = _freeze_instagram_file_outcome(decision=decision, lead=lead, source=source)
     return decision
 
+
+
+def _freeze_instagram_file_outcome(*, decision, lead, source):
+    """A final language pass cannot revive a failed/uncertain/already sent file."""
+    from apps.ai_engagement.services.instagram_delivery_outcomes import instagram_file_state
+    state = instagram_file_state(lead=lead, source=source)
+    selected = state.get("document_id") if (state.get("status") == "resolved_pending_send"
+        and not getattr(decision, "final_validation_failed", False)) else None
+    return replace(decision, crm_actions=[], qualification_updates=[], file_document_id=selected)
 
 def execute_instagram_ai_engagement(*, task, message_id):
     """Generate, finalize, queue and dispatch one Instagram AI reply."""
@@ -559,10 +564,7 @@ def execute_instagram_ai_engagement(*, task, message_id):
     # Fail-soft composition after a committed state pass remains language-only
     # and cannot replace the exact file selection already validated for this turn.
     if _source_state_resolved(source):
-        decision = replace(
-            decision, crm_actions=[], qualification_updates=[],
-            file_document_id=source.raw_payload["shvya_ai_processing"].get("resolved_file_document_id"),
-        )
+        decision = _freeze_instagram_file_outcome(decision=decision, lead=lead, source=source)
 
     try:
         with transaction.atomic():
@@ -642,6 +644,9 @@ def execute_instagram_ai_engagement(*, task, message_id):
 
             if revision != state_revision(locked_lead):
                 raise CRMActionExecutionError("Lead state changed before Instagram reply; retry required.")
+
+            from apps.ai_engagement.services.turn_action_consistency import assert_policy_current
+            assert_policy_current(organization=source.organization, decision=decision)
 
             body = str(getattr(decision, "message", "") or "").strip()
             if decision.should_engage and not body:
