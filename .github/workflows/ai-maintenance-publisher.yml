@@ -23,9 +23,9 @@ jobs:
                   headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'})
               with urllib.request.urlopen(request, timeout=30) as response:
                   return json.load(response)
-          manifest = json.loads(base64.b64decode(api('/git/blobs/4b8ad62e0ff03d4e8498a2e3d3d049774df23fd7')['content']))
+          manifest = json.loads(base64.b64decode(api('/git/blobs/693b22ae0daa03465b7e51b3ba38b4cf0a27a712')['content']))
           parent = manifest['parent']
-          if parent != '7efd084612eb036fd1bd271fb476c0209d802ba8':
+          if parent != '55727b025999b94c312da9dfebafa216f5649a5c':
               raise SystemExit('Unexpected parent')
           files = {}
           for edit in manifest['edits']:
