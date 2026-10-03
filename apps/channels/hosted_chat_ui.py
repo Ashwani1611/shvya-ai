@@ -501,4 +501,40 @@ def hosted_gateway_event_view(request):
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=409)
 
-    return JsonResponse({"ok": True, "handled": result is not None})
+    handled = result is not None
+    # The gateway persists live messages and ACKs in a durable callback outbox.
+    # A 2xx response means that record can be deleted, so never acknowledge a
+    # valid callback for an active Hosted session until it actually commits.
+    #
+    # Temporary lease fencing (for example immediately after a gateway restart)
+    # and an ACK arriving just before the sender stores external_id both return
+    # None from the service layer. Returning 409 here keeps the exact callback
+    # durable and lets the gateway replay it without resending the WhatsApp
+    # message. System/status chats are handled by the early return above.
+    retryable_events = {"ready", "running", "message", "message_ack"}
+    has_required_identity = (
+        event not in {"message", "message_ack"}
+        or bool(str(data.get("messageId") or "").strip())
+    )
+    if not handled and event in retryable_events and has_required_identity:
+        session_id = str(data.get("sessionId") or "").strip()
+        active_session = bool(
+            session_id
+            and WhatsAppAccount.objects.filter(
+                id=session_id,
+                connection_type="hosted",
+                is_active=True,
+            ).exists()
+        )
+        if active_session:
+            return JsonResponse(
+                {
+                    "ok": False,
+                    "handled": False,
+                    "retryable": True,
+                    "error": "Hosted callback has not committed yet; retry the same event.",
+                },
+                status=409,
+            )
+
+    return JsonResponse({"ok": True, "handled": handled})
