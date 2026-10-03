@@ -10,6 +10,7 @@ from django.dispatch import receiver
 from apps.ai_engagement.services.background_enrichment import (
     queue_background_enrichment,
 )
+from apps.channels.instagram_models import InstagramMessage
 from apps.channels.models import WhatsAppMessage
 
 
@@ -26,6 +27,30 @@ def _refresh_intent_score(lead_id):
         persist_intent_score(lead=lead)
     except Exception:
         logger.exception("Intent score refresh failed for lead %s", lead_id)
+
+
+def _schedule_post_turn_summary(*, lead_id, source_id) -> None:
+    """Schedule one derived summary after a provider-accepted AI reply."""
+
+    key = f"shvya:ai:post-turn-summary:{source_id}"
+
+    def _queue():
+        if not cache.add(key, "1", timeout=3600):
+            return
+        try:
+            queue_background_enrichment(
+                lead_id=str(lead_id),
+                force=True,
+                include_qualification=False,
+            )
+        except Exception:
+            cache.delete(key)
+            logger.exception(
+                "Post-turn summary scheduling failed for lead %s",
+                lead_id,
+            )
+
+    transaction.on_commit(_queue, robust=True)
 
 
 @receiver(post_save, sender=WhatsAppMessage)
@@ -70,23 +95,40 @@ def queue_post_turn_summary(sender, instance, created, **kwargs):
     if not source_id:
         return
 
-    key = f"shvya:ai:post-turn-summary:{source_id}"
-    lead_id = str(instance.lead_id)
+    _schedule_post_turn_summary(
+        lead_id=instance.lead_id,
+        source_id=source_id,
+    )
 
-    def _queue():
-        if not cache.add(key, "1", timeout=3600):
-            return
-        try:
-            queue_background_enrichment(
-                lead_id=lead_id,
-                force=True,
-                include_qualification=False,
-            )
-        except Exception:
-            cache.delete(key)
-            logger.exception("Post-turn summary scheduling failed for lead %s", lead_id)
 
-    transaction.on_commit(_queue, robust=True)
+@receiver(post_save, sender=InstagramMessage)
+def queue_instagram_post_turn_summary(sender, instance, created, **kwargs):
+    """Apply the same reply -> summary second-job contract to Instagram."""
+
+    if instance.direction != InstagramMessage.Direction.OUTBOUND:
+        return
+    if instance.status not in {
+        InstagramMessage.Status.SENT,
+        InstagramMessage.Status.READ,
+    }:
+        return
+
+    payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
+    ai_meta = payload.get("shvya_ai")
+    if not isinstance(ai_meta, dict):
+        return
+    source_id = str(ai_meta.get("source_inbound_message_id") or "").strip()
+    if not source_id:
+        return
+
+    lead_id = getattr(instance.conversation, "lead_id", None)
+    if not lead_id:
+        return
+
+    _schedule_post_turn_summary(
+        lead_id=lead_id,
+        source_id=source_id,
+    )
 
 
 @receiver(post_save, sender=WhatsAppMessage)
