@@ -8,6 +8,7 @@ from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message
+from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 
 
 class WhatsAppEngagementTriggerTests(TestCase):
@@ -78,12 +79,10 @@ class WhatsAppEngagementTriggerTests(TestCase):
                 raw_payload={"test": True},
             )
 
-        background_enrichment.assert_called_once_with(
-            lead_id=str(self.lead.id)
-        )
+        background_enrichment.assert_not_called()
         engagement_apply_async.assert_called_once_with(
             args=[str(self.lead.id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     @patch(
@@ -119,12 +118,43 @@ class WhatsAppEngagementTriggerTests(TestCase):
             ).count(),
             1,
         )
-        background_enrichment.assert_called_once_with(
-            lead_id=str(self.lead.id)
-        )
+        background_enrichment.assert_not_called()
         engagement_apply_async.assert_called_once_with(
             args=[str(self.lead.id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
+        )
+
+    @patch("apps.ai_engagement.tasks._execute_ai_engagement_response")
+    @patch("apps.ai_engagement.tasks.generate_ai_engagement_response.apply_async")
+    def test_worker_waits_for_quiet_window_from_latest_inbound(
+        self,
+        apply_async,
+        execute_turn,
+    ):
+        from apps.ai_engagement.tasks import generate_ai_engagement_response
+
+        with self.captureOnCommitCallbacks(execute=True):
+            message = handle_inbound_message(
+                organization=self.organization,
+                account=self.account,
+                external_id="wamid-burst-quiet-window",
+                from_number=self.lead.phone,
+                to_number="919999999999",
+                body="One more detail",
+                raw_payload={"test": True},
+            )
+
+        apply_async.reset_mock()
+        result = generate_ai_engagement_response.run(str(message.lead_id))
+
+        self.assertEqual(result["status"], "deferred")
+        self.assertEqual(result["reason"], "conversation_burst_active")
+        execute_turn.assert_not_called()
+        apply_async.assert_called_once()
+        self.assertGreaterEqual(apply_async.call_args.kwargs["countdown"], 1)
+        self.assertLessEqual(
+            apply_async.call_args.kwargs["countdown"],
+            turn_burst_seconds(),
         )
 
     @patch(

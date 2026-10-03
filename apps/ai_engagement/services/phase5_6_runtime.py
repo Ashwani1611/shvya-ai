@@ -273,7 +273,10 @@ def _fail_closed_resolution(decision: IntentDecision | None) -> EvidenceResoluti
         verified=False,
         evidence=(),
         controlled_fallback=(
-            f"I don't have verified {label} information available here, so I don't want to guess."
+            (
+                "I want to give you the right detail. Which specific option or situation "
+                "should I check?"
+            )
             if sensitive
             else ""
         ),
@@ -1010,8 +1013,8 @@ def _install_live_availability_guard() -> None:
                 verified=False,
                 evidence=(),
                 controlled_fallback=(
-                    "I don't have verified live appointment availability here, "
-                    "so I don't want to guess."
+                    "I can help with the booking details, but live appointment availability "
+                    "needs to be checked for the date and time you want."
                 ),
             )
         return original(

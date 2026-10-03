@@ -188,7 +188,7 @@ class DurableHostedQueueTests(TestCase):
             result = dispatch_one_hosted_ai_job()
         self.assertEqual(result["job_ids"], [str(ready.pk)])
 
-    def test_45_second_sender_gate_prevents_early_generation(self):
+    def test_sender_gate_prevents_early_generation(self):
         job = self._job()
         due = timezone.now() + timedelta(seconds=45)
         AIMessageSendState.objects.create(account=self.account, next_send_at=due)

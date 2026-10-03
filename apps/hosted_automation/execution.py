@@ -19,7 +19,7 @@ from apps.ai_engagement.services.ai_provider import (
 from apps.ai_engagement.services.ai_permissions import AIPermissionError, AIPermissionService
 from apps.ai_engagement.services.context import AIContextBuilder
 from apps.ai_engagement.services.crm_executor import CRMActionExecutionError, CRMActionExecutor
-from apps.ai_engagement.services.engagement import EngagementError, EngagementService
+from apps.ai_engagement.services.engagement import EngagementError
 from apps.ai_engagement.services.engagement_failsoft import (
     build_deterministic_fallback_decision,
 )
@@ -238,7 +238,9 @@ def execute_hosted_ai_engagement(*, task, job):
     if not permission.allowed:
         return {"status": "skipped", "reason": permission.reason, "lead_id": str(lead.id)}
 
-    service = EngagementService(
+    from apps.ai_engagement.services.turn_controller import TurnController
+
+    service = TurnController(
         context_builder=HostedAIContextBuilder(account_id=account.id),
     )
     try:

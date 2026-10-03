@@ -350,6 +350,18 @@ OWN_TOOL_DEFINITIONS = [
                             "type": "string",
                             "maxLength": 100000,
                         },
+                        "qualification_model": {
+                            "type": "string",
+                            "maxLength": 100,
+                        },
+                        "sales_support_model": {
+                            "type": "string",
+                            "maxLength": 100,
+                        },
+                        "summary_model": {
+                            "type": "string",
+                            "maxLength": 100,
+                        },
                         "ai_enabled": {"type": "boolean"},
                         "bump_up_enabled": {"type": "boolean"},
                         "bump_up_count": {"type": "integer", "minimum": 0, "maximum": 20},

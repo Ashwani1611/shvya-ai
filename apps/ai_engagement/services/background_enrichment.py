@@ -51,24 +51,41 @@ def _new_message_stats(*, lead) -> tuple[int, int]:
         .first()
     )
 
-    messages = WhatsAppMessage.objects.filter(
+    whatsapp = WhatsAppMessage.objects.filter(
         organization=lead.organization,
         lead=lead,
     )
-    if current is not None:
-        if current.source_last_message_at is not None:
-            messages = messages.filter(created_at__gt=current.source_last_message_at)
-        elif current.source_message_count:
-            # Legacy summaries may not have source_last_message_at. Message-count
-            # compatibility is retained; char-based triggering starts fresh once
-            # the next summary stores a timestamp.
-            total_count = messages.count()
-            count = max(total_count - int(current.source_message_count or 0), 0)
-            recent = messages.order_by("-created_at", "-id")[:count]
-            chars = sum(len(str(body or "")) for body in recent.values_list("body", flat=True))
-            return count, chars
+    from apps.channels.instagram_models import InstagramMessage
 
-    bodies = list(messages.values_list("body", flat=True))
+    instagram = InstagramMessage.objects.filter(
+        organization=lead.organization,
+        conversation__lead=lead,
+    )
+
+    if current is not None and current.source_last_message_at is not None:
+        whatsapp = whatsapp.filter(created_at__gt=current.source_last_message_at)
+        instagram = instagram.filter(created_at__gt=current.source_last_message_at)
+
+    whatsapp_bodies = list(whatsapp.values_list("body", flat=True))
+    instagram_bodies = list(instagram.values_list("body", flat=True))
+    bodies = [*whatsapp_bodies, *instagram_bodies]
+
+    if (
+        current is not None
+        and current.source_last_message_at is None
+        and current.source_message_count
+    ):
+        # Legacy summaries did not carry a timestamp. Preserve the old count
+        # compatibility across both supported messaging channels; the next
+        # published summary stores a timestamp and removes this ambiguity.
+        count = max(len(bodies) - int(current.source_message_count or 0), 0)
+        if count <= 0:
+            return 0, 0
+        # Character volume is only a scheduling heuristic. Newest exact
+        # cross-channel ordering is resolved by InternalSummaryService.
+        recent_bodies = bodies[-count:]
+        return count, sum(len(str(body or "")) for body in recent_bodies)
+
     return len(bodies), sum(len(str(body or "")) for body in bodies)
 
 
@@ -96,8 +113,13 @@ def enrichment_due(*, lead) -> bool:
     return chars >= 180 or average_chars >= 30
 
 
-def queue_background_enrichment(*, lead_id, force=False) -> dict:
-    """Queue slow internal AI work without blocking or starving WhatsApp replies."""
+def queue_background_enrichment(*, lead_id, force=False, include_qualification=True) -> dict:
+    """Queue post-turn enrichment without blocking the customer reply.
+
+    The normal customer turn uses one response model call plus one summary call.
+    Qualification state/CRM fields are already committed synchronously; the
+    optional qualification-note job remains a slower secondary enrichment.
+    """
     lead = (
         Lead.objects.select_related("organization")
         .filter(id=lead_id)
@@ -149,7 +171,9 @@ def queue_background_enrichment(*, lead_id, force=False) -> dict:
 
     org_info = OrgInfo.objects.filter(organization=lead.organization).first()
     qualification_queued = bool(
-        org_info and (org_info.ai_playbook or "").strip()
+        include_qualification
+        and org_info
+        and (org_info.ai_playbook or "").strip()
     )
     if qualification_queued:
         generate_lead_qualification.apply_async(

@@ -176,6 +176,9 @@ def update_ai_configuration(*, identity, arguments):
         "about",
         "bot_languages",
         "ai_playbook",
+        "qualification_model",
+        "sales_support_model",
+        "summary_model",
         "ai_enabled",
         "bump_up_enabled",
         "bump_up_count",
@@ -188,9 +191,19 @@ def update_ai_configuration(*, identity, arguments):
 
     normalized = {}
     for key, value in changes.items():
-        if key in {"about", "bot_languages", "ai_playbook"}:
+        if key in {
+            "about", "bot_languages", "ai_playbook",
+            "qualification_model", "sales_support_model", "summary_model",
+        }:
             text = str(value or "").strip()
-            limits = {"about": 12000, "bot_languages": 500, "ai_playbook": 100000}
+            limits = {
+                "about": 12000,
+                "bot_languages": 500,
+                "ai_playbook": 100000,
+                "qualification_model": 100,
+                "sales_support_model": 100,
+                "summary_model": 100,
+            }
             if len(text) > limits[key]:
                 raise OperationsToolError(f"{key} is too large.")
             redacted = sanitize_text(
@@ -203,6 +216,11 @@ def update_ai_configuration(*, identity, arguments):
                     f"{key} contains credential-like or secret material. "
                     "Do not store secrets in SHVYA AI configuration."
                 )
+            if key in {"qualification_model", "sales_support_model", "summary_model"}:
+                if text and any(ch.isspace() for ch in text):
+                    raise OperationsToolError(
+                        f"{key} must be a valid provider model identifier."
+                    )
             if key == "ai_playbook":
                 try:
                     text = validate_playbook(text)

@@ -309,10 +309,7 @@ def _execute_ai_engagement_response_impl(
         CRMActionExecutionError,
         CRMActionExecutor,
     )
-    from apps.ai_engagement.services.engagement import (
-        EngagementError,
-        EngagementService,
-    )
+    from apps.ai_engagement.services.engagement import EngagementError
     from apps.channels.models import (
         WhatsAppMessage,
     )
@@ -483,11 +480,11 @@ def _execute_ai_engagement_response_impl(
 
     try:
 
-        decision = (
-            EngagementService().engage(
-                organization=organization,
-                lead=lead,
-            )
+        from apps.ai_engagement.services.turn_controller import TurnController
+
+        decision = TurnController().engage(
+            organization=organization,
+            lead=lead,
         )
 
     except EngagementError as exc:

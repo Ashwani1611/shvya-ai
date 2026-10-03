@@ -172,7 +172,7 @@ def hosted_session_queue_view(request, account_id):
             status_text = "Paused by Account Health"
             effective_status = "paused"
         elif sender_available_at and sender_available_at > now:
-            status_text = "Waiting for sender · 45-second minimum gap"
+            status_text = f"Waiting for sender · {AI_SEND_GAP_SECONDS}-second minimum gap"
         elif job.available_at <= now:
             status_text = "Queued · waiting for worker"
         else:

@@ -43,6 +43,22 @@ class OrgInfo(models.Model):
         help_text="The organization's complete AI operating specification: rules, messages, qualification, CRM routing, attributes and reminders.",
     )
 
+    qualification_model = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional OpenAI model override for New Lead qualification replies.",
+    )
+    sales_support_model = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional OpenAI model override for non-qualification sales/support replies.",
+    )
+    summary_model = models.CharField(
+        max_length=100,
+        blank=True,
+        help_text="Optional OpenAI model override for post-turn conversation summaries.",
+    )
+
     # =========================================================
     # GLOBAL AI CONTROL
     # =========================================================

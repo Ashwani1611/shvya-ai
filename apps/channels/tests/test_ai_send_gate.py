@@ -97,7 +97,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
     def test_first_send_after_upgrade_respects_recent_delivery_without_state(self):
         previous = self._message()
         WhatsAppMessage.objects.filter(pk=previous.pk).update(
-            status="sent", sent_at=self.now - timedelta(seconds=30),
+            status="sent", sent_at=self.now - timedelta(seconds=max(AI_SEND_GAP_SECONDS - 2, 0)),
         )
         message = self._message()
         provider = Mock(side_effect=self._provider_send)
@@ -108,17 +108,17 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             for _ in range(2):
                 with self.assertRaises(AIMessageDeferred) as deferred:
                     send(message=message)
-                self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=15))
+                self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=2))
                 # The failed reservation rolls back state creation. Repeating
                 # the check must re-seed safely instead of allowing a burst.
                 self.assertFalse(AIMessageSendState.objects.exists())
         provider.assert_not_called()
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=15)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=2)):
             send(message=message)
         provider.assert_called_once()
         self.assertEqual(
             AIMessageSendState.objects.get(account=self.account).next_send_at,
-            self.now + timedelta(seconds=60),
+            self.now + timedelta(seconds=2 + AI_SEND_GAP_SECONDS),
         )
 
     def test_api_replies_send_by_arrival_when_generation_finishes_out_of_order(self):
@@ -141,7 +141,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             self.assertEqual(deferred.exception.reason, "ai_queue_priority")
             provider.assert_not_called()
             send(message=earlier)
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=45)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS)):
             send(message=later)
         self.assertEqual(
             [call.kwargs["message"].pk for call in provider.call_args_list],
@@ -176,7 +176,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
         provider.assert_called_once()
 
     @override_settings(AI_ENGAGEMENT_DEBOUNCE_SECONDS=0, HOSTED_AI_REPLY_DELAY_SECONDS=0)
-    def test_welcome_reply_and_bump_up_share_locked_45_second_gap(self):
+    def test_welcome_reply_and_bump_up_share_locked_sender_gap(self):
         provider = Mock(side_effect=self._provider_send)
         send = paced_ai_send(provider)
         welcome = self._message(kind="welcome")
@@ -197,26 +197,26 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             send(message=welcome)
             with self.assertRaises(AIMessageDeferred) as deferred:
                 send(message=reply)
-        self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=45))
-        self.assertEqual(AI_SEND_GAP_SECONDS, 45)
+        self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
+        self.assertEqual(AI_SEND_GAP_SECONDS, 5)
         reply.refresh_from_db()
         self.assertEqual(reply.status, "queued")
         self.assertIsNone(reply.sent_at)
         self.assertEqual(provider.call_count, 1)
 
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=44)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS - 1)):
             with self.assertRaises(AIMessageDeferred):
                 send(message=reply)
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=45)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS)):
             send(message=reply)
             with self.assertRaises(AIMessageDeferred):
                 send(message=bump)
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=90)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 2)):
             send(message=bump)
         self.assertEqual(provider.call_count, 3)
         state = AIMessageSendState.objects.get(account=self.account)
-        self.assertEqual(state.last_sent_at, self.now + timedelta(seconds=90))
-        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=135))
+        self.assertEqual(state.last_sent_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 2))
+        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS * 3))
 
     def test_reply_defers_to_welcome_and_fifo_within_each_type(self):
         reply_job = self._job(created_at=self.now - timedelta(seconds=30))
@@ -291,14 +291,14 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
 
         def resume_after_another_worker_sent(message):
             # Model a worker descheduled after its initial read while another
-            # worker sent successfully and its 45-second cooldown elapsed.
+            # worker sent successfully and its configured conversational cooldown elapsed.
             WhatsAppMessage.objects.filter(pk=message.pk).update(
-                status="sent", sent_at=self.now - timedelta(seconds=46),
+                status="sent", sent_at=self.now - timedelta(seconds=AI_SEND_GAP_SECONDS + 1),
                 external_id="other-worker-provider-id",
             )
             AIMessageSendState.objects.create(
                 account=self.account, next_send_at=self.now - timedelta(seconds=1),
-                last_sent_at=self.now - timedelta(seconds=46),
+                last_sent_at=self.now - timedelta(seconds=AI_SEND_GAP_SECONDS + 1),
             )
             return _reserve(message)
 
@@ -354,7 +354,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
         state = AIMessageSendState.objects.get(account=self.account)
         self.assertIsNone(state.last_sent_at)
         self.assertIsNone(state.claim_token)
-        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=45))
+        self.assertEqual(state.next_send_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
         message.refresh_from_db()
         self.assertIsNone(message.sent_at)
 
@@ -366,7 +366,7 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
                 _reserve(message)
         with patch("django.utils.timezone.now", return_value=self.now):
             self.assertEqual(next_ai_send_at(self.account), self.now + timedelta(seconds=5))
-        safe_takeover = self.now + timedelta(seconds=AI_SEND_LEASE_SECONDS + 45)
+        safe_takeover = self.now + timedelta(seconds=AI_SEND_LEASE_SECONDS + AI_SEND_GAP_SECONDS)
         self.assertEqual(AIMessageSendState.objects.get(account=self.account).next_send_at, safe_takeover)
         with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_LEASE_SECONDS + 1)):
             with self.assertRaises(AIMessageDeferred) as deferred:
@@ -384,10 +384,10 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
             self.assertEqual(next_ai_send_at(self.account), self.now + timedelta(seconds=5))
             self._provider_send(message=first)
             _finish(first, token)
-            self.assertEqual(next_ai_send_at(self.account), self.now + timedelta(seconds=45))
+            self.assertEqual(next_ai_send_at(self.account), self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
             with self.assertRaises(AIMessageDeferred) as deferred:
                 _reserve(follower)
-            self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=45))
+            self.assertEqual(deferred.exception.available_at, self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
 
     def test_manual_message_is_not_subject_to_ai_toggle_or_cooldown(self):
         message = self._message()
@@ -443,13 +443,13 @@ class AIMessageSendGateTests(SendGateFixtures, TestCase):
                     send_outbound_message(message=reply)
             client.send_template_message.assert_called_once()
             client.send_text_message.assert_not_called()
-            with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=45)):
+            with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS)):
                 send_outbound_message(message=reply)
             client.send_text_message.assert_called_once()
         welcome.refresh_from_db()
         reply.refresh_from_db()
         self.assertEqual(welcome.status, "sent")
-        self.assertEqual(reply.sent_at - welcome.sent_at, timedelta(seconds=45))
+        self.assertEqual(reply.sent_at - welcome.sent_at, timedelta(seconds=AI_SEND_GAP_SECONDS))
 
     def test_hosted_welcome_can_send_without_existing_inbound_conversation(self):
         from services.channels.hosted_whatsapp_transport import send_hosted_message
@@ -500,7 +500,7 @@ class LegacyHostedSendGateTests(SendGateFixtures, TestCase):
         self.assertEqual(sent["status"], "sent")
         self.assertEqual(deferred["status"], "deferred")
         self.assertEqual(deferred["reason"], "ai_send_gap")
-        requeue.assert_called_once_with(args=[str(second.pk)], eta=self.now + timedelta(seconds=45))
+        requeue.assert_called_once_with(args=[str(second.pk)], eta=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
         first.refresh_from_db()
         second.refresh_from_db()
         self.assertEqual(first.sent_at, self.now)
@@ -508,10 +508,10 @@ class LegacyHostedSendGateTests(SendGateFixtures, TestCase):
         self.assertIsNone(second.sent_at)
         self.gateway.return_value.send_message.assert_called_once()
         self.gateway.return_value.send_message.return_value = {"messageId": "mock-second-welcome"}
-        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=45)):
+        with patch("django.utils.timezone.now", return_value=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS)):
             self.assertEqual(send_hosted_whatsapp_message_task.run(str(second.pk))["status"], "sent")
         second.refresh_from_db()
-        self.assertEqual(second.sent_at - first.sent_at, timedelta(seconds=45))
+        self.assertEqual(second.sent_at - first.sent_at, timedelta(seconds=AI_SEND_GAP_SECONDS))
 
     def test_legacy_welcome_respects_stage_toggle_changed_after_queueing(self):
         from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
@@ -568,7 +568,7 @@ class LegacyHostedSendGateTests(SendGateFixtures, TestCase):
         message.message_type = WhatsAppMessage.MessageType.DOCUMENT
         message.media_payload = {"source": "storage", "storage_path": "test-uploads/welcome.pdf"}
         message.save(update_fields=["message_type", "media_payload"])
-        AIMessageSendState.objects.create(account=self.account, next_send_at=self.now + timedelta(seconds=45))
+        AIMessageSendState.objects.create(account=self.account, next_send_at=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
         with (
             patch.object(send_hosted_whatsapp_message_task, "apply_async"),
             patch("django.core.files.storage.default_storage.open") as read,
@@ -611,7 +611,7 @@ class LegacyHostedSendGateTests(SendGateFixtures, TestCase):
         self.assertEqual(message.sent_at, original_send)
         state = AIMessageSendState.objects.get(account=self.account)
         self.assertEqual(state.last_sent_at, original_send)
-        self.assertEqual(state.next_send_at, original_send + timedelta(seconds=45))
+        self.assertEqual(state.next_send_at, original_send + timedelta(seconds=AI_SEND_GAP_SECONDS))
         request = self.gateway.return_value.send_message.call_args.kwargs
         self.assertEqual(request["request_id"], str(message.pk))
         self.assertTrue(request["request_is_retry"])
@@ -640,7 +640,7 @@ class LegacyHostedSendGateTests(SendGateFixtures, TestCase):
         from apps.channels.hosted_send_tasks import send_hosted_whatsapp_message_task
 
         message = self._message(kind="welcome")
-        AIMessageSendState.objects.create(account=self.account, next_send_at=self.now + timedelta(seconds=45))
+        AIMessageSendState.objects.create(account=self.account, next_send_at=self.now + timedelta(seconds=AI_SEND_GAP_SECONDS))
         with patch.object(send_hosted_whatsapp_message_task, "apply_async"):
             result = send_hosted_whatsapp_message_task.run(str(message.pk))
         self.assertEqual(result["status"], "deferred")

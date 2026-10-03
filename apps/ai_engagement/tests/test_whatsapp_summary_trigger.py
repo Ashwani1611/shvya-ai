@@ -4,20 +4,21 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from apps.channels.instagram_models import InstagramAccount, InstagramConversation, InstagramMessage
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Pipeline, Stage
+from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message
+from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 
 
 class WhatsAppSummaryTriggerTests(TestCase):
     """
-    Tests the WhatsApp -> background AI enrichment trigger.
+    Tests the WhatsApp -> reply -> post-turn summary contract.
 
-    The inbound path no longer queues an expensive summary model call for every
-    message. Instead it schedules lightweight background enrichment after the
-    transaction commits. That scheduler decides whether the rolling summary and
-    qualification refresh are due.
+    Inbound messages queue the realtime reply after the shared burst window.
+    The expensive summary call is scheduled only after an AI outbound row is
+    persisted, so a normal successful turn is reply generation then summary.
     """
 
     @classmethod
@@ -67,11 +68,11 @@ class WhatsAppSummaryTriggerTests(TestCase):
         "apps.ai_engagement.background_signals."
         "queue_background_enrichment"
     )
-    def test_inbound_message_queues_background_enrichment(
+    def test_inbound_message_defers_summary_until_ai_reply(
         self,
         mocked_enrichment,
     ):
-        """A new inbound Lead message schedules enrichment after commit."""
+        """A new inbound Lead message queues only the realtime reply turn."""
 
         phone = "+919876543223"
 
@@ -91,12 +92,10 @@ class WhatsAppSummaryTriggerTests(TestCase):
         self.assertIsNotNone(message.pk)
         self.assertIsNotNone(message.lead_id)
 
-        mocked_enrichment.assert_called_once_with(
-            lead_id=str(message.lead_id)
-        )
+        mocked_enrichment.assert_not_called()
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     @patch(
@@ -140,23 +139,21 @@ class WhatsAppSummaryTriggerTests(TestCase):
             ).count(),
             1,
         )
-        mocked_enrichment.assert_called_once_with(
-            lead_id=str(first_message.lead_id)
-        )
+        mocked_enrichment.assert_not_called()
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(first_message.lead_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     @patch(
         "apps.ai_engagement.background_signals."
         "queue_background_enrichment"
     )
-    def test_background_enrichment_receives_only_lead_id(
+    def test_inbound_does_not_spend_summary_call(
         self,
         mocked_enrichment,
     ):
-        """The scheduler receives only the Lead ID and resolves state itself."""
+        """Inbound processing does not queue the post-turn summary before a reply exists."""
 
         phone = "+919876543225"
 
@@ -171,10 +168,134 @@ class WhatsAppSummaryTriggerTests(TestCase):
                 raw_payload={"test": True},
             )
 
-        mocked_enrichment.assert_called_once_with(
-            lead_id=str(message.lead_id)
-        )
+        mocked_enrichment.assert_not_called()
         self.mocked_ai_engagement_apply_async.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
+
+    @patch(
+        "apps.ai_engagement.background_signals.cache.add",
+        return_value=True,
+    )
+    @patch(
+        "apps.ai_engagement.background_signals.queue_background_enrichment"
+    )
+    def test_ai_outbound_schedules_one_post_turn_summary(
+        self,
+        mocked_enrichment,
+        mocked_cache_add,
+    ):
+        phone = "+919876543226"
+
+        with self.captureOnCommitCallbacks(execute=True):
+            inbound = handle_inbound_message(
+                organization=self.organization,
+                account=self.account,
+                external_id="wamid-summary-trigger-004",
+                from_number=phone,
+                to_number="TEMP",
+                body="Tell me the plan details.",
+                raw_payload={"test": True},
+            )
+
+        mocked_enrichment.reset_mock()
+        with self.captureOnCommitCallbacks(execute=True):
+            WhatsAppMessage.objects.create(
+                organization=self.organization,
+                account=self.account,
+                lead=inbound.lead,
+                direction=WhatsAppMessage.Direction.OUTBOUND,
+                from_number=self.account.display_phone_number,
+                to_number=phone,
+                body="Here are the plan details.",
+                status=WhatsAppMessage.Status.SENT,
+                raw_payload={
+                    "shvya_ai": {
+                        "source_inbound_message_id": str(inbound.pk),
+                        "model": "test",
+                    }
+                },
+            )
+
+        mocked_cache_add.assert_any_call(
+            f"shvya:ai:post-turn-summary:{inbound.pk}",
+            "1",
+            timeout=3600,
+        )
+        mocked_enrichment.assert_called_once_with(
+            lead_id=str(inbound.lead_id),
+            force=True,
+            include_qualification=False,
+        )
+
+    @patch(
+        "apps.ai_engagement.background_signals.cache.add",
+        return_value=True,
+    )
+    @patch(
+        "apps.ai_engagement.background_signals.queue_background_enrichment"
+    )
+    def test_instagram_ai_outbound_uses_same_post_turn_summary_contract(
+        self,
+        mocked_enrichment,
+        mocked_cache_add,
+    ):
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Instagram Summary Lead",
+            phone="",
+        )
+        account = InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="ig-summary-account",
+            username="summary_business",
+            status=InstagramAccount.Status.CONNECTED,
+        )
+        conversation = InstagramConversation.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=lead,
+            participant_id="ig-summary-lead",
+            participant_username="lead_user",
+        )
+        inbound = InstagramMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            conversation=conversation,
+            external_id="ig-summary-inbound-1",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.RECEIVED,
+            body="What does your service include?",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            InstagramMessage.objects.create(
+                organization=self.organization,
+                account=account,
+                conversation=conversation,
+                external_id="ig-summary-outbound-1",
+                direction=InstagramMessage.Direction.OUTBOUND,
+                status=InstagramMessage.Status.SENT,
+                body="Here are the service details.",
+                raw_payload={
+                    "shvya_ai": {
+                        "source_inbound_message_id": str(inbound.pk),
+                        "model": "test",
+                    }
+                },
+            )
+
+        mocked_cache_add.assert_any_call(
+            f"shvya:ai:post-turn-summary:{inbound.pk}",
+            "1",
+            timeout=3600,
+        )
+        mocked_enrichment.assert_called_once_with(
+            lead_id=str(lead.pk),
+            force=True,
+            include_qualification=False,
+        )
+

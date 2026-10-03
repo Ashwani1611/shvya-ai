@@ -27,6 +27,9 @@ class OrgInfoService:
         "about",
         "bot_languages",
         "ai_playbook",
+        "qualification_model",
+        "sales_support_model",
+        "summary_model",
         "organization_name",
         "ai_enabled",
         "bump_up_enabled",
@@ -126,6 +129,15 @@ class OrgInfoService:
                 org_info.ai_playbook = validate_playbook(data["ai_playbook"] or "")
             except (TypeError, ValueError) as exc:
                 raise OrgInfoServiceError(str(exc)) from exc
+
+        for model_field in ("qualification_model", "sales_support_model", "summary_model"):
+            if model_field in data:
+                value = str(data[model_field] or "").strip()
+                if value and (len(value) > 100 or any(ch.isspace() for ch in value)):
+                    raise OrgInfoServiceError(
+                        f"{model_field} must be a valid provider model identifier."
+                    )
+                setattr(org_info, model_field, value)
 
         if "organization_name" in data:
             organization.name = str(data["organization_name"] or "").strip()

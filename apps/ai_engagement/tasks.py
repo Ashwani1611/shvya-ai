@@ -114,8 +114,13 @@ def generate_ai_engagement_response(self, lead_id: str):
     """Canonical production AI engagement worker; payload contains Lead ID only."""
     from django.conf import settings
 
+    from apps.ai_engagement.services.turn_burst import defer_api_turn_until_quiet
     from apps.core.fairness import admit_ai_start
     from apps.crm.models import Lead
+
+    deferred = defer_api_turn_until_quiet(task=self, lead_id=str(lead_id))
+    if deferred is not None:
+        return deferred
 
     organization_id = (
         Lead.objects.filter(pk=lead_id)

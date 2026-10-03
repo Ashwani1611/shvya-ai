@@ -487,10 +487,13 @@ def execute_instagram_ai_engagement(*, task, message_id):
     # Refresh the relation cached before automatic lead creation.
     source.conversation = conversation
 
-    service = EngagementService(
+    from apps.ai_engagement.services.turn_controller import TurnController
+
+    service = TurnController(
         context_builder=InstagramAIContextBuilder(
             conversation_id=conversation.pk,
-        )
+        ),
+        service_class=EngagementService,
     )
     from apps.ai_engagement.services.runtime_state import state_revision
     from apps.ai_engagement.services.transactional_turn_runtime import _state_changing_decision

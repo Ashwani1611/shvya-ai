@@ -23,6 +23,8 @@ class EngagementGraphState(TypedDict, total=False):
     context: Any
     profile: dict[str, Any]
     runtime_policy: dict[str, Any]
+    turn_policy: Any
+    business_plan: dict[str, Any]
     qualification_state: dict[str, Any]
     requirements: list[dict[str, Any]]
     latest_text: str

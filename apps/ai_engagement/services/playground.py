@@ -102,6 +102,9 @@ class _SandboxContextBuilder:
             "about": org_info.about,
             "bot_languages": org_info.bot_languages,
             "ai_playbook": org_info.ai_playbook,
+            "qualification_model": str(getattr(org_info, "qualification_model", "") or ""),
+            "sales_support_model": str(getattr(org_info, "sales_support_model", "") or ""),
+            "summary_model": str(getattr(org_info, "summary_model", "") or ""),
             "bump_up_enabled": org_info.bump_up_enabled,
             "bump_up_count": org_info.bump_up_count,
         }
@@ -456,10 +459,15 @@ class PlaygroundService:
             channel=channel,
         )
 
-        service = self.engagement_service or EngagementService(
-            provider=self.provider,
-            context_builder=context_builder,
-        )
+        if self.engagement_service is not None:
+            service = self.engagement_service
+        else:
+            from apps.ai_engagement.services.turn_controller import TurnController
+
+            service = TurnController(
+                provider=self.provider,
+                context_builder=context_builder,
+            )
         previous_builder = None
         if self.engagement_service is not None:
             previous_builder = service.context_builder

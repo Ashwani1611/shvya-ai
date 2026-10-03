@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from django.db import transaction
 from django.db.models import Q
 
@@ -69,9 +71,9 @@ class InternalSummaryService:
         organization,
         lead: Lead,
         limit: int = DEFAULT_MESSAGE_LIMIT,
-    ) -> list[WhatsAppMessage]:
+    ) -> list[Any]:
         """
-        Return recent WhatsApp conversation messages for a Lead.
+        Return recent customer conversation messages for a Lead.
 
         Results are organization-scoped and returned in chronological
         order for summary construction.
@@ -93,23 +95,38 @@ class InternalSummaryService:
                 f"{self.MAX_MESSAGE_LIMIT}."
             )
 
-        messages = list(
+        whatsapp_messages = list(
             WhatsAppMessage.objects.filter(
                 organization=organization,
                 lead=lead,
             )
             .filter(Q(created_at__gte=lead.created_at) | Q(raw_payload__leadCreationMessage=True))
             .filter(Q(raw_payload__isHistory__isnull=True) | Q(raw_payload__isHistory=False))
-            .order_by(
-                "-created_at",
-                "-id",
-            )[:limit]
+            .order_by("-created_at", "-id")[:limit]
         )
 
-        # Summary generation receives the conversation in
-        # chronological order: oldest -> newest.
-        messages.reverse()
+        # Instagram uses a separate durable message table but the CRM summary is
+        # lead-owned, not channel-owned. Include the same lead's current Instagram
+        # conversation so AI API/Hosted/Instagram all feed one derived summary.
+        from apps.channels.instagram_models import InstagramMessage
 
+        instagram_messages = list(
+            InstagramMessage.objects.filter(
+                organization=organization,
+                conversation__lead=lead,
+            )
+            .order_by("-created_at", "-id")[:limit]
+        )
+
+        messages = sorted(
+            [*whatsapp_messages, *instagram_messages],
+            key=lambda item: (
+                getattr(item, "created_at", None),
+                str(getattr(item, "id", "")),
+            ),
+            reverse=True,
+        )[:limit]
+        messages.reverse()
         return messages
 
     # ============================================================
@@ -118,7 +135,7 @@ class InternalSummaryService:
 
     def build_conversation_text(
         self,
-        messages: list[WhatsAppMessage],
+        messages: list[Any],
     ) -> str:
         """
         Convert WhatsApp messages into deterministic plain text.
@@ -297,6 +314,15 @@ class InternalSummaryService:
             .first()
         )
 
+    def latest_message(self, *, organization, lead: Lead):
+        """Return the newest durable customer/AI message across supported channels."""
+        messages = self.get_messages(
+            organization=organization,
+            lead=lead,
+            limit=1,
+        )
+        return messages[-1] if messages else None
+
     # ============================================================
     # SUMMARY FRESHNESS
     # ============================================================
@@ -332,17 +358,9 @@ class InternalSummaryService:
             return True
 
         if latest_message is None:
-            latest_message = (
-                WhatsAppMessage.objects
-                .filter(
-                    organization=organization,
-                    lead=lead,
-                )
-                .order_by(
-                    "-created_at",
-                    "-id",
-                )
-                .first()
+            latest_message = self.latest_message(
+                organization=organization,
+                lead=lead,
             )
 
         # No messages means there is nothing new to summarize.
@@ -463,6 +481,11 @@ class InternalSummaryService:
             )
 
         try:
+            from apps.ai_engagement.models import OrgInfo
+
+            org_info = OrgInfo.objects.filter(organization=organization).only(
+                "summary_model"
+            ).first()
             provider = OpenAIProvider()
 
             result = provider.generate_text(
@@ -476,6 +499,9 @@ class InternalSummaryService:
                         lead.id
                     ),
                     "purpose": "internal_conversation_summary",
+                    "model_override": str(
+                        getattr(org_info, "summary_model", "") or ""
+                    ).strip(),
                 },
             )
 

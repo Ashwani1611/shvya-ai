@@ -89,6 +89,15 @@ def _prepare(state: EngagementGraphState) -> dict:
             requirements[0].get("flow_version") or policy_qualification.get("flow_version") or ""
         )
     policy = get_runtime_policy(organization=organization, profile=policy_profile)
+    from apps.ai_engagement.services.turn_controller import (
+        build_turn_policy,
+        record_turn_policy,
+    )
+    turn_policy = build_turn_policy(
+        context=context,
+        qualification_state=state_for_lead(lead, requirements=requirements),
+    )
+    record_turn_policy(policy=turn_policy)
 
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = policy
@@ -107,6 +116,7 @@ def _prepare(state: EngagementGraphState) -> dict:
         "context": context,
         "profile": policy_profile,
         "runtime_policy": policy,
+        "turn_policy": turn_policy,
         "requirements": requirements,
         "qualification_state": qualification_state,
         "latest_text": service._latest_inbound_text(context=context),
@@ -193,6 +203,7 @@ def _deterministic_extract(state: EngagementGraphState, *, reply_text: str | Non
     }
 
     direct_next = direct.get("next_requirement")
+
     # Keep high-confidence answer extraction deterministic, but let the normal
     # response path apply language, Playbook actions and guided-file conditions.
     # Knowing the next question does not prove that raw English copy is a valid
@@ -339,6 +350,35 @@ def _with_file_candidates(state: EngagementGraphState, context):
     return replace(context, organization={**context.organization, "_file_candidates": candidates})
 
 
+def _build_business_plan(state: EngagementGraphState) -> dict:
+    from apps.ai_engagement.services.turn_controller import (
+        build_business_plan,
+        record_turn_policy,
+    )
+
+    context = _with_file_candidates(state, state["context"])
+    turn_policy = state.get("turn_policy")
+    if turn_policy is None:
+        from apps.ai_engagement.services.turn_controller import build_turn_policy
+        turn_policy = build_turn_policy(
+            context=context,
+            qualification_state=state.get("qualification_state") or {},
+        )
+    plan = build_business_plan(
+        service=state["service"],
+        context=context,
+        qualification_state=state.get("qualification_state") or {},
+        requirements=state.get("requirements") or [],
+        latest_text=state.get("latest_text", ""),
+        turn_policy=turn_policy,
+    )
+    org_context = dict(context.organization or {})
+    org_context["_business_plan"] = plan
+    context = replace(context, organization=org_context)
+    record_turn_policy(policy=turn_policy, business_plan=plan)
+    return {"context": context, "business_plan": plan}
+
+
 def _generate(state: EngagementGraphState) -> dict:
     # Keep the authored organization policy intact. The service uses the same
     # persisted flow snapshot as this graph; serializing questions back to prose
@@ -458,6 +498,7 @@ def build_engagement_graph():
     builder.add_node("assess_evidence", assess_evidence)
     builder.add_node("retry_retrieval", retry_retrieval)
     builder.add_node("reassess_evidence", assess_evidence)
+    builder.add_node("build_business_plan", _build_business_plan)
     builder.add_node("generate", _generate)
     builder.add_node("direct", _use_direct_decision)
     builder.add_node("validate", _validate_decision)
@@ -474,10 +515,11 @@ def build_engagement_graph():
     builder.add_edge("retrieve_knowledge", "assess_evidence")
     builder.add_conditional_edges(
         "assess_evidence", recovery_route,
-        {"generate": "generate", "retry_retrieval": "retry_retrieval"},
+        {"generate": "build_business_plan", "retry_retrieval": "retry_retrieval"},
     )
     builder.add_edge("retry_retrieval", "reassess_evidence")
-    builder.add_edge("reassess_evidence", "generate")
+    builder.add_edge("reassess_evidence", "build_business_plan")
+    builder.add_edge("build_business_plan", "generate")
     builder.add_edge("generate", "validate")
     builder.add_edge("direct", "validate")
     builder.add_edge("validate", "grounding")

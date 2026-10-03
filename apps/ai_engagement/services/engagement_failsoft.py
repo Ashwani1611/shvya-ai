@@ -10,6 +10,7 @@ business facts, pipeline movement, attributes, reminders, or identifiers.
 from __future__ import annotations
 
 from apps.ai_engagement.services.playbook import qualification_questions
+from apps.ai_engagement.services.response_fallbacks import fallback_message
 
 import logging
 import re
@@ -204,12 +205,12 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
 
     if any(term in normalized for term in _PLAN_TERMS):
         return (
-            "I couldn’t retrieve the pricing details just now. Please try again shortly.",
+            fallback_message(kind="pricing", bot_languages="", latest_text=text),
             "UNKNOWN_INFORMATION",
         )
 
     return (
-        "I couldn’t retrieve the answer just now. Please try your question again shortly.",
+        fallback_message(kind="technical", bot_languages="", latest_text=text),
         "UNKNOWN_INFORMATION",
     )
 
@@ -504,6 +505,7 @@ def _ensure_customer_reply(decision, *, lead):
         )
 
     organization = getattr(lead, "organization", None)
+    latest_inbound = None
     if organization is not None:
         latest_inbound = _latest_inbound_for_lead(
             organization=organization,
@@ -529,8 +531,10 @@ def _ensure_customer_reply(decision, *, lead):
     return replace(
         decision,
         should_engage=True,
-        message=(
-            "I couldn’t retrieve the answer just now. Please try your question again shortly."
+        message=fallback_message(
+            kind="technical",
+            bot_languages="",
+            latest_text=str(getattr(latest_inbound, "body", "") or ""),
         ),
         reason="UNKNOWN_INFORMATION",
         reason_code="UNKNOWN_INFORMATION",

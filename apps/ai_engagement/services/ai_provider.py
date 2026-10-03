@@ -181,6 +181,11 @@ class OpenAIProvider:
     def _model_for_metadata(self, metadata: dict[str, str] | None) -> str:
         if self._explicit_model:
             return self.model
+        override = str((metadata or {}).get("model_override") or "").strip()
+        if override:
+            if len(override) > 100 or any(ch.isspace() for ch in override):
+                raise AIProviderConfigurationError("Invalid organization model override.")
+            return override
         feature = self._feature(metadata)
         env_name = self.TASK_MODEL_ENV.get(feature)
         if not env_name:

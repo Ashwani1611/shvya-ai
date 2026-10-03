@@ -308,6 +308,9 @@ class AIContextBuilder:
                 "about": "",
                 "bot_languages": "",
                 "ai_playbook": "",
+                "qualification_model": "",
+                "sales_support_model": "",
+                "summary_model": "",
                 "bump_up_enabled": False,
                 "bump_up_count": 0,
             }
@@ -321,6 +324,9 @@ class AIContextBuilder:
             "about": org_info.about,
             "bot_languages": org_info.bot_languages,
             "ai_playbook": org_info.ai_playbook,
+            "qualification_model": org_info.qualification_model,
+            "sales_support_model": org_info.sales_support_model,
+            "summary_model": org_info.summary_model,
             "bump_up_enabled": (
                 org_info.bump_up_enabled
             ),
