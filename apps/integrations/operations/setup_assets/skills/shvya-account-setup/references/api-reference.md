@@ -46,11 +46,15 @@ Common write envelope omitted below: `dry_run:true`, `reason`, followed only whe
 | Workflow | `upsert_workflow_configuration({workflow_id?,data})` | `automation.workflow.config.write` |
 | Routing | `bind_whatsapp_account_to_pipeline({pipeline_id,whatsapp_account_id?,phone_number?,country_code?})` | `automation.messaging.config.write` |
 | Hosted connection | `begin_whatsapp_connection({country_code,phone_number})` for an already bound number | `automation.messaging.config.write` |
+| Meta template draft | `create_whatsapp_template({whatsapp_account_id,pipeline_id?,data:{name,body,category?,language?,footer?,buttons?}})` | `automation.messaging.config.write` |
+| Meta template submit | `submit_whatsapp_template({template_id})`; batch up to 50 with `submit_whatsapp_templates({template_ids})` | `automation.messaging.config.write` |
 | Messaging settings | `update_messaging_automation_settings({whatsapp_account_id,changes})` | `automation.messaging.config.write` |
 
 Attribute types are `text`, `numeric`, `date`, `datetime`, `option`. Record the returned key separately from the display name. Do not pass legacy `dropdown`, `number`, `key`, `values` or `color_code` to tools that do not accept them. Options must remain compatible with historical values and dependencies. Stage lock flags control protected-name/deactivation behavior. New pipelines create standard stages: read these before adding more.
 
-Messaging `changes` accepts `ai_auto_reply`, `auto_follow_up`, `auto_lead_creation`, `bump_up_count`, `bump_up_messages`, `business_hours_start`, `business_hours_end`, `active_conversation_delay_value`, `active_conversation_delay_unit` (`minutes|hours|days`). This does not expose arbitrary fixed bump-up copy, calendar settings, user invitations, billing, round robin, provider credentials or template submission. Hosted connection returns safe status; QR/session credentials are not exposed through MCP.
+Messaging `changes` accepts `ai_auto_reply`, `auto_follow_up`, `auto_lead_creation`, `bump_up_count`, `bump_up_messages`, `business_hours_start`, `business_hours_end`, `active_conversation_delay_value`, `active_conversation_delay_unit` (`minutes|hours|days`). This does not expose arbitrary fixed bump-up copy, calendar settings, user invitations, billing, round robin or provider credentials. Hosted connection returns safe status; QR/session credentials are not exposed through MCP.
+
+Meta WhatsApp template creation and submission are exposed when the authenticated connection's live `tools/list` includes `create_whatsapp_template`, `submit_whatsapp_template` and/or `submit_whatsapp_templates`. Do not redirect the operator to the dashboard login merely to create templates when these tools are present. Create customer-facing template body/footer/button text as plain text and use only placeholders supported by SHVYA's tenant-safe placeholder catalogue. Meta submission still requires the selected Meta-capable WhatsApp account and provider prerequisites; batch submission accepts up to 50 template IDs, so a set of 42 can be submitted in one batch after drafts are created.
 
 ## Actual Workflow data
 

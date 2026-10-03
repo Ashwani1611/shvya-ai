@@ -114,7 +114,7 @@ class HostedAccountLifecycleTests(TestCase):
         )
 
     @patch("apps.channels.providers.whatsapp_web.WhatsAppWebClient.logout")
-    def test_delete_hosted_account_removes_account_messages_settings_and_sequence(
+    def test_delete_hosted_account_preserves_cadence_as_unbound(
         self,
         gateway_logout,
     ):
@@ -138,7 +138,9 @@ class HostedAccountLifecycleTests(TestCase):
         self.assertTrue(response.json()["ok"])
         self.assertFalse(WhatsAppAccount.objects.filter(id=account.id).exists())
         self.assertFalse(WhatsAppMessage.objects.filter(id=message.id).exists())
-        self.assertFalse(FollowupSequence.objects.filter(id=sequence.id).exists())
+        sequence.refresh_from_db()
+        self.assertEqual(sequence.provider, FollowupSequence.Provider.HOSTED)
+        self.assertIsNone(sequence.whatsapp_account_id)
         self.org.refresh_from_db()
         sessions = (
             (self.org.settings or {})

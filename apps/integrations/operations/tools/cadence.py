@@ -88,7 +88,7 @@ def add_hosted_whatsapp_step(*, identity, arguments):
         arguments=arguments,
     )
     sequence = _cadence(organization, (arguments or {}).get("cadence_id"))
-    if sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+    if sequence.provider != FollowupSequence.Provider.HOSTED:
         raise OperationsToolError("The selected Cadence is not a Hosted WhatsApp Cadence.")
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):
@@ -202,7 +202,7 @@ def _step_snapshot(step):
     hosted = None
     if (
         step.step_type == FollowupStep.StepType.WHATSAPP
-        and step.sequence.whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+        and step.sequence.provider == FollowupSequence.Provider.HOSTED
     ):
         hosted = HostedFollowupStepConfig.objects.filter(step=step).first()
     return {
@@ -288,7 +288,7 @@ def update_cadence_step(*, identity, arguments):
 
     hosted = (
         step.step_type == FollowupStep.StepType.WHATSAPP
-        and sequence.whatsapp_account.connection_type == WhatsAppAccount.ConnectionType.coexisted
+        and sequence.provider == FollowupSequence.Provider.HOSTED
     )
     template = None
     if hosted:

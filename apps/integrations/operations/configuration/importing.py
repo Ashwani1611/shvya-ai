@@ -263,19 +263,31 @@ def _import_operations(organization, configuration):
         cadence_refs[name.casefold()] = (
             str(existing.id) if existing else {"$ref": f"{ref}.target_id"}
         )
-        account_ref = str(cadence.get("account_ref") or "")
+        provider = str(cadence.get("provider") or "api").strip()
+        account_ref = str(cadence.get("account_ref") or "").strip()
+        cadence_data = {
+            "name": name,
+            "description": str(cadence.get("description") or ""),
+            "provider": provider,
+        }
+        if account_ref:
+            account_id = account_refs.get(account_ref)
+            if not account_id:
+                raise OperationsPermissionError(
+                    f"Cadence '{name}' references an unavailable WhatsApp account."
+                )
+            cadence_data["whatsapp_account_id"] = account_id
+        elif provider == "api":
+            raise OperationsPermissionError(
+                f"WhatsApp API Cadence '{name}' requires an account_ref."
+            )
         operations.append(
             {
                 "ref": ref,
                 "tool": "upsert_cadence_configuration",
                 "arguments": {
                     **({"cadence_id": str(existing.id)} if existing else {}),
-                    "data": {
-                        "name": name,
-                        "description": str(cadence.get("description") or ""),
-                        "provider": str(cadence.get("provider") or "api"),
-                        "whatsapp_account_id": account_refs[account_ref],
-                    },
+                    "data": cadence_data,
                 },
             }
         )

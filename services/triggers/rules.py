@@ -7,7 +7,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models import AttributeDefinition, Lead, LeadCall, Pipeline, Stage
@@ -43,10 +43,26 @@ def catalog(org):
         ),
         "sequences": list(
             FollowupSequence.objects.filter(
-                organization=org, is_active=True, whatsapp_account__organization=org
-            ).values(
-                "id", "name"
+                organization=org,
+                is_active=True,
             )
+            .filter(
+                Q(
+                    provider=FollowupSequence.Provider.HOSTED,
+                    whatsapp_account__isnull=True,
+                )
+                | Q(
+                    provider=FollowupSequence.Provider.HOSTED,
+                    whatsapp_account__organization=org,
+                    whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                )
+                | Q(
+                    provider=FollowupSequence.Provider.API,
+                    whatsapp_account__organization=org,
+                    whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
+                )
+            )
+            .values("id", "name")
         ),
         "attributes": list(
             AttributeDefinition.objects.filter(is_active=True, organization=org).values(
@@ -242,10 +258,30 @@ def validate(org, data):
             fail("Choose between 1 and 100 sequences.")
         ids = sorted({str(x) for x in ids})
         try:
-            count = FollowupSequence.objects.filter(
-                organization=org, is_active=True, id__in=ids,
-                whatsapp_account__organization=org,
-            ).count()
+            count = (
+                FollowupSequence.objects.filter(
+                    organization=org,
+                    is_active=True,
+                    id__in=ids,
+                )
+                .filter(
+                    Q(
+                        provider=FollowupSequence.Provider.HOSTED,
+                        whatsapp_account__isnull=True,
+                    )
+                    | Q(
+                        provider=FollowupSequence.Provider.HOSTED,
+                        whatsapp_account__organization=org,
+                        whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                    )
+                    | Q(
+                        provider=FollowupSequence.Provider.API,
+                        whatsapp_account__organization=org,
+                        whatsapp_account__connection_type=WhatsAppAccount.ConnectionType.API,
+                    )
+                )
+                .count()
+            )
         except (ValidationError, ValueError):
             fail("Invalid sequence.")
         if count != len(ids):

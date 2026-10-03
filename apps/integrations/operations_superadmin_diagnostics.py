@@ -637,9 +637,15 @@ def get_configuration_integrity_diagnostics(*, identity, arguments):
         .defer("whatsapp_account__access_token")
     )
     for cadence in cadences:
-        if cadence.is_active and (
-            not cadence.whatsapp_account.is_active
-            or cadence.whatsapp_account.status != WhatsAppAccount.Status.CONNECTED
+        account = cadence.whatsapp_account
+        if (
+            cadence.is_active
+            and cadence.provider == FollowupSequence.Provider.API
+            and (
+                account is None
+                or not account.is_active
+                or account.status != WhatsAppAccount.Status.CONNECTED
+            )
         ):
             orphans.append(
                 {

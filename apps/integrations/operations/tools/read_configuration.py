@@ -908,6 +908,7 @@ def get_automation_configuration(*, identity, arguments):
                 "name": sequence.name,
                 "description": sequence.description,
                 "is_active": sequence.is_active,
+                "provider": sequence.provider,
                 "whatsapp_account": (
                     {
                         "id": str(sequence.whatsapp_account_id),

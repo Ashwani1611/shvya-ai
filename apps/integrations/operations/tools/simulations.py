@@ -46,7 +46,11 @@ def simulate_cadence(*, identity, arguments):
     else:
         reference = timezone.now()
 
-    automation_settings = get_session_settings(account=sequence.whatsapp_account)
+    automation_settings = (
+        get_session_settings(account=sequence.whatsapp_account)
+        if sequence.whatsapp_account_id
+        else None
+    )
     rows = []
     cursor = reference
     for step in sequence.steps.filter(is_active=True).order_by("position", "created_at"):

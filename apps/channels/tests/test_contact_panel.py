@@ -327,19 +327,55 @@ class ContactPanelTests(TestCase):
         self.assertContains(response, 'data-contact-tab="touchpoints"')
         self.assertContains(response, 'data-contact-panel="touchpoints"')
 
-    def test_hosted_picker_and_start_only_use_current_hosted_account(self):
+    def test_hosted_picker_reuses_cadences_but_enforces_pipeline_sender(self):
         self.account.connection_type = "hosted"
         self.account.save(update_fields=["connection_type"])
         self.unlinked.connection_type = "hosted"
         self.unlinked.save(update_fields=["connection_type"])
-        selected = self.sequence(name="Correct hosted sequence")
-        other = self.sequence(self.unlinked, "Wrong hosted sequence")
-        response = self.client.get(self.panel, {"channel": "hosted", "account": self.account.pk})
-        self.assertContains(response, "Correct hosted sequence")
-        self.assertNotContains(response, "Wrong hosted sequence")
+        legacy = self.sequence(self.unlinked, "Reusable legacy hosted sequence")
+        unbound = FollowupSequence.objects.create(
+            organization=self.org,
+            provider=FollowupSequence.Provider.HOSTED,
+            whatsapp_account=None,
+            name="Unbound hosted sequence",
+        )
+        FollowupStep.objects.create(
+            sequence=unbound,
+            position=1,
+            step_type="reminder",
+            reminder_text="Call customer",
+        )
+
+        response = self.client.get(
+            self.panel,
+            {"channel": "hosted", "account": self.account.pk},
+        )
+        self.assertContains(response, "Reusable legacy hosted sequence")
+        self.assertContains(response, "Unbound hosted sequence")
+
         url = reverse("chat-checking-in", args=[self.lead.pk])
-        self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": selected.pk}).status_code, 200)
-        self.assertEqual(self.client.post(url, {"channel": "hosted", "account": self.account.pk, "sequence": other.pk}).status_code, 404)
+        self.assertEqual(
+            self.client.post(
+                url,
+                {
+                    "channel": "hosted",
+                    "account": self.account.pk,
+                    "sequence": unbound.pk,
+                },
+            ).status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.post(
+                url,
+                {
+                    "channel": "hosted",
+                    "account": self.unlinked.pk,
+                    "sequence": legacy.pk,
+                },
+            ).status_code,
+            400,
+        )
 
     def message(self, phone="+919123456789", **kwargs):
         from apps.channels.models import WhatsAppMessage

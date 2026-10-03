@@ -38,6 +38,10 @@ class AutoFollowupSettings(models.Model):
 class FollowupSequence(models.Model):
     """Reusable, ordered set of WhatsApp/email/reminder steps."""
 
+    class Provider(models.TextChoices):
+        API = "api", "WhatsApp API"
+        HOSTED = "hosted", "Hosted/Coexistence"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
         "organizations.Organization",
@@ -46,10 +50,17 @@ class FollowupSequence(models.Model):
     )
     name = models.CharField(max_length=255)
     description = models.CharField(max_length=300, blank=True)
+    provider = models.CharField(
+        max_length=8,
+        choices=Provider.choices,
+        default=Provider.API,
+    )
     whatsapp_account = models.ForeignKey(
         "channels.WhatsAppAccount",
         on_delete=models.RESTRICT,
         related_name="followup_sequences",
+        null=True,
+        blank=True,
     )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
@@ -76,6 +87,19 @@ class FollowupSequence(models.Model):
                 name="fu_seq_org_active_idx",
             )
         ]
+
+    def save(self, *args, **kwargs):
+        # Legacy callers historically encoded the provider only through the
+        # bound account. Preserve those direct-create paths while allowing a
+        # Hosted cadence to be authored with no account at all.
+        if (
+            self._state.adding
+            and self.whatsapp_account_id
+            and self.provider == self.Provider.API
+            and getattr(self.whatsapp_account, "connection_type", None) == "hosted"
+        ):
+            self.provider = self.Provider.HOSTED
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return self.name
