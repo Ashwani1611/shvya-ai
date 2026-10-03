@@ -6,7 +6,7 @@ Redis publication is not the source of truth for whether a reply is pending.
 ## Sending order and controls
 
 - The connected WhatsApp account is the pacing boundary. Every welcome,
-  AI reply, and AI bump-up shares a fixed minimum 45-second interval between
+  AI reply, and AI bump-up shares a short configurable conversational interval between
   successful sends. Separate organizations/numbers retain independent queues.
 - Welcomes precede replies. Each class preserves arrival order. For API replies,
   the inbound timestamp is carried into the generated message so faster AI
@@ -20,9 +20,24 @@ Redis publication is not the source of truth for whether a reply is pending.
 - Qualified leads can receive contextual replies when their controls allow AI.
   Qualification completion does not override a stage's AI OFF control.
 
-At 45 seconds, one sender can deliver at most 80 AI messages per hour before
-generation time, account health pauses, business rules, or provider delays.
-Bulk welcome queues therefore take time to drain by design.
+By default, rapid inbound messages are given a 4-second quiet window and normal
+AI sends use a 5-second per-sender pacing gap. These are separate controls:
+the first coalesces a customer burst, while the second prevents provider-side
+send bursts. Follow-up cadence and bump-up timing remain separate business
+schedules.
+
+## Canonical AI turn
+
+All customer-facing channels normalize into the same TurnController and shared
+LangGraph decision engine. New Lead qualification turns use qualification mode;
+other active stages use sales-support mode. A 3-5 second quiet window coalesces
+rapid messages, deterministic qualification/CRM state is committed before final
+composition where applicable, relevant FAQ/KB evidence is retrieved (top five by
+default), and one BusinessPlan constrains the customer-facing model response.
+
+A normal successful turn schedules a second, non-blocking internal summary model
+job after the AI outbound row is committed. That summary compresses conversation
+context; it does not own qualification truth or CRM fields.
 
 ## Durable work and delivery
 
@@ -41,7 +56,7 @@ reused after retries, rather than generated twice.
 `AIMessageSendState` is the final shared send gate. Its database reservation is
 committed before provider I/O. An abandoned send reservation retains a
 conservative lease/cooldown; a successful send records `sent_at` and opens the
-next slot no sooner than 45 seconds later. No worker sleeps to implement pacing.
+next slot no sooner than the configured conversational send gap later. No worker sleeps to implement pacing.
 
 Hosted gateway requests carry the persisted WhatsApp message UUID. A
 session-scoped Redis claim and an fsynced journal in the existing gateway
@@ -82,7 +97,7 @@ Required verification before production promotion:
 1. PostgreSQL migration checks and concurrency regressions pass in CI.
 2. With isolated test leads, queue simultaneous welcomes and replies on one
    connected number; verify welcome-first/FIFO order and actual send timestamps
-   at least 45 seconds apart. Verify a second number can progress independently.
+   respect the configured conversational send gap. Verify a second number can progress independently.
 3. Disable each AI control while work is queued; verify that delivery is blocked.
 4. Confirm burst replies, a Qualified-stage inbound turn, worker restart and
    temporary broker/gateway failures retain recoverable work without duplicate
