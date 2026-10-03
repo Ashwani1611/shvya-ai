@@ -638,7 +638,10 @@ class PlaygroundService:
         token = _FINAL_LANGUAGE_ONLY.set(True)
         try:
             with preserve_preview_state(visitor):
-                context_builder.pipeline, context_builder.stage = visitor.pipeline, visitor.stage
+                context_builder.pipeline = visitor.pipeline
+                # A pipeline-less preview uses a name-only visitor stage, not
+                # an ORM Stage. Keep the builder on its no-stage path.
+                context_builder.stage = visitor.stage if visitor.stage_id else None
                 knowledge = deepcopy(context_builder.last_knowledge)
                 context = context_builder.build(organization=organization, lead=visitor)
                 # Candidate rebuilding must see the recovered evidence, not an
