@@ -142,14 +142,14 @@ def prompt_mode_instructions(policy: TurnPolicy) -> str:
     if policy.prompt_mode == QUALIFICATION_MODE:
         return (
             "TURN MODE: QUALIFICATION. Answer the customer's actual question first "
-            "when approved facts are available, acknowledge any newly captured answer "
+            "using AI Brain and the organization's AI Playbook, acknowledge any newly captured answer "
             "naturally, then ask at most the single backend-selected next requirement. "
             "Never restart or reorder the questionnaire."
         )
     return (
         "TURN MODE: SALES SUPPORT. Do not restart New Lead qualification. Help with "
-        "the customer's current sales/support intent using the current stage, approved "
-        "organization facts and retrieved knowledge. Propose only backend-allowed actions."
+        "the customer's current sales/support intent using AI Brain, AI Playbook and "
+        "the current stage. Propose only backend-allowed actions."
     )
 
 
