@@ -144,3 +144,35 @@ def prompt_mode_instructions(policy: TurnPolicy) -> str:
         "the customer's current sales/support intent using the current stage, approved "
         "organization facts and retrieved knowledge. Propose only backend-allowed actions."
     )
+
+
+class TurnController:
+    """Canonical entry point for customer-facing AI decisions across channels.
+
+    Channel adapters supply only their scoped context builder/provider. All
+    conversation reasoning still runs through the same EngagementService and
+    LangGraph runtime, so API, Hosted, Instagram and Sandbox share one decision
+    contract while keeping transport delivery separate.
+    """
+
+    def __init__(self, *, provider=None, context_builder=None) -> None:
+        self.provider = provider
+        self.context_builder = context_builder
+
+    def service(self):
+        from apps.ai_engagement.services.engagement import EngagementService
+
+        kwargs = {}
+        if self.provider is not None:
+            kwargs["provider"] = self.provider
+        if self.context_builder is not None:
+            kwargs["context_builder"] = self.context_builder
+        return EngagementService(**kwargs)
+
+    def engage(self, *, organization, lead, knowledge_query=None, context=None):
+        return self.service().engage(
+            organization=organization,
+            lead=lead,
+            knowledge_query=knowledge_query,
+            context=context,
+        )
