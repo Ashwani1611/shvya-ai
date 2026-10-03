@@ -263,6 +263,9 @@ class OrganizationAIRuntimeProfileBuilder:
                 "ai_enabled",
                 "bump_up_enabled",
                 "bump_up_count",
+                "qualification_model",
+                "sales_support_model",
+                "summary_model",
             )
             .first()
         ) or {}
@@ -274,6 +277,9 @@ class OrganizationAIRuntimeProfileBuilder:
             "about": str(org_info.get("about") or ""),
             "bot_languages": str(org_info.get("bot_languages") or ""),
             "ai_playbook": str(org_info.get("ai_playbook") or ""),
+            "qualification_model": str(org_info.get("qualification_model") or ""),
+            "sales_support_model": str(org_info.get("sales_support_model") or ""),
+            "summary_model": str(org_info.get("summary_model") or ""),
             "bump_up_enabled": bool(org_info.get("bump_up_enabled", False)),
             "bump_up_count": int(org_info.get("bump_up_count") or 0),
         }
@@ -465,6 +471,9 @@ class OrganizationAIRuntimeProfileBuilder:
             "ai_enabled": legacy_organization["ai_enabled"],
             "bump_up_enabled": legacy_organization["bump_up_enabled"],
             "bump_up_count": legacy_organization["bump_up_count"],
+            "qualification_model": legacy_organization["qualification_model"],
+            "sales_support_model": legacy_organization["sales_support_model"],
+            "summary_model": legacy_organization["summary_model"],
             "runtime_options": _selected_settings(raw_settings, _AI_CONFIGURATION_KEYS),
         }
         channels = {
