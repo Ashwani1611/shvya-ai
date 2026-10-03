@@ -48,7 +48,17 @@ class IntentEngine:
         intents = deterministic_intents(text)
         if facts:
             intents.add(Intent.QUALIFICATION_ANSWER)
-        if not intents or (question and intents.issubset({Intent.QUALIFICATION_ANSWER})):
+
+        # Ordinary customer questions should not spend a separate intent-model
+        # call before the actual response model. If deterministic rules already
+        # recognized a more specific intent, keep it. Otherwise treat the direct
+        # question as an organization-information request and let RAG + the main
+        # engagement model answer it. Ambiguous non-question prose may still use
+        # the bounded intent-model fallback.
+        if question and not (intents - {Intent.QUALIFICATION_ANSWER}):
+            intents.add(Intent.PRODUCT_OR_SERVICE_QUESTION)
+
+        if not intents:
             return self._model_fallback(
                 organization=organization, lead=lead, text=text, source_message_id=source_message_id,
                 requirements=reqs, state=state, deterministic_facts=facts, question=question, language=language,
