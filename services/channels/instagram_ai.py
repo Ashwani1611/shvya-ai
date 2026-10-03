@@ -26,7 +26,7 @@ from apps.ai_engagement.services.crm_executor import (
     CRMActionExecutionError,
     CRMActionExecutor,
 )
-from apps.ai_engagement.services.engagement import EngagementError, EngagementService
+from apps.ai_engagement.services.engagement import EngagementError
 from apps.ai_engagement.services.engagement_failsoft import (
     build_deterministic_fallback_decision,
 )
