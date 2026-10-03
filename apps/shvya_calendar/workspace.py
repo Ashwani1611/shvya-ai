@@ -115,6 +115,10 @@ def calendar_events(request):
             "pipeline": b.lead.pipeline.name,
             "pipeline_id": str(b.lead.pipeline_id),
             "status": b.status,
+            "editable": b.status in [CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED],
+            "booking_timezone": b.page.timezone,
+            "slots_url": reverse("shvya_calendar:booking_slots", kwargs={"booking_id": b.pk}),
+            "update_url": reverse("shvya_calendar:booking_update", kwargs={"booking_id": b.pk}),
             "detail_url": reverse(
                 "shvya_calendar:booking_detail", kwargs={"booking_id": b.pk}
             ),

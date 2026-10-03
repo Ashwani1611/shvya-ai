@@ -3,12 +3,12 @@
 {% block title %}Calendar · SHVYA Calendar{% endblock %}
 {% block header %}Calendar{% endblock %}
 {% block extra_head %}{{ block.super }}
-<link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=1">
-<script src="{% static 'shvya_calendar/workspace.js' %}?v=3" defer></script>
+<link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=2">
+<script src="{% static 'shvya_calendar/workspace.js' %}?v=4" defer></script>
 {% endblock %}
 {% block content %}
-<section class="cw" id="calendar-workspace" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}" data-selected-date="{{ calendar_selected_date }}" data-focused-booking-url="{{ focused_booking_url }}">
-  <header class="cw-heading"><div><p class="cw-eyebrow">SHVYA CALENDAR</p><h1>Your time, together.</h1><p class="cw-subtitle">Every booking. One clear view.</p></div><a class="cw-button" href="{% url 'shvya_calendar:bookings' %}"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Manage bookings</a></header>
+<section class="cw" id="calendar-workspace" data-csrf-token="{{ csrf_token }}" data-events-url="{% url 'shvya_calendar:events' %}" data-timezone="{{ calendar_timezone }}" data-today="{{ calendar_today }}" data-selected-date="{{ calendar_selected_date }}" data-focused-booking-url="{{ focused_booking_url }}">
+  <header class="cw-heading"><div><p class="cw-eyebrow">SHVYA CALENDAR</p><h1>Your time, together.</h1><p class="cw-subtitle">Drag a booking to move it. Click for details.</p></div><a class="cw-button" href="{% url 'shvya_calendar:bookings' %}"><i class="ti ti-calendar-plus" aria-hidden="true"></i> Manage bookings</a></header>
   <div class="cw-card">
     <div class="cw-toolbar">
       <div class="cw-navigation"><button class="cw-icon" id="cw-prev" aria-label="Previous period">‹</button><h2 id="cw-period"></h2><button class="cw-icon" id="cw-next" aria-label="Next period">›</button><button class="cw-button" id="cw-today">Today</button></div>
