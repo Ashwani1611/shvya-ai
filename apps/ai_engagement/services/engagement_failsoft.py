@@ -504,6 +504,7 @@ def _ensure_customer_reply(decision, *, lead):
         )
 
     organization = getattr(lead, "organization", None)
+    latest_inbound = None
     if organization is not None:
         latest_inbound = _latest_inbound_for_lead(
             organization=organization,
