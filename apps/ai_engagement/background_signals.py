@@ -65,12 +65,11 @@ def queue_post_turn_summary(sender, instance, created, **kwargs):
         return
 
     key = f"shvya:ai:post-turn-summary:{source_id}"
-    if not cache.add(key, "1", timeout=3600):
-        return
-
     lead_id = str(instance.lead_id)
 
     def _queue():
+        if not cache.add(key, "1", timeout=3600):
+            return
         try:
             queue_background_enrichment(
                 lead_id=lead_id,
