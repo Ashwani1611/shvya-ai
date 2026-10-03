@@ -130,7 +130,7 @@ def test_conversation_scenario(scenario, transport, record_property):
             assert_expected(outbound.count() == (1 if expected.get("reply", True) else 0), "actions", "Unexpected reply/silence or duplicate reply")
             body = outbound.first().body if outbound.exists() else ""
             for text in expected.get("forbidden", []):
-                assert_expected(text.casefold() not in body.casefold(), "hallucination", f"Unsupported content: {text}")
+                assert_expected(text.casefold() not in body.casefold(), "hallucination", f"Unsupported content: {text}; calls={calls}; trace={AITrace.objects.filter(organization=org, source_inbound_message_id=source.pk).latest("started_at").details}")
             for text in expected.get("contains", []):
                 assert_expected(text in body, "language", f"Expected grounded content: {text}")
             lead.refresh_from_db()
