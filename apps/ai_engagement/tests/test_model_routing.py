@@ -175,3 +175,19 @@ class OpenAIModelRoutingTests(SimpleTestCase):
         with self.assertRaises(ai_provider_module.AIProviderPermanentError):
             OpenAIProvider(client=client).generate_text(instructions="Reply", input_text="Hi", metadata={"model_override": "gpt-5-mini"})
         self.assertEqual(client.responses.create.call_count, 1)
+
+    @patch.dict(os.environ, {"OPENAI_ENGAGEMENT_MODEL": "platform-model"})
+    def test_incomplete_fallback_settles_both_provider_calls(self):
+        client = self._client()
+        client.responses.create.side_effect = [
+            SimpleNamespace(status="incomplete", incomplete_details={"reason": "max_output_tokens"}, output_text="", usage=SimpleNamespace(input_tokens=12, output_tokens=2000), model="gpt-5-mini"),
+            SimpleNamespace(status="completed", output_text="Recovered reply", usage=SimpleNamespace(input_tokens=12, output_tokens=20), model="platform-model"),
+        ]
+        with patch.object(ai_provider_module.AICreditService, "reserve_text", side_effect=["first", "second"]) as reserve, patch.object(ai_provider_module.AICreditService, "settle") as settle:
+            result = OpenAIProvider(client=client).generate_text(instructions="Reply", input_text="Hi", metadata={"organization_id": "org-id", "task": "engagement", "model_override": "gpt-5-mini"})
+        self.assertEqual(result.text, "Recovered reply")
+        self.assertEqual(reserve.call_count, 2)
+        self.assertEqual(reserve.call_args_list[0].kwargs["output_token_limit"], 2000)
+        self.assertEqual(settle.call_count, 2)
+        self.assertEqual(settle.call_args_list[0].kwargs["output_tokens"], 2000)
+        self.assertEqual(settle.call_args_list[1].kwargs["output_tokens"], 20)

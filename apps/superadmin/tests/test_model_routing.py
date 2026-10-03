@@ -1,5 +1,5 @@
 from django.contrib.sessions.backends.db import SessionStore
-from django.test import TestCase
+from django.test import TestCase, SimpleTestCase
 from django.urls import reverse
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -58,3 +58,20 @@ class OrganizationModelRoutingTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.info.refresh_from_db()
         self.assertEqual(self.info.qualification_model, "existing-model")
+
+
+class ModelRoutingAuthorizationContractTests(SimpleTestCase):
+    def test_organization_mcp_cannot_propose_model_changes(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from apps.integrations.operations.tools.ai_actions import update_ai_configuration, OperationsPermissionError, ROLE_ORGANIZATION_ADMIN
+        with patch("apps.integrations.operations.tools.ai_actions._organization_for"), patch("apps.integrations.operations.tools.ai_actions._write_gate", return_value=(True, "test")):
+            with self.assertRaisesMessage(OperationsPermissionError, "Only superadmin"):
+                update_ai_configuration(identity=SimpleNamespace(role=ROLE_ORGANIZATION_ADMIN), arguments={"changes": {"qualification_model": "new-model"}})
+
+    def test_reservation_covers_reasoning_output_budget(self):
+        from unittest.mock import patch
+        from apps.ai_engagement.services.credits import AICreditService
+        with patch.object(AICreditService, "_reserve") as reserve, patch.object(AICreditService, "reserved_output_tokens", return_value=1000):
+            AICreditService.reserve_text(organization_id="org", model="gpt-5-mini", instructions="Reply", input_text="Hi", feature="engagement", output_token_limit=2000)
+        self.assertEqual(reserve.call_args.kwargs["estimated_output_tokens"], 2000)
