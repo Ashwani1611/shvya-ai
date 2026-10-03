@@ -119,7 +119,7 @@ def _record_verdict(*, approved, reason, repair_attempted=False):
 
 
 SAFE_UNKNOWN_REPLY = (
-    "I hit a temporary lookup issue on that detail. Could you ask me that once more?"
+    "I couldn’t retrieve the answer just now. Please try your question again shortly."
 )
 
 
