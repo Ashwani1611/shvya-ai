@@ -456,10 +456,15 @@ class PlaygroundService:
             channel=channel,
         )
 
-        service = self.engagement_service or EngagementService(
-            provider=self.provider,
-            context_builder=context_builder,
-        )
+        if self.engagement_service is not None:
+            service = self.engagement_service
+        else:
+            from apps.ai_engagement.services.turn_controller import TurnController
+
+            service = TurnController(
+                provider=self.provider,
+                context_builder=context_builder,
+            )
         previous_builder = None
         if self.engagement_service is not None:
             previous_builder = service.context_builder
