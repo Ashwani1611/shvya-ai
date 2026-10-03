@@ -9,7 +9,7 @@ ATTRIBUTE_DEFINITIONS_CACHE_TTL = 300
 
 
 def attribute_definitions_cache_key(organization_id):
-    return f"crm:org:{organization_id}:attribute-definitions:v1"
+    return f"crm:org:{organization_id}:attribute-definitions:v2"
 
 
 def get_cached_attribute_definitions(organization_id):

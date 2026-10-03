@@ -41,6 +41,7 @@
           {% for attr in attribute_rows %}<label class="contact-attribute"><span>{{ attr.name }}</span>
             {% if attr.field_type == 'option' %}<select name="attr_{{ attr.key }}"><option value="">Choose…</option>{% for option in attr.options %}<option {% if option == attr.value %}selected{% endif %}>{{ option }}</option>{% endfor %}</select>
             {% else %}<input name="attr_{{ attr.key }}" value="{{ attr.value }}" type="{% if attr.field_type == 'date' %}date{% elif attr.field_type == 'datetime' %}datetime-local{% elif attr.field_type == 'numeric' %}number{% else %}text{% endif %}" placeholder="Enter value">{% endif %}</label>
+          {% if attr.key == "booked_at" %}{% include "shvya_calendar/partials/meeting_link.html" with meeting_link=active_lead.calendar_meeting_link %}{% endif %}
           {% empty %}<p>No custom attributes configured.</p>{% endfor %}
         </form>
         <button type="button" class="contact-link" hx-get="{% url 'crm-attribute-manage-modal' %}" hx-target="#modal-root">Manage attributes</button>

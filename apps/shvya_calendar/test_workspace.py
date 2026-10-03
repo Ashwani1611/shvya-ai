@@ -294,6 +294,7 @@ class CalendarWorkspaceTests(TestCase):
         self.assertEqual(
             response.json()["slots"][0]["value"], self.booking.start_at.isoformat()
         )
+        self.assertEqual(slots.call_args.kwargs["exclude_booking_id"], self.booking.pk)
         self.assertEqual(
             self.client.get(self.url("booking_slots"), {"date": "bad"}).status_code, 400
         )

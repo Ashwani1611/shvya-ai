@@ -174,7 +174,7 @@
         event.preventDefault(); const buttons = content.querySelectorAll('[type=submit]'); buttons.forEach(b => { b.disabled = true; });
         $('cw-action-message').textContent = 'Saving…';
         try {
-          await jsonResponse(await fetch(form.action, {method:'POST', body:new FormData(form), headers:{'X-Requested-With':'XMLHttpRequest'}}));
+          await jsonResponse(await fetch(form.getAttribute('action'), {method:'POST', body:new FormData(form), headers:{'X-Requested-With':'XMLHttpRequest'}}));
           await load(); await openDetail(url);
           const message = $('cw-action-message'); if (message) message.textContent = 'Booking updated.';
         } catch (error) { const message = $('cw-action-message'); if (message) message.textContent = error.message; buttons.forEach(b => { b.disabled = false; }); }

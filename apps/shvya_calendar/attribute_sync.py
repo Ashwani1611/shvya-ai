@@ -15,8 +15,13 @@ ACTIVE = (CalendarBooking.Status.SCHEDULED, CalendarBooking.Status.RESCHEDULED)
 
 def ensure_booked_at(organization_id):
     label = "Booked at"
-    if AttributeDefinition.objects.filter(organization_id=organization_id, name=label).exclude(key="booked_at").exists():
-        label = "Booked at (Calendar)"
+    labels = set(AttributeDefinition.objects.filter(
+        organization_id=organization_id,
+    ).exclude(key="booked_at").values_list("name", flat=True))
+    suffix = 1
+    while label in labels:
+        label = "Booked at (Calendar)" if suffix == 1 else f"Booked at (Calendar {suffix})"
+        suffix += 1
     attribute, _ = AttributeDefinition.objects.get_or_create(
         organization_id=organization_id, key="booked_at",
         defaults={"name": label, "field_type": "datetime", "description": "Appointment time in the booking calendar timezone."},
@@ -37,7 +42,7 @@ def map_booking_to_lead(booking):
             return
         active = CalendarBooking.objects.filter(
             lead=lead, organization_id=lead.organization_id, status__in=ACTIVE,
-        ).order_by("-updated_at").first()
+        ).order_by("-updated_at", "-pk").first()
         values = dict(lead.attributes or {})
         values["booked_at"] = (
             active.start_at.astimezone(_page_zone(active.page)).strftime("%Y-%m-%dT%H:%M")

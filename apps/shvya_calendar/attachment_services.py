@@ -62,7 +62,9 @@ def lead_calendar_attachments(lead, *, limit=20):
 
 
 def attach_calendar_attachments_to_leads(leads, *, organization, limit=20):
-    leads = list(leads)
+    from .booking_presentation import attach_booking_links_to_leads
+
+    leads = attach_booking_links_to_leads(leads, organization=organization)
     lead_ids = [lead.id for lead in leads]
     grouped = {lead_id: [] for lead_id in lead_ids}
     counts = {lead_id: 0 for lead_id in lead_ids}

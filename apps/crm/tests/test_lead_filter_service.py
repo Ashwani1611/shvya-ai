@@ -92,7 +92,7 @@ class LeadFilterServiceTests(TestCase):
 
     def test_custom_attribute_filter_and_internal_attribute_exclusion(self):
         definitions = list(public_attribute_definitions(self.org))
-        self.assertEqual([item.key for item in definitions], ["city"])
+        self.assertEqual([item.key for item in definitions], ["booked_at", "city"])
         self.assertEqual(
             list(self._filter(attr_city="noid")),
             [self.lead_a],

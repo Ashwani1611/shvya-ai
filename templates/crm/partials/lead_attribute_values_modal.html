@@ -220,6 +220,8 @@
                             "
                         >
 
+                        {% if attribute.key == "booked_at" %}{% include "shvya_calendar/partials/meeting_link.html" with meeting_link=lead.calendar_meeting_link %}{% endif %}
+
                     {% elif attribute.field_type == "option" %}
 
                         <select

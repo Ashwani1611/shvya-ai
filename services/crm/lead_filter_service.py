@@ -10,7 +10,7 @@ from apps.crm.models import AttributeDefinition, Lead, Stage
 from apps.crm.models.activity import LeadActivity
 
 
-INTERNAL_ATTRIBUTE_KEYS = {"_shvya_ai_qualification", "booked_at"}
+INTERNAL_ATTRIBUTE_KEYS = {"_shvya_ai_qualification"}
 AI_QUALIFICATION_PREFIX = "<AI Qualification Summary"
 
 

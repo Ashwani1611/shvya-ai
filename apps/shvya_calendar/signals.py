@@ -8,7 +8,7 @@ from .models import CalendarBooking
 
 @receiver(post_save, sender=Organization, dispatch_uid="calendar_default_booked_at")
 def organization_booked_at(sender, instance, created, raw=False, **kwargs):
-    if created and not raw:
+    if not raw:
         ensure_booked_at(instance.pk)
 
 
