@@ -11,7 +11,6 @@ from __future__ import annotations
 import hashlib
 import logging
 import mimetypes
-import os
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import quote
