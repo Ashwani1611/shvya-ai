@@ -1,0 +1,24 @@
+name: AI reliability workspace bundle
+on:
+  push:
+    branches: [fix/ai-engagement-completion-20261003]
+    paths: [.github/workflows/ai-reliability-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    if: github.repository == 'Ashwani1611/shvya-ai'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0ac9c9deda630a856a472ae1d0b1abf1fa8109a6
+          persist-credentials: false
+      - name: Bundle tracked source for isolated regression work
+        run: git archive --format=tar.gz --output=/tmp/shvya-source.tar.gz HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: shvya-reliability-source
+          path: /tmp/shvya-source.tar.gz
+          retention-days: 1
