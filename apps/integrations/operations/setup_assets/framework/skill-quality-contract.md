@@ -101,3 +101,13 @@ A useful report names:
 - what verification actually ran.
 
 Use precise result labels. Never say fixed, delivered, connected, qualified, booked or published without corresponding backend/provider evidence.
+
+## 11. Readable operator output
+
+Keep internal skill documents as Markdown with valid name/description frontmatter, clear headings and focused references. Use selective bold for important labels, not whole paragraphs. These document conventions do not change the customer-copy rules in [customer-facing content gates](customer-content-gates.md).
+
+For an administrator-facing MCP result, lead with the outcome, then group the relevant details as: Status, What was checked, Findings, Changes made, Verification and Remaining gaps. Omit empty sections and combine short results rather than forcing a long report for a small task. Use short paragraphs or compact lists; reserve tables for comparisons that remain readable on the intended screen.
+
+Translate internal status labels into clear language without losing precision. Distinguish proposed, saved, verified, provider accepted and delivered. Include only the IDs, audit references and technical details needed to verify the task; keep raw JSON and long traces out of the main explanation unless requested. Do not expose secrets or unnecessary customer data.
+
+When the destination is WhatsApp or another plain-text surface, present the operator report as plain text too. Do not send desktop Markdown headings, tables or bold markers merely because the same report is readable in an MCP desktop client. Separate customer-ready copy from internal notes and evidence; never paste a diagnostic report into a lead message.
