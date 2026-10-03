@@ -12,7 +12,7 @@ from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.embeddings import EmbeddingError
-from apps.ai_engagement.services.playground import PlaygroundService, _SandboxLead
+from apps.ai_engagement.services.playground import PlaygroundError, PlaygroundService, _SandboxLead
 from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import AttributeDefinition, Lead, LeadActivity, LeadNote, LeadReminder, Pipeline, Stage
@@ -135,6 +135,21 @@ class SandboxFinalLanguageBoundaryTests(SimpleTestCase):
         finally:
             _FINAL_LANGUAGE_ONLY.reset(token)
 
+    def test_persisted_lead_is_rejected_before_generation(self):
+        self.visitor = SimpleNamespace(**vars(self.visitor))
+        with self.assertRaises(PlaygroundError):
+            self.compose()
+        self.assertIsNone(self.seen_context)
+        self.assertIs(self.engine.context_builder, self.old_builder)
+        self.assertFalse(_FINAL_LANGUAGE_ONLY.get())
+
+    def test_cross_organization_preview_is_rejected_before_generation(self):
+        self.org = SimpleNamespace(id="other-organization")
+        with self.assertRaises(PlaygroundError):
+            self.compose()
+        self.assertIsNone(self.seen_context)
+        self.assertFalse(_FINAL_LANGUAGE_ONLY.get())
+
 
 @override_settings(OPENAI_API_KEY="unit-test-unused-key", AI_BRAIN_RECOVERY_ENABLED=False)
 class SandboxPostEffectGraphTests(TestCase):
@@ -148,7 +163,12 @@ class SandboxPostEffectGraphTests(TestCase):
         self.info, _ = OrgInfo.objects.get_or_create(organization=self.org)
         self.info.about = "We automate customer conversations."
         self.info.bot_languages = "English"
-        self.info.ai_playbook = "Save supported customer attributes and create a reminder when the customer requests a follow-up at a specific time."
+        self.info.ai_playbook = (
+            "## Attribute mapping logic\n"
+            "Industry: Save the industry explicitly stated by the customer.\n"
+            "## Reminder creation logic\n"
+            "Create a reminder when the customer requests a follow-up at a specific time."
+        )
         self.info.save()
         self.actions = []
         self.file_id = None
@@ -276,3 +296,14 @@ class SandboxPostEffectGraphTests(TestCase):
         operational = self.final_payload()["lead"]["operational_state"]
         self.assertEqual(operational["reminder"]["title"], "Old reminder")
         self.assertNotIn("create_reminder", operational["resolved_actions"]["action_types"])
+
+    def test_attribute_without_authored_mapping_remains_blocked(self):
+        self.info.ai_playbook = "## Rules\nAnswer customer questions."
+        self.info.save()
+        self.actions = [{"type": "attribute_updates", "updates": [{"key": "industry", "value": "Retail"}]}]
+        before = self.counts()
+        result = self.run_turn("unmapped", "My industry is Retail.")
+        self.assertEqual(result.events, [])
+        saved = PlaygroundService()._load_session_payload(organization=self.org, session_id="unmapped")
+        self.assertNotIn("industry", saved["attributes"])
+        self.assertEqual(self.counts(), before)
