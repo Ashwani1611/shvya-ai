@@ -36,7 +36,7 @@ composition where applicable, relevant FAQ/KB evidence is retrieved (top five by
 default), and one BusinessPlan constrains the customer-facing model response.
 
 A normal successful turn schedules a second, non-blocking internal summary model
-job after the AI outbound row is committed. That summary compresses conversation
+job after the AI outbound is accepted as sent by the provider path. That summary compresses conversation
 context; it does not own qualification truth or CRM fields.
 
 ## Durable work and delivery
