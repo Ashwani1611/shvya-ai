@@ -64,8 +64,8 @@ class ModelRoutingAuthorizationContractTests(SimpleTestCase):
     def test_organization_mcp_cannot_propose_model_changes(self):
         from types import SimpleNamespace
         from unittest.mock import patch
-        from apps.integrations.operations.tools.ai_actions import update_ai_configuration, OperationsPermissionError, ROLE_ORGANIZATION_ADMIN
-        with patch("apps.integrations.operations.tools.ai_actions._organization_for"), patch("apps.integrations.operations.tools.ai_actions._write_gate", return_value=(True, "test")):
+        from apps.integrations.operations_tools import update_ai_configuration, OperationsPermissionError, ROLE_ORGANIZATION_ADMIN
+        with patch("apps.integrations.operations_tools._organization_for"), patch("apps.integrations.operations_tools._write_gate", return_value=(True, "test")):
             with self.assertRaisesMessage(OperationsPermissionError, "Only superadmin"):
                 update_ai_configuration(identity=SimpleNamespace(role=ROLE_ORGANIZATION_ADMIN), arguments={"changes": {"qualification_model": "new-model"}})
 

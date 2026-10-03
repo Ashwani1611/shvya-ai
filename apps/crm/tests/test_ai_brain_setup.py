@@ -191,6 +191,17 @@ class AIBrainPersistenceTests(TestCase):
         self.assertTrue(self.info.bump_up_enabled)
         self.assertEqual(self.info.bump_up_count, 4)
 
+    def test_customer_brain_save_preserves_superadmin_model_routing(self):
+        self.info.qualification_model = "admin-qualification"
+        self.info.sales_support_model = "admin-sales"
+        self.info.summary_model = "admin-summary"
+        self.info.save()
+        save_ai_brain_configuration(organization=self.organization, data=self.data)
+        self.info.refresh_from_db()
+        self.assertEqual(self.info.qualification_model, "admin-qualification")
+        self.assertEqual(self.info.sales_support_model, "admin-sales")
+        self.assertEqual(self.info.summary_model, "admin-summary")
+
     def test_model_routing_overrides_cannot_be_saved_with_ai_brain(self):
         payload = {
             **self.data,
