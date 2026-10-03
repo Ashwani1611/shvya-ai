@@ -408,7 +408,8 @@ def install_playground_graph_recovery() -> None:
 
             from apps.ai_engagement.services.ai_provider import AIProviderError
             from apps.ai_engagement.services.engagement import EngagementError
-            if isinstance(exc, (AIProviderError, EngagementError)):
+            if (isinstance(exc, (AIProviderError, EngagementError))
+                    and _has_interrupting_customer_intent(state.get("latest_text", ""))):
                 try:
                     recovered = _ai_brain_recovery(state)
                     if recovered is not None:

@@ -88,8 +88,9 @@ class FinalResponseCompletionTests(SimpleTestCase):
         self.assertEqual(calls[2].kwargs["metadata"]["phase"], "grounding")
 
     def test_provider_error_is_localized_and_strips_unverified_effects(self):
-        result, calls = self.run_final([AIProviderPermanentError("SECRET_PROVIDER_BODY")])
-        self.assertEqual(len(calls), 1)
+        result, calls = self.run_final([AIProviderPermanentError("SECRET_PROVIDER_BODY"),
+                                        AIProviderPermanentError("SECRET_REPAIR_BODY")])
+        self.assertEqual(len(calls), 2)
         self.assertIn("अभी", result["decision"].message)
         self.assertNotIn("SECRET", result["decision"].message)
         self.assertIsNone(result["decision"].file_document_id)

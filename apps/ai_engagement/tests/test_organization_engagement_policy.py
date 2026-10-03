@@ -111,12 +111,10 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
             f'playground:test:{self._testMethodName}',
         )
 
-    def test_repeated_invalid_silence_uses_grounded_sandbox_fallback(self):
-        result, provider = self.run_turn([self.payload(), self.payload()])
-        self.assertTrue(result.should_engage)
-        self.assertEqual(provider.generate_text.call_count, 2)
-        self.assertEqual(result.model, 'sandbox-safe-fallback')
-        self.assertIn('couldn’t retrieve the answer', result.response)
+    def test_repeated_invalid_silence_reports_test_error_without_fake_reply(self):
+        from apps.ai_engagement.services.playground import PlaygroundError
+        with self.assertRaisesMessage(PlaygroundError, "No test reply was saved"):
+            self.run_turn([self.payload(), self.payload()])
 
     def test_paused_turn_still_acknowledges_customer(self):
         result, provider = self.run_turn(
