@@ -18,6 +18,7 @@ from apps.followups.models import (
     LeadSequenceState,
 )
 from apps.organizations.models import Organization
+from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 
 
 class ContactPanelTests(TestCase):
@@ -401,7 +402,7 @@ class ContactPanelTests(TestCase):
         self.assertEqual(execution.get("status"), "queued")
         publish.assert_called_once_with(
             args=[str(message.lead_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
 
     def test_hosted_create_lead_activates_synced_history_once(self):
