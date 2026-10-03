@@ -1,7 +1,6 @@
 """Bounded retrieval and a selective, fail-safe grounding gate."""
 import json
 import math
-from time import monotonic
 from dataclasses import replace
 from apps.ai_engagement.services.runtime_state import contract, STATE_KEY
 
@@ -195,6 +194,8 @@ def check_grounding(state):
     The generator's selected reason code is not an authorization boundary.
     Rejected decisions lose proposed mutations before a safe reply is returned.
     """
+    # Generation/retrieval latency must not consume the correction allowance.
+    # One correction and one independent check remain bounded to this phase.
     decision = state["decision"]
     if not decision.should_engage:
         return {"grounding_approved": True}
@@ -265,6 +266,7 @@ def check_grounding(state):
         "ai_playbook": (context.organization or {}).get("ai_playbook", ""),
         "bot_languages": (context.organization or {}).get("bot_languages", ""),
         "knowledge": context.knowledge or [],
+        "authored_faq_candidates": (context.organization or {}).get("_authored_faq_candidates", []),
         # Sharing conditions can depend on earlier replies as well as answers.
         # Prior assistant text proves only that it was said, never company facts.
         "recent_conversation": [
@@ -307,27 +309,22 @@ def check_grounding(state):
         return _verdict(result)
 
     try:
-        from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
-        provider = OpenAIProvider(timeout_seconds=5) if _FINAL_LANGUAGE_ONLY.get() else OpenAIProvider()
+        provider = OpenAIProvider()
         approved, reason = validate(payload)
     except AIProviderError:
-        _record_verdict(approved=False, reason="provider_error")
-        return {
-            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn, state=state, failure_reason="provider_error"),
-            "grounding_approved": False,
-        }
+        approved, reason = False, "provider_error"
 
     # A wording/language rejection should not turn every later-stage answer into
     # the same English fallback. One language-only correction may reuse approved
     # evidence, but cannot authorize new actions or bypass the independent gate.
     # This also applies to the final post-commit pass: only message text can
     # change, never resolved actions, qualification or selected files.
-    # Leave room for two short calls inside synchronous Sandbox requests. Slow
-    # original turns use the existing safe fallback rather than compounding delay.
+    # Recovery has its own allowance: at most two calls, ten seconds each.
+    # A slow initial generation must not make an answerable question terminal.
     # A generator can incorrectly report missing information despite available
     # sources. Do not let an uncertainty-only verdict make that answer terminal.
     from apps.ai_engagement.services.grounding_safety import language_only
-    has_facts = bool(payload["organization_facts"] or payload["knowledge"]
+    has_facts = bool(payload["organization_facts"] or payload["knowledge"] or payload["authored_faq_candidates"]
                      or (payload["allowed_grounding"] or {}).get("evidence"))
     generic_unknown = (str(getattr(decision, "reason_code", "") or decision.reason).upper()
                        == "UNKNOWN_INFORMATION" or any(phrase in str(decision.message).casefold()
@@ -338,13 +335,12 @@ def check_grounding(state):
         approved, reason = False, "instruction_disclosure"
     if approved and generic_unknown and has_facts:
         approved, reason = False, "unanswered_question"
-    recoverable_claim = (reason == "unsupported_claim" and has_facts
+    recoverable_claim = (reason in {"unsupported_claim", "provider_error"} and has_facts
                          and language_only(decision))
-    repair_attempted = (not approved and (reason in _REPAIRABLE_REASONS or recoverable_claim)
-                        and monotonic() - state.get("started_at", monotonic()) < 15)
+    repair_attempted = not approved and (reason in _REPAIRABLE_REASONS or recoverable_claim)
     if repair_attempted:
         try:
-            provider = OpenAIProvider(timeout_seconds=5)
+            provider = OpenAIProvider(timeout_seconds=10)
             repair = provider.generate_text(
                 instructions=_REPAIR_INSTRUCTIONS,
                 input_text=json.dumps({**payload, "rejection_reason": reason}, ensure_ascii=False),
