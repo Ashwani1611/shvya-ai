@@ -56,6 +56,12 @@ def queue_post_turn_summary(sender, instance, created, **kwargs):
         return
     if instance.direction != WhatsAppMessage.Direction.OUTBOUND:
         return
+    if instance.status not in {
+        WhatsAppMessage.Status.SENT,
+        WhatsAppMessage.Status.DELIVERED,
+        WhatsAppMessage.Status.READ,
+    }:
+        return
     payload = instance.raw_payload if isinstance(instance.raw_payload, dict) else {}
     ai_meta = payload.get("shvya_ai")
     if not isinstance(ai_meta, dict):
