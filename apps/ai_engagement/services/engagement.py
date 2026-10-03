@@ -839,9 +839,9 @@ Do not add explanations, markdown, or chain-of-thought.
             "organization_operating_spec": {
                 "about": str(organization_data.get("about") or "")[:30000],
                 "bot_languages": str(organization_data.get("bot_languages") or "")[:2000],
-                "ai_playbook": turn_policy.operating_spec,
+                "playbook_in_system_instructions": bool(turn_policy.operating_spec),
                 "authority": (
-                    "Use this authored operating spec for wording and business behavior; "
+                    "The full authored AI Playbook is supplied once in system instructions; "
                     "backend_state remains authoritative for qualification order, CRM "
                     "state and permitted actions."
                 ),
