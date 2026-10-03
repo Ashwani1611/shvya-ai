@@ -444,7 +444,7 @@ class HostedQueueSourceOfTruthTests(TestCase):
         self.assertEqual([row["id"] for row in payload["items"]], [str(welcome.pk), str(reply.pk)])
         self.assertEqual(payload["items"][0]["message_type"], "Welcome message")
         self.assertEqual(payload["pending_ai_count"], 2)
-        self.assertEqual(payload["ai_min_send_gap_seconds"], 45)
+        self.assertEqual(payload["ai_min_send_gap_seconds"], 5)
 
     def test_queue_stale_processing_lease_is_reported_as_recovering(self):
         job = self._ai_job(status=HostedAutomationJob.Status.PROCESSING, started_at=timezone.now())
@@ -465,11 +465,11 @@ class HostedQueueSourceOfTruthTests(TestCase):
     def test_queue_uses_durable_sender_gap_and_reports_disabled_stage(self):
         from apps.channels.models import AIMessageSendState
         self._ai_job()
-        next_send = timezone.now() + timedelta(seconds=45)
+        next_send = timezone.now() + timedelta(seconds=5)
         AIMessageSendState.objects.create(account=self.account, next_send_at=next_send)
         row, = self._queue()["items"]
         self.assertEqual(row["available_at"], next_send.isoformat())
-        self.assertIn("45-second minimum gap", row["origin"])
+        self.assertIn("5-second minimum gap", row["origin"])
         self.stage.ai_on = False
         self.stage.save(update_fields=["ai_on"])
         row, = self._queue()["items"]
