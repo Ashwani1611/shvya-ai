@@ -35,6 +35,12 @@ from apps.ai_engagement.services.qualification_state import (
     requirements_for_lead,
     state_for_lead,
 )
+from apps.ai_engagement.services.playground_finalization import (
+    language_only_decision,
+    needs_final_composition,
+    preserve_preview_state,
+    resolved_preview_actions,
+)
 from apps.ai_engagement.services.retrieval import KnowledgeRetrievalService
 from apps.ai_engagement.services.runtime_state import (
     STATE_KEY,
@@ -511,13 +517,6 @@ class PlaygroundService:
             projected = qualification
 
         visitor.attributes = attributes_with_state(visitor, projected)
-        if decision.next_requirement_id:
-            record_last_asked_requirement(
-                visitor,
-                decision.next_requirement_id,
-                requirements=requirements,
-            )
-
         qualification = state_for_lead(visitor, requirements=requirements)
         from apps.ai_engagement.services.playground_effects import preview_effects
         sent_files = list(saved.get("sent_files") or [])
@@ -534,13 +533,13 @@ class PlaygroundService:
             organization_id=organization.id,
         )
         if (
-            any(event.get("type") == "stage_transition" for event in events)
-            and decision.should_engage and monotonic() - started_at < 15
+            needs_final_composition(decision=decision, events=events, files=files)
+            and monotonic() - started_at < 15
         ):
             decision = self._compose_after_preview(
                 organization=organization, visitor=visitor, message=message,
                 service=service, context_builder=context_builder,
-                decision=decision, files=files,
+                decision=decision, files=files, events=events,
             )
 
         # Apply the live welcome helper only to the final customer-facing copy.
@@ -549,6 +548,18 @@ class PlaygroundService:
             organization=organization,
             lead=visitor,
             first_turn=(turn == 1),
+        )
+        # Record only the question selected for the displayed final response,
+        # not an earlier draft which post-effect composition may have replaced.
+        if decision.should_engage and decision.next_requirement_id:
+            record_last_asked_requirement(
+                visitor, decision.next_requirement_id, requirements=requirements,
+            )
+        visitor.attributes[STATE_KEY] = contract(
+            qualification=state_for_lead(visitor, requirements=requirements),
+            requirements=requirements,
+            saved=visitor.attributes.get(STATE_KEY),
+            organization_id=organization.id,
         )
         visitor.attributes[STATE_KEY].update(
             message_id=conversation[-1]["id"],
@@ -608,76 +619,79 @@ class PlaygroundService:
 
     def _compose_after_preview(
         self, *, organization, visitor, message, service, context_builder,
-        decision, files,
+        decision, files, events=None,
     ):
-        """Reuse live final composition after one in-memory stage transition.
+        """Reuse live final composition after this turn's in-memory effects.
 
-        The first validated pass owns every effect. This one language-only pass
-        sees the resulting stage, but cannot change preview state or file choice.
+        The first validated pass owns every effect. This language-only pass
+        sees the resulting state, but cannot change preview state or file choice.
         """
         from apps.ai_engagement.services.file_sharing import FileSharingService
         from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
         from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
 
-        attributes = deepcopy(visitor.attributes)
+        if not isinstance(visitor, _SandboxLead) or str(visitor.organization_id) != str(organization.id):
+            raise PlaygroundError("Final preview composition requires this organization's Sandbox lead.")
         previous_builder = service.context_builder
         previous_provider = service.provider
+        previous_pipeline, previous_stage = context_builder.pipeline, context_builder.stage
         token = _FINAL_LANGUAGE_ONLY.set(True)
         try:
-            context_builder.pipeline, context_builder.stage = visitor.pipeline, visitor.stage
-            knowledge = list(context_builder.last_knowledge)
-            context = context_builder.build(organization=organization, lead=visitor)
-            selected_ids = {item["id"] for item in files}
-            candidates = [
-                item for item in FileSharingService().build_file_candidates(
-                    organization=organization, context=context,
+            with preserve_preview_state(visitor):
+                context_builder.pipeline = visitor.pipeline
+                # A pipeline-less preview uses a name-only visitor stage, not
+                # an ORM Stage. Keep the builder on its no-stage path.
+                context_builder.stage = visitor.stage if visitor.stage_id else None
+                knowledge = deepcopy(context_builder.last_knowledge)
+                context = context_builder.build(organization=organization, lead=visitor)
+                # Candidate rebuilding must see the recovered evidence, not an
+                # empty no-query context. It still cannot choose a different file.
+                context = replace(context, knowledge=knowledge)
+                selected_ids = {item["id"] for item in files}
+                candidates = [
+                    item for item in FileSharingService().build_file_candidates(
+                        organization=organization, context=context,
+                    )
+                    if item["document_id"] in selected_ids
+                ] if selected_ids else []
+                resolved = resolved_preview_actions(
+                    visitor=visitor, decision=decision, events=events, files=files,
+                    source_message_id=context_builder.conversation[-1]["id"],
                 )
-                if item["document_id"] in selected_ids
-            ] if selected_ids else []
-            resolved = {
-                "action_types": ["pipeline_transition"],
-                "stage": {"id": str(visitor.stage_id), "name": visitor.stage.name},
-            }
-            if files:
-                resolved["action_types"].append("file_share")
-                resolved["file_share"] = {
-                    "status": "resolved_pending_send",
-                    "document_id": files[0]["id"],
-                    "document_name": files[0]["name"],
-                }
-            context = replace(
-                context,
-                organization={**context.organization, "_file_candidates": candidates},
-                lead={**context.lead, "operational_state": {
-                    "execution_mode": "sandbox_preview", "resolved_actions": resolved,
-                }},
-                knowledge=knowledge,
-            )
-            service.context_builder = context_builder
-            service.provider = previous_provider or OpenAIProvider(timeout_seconds=5)
-            evidence_scope = (
-                sandbox_evidence_context(
-                    organization=organization, lead=visitor, message=message,
-                    provider=service.provider,
+                context = replace(
+                    context,
+                    organization={**context.organization, "_file_candidates": candidates},
+                    lead={**context.lead, "operational_state": {
+                        **context.lead.get("operational_state", {}),
+                        "execution_mode": "sandbox_preview", "resolved_actions": resolved,
+                    }},
                 )
-                if hasattr(organization, "_meta") else nullcontext()
-            )
-            with evidence_scope:
-                final = service.engage(organization=organization, lead=visitor, context=context)
-            return replace(
-                final, crm_actions=[], qualification_updates=[],
-                file_document_id=decision.file_document_id,
-            )
+                service.context_builder = context_builder
+                service.provider = previous_provider or OpenAIProvider(timeout_seconds=5)
+                evidence_scope = (
+                    sandbox_evidence_context(
+                        organization=organization, lead=visitor, message=message,
+                        provider=service.provider,
+                    )
+                    if hasattr(organization, "_meta") else nullcontext()
+                )
+                with evidence_scope:
+                    final = service.engage(organization=organization, lead=visitor, context=context)
+                return language_only_decision(decision=final, files=files)
         except Exception as exc:
             logger.exception(
-                "AI Sandbox post-transition composition failed for organization %s",
+                "AI Sandbox post-effect composition failed for organization %s",
                 getattr(organization, "id", ""),
             )
-            return self._fallback_decision(
-                organization=organization, visitor=visitor, message=message, cause=exc,
-            )
+            # A failed language pass must not leak its mutations into either the
+            # fallback context or the saved session. Fallbacks also cannot act.
+            with preserve_preview_state(visitor):
+                fallback = self._fallback_decision(
+                    organization=organization, visitor=visitor, message=message, cause=exc,
+                )
+                return language_only_decision(decision=fallback, files=files)
         finally:
-            visitor.attributes = attributes
+            context_builder.pipeline, context_builder.stage = previous_pipeline, previous_stage
             service.context_builder = previous_builder
             service.provider = previous_provider
             _FINAL_LANGUAGE_ONLY.reset(token)
