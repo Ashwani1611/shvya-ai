@@ -162,6 +162,8 @@ ATTRIBUTE_FIELD_TYPE_ALIASES = {
     "dropdown": AttributeDefinition.FieldType.OPTION,
     "choice": AttributeDefinition.FieldType.OPTION,
     "enum": AttributeDefinition.FieldType.OPTION,
+    "option_picker": AttributeDefinition.FieldType.OPTION,
+    "yes_no": AttributeDefinition.FieldType.OPTION,
     "boolean": AttributeDefinition.FieldType.OPTION,
     "bool": AttributeDefinition.FieldType.OPTION,
     "date_time": AttributeDefinition.FieldType.DATETIME,
@@ -233,11 +235,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         data.get("description", attribute.description if attribute else "") or ""
     ).strip()
     options = data.get("options", list(attribute.options or []) if attribute else [])
-    if (
-        raw_field_type in {"boolean", "bool"}
-        and not options
-        and attribute is None
-    ):
+    if raw_field_type in {"boolean", "bool"} and not options:
         options = ["Yes", "No"]
     if not isinstance(options, list):
         raise OperationsToolError("Attribute options must be a list.")
