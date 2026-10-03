@@ -1,7 +1,6 @@
 """Organization-scoped calendar presentation and booking actions."""
 
 from datetime import date, datetime, time, timedelta
-from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ValidationError
@@ -13,6 +12,7 @@ from django.views.decorators.http import require_GET, require_POST
 
 from apps.crm.authentication import crm_login_required
 from apps.crm.models import Pipeline, Stage
+from .booking_presentation import booking_meeting_link
 from .google import GoogleCalendarError
 from .models import CalendarBooking, CalendarPage
 from .services import available_slots, move_booking_pipeline, reschedule_booking
@@ -41,18 +41,6 @@ def _zone(value):
         return ZoneInfo(value or "Asia/Kolkata")
     except (ZoneInfoNotFoundError, ValueError):
         return ZoneInfo("Asia/Kolkata")
-
-
-def _safe_link(value):
-    try:
-        parsed = urlsplit(value or "")
-        return (
-            value
-            if parsed.scheme.lower() in {"http", "https"} and parsed.netloc
-            else ""
-        )
-    except ValueError:
-        return ""
 
 
 @crm_login_required
@@ -136,9 +124,7 @@ def booking_detail(request, booking_id):
     booking = get_object_or_404(_bookings(request.crm_user), pk=booking_id)
     snapshot = booking.submission.page_version.snapshot
     kind = snapshot.get("meeting_location", booking.page.meeting_location)
-    link = _safe_link(booking.meeting_link)
-    if not link and kind == CalendarPage.MeetingLocation.CUSTOM:
-        link = _safe_link(snapshot.get("custom_meeting_link", ""))
+    link = booking_meeting_link(booking)
     fields = {
         f.get("key"): f.get("label", f.get("key"))
         for f in snapshot.get("form_schema", [])
@@ -193,7 +179,7 @@ def booking_slots(request, booking_id):
             <= today + timedelta(days=booking.page.bookable_days)
         ):
             raise ValueError
-        slots = available_slots(page=booking.page, local_date=local_date)
+        slots = available_slots(page=booking.page, local_date=local_date, exclude_booking_id=booking.pk)
     except ValueError:
         return JsonResponse(
             {"error": "Choose a date within the booking window."}, status=400

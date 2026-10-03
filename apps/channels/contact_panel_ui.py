@@ -59,6 +59,9 @@ def contact_panel(request, lead_id):
         for s in available_sequences_for_lead(lead=lead)
         if account and s.whatsapp_account_id == account.id
     ]
+    from apps.shvya_calendar.booking_presentation import attach_booking_links_to_leads
+    attach_booking_links_to_leads([lead], organization=request.crm_user.organization)
+
     response = render(
         request,
         "channels/contact_panel.html",

@@ -431,6 +431,9 @@ def lead_attribute_values_modal(
         )
     )
 
+    from apps.shvya_calendar.booking_presentation import attach_booking_links_to_leads
+    attach_booking_links_to_leads([lead], organization=user.organization)
+
     return render(
         request,
         "crm/partials/lead_attribute_values_modal.html",

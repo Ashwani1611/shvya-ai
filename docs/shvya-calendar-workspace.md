@@ -68,3 +68,22 @@ Validation for this change: calendar service, workspace, provider throttling and
 attribute-sync regression tests. Local supplemental tests used SQLite without
 PostgreSQL-specific search indexes; PostgreSQL migrations/locking and live Google
 OAuth/Meet creation require CI and an authorized integration smoke test.
+
+### Booking actions and CRM meeting links
+
+Calendar action forms use their HTML `action` attribute as the request URL; the
+hidden `action` input is the reschedule/move command and must not shadow the URL.
+Availability for rescheduling excludes the booking being edited.
+
+`booked_at` is a default active datetime attribute for every organization. Migration
+`0005_repair_default_booked_at` repairs missing/inactive definitions for existing
+organizations; organization saves also ensure the definition exists. The attribute
+remains protected from custom-attribute editing and deletion.
+
+CRM lead cards, the attribute editor, and the conversation contact panel show
+“Copy Meet link” and “Join meeting” immediately below Booked at when the selected
+active booking has a meeting URL. Links are read from the current booking, including
+Google links populated asynchronously and published custom meeting URLs. No
+placeholder link is fabricated for phone, in-person, or pending Google bookings.
+Cancelled bookings are excluded. Batch CRM rendering loads links in one query,
+and all link lookups are scoped to the organization.

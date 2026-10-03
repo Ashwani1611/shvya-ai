@@ -442,6 +442,7 @@
                         >
                             {% if attribute.key == "booked_at" %}{{ lead.attributes|get_item:attribute.key|appointment_datetime|default:"—" }}{% else %}{{ lead.attributes|get_item:attribute.key|default:"—" }}{% endif %}
                         </p>
+                        {% if attribute.key == "booked_at" %}{% include "shvya_calendar/partials/meeting_link.html" with meeting_link=lead.calendar_meeting_link %}{% endif %}
 
                     </div>
 

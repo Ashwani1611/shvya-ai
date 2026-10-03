@@ -101,8 +101,8 @@ class LeadDashboardPerformanceTests(TestCase):
 
         cache.clear()
         # WhatsApp/Instagram scoring plus one bounded SHVYA Calendar
-        # attachment query remain constant regardless of lead count.
-        with self.assertNumQueries(10):
+        # attachment and booking-link queries remain constant regardless of lead count.
+        with self.assertNumQueries(11):
             one_lead_context = self._build_context()
 
         self.assertEqual(
@@ -118,8 +118,8 @@ class LeadDashboardPerformanceTests(TestCase):
 
         cache.clear()
         # WhatsApp/Instagram scoring plus one bounded SHVYA Calendar
-        # attachment query remain constant regardless of lead count.
-        with self.assertNumQueries(10):
+        # attachment and booking-link queries remain constant regardless of lead count.
+        with self.assertNumQueries(11):
             many_lead_context = self._build_context()
 
         rendered_leads = [
