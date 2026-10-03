@@ -12,18 +12,11 @@
   <header class="sc-editor-title">
     <div>
       <a class="sc-back-link" href="{% url 'shvya_calendar:index' %}">Back to SHVYA Calendar</a>
-      <span class="sc-kicker">YOUR ORGANISATION. YOUR BOOKINGS.</span>
+      <span class="sc-kicker">GOOGLE CALENDAR</span>
       <h1>Google Calendar &amp; Meet</h1>
-      <p class="sc-muted">Hosting preferences for {{ organization_name }} only.</p>
+      <p class="sc-muted">Connect a host and choose how Google meetings are created.</p>
     </div>
   </header>
-  <section class="sc-accordion sc-google-card" aria-labelledby="google-privacy-title">
-    <div class="sc-accordion-body">
-      <h2 id="google-privacy-title">Your bookings stay separate</h2>
-      <p>Your SHVYA Calendar shows your organisation's forms, leads and appointments, not other organisations' bookings. The fixed <strong>Booked at</strong> attribute continues to sync with your SHVYA bookings in both directions.</p>
-      <p>One SHVYA Google OAuth application supports separate Google sign-ins. Your organisation does not need its own API key or Google Cloud project.</p>
-    </div>
-  </section>
   <form method="post" action="{% url 'shvya_calendar:google_settings' %}" class="sc-accordion sc-google-card">
     {% csrf_token %}
     <div class="sc-accordion-body">
@@ -37,21 +30,16 @@
             {{ radio.tag }}
             <span><strong>{{ radio.choice_label }}</strong>
               {% if radio.data.value == 'organization_only' %}
-                <small>Default. Connect the selected host's Google account. Google events and Meet links use that account; there is no automatic switch to SHVYA's account.</small>
+                <small>Create events and Meet links using the selected host's connected account.</small>
               {% else %}
-                <small>Optional. Your connected host remains first choice. Only when no host connection exists may SHVYA create a new Google event. SHVYA is then the Google organiser, not your staff.</small>
+                <small>Use SHVYA as organiser when no host account is connected.</small>
               {% endif %}
             </span>
           </label>
         {% endfor %}
       </fieldset>
-      <p class="sc-muted">This preference applies across your organisation's booking pages when Google Meet is selected. Existing Google events keep their original organiser and link. A failed or expired host connection is not silently replaced by a different organiser.</p>
-      {% if platform_available %}
-        <div class="sc-info-strip sc-info-blue">SHVYA-managed fallback is configured on the server. It is used only after your organisation opts in.</div>
-      {% else %}
-        <div class="sc-info-strip">SHVYA-managed fallback is not currently available. You may save your preference, but SHVYA cannot generate fallback links until its backend Google credentials are configured.</div>
-      {% endif %}
-      <p class="sc-muted">SHVYA-hosted meetings are stored in SHVYA's dedicated Google calendar. Other organisations do not receive calendar-wide access. Google admission rules still apply; a link does not grant co-host rights or automatically add the event to your staff's personal Google calendars.</p>
+      <p class="sc-muted">Existing events keep their organiser.</p>
+      {% if not platform_available %}<p class="sc-muted">SHVYA hosting is currently unavailable. Connect a host account to create Google meetings.</p>{% endif %}
       <button type="submit" class="sc-button sc-button-primary">Save Google preference</button>
     </div>
   </form>
@@ -59,14 +47,14 @@
     <div class="sc-accordion-body">
       <h2 id="google-connections-title">Your organisation's connections</h2>
       {% for connection in connections %}
-        <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ connection.email }}</strong><span>{{ connection.user__name|default:'Booking host' }} · organisation-owned connection</span></div></div>
+        <div class="sc-connected-card"><div class="sc-google-mark">G</div><div><strong>{{ connection.email }}</strong><span>{{ connection.user__name|default:'Booking host' }}</span></div></div>
       {% empty %}
         <p class="sc-muted">No active Google connections for your organisation yet.</p>
       {% endfor %}
       {% if connections_truncated %}<p class="sc-muted">Showing the first 100 active connections. Check an individual booking page for its selected host.</p>{% endif %}
-      {% if not oauth_configured %}<div class="sc-alert">Google connection setup is pending on the SHVYA server. Contact your SHVYA administrator. No client secrets or refresh tokens should be entered here.</div>{% endif %}
+      {% if not oauth_configured %}<div class="sc-alert">Google connection setup is pending. Contact your administrator.</div>{% endif %}
       <h3>Connect through your booking page</h3>
-      <p class="sc-muted">Choose your booking host in the page editor. That host signs in through Connect Google Calendar. SHVYA bookings remain available before Google is connected.</p>
+      <p class="sc-muted">Select a host in the booking page, then ask them to connect their Google account.</p>
       {% for page in pages %}
         <div class="sc-google-page-row">
           <div><strong>{{ page.name }}</strong><small>Host: {{ page.host.name|default:'Not selected' }}</small></div>

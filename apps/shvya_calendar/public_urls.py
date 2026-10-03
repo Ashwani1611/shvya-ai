@@ -1,10 +1,12 @@
 from django.urls import path
 
 from . import views
+from .public_views import public_booking_status
 
 app_name = "shvya_calendar_public"
 
 urlpatterns = [
+    path("booking/<uuid:booking_id>/<str:cancel_token>/status/", public_booking_status, name="booking_status"),
     path(
         "<uuid:public_id>/<slug:slug>/",
         views.public_page,

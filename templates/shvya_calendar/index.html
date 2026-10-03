@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static tz %}
 
 {% block title %}Booking · SHVYA Calendar{% endblock %}
 {% block header %}Booking{% endblock %}
@@ -7,6 +7,8 @@
 {% block extra_head %}
 {{ block.super }}
 <link rel="stylesheet" href="{% static 'shvya_calendar/calendar.css' %}?v=20260922-2">
+<link rel="stylesheet" href="{% static 'shvya_calendar/workspace.css' %}?v=2">
+<script src="{% static 'shvya_calendar/upcoming.js' %}?v=1" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -84,14 +86,27 @@
       <header><div><span class="sc-kicker">UPCOMING</span><h2>Next bookings</h2></div></header>
       <div class="sc-list">
         {% for booking in upcoming_bookings %}
-          <div class="sc-list-row">
-            <div class="sc-avatar">{{ booking.lead.name|slice:":1"|upper }}</div>
-            <div class="sc-list-copy">
-              <strong>{{ booking.lead.name }}</strong>
-              <span>{{ booking.page.name }} · {{ booking.start_at|date:"d M, g:i A" }}</span>
+          {% timezone booking.timezone %}
+          <details class="sc-upcoming" data-booking-details data-detail-url="{% url 'shvya_calendar:booking_detail' booking_id=booking.id %}">
+            <summary class="sc-list-row">
+              <div class="sc-avatar">{{ booking.lead.name|slice:":1"|upper }}</div>
+              <div class="sc-list-copy"><strong>{{ booking.lead.name }}</strong><span>{{ booking.page.name }} · {{ booking.start_at|date:"d M, g:i A" }} · {{ booking.timezone }}</span></div>
+              <span class="sc-status sc-status-published">{{ booking.get_status_display }}</span><i class="ti ti-chevron-down" aria-hidden="true"></i>
+            </summary>
+            <div class="sc-upcoming-body">
+              <p>{{ booking.lead.phone }}{% if booking.lead.email %} · {{ booking.lead.email }}{% endif %}</p>
+              <p>{{ booking.lead.pipeline.name }} · {{ booking.lead.stage.name }}{% if booking.host %} · Host: {{ booking.host.name }}{% endif %}</p>
+              <div class="sc-card-actions">
+                <a class="sc-button sc-button-small" href="{% url 'shvya_calendar:calendar' %}?booking={{ booking.id }}">Open in calendar</a>
+                <button type="button" class="sc-button sc-button-small" data-booking-action="move">Change pipeline</button>
+                <button type="button" class="sc-button sc-button-small" data-booking-action="reschedule">Rebook</button>
+                <button type="button" class="sc-button sc-button-small" data-booking-action="cancel">Delete event</button>
+              </div>
+              <div class="sc-upcoming-actions cw" data-booking-action-panel hidden></div>
+              <p role="status" data-booking-status></p>
             </div>
-            <span class="sc-status sc-status-published">Scheduled</span>
-          </div>
+          </details>
+          {% endtimezone %}
         {% empty %}
           <p class="sc-muted">No upcoming bookings yet.</p>
         {% endfor %}

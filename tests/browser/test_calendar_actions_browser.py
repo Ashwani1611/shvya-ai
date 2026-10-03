@@ -100,3 +100,65 @@ def test_copy_meeting_link_in_dynamically_inserted_panel(calendar_browser):
     page.evaluate("() => { navigator.clipboard.writeText = async () => {throw new Error('denied')}; }")
     page.get_by_role("button", name="Copy Meet link").click()
     expect(page.get_by_role("status")).to_contain_text("Unable to copy")
+
+
+def test_confirmation_shows_google_links_after_async_sync(calendar_browser):
+    page = calendar_browser
+    booking = NS(id=ID, cancel_token='public-token', reschedule_token='reschedule-token', timezone='UTC', calendar_sync_status='pending', meeting_link='', google_event_url='')
+    calendar_page = NS(name='Demo', accent_color='#2563eb', confirmation_heading='Confirmed', confirmation_message='See you soon.', show_booking_details=False, show_add_calendar=True, meeting_location='google_meet', redirect_enabled=False)
+    html = render_to_string('shvya_calendar/confirmation.html', {'booking': booking, 'page': calendar_page})
+    polls = []
+    def route(r):
+        if '/status/' in r.request.url:
+            polls.append(r.request.url)
+            r.fulfill(json={'status': 'scheduled', 'sync_status': 'pending' if len(polls) == 1 else 'synced', 'event_url': '' if len(polls) == 1 else 'https://calendar.google.com/calendar/event?eid=demo', 'meeting_link': '' if len(polls) == 1 else 'https://meet.google.com/abc-defg-hij'})
+        elif '/confirmation.js' in r.request.url:
+            r.fulfill(content_type='application/javascript', body=(ROOT / 'static/shvya_calendar/confirmation.js').read_text())
+        elif r.request.resource_type == 'document':
+            r.fulfill(content_type='text/html', body=html)
+        else:
+            r.fulfill(body='')
+    page.route('**/*', route)
+    page.goto('http://localhost/confirmed/')
+    expect(page.locator('[data-google-event-link]')).to_be_visible(timeout=10000)
+    expect(page.locator('[data-google-event-link]')).to_have_attribute('href', 'https://calendar.google.com/calendar/event?eid=demo')
+    expect(page.locator('[data-meeting-link]')).to_be_visible()
+    expect(page.locator('[data-google-sync-message]')).to_be_hidden()
+    assert len(polls) >= 2
+
+
+def test_upcoming_expands_and_posts_delete_to_real_booking_endpoint(calendar_browser):
+    from django.template import engines
+    page = calendar_browser
+    booking = NS(id=ID, start_at=datetime(2026, 10, 5, 10, tzinfo=timezone.utc), timezone='UTC', get_status_display='Scheduled', lead=NS(name='Gaurav Singh', phone='+919876543210', email='gaurav@example.com', pipeline=NS(name='Sales'), stage=NS(name='New')), page=NS(name='Demo'), host=NS(name='Admin'))
+    source = (ROOT / 'templates/shvya_calendar/index.html').read_text()
+    content = source.split('{% block content %}', 1)[1].split('{% endblock %}', 1)[0]
+    html = engines['django'].from_string('{% load tz %}' + content).render({'upcoming_bookings': [booking], 'csrf_token': 'test-csrf'})
+    update_url = reverse('shvya_calendar:booking_update', kwargs={'booking_id': ID})
+    detail = render_to_string('shvya_calendar/booking_detail.html', {'booking': NS(**{**booking.__dict__, 'end_at': booking.start_at}), 'booking_zone': 'UTC', 'can_reschedule': True, 'csrf_token': 'test-csrf'})
+    posts = []
+    def route(r):
+        if r.request.method == 'POST':
+            posts.append((urlsplit(r.request.url).path, r.request.post_data))
+            r.fulfill(json={'error': 'Test keeps the page open'}, status=400)
+        elif '/calendar/bookings/' in r.request.url:
+            r.fulfill(content_type='text/html', body=detail)
+        elif r.request.url.endswith('/upcoming.js'):
+            r.fulfill(content_type='application/javascript', body=(ROOT / 'static/shvya_calendar/upcoming.js').read_text())
+        else:
+            r.fulfill(content_type='text/html', body=html + '<script src="/upcoming.js"></script>')
+    page.route('**/*', route)
+    page.on('dialog', lambda dialog: dialog.accept())
+    page.goto('http://localhost/bookings/')
+    page.get_by_text('Gaurav Singh', exact=True).click()
+    expect(page.get_by_role('link', name='Open in calendar')).to_have_attribute('href', reverse('shvya_calendar:calendar') + '?booking=' + ID)
+    page.get_by_role('button', name='Delete event').click()
+    panel = page.locator('[data-booking-action-panel]')
+    expect(panel).to_be_visible()
+    panel.get_by_role('button', name='Delete event').click()
+    expect(page.locator('[data-booking-status]')).to_have_text('Test keeps the page open')
+    assert len(posts) == 1
+    assert posts[0][0] == update_url
+    assert 'cancel' in posts[0][1] and 'test-csrf' in posts[0][1]
+    page.get_by_text('Gaurav Singh', exact=True).click()
+    expect(page.locator('[data-booking-details]')).not_to_have_attribute('open', '')

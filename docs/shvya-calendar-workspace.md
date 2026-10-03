@@ -87,3 +87,31 @@ Google links populated asynchronously and published custom meeting URLs. No
 placeholder link is fabricated for phone, in-person, or pending Google bookings.
 Cancelled bookings are excluded. Batch CRM rendering loads links in one query,
 and all link lookups are scoped to the organization.
+
+### Google edits, notifications, and booking actions
+
+Known Google events are checked by `shvya_calendar.import_google_changes` every
+60 seconds in rotating batches of at most 100 bookings. Changes normally arrive
+within a minute plus worker processing time; larger backlogs take longer. Only
+synced appointments are read, through their original account and calendar ID.
+Google time edits update the reservation, `booked_at`, and reminders. Google
+cancellations clear the appointment mapping and skip outstanding reminders. A
+missing/inaccessible event does not delete CRM data. Pending local edits and
+changes made during the provider request take precedence over a stale response.
+Only booked events are imported, not unrelated personal calendar entries.
+
+Internal lead-capture notifications use the organisation's tested Email
+configuration in Connect Hub. Recipients come from the selected host, internal
+notification users, and roles, limited to active users in that organisation.
+Mailbox failures are logged without invalidating the captured lead.
+
+The confirmation page polls a token-scoped, read-only status endpoint for up to
+six minutes, revealing the real Google event and meeting URLs as sync completes.
+The Add to Calendar setting is respected. Failed or disconnected sync keeps the
+booking confirmed and shows a short status message.
+
+Upcoming bookings expand for contact, pipeline, stage, and host details. Users
+can open the exact booking/date in Calendar, change pipeline, rebook using live
+slots, or delete the event. Deletion keeps booking history and the CRM lead,
+clears `booked_at`, skips outstanding reminders, and queues Google deletion.
+Transient deletion failures retry; pending cancellations are recovered by Beat.

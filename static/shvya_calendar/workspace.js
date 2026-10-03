@@ -5,7 +5,7 @@
   const $ = id => document.getElementById(id);
   const zone = root.dataset.timezone;
   const today = root.dataset.today;
-  let selected = today, view = 'day', events = [], requestId = 0, detailId = 0;
+  let selected = root.dataset.selectedDate || today, view = 'day', events = [], requestId = 0, detailId = 0;
   let controller;
   const date = key => new Date(`${key}T12:00:00Z`);
   const key = d => d.toISOString().slice(0, 10);
@@ -171,7 +171,7 @@
         form.elements.slot_start.addEventListener('change', () => { form.querySelector('[type=submit]').disabled = !form.elements.slot_start.value; });
       }
       form.addEventListener('submit', async event => {
-        event.preventDefault(); const buttons = content.querySelectorAll('[type=submit]'); buttons.forEach(b => { b.disabled = true; });
+        event.preventDefault(); if (form.dataset.confirm && !window.confirm(form.dataset.confirm)) return; const buttons = content.querySelectorAll('[type=submit]'); buttons.forEach(b => { b.disabled = true; });
         $('cw-action-message').textContent = 'Saving…';
         try {
           await jsonResponse(await fetch(form.getAttribute('action'), {method:'POST', body:new FormData(form), headers:{'X-Requested-With':'XMLHttpRequest'}}));
@@ -193,5 +193,6 @@
   root.querySelectorAll('[data-view]').forEach(button => button.addEventListener('click', () => { view = button.dataset.view; load(); }));
   $('cw-close').addEventListener('click', () => $('cw-detail').close());
   $('cw-detail').addEventListener('close', () => { detailId++; });
-  load();
+  load().then(() => { if (root.dataset.focusedBookingUrl) openDetail(root.dataset.focusedBookingUrl); });
+  setInterval(() => { if (!document.hidden && !$('cw-detail').open) load(); }, 30000);
 })();

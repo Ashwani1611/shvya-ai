@@ -309,7 +309,7 @@ def calendar_index(request):
             ],
             start_at__gte=timezone.now(),
         )
-        .select_related("lead", "page", "host")
+        .select_related("lead", "lead__pipeline", "lead__stage", "page", "host")
         .order_by("start_at")[:8]
     )
     pending_calls = (

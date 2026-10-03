@@ -48,6 +48,12 @@ def _zone(value):
 def calendar_workspace(request):
     user = request.crm_user
     _require_calendar_manager(user)
+    focused = None
+    if request.GET.get("booking"):
+        try:
+            focused = get_object_or_404(_bookings(user), pk=request.GET["booking"])
+        except ValidationError:
+            return JsonResponse({"error": "Choose a valid booking."}, status=400)
     pipelines = Pipeline.objects.filter(organization=user.organization).order_by("name")
     return render(
         request,
@@ -55,6 +61,8 @@ def calendar_workspace(request):
         {
             "pipelines": pipelines,
             "calendar_timezone": str(_zone(user.organization.timezone)),
+            "focused_booking_url": reverse("shvya_calendar:booking_detail", kwargs={"booking_id": focused.pk}) if focused else "",
+            "calendar_selected_date": focused.start_at.astimezone(_zone(user.organization.timezone)).date().isoformat() if focused else "",
             "calendar_today": timezone.now()
             .astimezone(_zone(user.organization.timezone))
             .date()
@@ -66,7 +74,7 @@ def calendar_workspace(request):
 @crm_login_required
 @require_GET
 def calendar_events(request):
-    bookings = _bookings(request.crm_user)
+    bookings = _bookings(request.crm_user).exclude(status=CalendarBooking.Status.CANCELLED)
     zone = _zone(request.crm_user.organization.timezone)
     try:
         start = date.fromisoformat(request.GET.get("start", ""))
@@ -214,6 +222,9 @@ def booking_update(request, booking_id):
             reschedule_booking(
                 booking=booking, slot_start_iso=request.POST.get("slot_start", "")
             )
+        elif action == "cancel":
+            from .cancellation_services import cancel_booking
+            cancel_booking(booking)
         elif action == "move":
             move_booking_pipeline(
                 booking=booking,
