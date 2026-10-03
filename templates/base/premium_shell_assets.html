@@ -48,7 +48,6 @@
 <link rel="stylesheet" href="{% static 'css/shvya_command_center.css' %}?v=20260915-1">
 <link rel="stylesheet" href="{% static 'css/shvya_premium_sidebar_mobile.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_premium_shell_patch.css' %}">
-<link rel="stylesheet" href="{% static 'css/shvya_premium_shell_mobile_patch.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_premium_shell_alignment_fix.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2.css' %}">
 <link rel="stylesheet" href="{% static 'css/shvya_apple_crm_v2_detail.css' %}">
@@ -103,7 +102,7 @@
 
 <script src="{% static 'js/shvya_premium_sidebar.js' %}" defer></script>
 <script src="{% static 'js/shvya_command_center.js' %}?v=20260915-1" defer></script>
-<script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}" defer></script>
+<script src="{% static 'js/shvya_premium_sidebar_mobile.js' %}?v=20261003-mobile-1" defer></script>
 <script src="{% static 'js/shvya_apple_crm_v2.js' %}" defer></script>
 <script src="{% static 'js/shvya_stage_editor.js' %}" defer></script>
 <script src="{% static 'js/shvya_lead_card_interactions.js' %}" defer></script>
@@ -115,3 +114,5 @@
 
 <link rel="stylesheet" href="{% static 'css/lead_card_upgrade.css' %}?v=4">
 <script src="{% static 'js/lead_card_upgrade.js' %}?v=2" defer></script>
+{# Mobile geometry must win over desktop compact-rail and workspace overrides. #}
+<link rel="stylesheet" href="{% static 'css/shvya_premium_shell_mobile_patch.css' %}?v=20261003-mobile-1">
