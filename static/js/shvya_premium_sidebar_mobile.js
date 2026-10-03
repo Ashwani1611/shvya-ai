@@ -200,10 +200,6 @@
                 syncGroups();
                 return;
             }
-            if (event.target.closest('.shvya-search-trigger')) {
-                // Release the drawer before the command palette captures return focus.
-                close();
-            }
         }, true);
 
         sidebar.addEventListener('click', function (event) {
@@ -213,9 +209,17 @@
                 !event.shiftKey && !event.altKey && link.target !== '_blank') close();
         });
 
-        document.addEventListener('keydown', function (event) {
+        // The command center owns document-capture listeners and stops further
+        // propagation. Release the drawer at window capture first, independent
+        // of script registration order, without swallowing the search event.
+        window.addEventListener('click', function (event) {
+            if (!isOpen() || !(event.target instanceof Element)) return;
+            if (event.target.closest('.shvya-search-trigger')) close();
+        }, true);
+
+        window.addEventListener('keydown', function (event) {
             if (!isOpen()) return;
-            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
+            if ((event.metaKey || event.ctrlKey) && String(event.key || '').toLowerCase() === 'k') {
                 close();
                 return; // The existing command palette still handles the shortcut.
             }

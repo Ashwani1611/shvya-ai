@@ -43,12 +43,37 @@ search handoff, backdrop close, normal navigation, HTMX history and idempotent s
 Run:
 
 ```sh
-pytest tests/browser/test_mobile_sidebar_browser.py -q
+pytest tests/browser/test_mobile_sidebar_browser.py tests/browser/test_mobile_sidebar_capture_browser.py -q
 # A system Chromium binary may be selected explicitly:
-PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium pytest tests/browser/test_mobile_sidebar_browser.py -q
+PLAYWRIGHT_CHROMIUM_EXECUTABLE=/usr/bin/chromium pytest tests/browser/test_mobile_sidebar_capture_browser.py -q
 ```
 
 The fixture checks are not authenticated production testing, physical-device
 validation, WebKit/Safari validation or a full Django test-suite run. Before release,
 verify the real CRM, WhatsApp, AI Brain, Calendar and Sales pages on mobile, including
 long organization names, plan restrictions, overlays and each page's own CSS.
+
+## Search capture-order regression
+
+`shvya_command_center.js` registers document-capture listeners and stops immediate
+propagation for Search and Ctrl/Command+K. Sidebar-capture and later document-capture
+listeners therefore cannot release an open mobile drawer before the center opens.
+The mobile controller handles the handoff at window capture, then allows the
+original event to continue to the command center. It does not open another palette,
+write the compact preference, or change the command center's desktop handler.
+
+`tests/browser/test_mobile_sidebar_capture_browser.py` adds eight checks using the
+production command center's extracted capture-listener code with a stub palette UI.
+Six mobile cases cover click, Control+K and Meta+K in both compact preference states;
+two desktop cases protect existing behavior. The mobile cases run two open/search/
+close cycles, verify typing/focus restoration, and preserve other modules' inert state.
+The extraction fails explicitly when the production registration structure changes.
+This is listener integration coverage, not full-command-center or page rendering.
+
+On the initial PR head `3a75dc7`, the new capture-order checks reproduced six mobile
+failures with two desktop passes. With window-capture handoff applied, all eight
+passed locally; JavaScript syntax validation passed. The earlier `17 passed in 6.45s`
+report records only the original fixture run, not a deployment or all-screen audit.
+CI and Security also passed for that earlier head; newer commits require their own
+CI results. The separate targeted-browser job being skipped on a full-suite CI run
+is expected and is not by itself a missing-test failure.
