@@ -208,6 +208,13 @@ def install_ai_runtime() -> None:
     )
     install_first_name_personalization_runtime()
 
+    # Preserve unanswered customer requests without changing message/CRM
+    # ownership, transport recovery, or Hosted's fixed 45-second send gate.
+    from apps.ai_engagement.services.conversation_continuity_runtime import (
+        install_conversation_continuity_runtime,
+    )
+    install_conversation_continuity_runtime()
+
     # LangGraph captures node callables when compiled. Rebind the existing
     # canonical graph after the Phase 5/6 grounding guard is installed so an
     # early import cannot retain the pre-guard callable.

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import re
+from contextlib import ExitStack
 from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -179,6 +180,77 @@ class RuntimeCleanupContractTests(SimpleTestCase):
                 "install_conversation_policy_runtime",
                 "install_phase5_6_runtime",
                 "install_phase5_6_safety_fixes",
+                # Reviewed read-only continuity hooks; keep the allow-list exact.
+                "install_conversation_continuity_runtime",
                 "install_ai_trace_runtime",
             },
         )
+
+    def test_continuity_installs_before_graph_compile_and_trace_once(self):
+        from apps.ai_engagement.graph import workflow
+        from apps.ai_engagement.services import ai_trace_runtime, conversation_continuity_runtime
+
+        order = []
+        compiled_graph = workflow.ENGAGEMENT_GRAPH
+
+        def compile_graph():
+            order.append("compile")
+            return compiled_graph
+
+        # Execute the bootstrap itself; previously installed collaborators are
+        # no-ops. Resetting the outer guard must not change installer order.
+        with (
+            patch.object(runtime_bootstrap, "_INSTALLED", False),
+            patch.object(
+                conversation_continuity_runtime,
+                "install_conversation_continuity_runtime",
+                side_effect=lambda: order.append("continuity"),
+            ) as install_continuity,
+            patch.object(workflow, "build_engagement_graph", side_effect=compile_graph) as compile_mock,
+            patch.object(workflow, "ENGAGEMENT_GRAPH", compiled_graph),
+            patch.object(
+                ai_trace_runtime,
+                "install_ai_trace_runtime",
+                side_effect=lambda: order.append("trace"),
+            ) as install_trace,
+        ):
+            runtime_bootstrap.install_ai_runtime()
+            runtime_bootstrap.install_ai_runtime()
+            self.assertEqual(order, ["continuity", "compile", "trace"])
+            install_continuity.assert_called_once_with()
+            compile_mock.assert_called_once_with()
+            install_trace.assert_called_once_with()
+
+    def test_continuity_repeated_install_does_not_stack_wrappers(self):
+        from apps.ai_engagement.graph import workflow
+        from apps.ai_engagement.services import conversation_continuity_runtime
+        from apps.ai_engagement.services.engagement import EngagementService
+        from apps.ai_engagement.services.file_sharing import FileSharingService
+
+        targets = [
+            (EngagementService, "_build_input"),
+            (EngagementService, "_build_instructions"),
+            (EngagementService, "_should_retrieve_knowledge"),
+            (EngagementService, "_build_knowledge_query"),
+            (EngagementService, "_validate_engagement_policy"),
+            (FileSharingService, "build_file_candidates"),
+            (workflow, "_deterministic_extract"),
+            (workflow, "_route_turn"),
+        ]
+        with ExitStack() as stack:
+            stack.enter_context(patch.object(conversation_continuity_runtime, "_INSTALLED", False))
+            originals = []
+            for owner, name in targets:
+                original = getattr(owner, name)
+                originals.append(original)
+                stack.enter_context(patch.object(owner, name, original))
+
+            conversation_continuity_runtime.install_conversation_continuity_runtime()
+            installed = [getattr(owner, name) for owner, name in targets]
+            for original, wrapped in zip(originals, installed, strict=True):
+                self.assertIsNot(original, wrapped)
+                self.assertIs(wrapped.__wrapped__, original)
+
+            conversation_continuity_runtime.install_conversation_continuity_runtime()
+            for (owner, name), wrapped in zip(targets, installed, strict=True):
+                self.assertIs(getattr(owner, name), wrapped)
