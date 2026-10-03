@@ -71,6 +71,8 @@ def _fact_lines(about: str) -> list[str]:
         line = raw.strip()
         if not line:
             continue
+        if re.match(r"^#{1,6}\s*\S", line):
+            continue
         # Section labels are useful for grouping but are not customer-facing facts.
         if line.endswith(":") and len(line) <= 90:
             continue
@@ -120,6 +122,24 @@ def _best_authored_facts(*, about: str, inbound: str, organization_name: str = "
 
     normalized = _normalized(inbound)
     query_tokens = _tokenize(inbound) - _tokenize(organization_name)
+
+    if query_tokens & set(_PLAN_TERMS):
+        # A heading matches the topic but is not an answer. Preserve the whole
+        # authored pricing block, including plan names and billing conditions.
+        blocks = []
+        current = []
+        for raw in str(about or "").splitlines():
+            if re.match(r"^\s*#{1,2}\s+", raw) and current:
+                blocks.append("\n".join(current).strip())
+                current = []
+            current.append(raw)
+        if current:
+            blocks.append("\n".join(current).strip())
+        pricing = [block for block in blocks
+                   if re.search(r"[₹$€£]\s*\d|\b(?:INR|USD|EUR|GBP|Rs\.?|rupees)\s*\d", block, re.I)
+                   and _tokenize(block) & set(_PLAN_TERMS)
+                   and len(block) <= 12000]
+        return pricing if sum(map(len, pricing)) <= 12000 else []
 
     # Explicit lead-generation questions should surface both the business-model
     # positive and any authored limitation, when present.

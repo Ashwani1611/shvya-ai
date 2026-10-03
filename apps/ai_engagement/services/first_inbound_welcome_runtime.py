@@ -96,6 +96,11 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
     if not message:
         return decision
 
+    # An answer must remain first, including for a first Sandbox turn in a
+    # later stage. The authored welcome may contain a qualification invitation.
+    if getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION":
+        return decision
+
     if first_turn is None:
         first_turn = _is_first_inbound_turn(lead)
     if not first_turn:
