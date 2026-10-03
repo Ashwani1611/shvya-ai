@@ -141,8 +141,10 @@ def _safe_unknown_decision(decision, *, qualification_turn=False, state=None, fa
     # A mixed business question/qualification answer needs a factual response or
     # precise uncertainty, not an acknowledgement that silently drops the ask.
     coverage = state.get("evidence_coverage")
+    from apps.ai_engagement.services.conversation_priority_runtime import _intent_kind
     factual_request = (question_type not in {"", "not_evidence_bound"}
-                       or bool(getattr(coverage, "parts", ())))
+                       or bool(getattr(coverage, "parts", ()))
+                       or _intent_kind(state.get("latest_text", "")) in {"question", "request", "call_or_handoff"})
     qualification_turn = qualification_turn and not factual_request
     kind = "qualification" if qualification_turn else failure_kind(state, reason=failure_reason)
     reply = fallback_message(kind=kind, bot_languages=org_context.get("bot_languages", ""),

@@ -109,3 +109,11 @@ class FinalResponseCompletionTests(SimpleTestCase):
         self.assertEqual(len(calls), 3)
         self.assertTrue(result["grounding_approved"])
         self.assertIn("फ़ॉलो-अप", result["decision"].message)
+
+    def test_mixed_request_is_not_only_acknowledged_with_recovery_disabled(self):
+        state = self.state()
+        state["latest_text"] = "We use Excel. Please send me a brochure."
+        state.pop("evidence_coverage", None)
+        decision = _safe_unknown_decision(state["decision"], qualification_turn=True, state=state)
+        self.assertEqual(decision.reason_code, "UNKNOWN_INFORMATION")
+        self.assertNotIn("धन्यवाद", decision.message)

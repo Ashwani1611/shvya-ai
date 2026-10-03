@@ -167,7 +167,9 @@ def repair_publication_allowed(document):
     request = _CURRENT_REPAIR.get()
     if request is None:
         return True
-    if document.organization_id != request.organization_id:
+    from apps.organizations.models import Organization
+    if (document.organization_id != request.organization_id
+            or not Organization.objects.filter(pk=request.organization_id, is_active=True).exists()):
         return False
     if request.operation != "refresh_url" and document.pk != request.document_id:
         return False
@@ -216,16 +218,11 @@ def tracked_repair_task(function):
             if request is not None:
                 expected_task = {"refresh_url": "ingest_and_index_url_source",
                     "reindex_missing": "reindex_document_embeddings", "retry_upload": "ingest_and_index_document"}
-                if request.document.source_url and (not request.source_id or not KnowledgeSource.objects.filter(
-                        pk=request.source_id, organization_id=request.organization_id, is_active=True,
-                        source_type="url", url=request.document.source_url).exists()):
-                    request.status, request.outcome_code = "skipped", "source_disabled_or_missing"
-                    request.save(update_fields=["status", "outcome_code", "updated_at"])
-                    return {"status": "skipped", "reason": "source_disabled_or_missing"}
                 if (args or expected_task.get(request.operation) != function.__name__
                         or str(kwargs.get("organization_id")) != str(request.organization_id)
                         or (request.operation != "refresh_url" and kwargs.get("document_id") != request.document_id)
-                        or (request.operation == "refresh_url" and kwargs.get("source_id") != request.source_id)
+                        or (request.operation == "refresh_url" and request.source_id is not None
+                            and kwargs.get("source_id") != request.source_id)
                         or (request.operation == "reindex_missing" and kwargs.get("only_missing") is not True)):
                     raise KnowledgeRepairError("repair_task_scope_mismatch")
                 if request.status not in {"queued", "dispatch_failed", "retrying"}:
@@ -237,6 +234,12 @@ def tracked_repair_task(function):
                     request.status, request.outcome_code = "skipped", "organization_inactive"
                     request.save(update_fields=["status", "outcome_code", "updated_at"])
                     return {"status": "skipped", "reason": "organization_inactive"}
+                if request.document.source_url and (not request.source_id or not KnowledgeSource.objects.filter(
+                        pk=request.source_id, organization_id=request.organization_id, is_active=True,
+                        source_type="url", url=request.document.source_url).exists()):
+                    request.status, request.outcome_code = "skipped", "source_disabled_or_missing"
+                    request.save(update_fields=["status", "outcome_code", "updated_at"])
+                    return {"status": "skipped", "reason": "source_disabled_or_missing"}
                 if request.attempt == 0:
                     plan = plan_repair(organization=request.organization, document_id=request.document_id)
                     if plan["fingerprint"] != request.fingerprint or plan["operation"] != request.operation:

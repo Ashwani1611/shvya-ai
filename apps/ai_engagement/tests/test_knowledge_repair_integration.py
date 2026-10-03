@@ -243,3 +243,47 @@ class KnowledgeRepairIntegrationTests(TestCase):
         self.assertEqual(result["reason"], "source_disabled_or_missing")
         self.assertEqual(request.status, "skipped")
         self.provider.embeddings.create.assert_not_called()
+
+    def test_completed_request_does_not_regress_after_source_is_disabled(self):
+        document = self.failed_document(source_key="https://example.com/finished")
+        document.source_url = document.source_key
+        document.save()
+        source = KnowledgeSource.objects.create(organization=self.organization, source_type="url", url=document.source_url)
+        request, _ = self.request(document)
+        self.run_request(request)
+        request.refresh_from_db()
+        self.assertEqual(request.status, "succeeded")
+        calls = self.provider.embeddings.create.call_count
+        source.is_active = False
+        source.save(update_fields=["is_active"])
+        self.assertEqual(self.run_request(request)["reason"], "repair_already_claimed_or_finished")
+        request.refresh_from_db()
+        self.assertEqual(request.status, "succeeded")
+        self.assertEqual(self.provider.embeddings.create.call_count, calls)
+
+    def test_organization_disabled_during_embedding_cannot_be_republished(self):
+        document = self.failed_document()
+        request, _ = self.request(document)
+        def deactivate(**kwargs):
+            Organization.objects.filter(pk=self.organization.pk).update(is_active=False)
+            return self.vectors(**kwargs)
+        self.provider.embeddings.create.side_effect = deactivate
+        self.run_request(request)
+        request.refresh_from_db()
+        document.refresh_from_db()
+        self.assertEqual(request.status, "skipped")
+        self.assertFalse(document.is_active)
+
+    def test_foreign_task_arguments_cannot_mutate_a_disabled_source_request(self):
+        document = self.failed_document(source_key="https://example.com/scoped")
+        document.source_url = document.source_key
+        document.save()
+        source = KnowledgeSource.objects.create(organization=self.organization, source_type="url", url=document.source_url)
+        request, _ = self.request(document)
+        source.delete()
+        other = Organization.objects.create(name="Foreign task")
+        with self.assertRaisesRegex(KnowledgeRepairError, "scope_mismatch"):
+            self.run_request(request, organization_id=str(other.pk))
+        request.refresh_from_db()
+        self.assertEqual(request.status, "queued")
+        self.provider.embeddings.create.assert_not_called()

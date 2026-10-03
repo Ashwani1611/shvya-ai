@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 import requests
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
