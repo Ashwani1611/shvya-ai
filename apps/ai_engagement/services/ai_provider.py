@@ -235,47 +235,6 @@ class OpenAIProvider:
         fallback.pop("model_override", None)
         return fallback
 
-    def _clear_unavailable_org_model_override(
-        self,
-        *,
-        metadata: dict[str, str] | None,
-        request_model: str,
-    ) -> None:
-        """Self-heal only the exact unavailable model override that failed."""
-
-        organization_id = str((metadata or {}).get("organization_id") or "").strip()
-        if not organization_id:
-            return
-
-        feature = self._feature(metadata)
-        prompt_mode = str((metadata or {}).get("prompt_mode") or "").strip()
-        if feature == "internal_summary":
-            field = "summary_model"
-        elif feature in {"engagement", "playground"}:
-            field = (
-                "qualification_model"
-                if prompt_mode == "qualification"
-                else "sales_support_model"
-            )
-        else:
-            return
-
-        try:
-            from apps.ai_engagement.models import OrgInfo
-
-            OrgInfo.objects.filter(
-                organization_id=organization_id,
-                **{field: request_model},
-            ).update(**{field: ""})
-        except Exception:
-            logger.exception(
-                "Unable to clear unavailable organization AI model override "
-                "organization=%s field=%s model=%s",
-                organization_id,
-                field,
-                request_model,
-            )
-
     def _max_output_tokens(self, metadata: dict[str, str] | None) -> int:
         feature = self._feature(metadata)
         default = self.TASK_MAX_OUTPUT_TOKENS.get(feature, 600)
@@ -490,6 +449,12 @@ class OpenAIProvider:
             "input": input_text,
             "max_output_tokens": self._max_output_tokens(metadata),
         }
+        # GPT-5 mini/nano share their output cap with hidden reasoning. The
+        # short non-reasoning reply cap can otherwise expire before any JSON.
+        reasoning_model = request_model in {"gpt-5-mini", "gpt-5-nano"} or request_model.startswith(("gpt-5-mini-", "gpt-5-nano-"))
+        if reasoning_model:
+            request_kwargs["reasoning"] = {"effort": "minimal"}
+            request_kwargs["max_output_tokens"] = max(request_kwargs["max_output_tokens"], 2000)
         if metadata:
             request_kwargs["metadata"] = metadata
         text_config = self._structured_text_config(response_schema)
@@ -515,6 +480,7 @@ class OpenAIProvider:
                     input_text=input_text,
                     feature=self._feature(metadata),
                     reference_id=AICreditService.reference_from_metadata(metadata),
+                    output_token_limit=request_kwargs["max_output_tokens"],
                 )
             except AICreditUnavailableError as exc:
                 increment("ai.credit_reservation_failures", labels={"reason": "unavailable"})
@@ -574,10 +540,6 @@ class OpenAIProvider:
                         requested_model=request_model,
                         fallback_model=fallback_model,
                     )
-                    self._clear_unavailable_org_model_override(
-                        metadata=metadata,
-                        request_model=request_model,
-                    )
                     return self.generate_text(
                         instructions=instructions,
                         input_text=input_text,
@@ -606,10 +568,6 @@ class OpenAIProvider:
                         organization_id=organization_id,
                         requested_model=request_model,
                         fallback_model=fallback_model,
-                    )
-                    self._clear_unavailable_org_model_override(
-                        metadata=metadata,
-                        request_model=request_model,
                     )
                     return self.generate_text(
                         instructions=instructions,
@@ -646,10 +604,6 @@ class OpenAIProvider:
                         organization_id=organization_id,
                         requested_model=request_model,
                         fallback_model=fallback_model,
-                    )
-                    self._clear_unavailable_org_model_override(
-                        metadata=metadata,
-                        request_model=request_model,
                     )
                     return self.generate_text(
                         instructions=instructions,
@@ -729,6 +683,24 @@ class OpenAIProvider:
                         "AI credit settlement deferred for reservation %s",
                         getattr(reservation, "id", reservation),
                     )
+
+        # Never send partial JSON or mistake token exhaustion for a permanent
+        # configuration failure. Usage above is settled even for incomplete
+        # responses. Existing channel task retry budgets own recovery.
+        if getattr(response, "status", None) == "incomplete":
+            details = getattr(response, "incomplete_details", None)
+            reason = details.get("reason") if isinstance(details, dict) else getattr(details, "reason", None)
+            if reason == "max_output_tokens":
+                fallback_metadata = self._metadata_without_model_override(metadata)
+                if (metadata or {}).get("model_override") and self._model_for_metadata(fallback_metadata) != request_model:
+                    # Text generation has no transport side effect. Retry once
+                    # through the platform model, preserving the admin's choice.
+                    return self.generate_text(
+                        instructions=instructions, input_text=input_text,
+                        metadata=fallback_metadata, response_schema=response_schema,
+                    )
+                raise AIProviderTransientError("OpenAI response exhausted its output token budget.")
+            raise AIProviderPermanentError("OpenAI returned an incomplete response.")
 
         output_text = (getattr(response, "output_text", "") or "").strip()
         if not output_text:

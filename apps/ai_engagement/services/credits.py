@@ -340,11 +340,15 @@ class AICreditService:
         input_text: str,
         feature: str,
         reference_id: str = "",
+        output_token_limit: int | None = None,
     ) -> AICreditReservation:
         estimated_input = cls.estimate_tokens(
             f"{instructions or ''}\n{input_text or ''}"
         )
-        estimated_output = cls.reserved_output_tokens()
+        estimated_output = max(
+            cls.reserved_output_tokens(),
+            cls._positive_int(output_token_limit, 0),
+        )
         credits = cls.calculate_charge(
             model=model,
             input_tokens=estimated_input,
