@@ -12,17 +12,17 @@ import re
 
 _MESSAGES = {
     "english": {
-        "technical": "I hit a temporary lookup issue on that detail. Could you ask me that once more?",
+        "technical": "I couldn’t retrieve the answer just now. Please try your question again shortly.",
         "unverified": "I want to give you the right detail. Which product, plan or service are you referring to?",
-        "pricing": "Which plan or setup are you asking about? I’ll use the configured pricing for that option.",
+        "pricing": "I don’t have the price for that option in the configured details yet. Which plan or setup are you asking about?",
         "policy": "Which product or situation should I check the policy for?",
         "ambiguous": "Which product, plan or service are you asking about?",
-        "conflicting": "I have more than one configured detail for that. Which option are you referring to?",
+        "conflicting": "The configured information is conflicting for that detail. Which option are you referring to?",
         "action": "That action is not confirmed yet. I can continue helping here while it is checked.",
         "qualification": "Thanks for sharing that — that helps me understand your needs.",
     },
     "hindi": {
-        "technical": "इस जानकारी को देखते समय अस्थायी समस्या आई। क्या आप सवाल एक बार फिर भेज सकते हैं?",
+        "technical": "अभी जवाब निकालने में अस्थायी समस्या आई। कृपया अपना सवाल एक बार फिर भेजें।",
         "unverified": "मैं सही जानकारी देना चाहता हूँ। आप किस उत्पाद, प्लान या सेवा की बात कर रहे हैं?",
         "pricing": "आप किस प्लान या सेटअप की कीमत पूछ रहे हैं? मैं उसी विकल्प की कॉन्फ़िगर की गई कीमत बताऊँगा।",
         "policy": "आप किस उत्पाद या स्थिति की नीति जानना चाहते हैं?",
@@ -32,7 +32,7 @@ _MESSAGES = {
         "qualification": "जानकारी देने के लिए धन्यवाद — इससे आपकी ज़रूरत समझने में मदद मिली।",
     },
     "hinglish": {
-        "technical": "Is detail ko check karte waqt temporary issue aaya. Aap ek baar sawaal dobara bhej den?",
+        "technical": "Abhi answer retrieve nahi ho paaya. Aap ek baar sawaal dobara bhej den?",
         "unverified": "Main sahi detail dena chahta hoon. Aap kis product, plan ya service ki baat kar rahe hain?",
         "pricing": "Aap kis plan ya setup ki pricing poochh rahe hain? Main usi option ki configured pricing use karunga.",
         "policy": "Aap kis product ya situation ki policy check karna chahte hain?",
