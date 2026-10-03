@@ -160,7 +160,7 @@ class EngagementService:
     ALLOWED_PIPELINE_TRANSITION_TYPES = {"stage_shift"}
 
     MESSAGE_LIMIT = 12
-    KNOWLEDGE_LIMIT = 3
+    KNOWLEDGE_LIMIT = 5
     NOTE_LIMIT = 5
     DEFAULT_RECENT_CONVERSATION_CHARS = 6000
 
@@ -363,6 +363,11 @@ class EngagementService:
             requirements,
             qualification_state.get("requirement_states", {}),
         )
+        from apps.ai_engagement.services.turn_controller import build_turn_policy
+        turn_policy = build_turn_policy(
+            context=context,
+            qualification_state=qualification_state,
+        )
         instructions = self._build_instructions(context=context, profile=profile)
         input_text = self._build_input(
             context=context,
@@ -377,16 +382,19 @@ class EngagementService:
             # claim when initialization or generation fails.
             provider = self.provider or OpenAIProvider()
             try:
+                provider_metadata = {
+                    "organization_id": str(organization.id),
+                    "lead_id": str(lead.id),
+                    "task": "engagement",
+                    "phase": "primary",
+                    "prompt_mode": turn_policy.prompt_mode,
+                    "model_override": turn_policy.model_override,
+                }
                 result = self._generate_provider_text(
                     provider=provider,
                     instructions=instructions,
                     input_text=input_text,
-                    metadata={
-                        "organization_id": str(organization.id),
-                        "lead_id": str(lead.id),
-                        "task": "engagement",
-                        "phase": "primary",
-                    },
+                    metadata=provider_metadata,
                     response_schema=ENGAGEMENT_RESPONSE_SCHEMA,
                 )
             except AIProviderError as exc:
@@ -407,6 +415,7 @@ class EngagementService:
                     original_error=first_error,
                     instructions=instructions,
                     input_text=input_text,
+                    metadata=provider_metadata,
                 )
                 self._validate_qualification_decision(
                     decision=decision, context=context, requirements=requirements,
@@ -720,12 +729,24 @@ Do not add explanations, markdown, or chain-of-thought.
         organization_section = organization_instructions or (
             "No organization-specific AI Playbook rules were supplied."
         )
+        from apps.ai_engagement.services.turn_controller import (
+            build_turn_policy,
+            prompt_mode_instructions,
+        )
+        policy = build_turn_policy(
+            context=context,
+            qualification_state=((context.lead or {}).get("qualification") or {}),
+        )
         return (
             f"{SHVYABaseInstructions.get()}\n\n"
             "============================================================\n"
             "ORGANIZATION AI PLAYBOOK RULES\n"
             "============================================================\n"
             f"{organization_section}\n\n"
+            "============================================================\n"
+            "TURN MODE\n"
+            "============================================================\n"
+            f"{prompt_mode_instructions(policy)}\n\n"
             "============================================================\n"
             "SHVYA AI ENGAGEMENT TASK\n"
             "============================================================\n"
@@ -799,7 +820,24 @@ Do not add explanations, markdown, or chain-of-thought.
             "ai_profile": profile,
         }
 
+        from apps.ai_engagement.services.turn_controller import build_turn_policy
+        turn_policy = build_turn_policy(
+            context=context,
+            qualification_state=qualification_state or {},
+        )
         payload = {
+            "prompt_mode": turn_policy.prompt_mode,
+            "organization_operating_spec": {
+                "about": str(organization_data.get("about") or "")[:30000],
+                "bot_languages": str(organization_data.get("bot_languages") or "")[:2000],
+                "ai_playbook": turn_policy.operating_spec,
+                "authority": (
+                    "Use this authored operating spec for wording and business behavior; "
+                    "backend_state remains authoritative for qualification order, CRM "
+                    "state and permitted actions."
+                ),
+            },
+            "business_plan": organization_data.get("_business_plan") or {},
             "backend_state": contract(qualification=qualification_state or {},
                 requirements=profile.get("qualification", {}).get("requirements", []),
                 saved=((data["lead"] or {}).get("attributes") or {}).get(STATE_KEY),
