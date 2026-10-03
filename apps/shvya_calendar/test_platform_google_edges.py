@@ -108,5 +108,5 @@ class PlatformGoogleEdgeTests(TestCase):
     def test_editor_does_not_claim_connected_when_backend_setup_missing(self):
         with self.settings(GOOGLE_CALENDAR_PLATFORM_REFRESH_TOKEN=""):
             html = self.render_scheduling()
-        self.assertIn("needs backend setup", html)
+        self.assertIn("SHVYA hosting is not ready", html)
         self.assertNotIn("Platform configured", html)
