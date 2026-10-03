@@ -135,6 +135,8 @@ def _config(
     mappings: dict[str, str] = {}
     mapping_targets: dict[str, list[str]] = {}
     value_rules: dict[str, str] = {}
+    mapping_scope_rules: dict = {}
+    mapping_rule_candidates: dict = {}
     errors: list[dict[str, str]] = []
 
     mapping_lines = list(dict.fromkeys(section_lines(raw, "attribute_mapped")))
@@ -210,6 +212,8 @@ def _config(
             if attribute_key:
                 mappings.setdefault(requirement_id, attribute_key)
                 value_rules[attribute_key] = line
+                mapping_scope_rules.setdefault(requirement_id, {}).setdefault(attribute_key, []).append(line)
+                mapping_rule_candidates.setdefault(attribute_key, []).append(line)
 
     final_ack = _strip_quotes(sections["acknowledgment_message"]) or None
 
@@ -264,6 +268,8 @@ def _config(
         "mappings": mappings,
         "mapping_targets": mapping_targets,
         "mapping_value_rules": value_rules,
+        "mapping_scope_rules": mapping_scope_rules,
+        "mapping_rule_candidates": mapping_rule_candidates,
         "final_ack": final_ack,
         "completion_stage": completion_stage,
         "completion_rules": completion_rules,
@@ -275,17 +281,24 @@ def _config(
     }
 
 
-def _mapping_keys(config: dict[str, Any], requirement_id: str) -> list[str]:
+def _mapping_keys(config: dict[str, Any], requirement_id: str, *, lead_source=None, channel=None) -> list[str]:
+    from apps.ai_engagement.services.playbook_scope import rule_applies
     targets = (config.get("mapping_targets") or {}).get(str(requirement_id))
-    if isinstance(targets, list):
-        return [str(item).strip() for item in targets if str(item or "").strip()]
-    primary = str((config.get("mappings") or {}).get(str(requirement_id)) or "").strip()
-    return [primary] if primary else []
+    if not isinstance(targets, list):
+        primary = str((config.get("mappings") or {}).get(str(requirement_id)) or "").strip()
+        targets = [primary] if primary else []
+    scopes = (config.get("mapping_scope_rules") or {}).get(str(requirement_id), {})
+    return [str(key).strip() for key in targets if str(key or "").strip() and (
+        key not in scopes or any(rule_applies(rule, lead_source=lead_source, channel=channel)
+                                 for rule in scopes[key])
+    )]
 
 
-def _mapped_value(config, key, value):
+def _mapped_value(config, key, value, *, lead_source=None, channel=None):
     """Translate a proven answer only through explicit authored value arrows."""
-    text = (config.get("mapping_value_rules") or {}).get(key, "")
+    from apps.ai_engagement.services.playbook_scope import rule_applies
+    rules = (config.get("mapping_rule_candidates") or {}).get(key)
+    text = "\n".join(rule for rule in rules if rule_applies(rule, lead_source=lead_source, channel=channel)) if isinstance(rules, list) else (config.get("mapping_value_rules") or {}).get(key, "")
     if not re.search(r"(?im)^\s*[-*]?\s*Attribute name:", text):
         return value
     targets = set()

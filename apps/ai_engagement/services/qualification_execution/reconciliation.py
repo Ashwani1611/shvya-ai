@@ -65,11 +65,11 @@ def _plan_from_reconciled(*, lead, source_message_id, snapshot):
     # Verify every explicitly mapped attribute target by DB readback for every
     # answer persisted by this inbound message, regardless of model proposals.
     for requirement_id, item in answered:
-        for attribute_key in _mapping_keys(config, str(requirement_id)):
+        for attribute_key in _mapping_keys(config, str(requirement_id), lead_source=lead.lead_source, channel="whatsapp"):
             verification = _verify_attribute(
                 lead,
                 attribute_key,
-                _mapped_value(config, attribute_key, item.get("value")),
+                _mapped_value(config, attribute_key, item.get("value"), lead_source=lead.lead_source, channel="whatsapp"),
             )
             results = [
                 result

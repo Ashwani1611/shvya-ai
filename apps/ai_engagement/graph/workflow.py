@@ -88,7 +88,10 @@ def _prepare(state: EngagementGraphState) -> dict:
         policy_qualification["flow_version"] = str(
             requirements[0].get("flow_version") or policy_qualification.get("flow_version") or ""
         )
-    policy = get_runtime_policy(organization=organization, profile=policy_profile)
+    from apps.ai_engagement.services.playbook_scope import scoped_runtime_policy
+    policy = scoped_runtime_policy(
+        get_runtime_policy(organization=organization, profile=policy_profile), context,
+    )
 
     org_context = dict(context.organization or {})
     org_context["_runtime_policy"] = policy
@@ -326,8 +329,10 @@ def _with_file_candidates(state: EngagementGraphState, context):
     from apps.ai_engagement.services.file_sharing import FileSharingService
     from apps.organizations.models import Organization
     candidates = (context.organization or {}).get("_file_candidates")
+    from apps.ai_engagement.services.playbook_scope import scoped_file_candidates
     if candidates is not None:
-        return context
+        return replace(context, organization={**context.organization,
+            "_file_candidates": scoped_file_candidates(candidates, context)})
     # Pure policy previews may use synthetic organizations; they have no
     # document store. Preserve their authored context without synthetic fields.
     organization = state["organization"]
@@ -336,7 +341,7 @@ def _with_file_candidates(state: EngagementGraphState, context):
     candidates = FileSharingService().build_file_candidates(
         organization=organization, context=context,
     )
-    return replace(context, organization={**context.organization, "_file_candidates": candidates})
+    return replace(context, organization={**context.organization, "_file_candidates": scoped_file_candidates(candidates, context)})
 
 
 def _generate(state: EngagementGraphState) -> dict:
@@ -422,8 +427,11 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         runtime=runtime,
         requirements=state.get("requirements") or [],
     )
+    from apps.ai_engagement.services.turn_action_consistency import policy_fingerprint
+
     decision = replace(
         decision,
+        policy_revision=policy_fingerprint(state["context"].organization),
         crm_actions=controlled_actions,
         file_document_id=validated_file_id,
         backend_revision=state_revision(state["lead"]),

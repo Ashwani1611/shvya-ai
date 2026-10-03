@@ -80,7 +80,7 @@ def reconcile_lead_qualification_from_attributes(*, organization, lead):
             if str(existing.get("status") or "").casefold() in _TERMINAL:
                 continue
 
-            keys = _mapping_keys(contract_config, requirement_id)
+            keys = _mapping_keys(contract_config, requirement_id, lead_source=locked.lead_source)
             if not keys:
                 continue
             values = [

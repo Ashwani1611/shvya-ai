@@ -122,7 +122,7 @@ SAFE_UNKNOWN_REPLY = (
 )
 
 
-def _safe_unknown_decision(decision, *, qualification_turn=False):
+def _safe_unknown_decision(decision, *, qualification_turn=False, state=None, reason=""):
     """Keep the conversation alive without forwarding an ungrounded claim.
 
     Qualification acknowledgements are not business-fact answers. When grounding
@@ -131,11 +131,14 @@ def _safe_unknown_decision(decision, *, qualification_turn=False):
     This prevents UNKNOWN_INFORMATION text from being prepended to the next
     configured question or final qualification acknowledgement.
     """
+    from apps.ai_engagement.services.response_fallbacks import grounding_failure_text
+    fallback = grounding_failure_text(state or {}, reason=reason, qualification_turn=qualification_turn)
     if qualification_turn:
         return replace(
             decision,
             should_engage=True,
-            message="Thanks for sharing that — that helps me understand your needs.",
+            message=fallback,
+            final_validation_failed=True,
             file_document_id=None,
             next_requirement_id=None,
             qualification_updates=[],
@@ -146,7 +149,8 @@ def _safe_unknown_decision(decision, *, qualification_turn=False):
     return replace(
         decision,
         should_engage=True,
-        message=SAFE_UNKNOWN_REPLY,
+        message=fallback,
+        final_validation_failed=True,
         file_document_id=None,
         next_requirement_id=None,
         qualification_updates=[],
@@ -202,6 +206,12 @@ def check_grounding(state):
         )
     )
 
+    # A mixed qualification answer + customer question must not collapse into
+    # an acknowledgement-only fallback which silently ignores the question.
+    from apps.ai_engagement.services.conversation_priority_runtime import _intent_kind
+    if _intent_kind(str(state.get("latest_text") or "")) != "none":
+        qualification_turn = False
+
     resolution = _active_grounding(state)
     if resolution is not None and resolution.sensitive and not resolution.verified:
         # No second model call is useful when Python already proved that no
@@ -209,7 +219,7 @@ def check_grounding(state):
         # Phase 5 runtime restores the policy-selected next qualification question
         # when this is an ANSWER_THEN_QUALIFY turn.
         return {
-            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn),
+            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn, state=state, reason="missing_evidence"),
             "grounding_approved": False,
             "grounding_category": resolution.category.value,
         }
@@ -266,6 +276,7 @@ def check_grounding(state):
         # Deterministically authorized proposals are not proof of execution.
         "proposed_crm_actions": getattr(decision, "crm_actions", []),
         "operational_state": operational_state_for_context(context),
+        "evidence_coverage": (state.get("runtime_policy") or {}).get("knowledge_recovery", {}),
     }
 
     metadata = {
@@ -295,13 +306,14 @@ def check_grounding(state):
     except AIProviderError:
         _record_verdict(approved=False, reason="provider_error")
         return {
-            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn),
+            "decision": _safe_unknown_decision(decision, qualification_turn=qualification_turn, state=state, reason="provider_error"),
             "grounding_approved": False,
         }
 
     # A wording/language rejection should not turn every later-stage answer into
     # the same English fallback. One language-only correction may reuse approved
     # evidence, but cannot authorize new actions or bypass the independent gate.
+    # The final post-action pass may repair wording too; actions remain frozen.
     # Leave room for two short calls inside synchronous Sandbox requests. Slow
     # original turns use the existing safe fallback rather than compounding delay.
     # A generator can incorrectly report missing information despite available
@@ -316,12 +328,14 @@ def check_grounding(state):
     from apps.ai_engagement.services.confidentiality import customer_message_violation
     if approved and customer_message_violation(decision.message):
         approved, reason = False, "instruction_disclosure"
-    if approved and generic_unknown and has_facts:
+    coverage = state.get("evidence_coverage")
+    coverage_status = getattr(coverage, "status", None)
+    answer_evidence = has_facts and (coverage_status in {"sufficient", "partial"} if coverage is not None else True)
+    if approved and generic_unknown and answer_evidence:
         approved, reason = False, "unanswered_question"
     recoverable_claim = (reason == "unsupported_claim" and has_facts
                          and language_only(decision))
     repair_attempted = (not approved and (reason in _REPAIRABLE_REASONS or recoverable_claim)
-                        and not _FINAL_LANGUAGE_ONLY.get()
                         and monotonic() - state.get("started_at", monotonic()) < 15)
     if repair_attempted:
         try:
@@ -353,7 +367,7 @@ def check_grounding(state):
         return {
             "decision": _safe_unknown_decision(
                 decision,
-                qualification_turn=qualification_turn,
+                qualification_turn=qualification_turn, state=state, reason=reason,
             ),
             "grounding_approved": False,
         }

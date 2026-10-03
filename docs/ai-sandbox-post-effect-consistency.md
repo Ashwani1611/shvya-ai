@@ -61,3 +61,11 @@ organization allow-list are unchanged by this patch. No real CRM mutation, custo
 message, source repair or per-organization activation is performed by these helpers.
 Live Instagram delivery parity, broader CRM action receipts, source repair, incremental
 cost reporting and selective checkpointing remain separate work.
+
+## Follow-up implementation
+
+See `ai-engagement-consistency.md` for the receipt-backed live action context,
+Instagram source-bound outcomes, bounded final correction, operator source repair
+and exact reservation-based credit reporting. Earlier remaining-work notes above
+describe the scope of that original patch; live activation and real-recipient
+verification are still separate from implementation and CI.

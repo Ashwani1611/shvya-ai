@@ -15,3 +15,5 @@ from .trace import AITrace as AITrace
 
 from .action_receipt import AIActionReceipt as AIActionReceipt
 from .lead_signal import LeadSignal as LeadSignal
+
+from .knowledge_repair import AIKnowledgeRepair as AIKnowledgeRepair

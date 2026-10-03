@@ -224,6 +224,7 @@ class StateReconciler:
         source_message_id,
         execution_results: list[dict[str, Any]] | None = None,
         structured_decision: dict[str, Any] | None = None,
+        source=None,
     ) -> dict[str, Any]:
         from apps.ai_engagement.services.qualification_state import state_for_lead
         from apps.ai_engagement.services.runtime_state import STATE_KEY, contract, state_revision
@@ -258,37 +259,39 @@ class StateReconciler:
             if reminder.get("due_at") is not None:
                 reminder["due_at"] = reminder["due_at"].isoformat()
 
-        source = (
-            lead.whatsapp_messages.filter(
-                pk=source_message_id,
-                organization_id=lead.organization_id,
-                direction="inbound",
-            )
-            .only("raw_payload", "lead_id", "organization_id", "direction")
-            .first()
-        )
+        if source is None:
+            source = lead.whatsapp_messages.select_related("account", "lead").filter(
+                pk=source_message_id, organization_id=lead.organization_id, direction="inbound",
+            ).first()
+        if source is not None:
+            from apps.ai_engagement.services.tenant_guard import TenantGuard
+            TenantGuard(lead.organization).validate_message(source, lead=lead)
+            if str(source.pk) != str(source_message_id):
+                raise ValueError("Action source does not match the current turn.")
         payload = source.raw_payload if source and isinstance(source.raw_payload, dict) else {}
         processing = payload.get("shvya_ai_processing")
         processing = processing if isinstance(processing, dict) else {}
 
         from apps.ai_engagement.services.file_delivery_receipts import (
-            SOURCE_KEY, source_file_state,
+            source_file_state,
         )
-        file_state = source_file_state(
-            lead=lead, source=source, processing=processing, runtime=runtime,
-        )
-        turn_runtime = (
-            runtime if str(runtime.get(SOURCE_KEY) or "") == str(source_message_id) else {}
-        )
-
-        visible_attributes = {
-            str(key): value
-            for key, value in attributes.items()
-            if not str(key).startswith("_shvya_ai_")
-        }
+        if source is not None and getattr(source, "conversation_id", None) is not None:
+            from apps.ai_engagement.services.instagram_delivery_outcomes import instagram_file_state
+            file_state = instagram_file_state(lead=lead, source=source)
+        else:
+            file_state = source_file_state(lead=lead, source=source, processing=processing, runtime=runtime)
+        from apps.ai_engagement.services.turn_action_consistency import receipts_for_source, applied_action_types
+        outcomes = receipts_for_source(lead=lead, source=source)
+        from apps.ai_engagement.services.confidentiality import safe_attribute_values
+        visible_attributes = safe_attribute_values(attributes)
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.services.response_fallbacks import response_language
+        language_data = OrgInfo.objects.filter(organization_id=lead.organization_id).values("bot_languages").first()
+        language = response_language(language_data, getattr(source, "body", ""))
         stage = getattr(lead, "stage", None)
         return {
             "source_message_id": str(source_message_id),
+            "response_language": language,
             "backend_revision": state_revision(lead),
             "stage": {
                 "id": str(getattr(lead, "stage_id", "") or ""),
@@ -302,11 +305,8 @@ class StateReconciler:
                 "conversation_mode": runtime_contract.get("conversation_mode"),
             },
             "workflow": {
-                "action_types": (
-                    processing.get("pre_resolved_actions")
-                    if "pre_resolved_actions" in processing
-                    else turn_runtime.get("pre_resolved_actions")
-                ) or [],
+                "action_types": applied_action_types(outcomes),
+                "outcomes": outcomes,
                 "pending_reminders": reminders,
                 "booking_status": runtime_contract.get("booking_status"),
                 "booking_confirmation": runtime_contract.get("booking_confirmation"),
@@ -361,6 +361,10 @@ class ResponseActionValidator:
         if not message:
             return decision
 
+        from apps.ai_engagement.services.response_fallbacks import failure_text
+        def wording(kind):
+            return failure_text(kind, language=state.get("response_language") or "english")
+
         file_state = state.get("file_share")
         file_state = file_state if isinstance(file_state, dict) else {}
         from apps.ai_engagement.services.file_delivery_receipts import positive_id
@@ -375,17 +379,16 @@ class ResponseActionValidator:
 
         # A failed/unavailable/uncertain attempt is not a fresh authorization to
         # send again. Existing transport recovery owns any permitted retry.
-        if file_status in {"failed", "unavailable", "delivery_unknown"}:
+        if file_status in {"failed", "unavailable", "delivery_unknown"} or getattr(decision, "final_validation_failed", False):
             selected_file_id = None
         confirmed_file = file_status in {"sent", "delivered", "read"}
         if _FILE_SUCCESS_RE.search(message) and not confirmed_file:
             if selected_file_id is not None:
-                name = str(file_state.get("document_name") or "the file").strip()
-                replacement = f"I'm sending {name} with this message."
+                replacement = wording("file_queued" if file_status == "queued" else "file_pending")
             elif file_status == "delivery_unknown":
-                replacement = "I couldn't confirm whether the file was sent."
+                replacement = wording("file_unknown")
             else:
-                replacement = "I wasn't able to send a file with this message."
+                replacement = wording("file_failed")
             message = self._replace_sentence(message, _FILE_SUCCESS_RE, replacement)
 
         stage = state.get("stage")
@@ -400,7 +403,7 @@ class ResponseActionValidator:
             message = self._replace_sentence(
                 message,
                 _QUALIFIED_CLAIM_RE,
-                "I've recorded your details.",
+                wording("qualification_pending"),
             )
 
         workflow = state.get("workflow")
@@ -416,13 +419,13 @@ class ResponseActionValidator:
             message = self._replace_sentence(
                 message,
                 _BOOKING_SUCCESS_RE,
-                "I've noted your booking request, but it isn't confirmed yet.",
+                wording("booking"),
             )
         if _REMINDER_SUCCESS_RE.search(message) and "create_reminder" not in action_types:
             message = self._replace_sentence(
                 message,
                 _REMINDER_SUCCESS_RE,
-                "I've noted the follow-up request.",
+                wording("reminder"),
             )
         handoff_confirmed = _normalized(workflow.get("handoff_status")) in {
             "confirmed",
@@ -432,7 +435,7 @@ class ResponseActionValidator:
             message = self._replace_sentence(
                 message,
                 _HANDOFF_SUCCESS_RE,
-                "I've noted that you'd like human assistance.",
+                wording("handoff"),
             )
 
         # Prompts reduce leakage probability; this deterministic final boundary
@@ -479,6 +482,14 @@ def _processing_for_source(*, lead, source_message_id) -> dict[str, Any]:
 
 
 def _reconciled_for_context(*, lead, context=None) -> dict[str, Any] | None:
+    if context is not None and (getattr(context, "conversation", None) or {}).get("channel") == "instagram":
+        from apps.ai_engagement.services.turn_action_consistency import source_for_context
+        source = source_for_context(lead=lead, context=context)
+        raw = source.raw_payload if source and isinstance(source.raw_payload, dict) else {}
+        processing = raw.get("shvya_ai_processing") or {}
+        if source is None or not isinstance(processing, dict) or not processing.get("state_resolved"):
+            return None
+        return StateReconciler().build(lead=lead, source_message_id=source.pk, source=source)
     source_id = _latest_inbound_id_from_context(context) if context is not None else ""
     if not source_id:
         source = (
@@ -512,6 +523,10 @@ def _reconciled_for_context(*, lead, context=None) -> dict[str, Any] | None:
     state["file_share"] = source_file_state(
         lead=lead, source=source, processing=processing, runtime=attributes.get(STATE_KEY),
     )
+    from apps.ai_engagement.services.turn_action_consistency import receipts_for_source, applied_action_types
+    outcomes = receipts_for_source(lead=lead, source=source)
+    state["workflow"] = {**(state.get("workflow") or {}), "outcomes": outcomes,
+                         "action_types": applied_action_types(outcomes)}
     return state
 
 
@@ -837,6 +852,8 @@ def install_canonical_ai_architecture() -> None:
             knowledge_query=knowledge_query,
             context=context,
         )
+        if context is None and getattr(self.context_builder, "conversation_id", None) is not None:
+            context = self.context_builder.build(organization=organization, lead=lead, knowledge_query=None)
         reconciled = _reconciled_for_context(lead=lead, context=context)
         proposed_state_change = bool(
             getattr(decision, "crm_actions", [])
@@ -862,10 +879,9 @@ def install_canonical_ai_architecture() -> None:
                     )
                     source_id = str(latest.id) if latest is not None else ""
                 if source_id:
-                    reconciled = reconciler.build(
-                        lead=lead,
-                        source_message_id=source_id,
-                    )
+                    from apps.ai_engagement.services.turn_action_consistency import source_for_context
+                    source = source_for_context(lead=lead, context=context) if context is not None else None
+                    reconciled = reconciler.build(lead=lead, source_message_id=source_id, source=source)
             except Exception:
                 logger.exception("Unable to build final validation state for lead %s", lead.pk)
                 reconciled = None

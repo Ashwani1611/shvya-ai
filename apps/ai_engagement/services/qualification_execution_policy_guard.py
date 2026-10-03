@@ -349,12 +349,12 @@ def install_qualification_execution_policy_guard() -> None:
                 if requirement is None:
                     continue
                 requirement_id = str(requirement.get("id") or "")
-                for attribute_key in _mapping_keys(config, requirement_id):
+                for attribute_key in _mapping_keys(config, requirement_id, lead_source=lead.lead_source, channel="whatsapp"):
                     deterministic_keys.add(str(attribute_key))
                     exact_updates.append(
                         {
                             "key": attribute_key,
-                            "value": _mapped_value(config, attribute_key, update.get("value")),
+                            "value": _mapped_value(config, attribute_key, update.get("value"), lead_source=lead.lead_source, channel="whatsapp"),
                         }
                     )
 

@@ -1092,6 +1092,21 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
 
         message_payload = guided_message_payload(message)
 
+    # Re-read the exact row before crossing the provider boundary. A stale task
+    # object or second invocation cannot submit a previously started operation.
+    with transaction.atomic():
+        current = InstagramMessage.objects.select_for_update().get(
+            pk=message.pk, organization_id=message.organization_id, account_id=message.account_id,
+            conversation_id=message.conversation_id, direction=InstagramMessage.Direction.OUTBOUND,
+        )
+        if current.external_id and current.status in {InstagramMessage.Status.SENT, InstagramMessage.Status.READ}:
+            return current
+        raw = current.raw_payload if isinstance(current.raw_payload, dict) else {}
+        if raw.get("shvya_send_started_at"):
+            raise InstagramAPIError("The previous submission outcome is uncertain; automatic resending is blocked.")
+        current.raw_payload = {**raw, "shvya_send_started_at": timezone.now().isoformat()}
+        current.save(update_fields=["raw_payload", "updated_at"])
+        message = current
     result = _graph_post(
         f"{account.ig_user_id}/messages",
         access_token=account.access_token,
@@ -1105,6 +1120,10 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
         raise InstagramAPIError("Meta accepted the request without returning a message ID.")
 
     with transaction.atomic():
+        message = InstagramMessage.objects.select_for_update().get(
+            pk=message.pk, organization_id=message.organization_id,
+            account_id=message.account_id, conversation_id=message.conversation_id,
+        )
         # If an outbound echo reached the webhook first, never violate unique external_id.
         duplicate = InstagramMessage.objects.select_for_update().filter(external_id=external_id).exclude(pk=message.pk).first()
         if duplicate:
@@ -1143,15 +1162,28 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
         message.save(
             update_fields=["external_id", "status", "sent_at", "error", "raw_payload", "updated_at"]
         )
+    from apps.ai_engagement.services.instagram_delivery_outcomes import safely_record_instagram_delivery
+    transaction.on_commit(lambda: safely_record_instagram_delivery(message.pk))
     return message
 
 
 def fail_message(message_id, error: Exception) -> None:
-    InstagramMessage.objects.filter(pk=message_id).update(
-        status=InstagramMessage.Status.FAILED,
-        error=str(error)[:2000],
-        updated_at=timezone.now(),
-    )
+    from apps.ai_engagement.services.instagram_delivery_outcomes import safely_record_instagram_delivery
+    with transaction.atomic():
+        message = InstagramMessage.objects.select_for_update().filter(pk=message_id).first()
+        if message is None or (message.external_id and message.status in {"sent", "read"}):
+            return
+        raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        code = getattr(error, "status_code", None)
+        explicit_rejection = isinstance(error, InstagramAPIError) and (
+            bool(getattr(error, "code", None)) or (isinstance(code, int) and 400 <= code < 500 and code != 408)
+        )
+        outcome = "delivery_unknown" if raw.get("shvya_send_started_at") and not explicit_rejection else "failed"
+        message.raw_payload = {**raw, "shvya_send_outcome": outcome}
+        message.status = InstagramMessage.Status.FAILED
+        message.error = str(error)[:2000]
+        message.save(update_fields=["status", "error", "raw_payload", "updated_at"])
+        transaction.on_commit(lambda: safely_record_instagram_delivery(message.pk))
 
 
 @transaction.atomic
@@ -1170,6 +1202,8 @@ def requeue_explicitly_rejected_message(message_id) -> bool:
         else {}
     )
     payload.pop("shvya_send_claimed_at", None)
+    payload.pop("shvya_send_started_at", None)
+    payload.pop("shvya_send_outcome", None)
     message.raw_payload = payload
     message.status = InstagramMessage.Status.QUEUED
     message.error = ""
@@ -1299,8 +1333,12 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
                     outbound = outbound.filter(sent_at__lte=watermark)
                 else:
                     continue
+                outcome_ids = list(outbound.filter(raw_payload__shvya_ai__file_document_id__isnull=False).values_list("pk", flat=True)[:100])
                 if outbound.update(status=InstagramMessage.Status.READ, is_read=True):
                     processed += 1
+                    from apps.ai_engagement.services.instagram_delivery_outcomes import safely_record_instagram_delivery
+                    for outcome_id in outcome_ids:
+                        transaction.on_commit(lambda outcome_id=outcome_id: safely_record_instagram_delivery(outcome_id))
                 continue
 
             external_id = str(message_payload.get("mid") or postback.get("mid") or "").strip()
@@ -1322,6 +1360,8 @@ def process_webhook_delivery(delivery: InstagramWebhookDelivery) -> int:
                 if existing and existing.status != InstagramMessage.Status.READ:
                     existing.status = InstagramMessage.Status.SENT
                     existing.save(update_fields=["status", "updated_at"])
+                    from apps.ai_engagement.services.instagram_delivery_outcomes import safely_record_instagram_delivery
+                    transaction.on_commit(lambda message_id=existing.pk: safely_record_instagram_delivery(message_id))
                     processed += 1
                 continue
             if direction == InstagramMessage.Direction.OUTBOUND and not existing:

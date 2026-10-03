@@ -121,6 +121,8 @@ class EngagementDecision:
     model: str
     backend_revision: str = ""
     flow_version: str = ""
+    policy_revision: str = ""
+    final_validation_failed: bool = False
     next_requirement_id: str | None = None
     reason_code: str = ""
     qualification_updates: list[dict[str, Any]] = field(default_factory=list)
@@ -138,6 +140,8 @@ class EngagementDecision:
             "reason_code": self.reason_code or self.reason,
             "backend_revision": self.backend_revision,
             "flow_version": self.flow_version,
+            "policy_revision": self.policy_revision,
+            "final_validation_failed": self.final_validation_failed,
             "next_requirement_id": self.next_requirement_id,
             "model": self.model,
             "qualification_updates": self.qualification_updates,
