@@ -208,7 +208,7 @@ class WhatsAppSummaryTriggerTests(TestCase):
                 from_number=self.account.display_phone_number,
                 to_number=phone,
                 body="Here are the plan details.",
-                status=WhatsAppMessage.Status.QUEUED,
+                status=WhatsAppMessage.Status.SENT,
                 raw_payload={
                     "shvya_ai": {
                         "source_inbound_message_id": str(inbound.pk),
