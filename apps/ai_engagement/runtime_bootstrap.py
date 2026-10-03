@@ -1,8 +1,9 @@
 """Central startup bootstrap for the shared SHVYA AI runtime.
 
-Keep installer order explicit here. Several policy/execution layers wrap the
-same canonical engagement path, so order is part of the current behavior.
-This module centralizes startup and prevents duplicate installation.
+Customer-facing channels now enter through TurnController -> shared LangGraph.
+The installers below remain compatibility/safety extensions around that single
+decision path while they are progressively folded into explicit graph nodes.
+No channel is allowed to create a parallel engagement engine.
 """
 
 
@@ -209,7 +210,7 @@ def install_ai_runtime() -> None:
     install_first_name_personalization_runtime()
 
     # Preserve unanswered customer requests without changing message/CRM
-    # ownership, transport recovery, or Hosted's fixed 45-second send gate.
+    # ownership, transport recovery, or Hosted's durable conversational send gate.
     from apps.ai_engagement.services.conversation_continuity_runtime import (
         install_conversation_continuity_runtime,
     )
