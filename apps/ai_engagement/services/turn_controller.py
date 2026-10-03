@@ -78,8 +78,9 @@ def build_business_plan(
         requirements,
         (qualification_state or {}).get("requirement_states", {}),
     )
-    needs_knowledge = bool(context.knowledge) or service._should_retrieve_knowledge(
-        context=context
+    retrieve_check = getattr(service, "_should_retrieve_knowledge", None)
+    needs_knowledge = bool(getattr(context, "knowledge", None)) or (
+        bool(retrieve_check(context=context)) if callable(retrieve_check) else False
     )
     qualifying = turn_policy.prompt_mode == QUALIFICATION_MODE
     priority = (
