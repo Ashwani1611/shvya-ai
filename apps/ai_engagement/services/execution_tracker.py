@@ -74,9 +74,11 @@ def publish_instagram_engagement(message_id):
     from apps.channels.instagram_tasks import generate_instagram_ai_engagement_task
 
     try:
+        from apps.ai_engagement.services.turn_burst import turn_burst_seconds
+
         return generate_instagram_ai_engagement_task.apply_async(
             args=[str(message_id)],
-            countdown=0,
+            countdown=turn_burst_seconds(),
         )
     except Exception:
         logger.exception(
@@ -144,7 +146,12 @@ def queue_api_engagement(*, lead_id, source_message_id=None):
     record_execution(message.pk, status='queued')
     # If publication fails, the durable queued marker survives for Beat recovery.
     try:
-        return generate_ai_engagement_response.apply_async(args=[str(lead_id)], countdown=0)
+        from apps.ai_engagement.services.turn_burst import turn_burst_seconds
+
+        return generate_ai_engagement_response.apply_async(
+            args=[str(lead_id)],
+            countdown=turn_burst_seconds(),
+        )
     except Exception:
         logger.exception('AI task publication failed; durable turn retained for recovery')
         return None
