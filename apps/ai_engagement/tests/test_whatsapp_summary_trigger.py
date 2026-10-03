@@ -4,8 +4,9 @@ from unittest.mock import patch
 
 from django.test import TestCase
 
+from apps.channels.instagram_models import InstagramAccount, InstagramConversation, InstagramMessage
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
-from apps.crm.models import Pipeline, Stage
+from apps.crm.models import Lead, Pipeline, Stage
 from apps.organizations.models import Organization
 from services.channels.whatsapp_service import handle_inbound_message
 from apps.ai_engagement.services.turn_burst import turn_burst_seconds
@@ -220,6 +221,72 @@ class WhatsAppSummaryTriggerTests(TestCase):
         mocked_cache_add.assert_called_once()
         mocked_enrichment.assert_called_once_with(
             lead_id=str(inbound.lead_id),
+            force=True,
+            include_qualification=False,
+        )
+
+    @patch(
+        "apps.ai_engagement.background_signals.cache.add",
+        return_value=True,
+    )
+    @patch(
+        "apps.ai_engagement.background_signals.queue_background_enrichment"
+    )
+    def test_instagram_ai_outbound_uses_same_post_turn_summary_contract(
+        self,
+        mocked_enrichment,
+        mocked_cache_add,
+    ):
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Instagram Summary Lead",
+            phone="",
+        )
+        account = InstagramAccount.objects.create(
+            organization=self.organization,
+            ig_user_id="ig-summary-account",
+            username="summary_business",
+            status=InstagramAccount.Status.CONNECTED,
+        )
+        conversation = InstagramConversation.objects.create(
+            organization=self.organization,
+            account=account,
+            lead=lead,
+            participant_id="ig-summary-lead",
+            participant_username="lead_user",
+        )
+        inbound = InstagramMessage.objects.create(
+            organization=self.organization,
+            account=account,
+            conversation=conversation,
+            external_id="ig-summary-inbound-1",
+            direction=InstagramMessage.Direction.INBOUND,
+            status=InstagramMessage.Status.RECEIVED,
+            body="What does your service include?",
+        )
+
+        with self.captureOnCommitCallbacks(execute=True):
+            InstagramMessage.objects.create(
+                organization=self.organization,
+                account=account,
+                conversation=conversation,
+                external_id="ig-summary-outbound-1",
+                direction=InstagramMessage.Direction.OUTBOUND,
+                status=InstagramMessage.Status.SENT,
+                body="Here are the service details.",
+                raw_payload={
+                    "shvya_ai": {
+                        "source_inbound_message_id": str(inbound.pk),
+                        "model": "test",
+                    }
+                },
+            )
+
+        mocked_cache_add.assert_called_once()
+        mocked_enrichment.assert_called_once_with(
+            lead_id=str(lead.pk),
             force=True,
             include_qualification=False,
         )
