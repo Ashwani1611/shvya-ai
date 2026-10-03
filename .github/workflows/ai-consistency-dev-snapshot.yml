@@ -1,0 +1,42 @@
+name: AI consistency development snapshot
+on:
+  push:
+    branches: [fix/ai-engagement-end-to-end-consistency]
+    paths: [.github/workflows/ai-consistency-dev-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Package tracked source for isolated development review
+        run: |
+          python - <<'PY'
+          import hashlib, json, pathlib, subprocess, zipfile
+          root = pathlib.Path.cwd()
+          names = subprocess.check_output(['git', 'ls-files', '-z']).decode().split('\0')
+          extensions = {'.py', '.html', '.js', '.json', '.toml', '.md', '.yml', '.yaml', '.txt', '.ini', '.cfg', '.css'}
+          manifest = {}
+          with zipfile.ZipFile('ai-consistency-source.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for name in names:
+                  path = root / name
+                  if not name or path.is_symlink() or path.suffix not in extensions or not path.is_file():
+                      continue
+                  if any(part in {'.git', '.env', 'node_modules', '.venv'} for part in path.relative_to(root).parts):
+                      continue
+                  if path.stat().st_size > 5_000_000:
+                      continue
+                  data = path.read_bytes()
+                  archive.writestr(name, data)
+                  manifest[name] = hashlib.sha256(data).hexdigest()
+              archive.writestr('development-source-manifest.json', json.dumps(manifest, sort_keys=True))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ai-consistency-source
+          path: ai-consistency-source.zip
+          retention-days: 1
