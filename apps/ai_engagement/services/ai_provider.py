@@ -197,6 +197,44 @@ class OpenAIProvider:
         ).strip()
         return configured or self.model
 
+    @staticmethod
+    def _model_override_unavailable(
+        error,
+        *,
+        metadata: dict[str, str] | None,
+        request_model: str,
+    ) -> bool:
+        """Return True only when an org-level model override itself is unusable."""
+
+        override = str((metadata or {}).get("model_override") or "").strip()
+        if not override or override != request_model:
+            return False
+        message = str(error or "").casefold()
+        if "model" not in message:
+            return False
+        return any(
+            marker in message
+            for marker in (
+                "does not exist",
+                "not found",
+                "model_not_found",
+                "do not have access",
+                "don't have access",
+                "not have access",
+                "unsupported model",
+                "is not supported",
+                "permission",
+            )
+        )
+
+    def _metadata_without_model_override(
+        self,
+        metadata: dict[str, str] | None,
+    ) -> dict[str, str]:
+        fallback = dict(metadata or {})
+        fallback.pop("model_override", None)
+        return fallback
+
     def _max_output_tokens(self, metadata: dict[str, str] | None) -> int:
         feature = self._feature(metadata)
         default = self.TASK_MAX_OUTPUT_TOKENS.get(feature, 600)
@@ -476,10 +514,60 @@ class OpenAIProvider:
         except PermissionDeniedError as exc:
             provider_error = "permission"
             self._release_credit_reservation(reservation)
+            if self._model_override_unavailable(
+                exc,
+                metadata=metadata,
+                request_model=request_model,
+            ):
+                fallback_metadata = self._metadata_without_model_override(metadata)
+                fallback_model = self._model_for_metadata(fallback_metadata)
+                if fallback_model != request_model:
+                    increment(
+                        "ai.model_override_fallbacks",
+                        labels={"provider": "openai", "reason": "permission"},
+                    )
+                    emit_event(
+                        "ai.model_override.fallback",
+                        provider="openai",
+                        organization_id=organization_id,
+                        requested_model=request_model,
+                        fallback_model=fallback_model,
+                    )
+                    return self.generate_text(
+                        instructions=instructions,
+                        input_text=input_text,
+                        metadata=fallback_metadata,
+                        response_schema=response_schema,
+                    )
             raise AIProviderPermanentError(f"OpenAI permission denied: {exc}") from exc
         except BadRequestError as exc:
             provider_error = "bad_request"
             self._release_credit_reservation(reservation)
+            if self._model_override_unavailable(
+                exc,
+                metadata=metadata,
+                request_model=request_model,
+            ):
+                fallback_metadata = self._metadata_without_model_override(metadata)
+                fallback_model = self._model_for_metadata(fallback_metadata)
+                if fallback_model != request_model:
+                    increment(
+                        "ai.model_override_fallbacks",
+                        labels={"provider": "openai", "reason": "bad_request"},
+                    )
+                    emit_event(
+                        "ai.model_override.fallback",
+                        provider="openai",
+                        organization_id=organization_id,
+                        requested_model=request_model,
+                        fallback_model=fallback_model,
+                    )
+                    return self.generate_text(
+                        instructions=instructions,
+                        input_text=input_text,
+                        metadata=fallback_metadata,
+                        response_schema=response_schema,
+                    )
             raise AIProviderPermanentError(
                 f"OpenAI rejected the request: {exc}"
             ) from exc
