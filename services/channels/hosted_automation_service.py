@@ -50,11 +50,9 @@ def hosted_job_allows_history(job) -> bool:
 
 
 def _ai_response_delay_seconds() -> int:
-    try:
-        value = int(os.getenv("AI_ENGAGEMENT_DEBOUNCE_SECONDS", "5"))
-    except (TypeError, ValueError):
-        value = 5
-    return min(max(value, 0), 5)
+    from apps.ai_engagement.services.turn_burst import turn_burst_seconds
+
+    return turn_burst_seconds()
 
 
 AI_RESPONSE_DELAY_SECONDS = _ai_response_delay_seconds()
