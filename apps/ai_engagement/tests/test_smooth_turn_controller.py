@@ -7,6 +7,8 @@ from django.test import SimpleTestCase
 
 from apps.ai_engagement.services.ai_provider import OpenAIProvider
 from apps.ai_engagement.services.engagement import EngagementService
+from apps.ai_engagement.services.intent_engine import IntentEngine
+from apps.ai_engagement.services.intent_types import Intent
 from apps.ai_engagement.services.response_fallbacks import fallback_message
 from apps.ai_engagement.services.turn_burst import turn_burst_seconds
 from apps.ai_engagement.services.turn_controller import (
@@ -81,6 +83,21 @@ class SmoothTurnControllerTests(SimpleTestCase):
 
     def test_engagement_uses_top_five_retrieval_results(self):
         self.assertEqual(EngagementService.KNOWLEDGE_LIMIT, 5)
+
+    def test_direct_information_question_skips_intent_model_call(self):
+        provider = SimpleNamespace(generate_text=lambda **kwargs: (_ for _ in ()).throw(
+            AssertionError("intent model should not run")
+        ))
+        organization = SimpleNamespace(id="org-1")
+        lead = SimpleNamespace(id="lead-1", organization_id="org-1")
+        decision = IntentEngine(provider=provider).classify(
+            organization=organization,
+            lead=lead,
+            message="Can your system integrate with our sales process?",
+        )
+        self.assertEqual(decision.primary_intent, Intent.PRODUCT_OR_SERVICE_QUESTION)
+        self.assertTrue(decision.requires_knowledge)
+        self.assertEqual(decision.model, "deterministic")
 
     def test_provider_honors_turn_model_override(self):
         provider = OpenAIProvider.__new__(OpenAIProvider)
