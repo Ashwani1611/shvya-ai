@@ -190,6 +190,8 @@ def _wrap_build_input(original_method):
                     "id": requirement_id,
                     "stable_id": str(requirement.get("stable_id") or "").strip() or None,
                     "hint": hint,
+                    "label": str(requirement.get("label") or requirement.get("question") or "").splitlines()[0].rstrip("?"),
+                    "options": deepcopy(requirement.get("options") or []),
                     "askable": False,
                 }
             )
