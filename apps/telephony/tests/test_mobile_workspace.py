@@ -42,7 +42,7 @@ class MobileWorkspaceTests(TestCase):
         self.assertEqual(response.context["stats"]["total"], 1)
         self.assertEqual(response.context["stats"]["total_ring"], 20)
         self.assertEqual(len(response.context["recent_calls"]), 1)
-        self.assertContains(response, "Rang: 20s")
+        self.assertContains(response, "Rang: 20 sec")
         self.assertContains(response, "shvya_premium_sidebar_mobile.css")
         self.assertNotContains(response, "Download for Android")
 
@@ -276,6 +276,8 @@ class MobileWorkspaceTests(TestCase):
         self.assertEqual(self.api().post(url, payload, format="json").status_code, 400)
 
     def test_agent_cannot_choose_unassigned_pipeline(self):
+        self.pipeline.owner = None
+        self.pipeline.save(update_fields=["owner"])
         url = "/api/v1/call-intelligence/leads/"
         response = self.api().get(url)
         self.assertEqual(response.status_code, 200)

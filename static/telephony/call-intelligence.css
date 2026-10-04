@@ -103,3 +103,19 @@
 .ci-filter-search{grid-column:span 2}
 .ci-filter-apply{grid-column:auto}
 @media(max-width:620px){.ci-filter-bar{grid-template-columns:minmax(0,1fr)}.ci-filter-search{grid-column:auto}.ci-page{margin-top:0}#app-sidebar + div > header > h1,.shvya-premium-welcome{display:none!important}}
+
+.ci-source-guide { margin: 16px 0; padding: 18px; font-size: .95rem; }
+.ci-source-guide summary { cursor: pointer; font-weight: 600; }
+.ci-source-guide p, .ci-source-guide li { line-height: 1.6; }
+.ci-agent-metrics { flex-wrap: wrap; }
+.ci-stat-grid strong { overflow-wrap: anywhere; font-size: clamp(1.2rem, 2vw, 1.8rem); }
+
+.ci-team-table-wrap { overflow-x: auto; max-width: 100%; }
+.ci-team-table { width: 100%; border-collapse: collapse; font-size: .875rem; }
+.ci-team-table th, .ci-team-table td { padding: 16px; text-align: left; border-bottom: 1px solid var(--ci-border); vertical-align: top; }
+.ci-team-table thead th { color: #555; font-weight: 600; background: #f5f7fa; }
+.ci-team-table small { display: block; margin-top: 5px; color: #62666d; font-size: .8125rem; min-width: 110px; }
+.ci-team-table th[scope="row"] { min-width: 140px; }
+.ci-intelligence-grid > .ci-panel { min-width: 0; }
+.ci-stat-grid small, .ci-stat-grid span, .ci-filter-bar input, .ci-filter-bar select { font-size: .875rem; }
+.ci-stat-grid span { color: #62666d; line-height: 1.4; }

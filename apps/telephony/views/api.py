@@ -3,7 +3,7 @@ from datetime import timedelta
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import transaction
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.text import slugify
@@ -34,9 +34,10 @@ from ..services import (
     ingest_call_event,
     register_device,
     normalize_call_phone,
-    resolve_default_pipeline_stage,
+    resolve_user_pipeline_stage,
 )
 from ..tasks import analyze_call_intelligence
+from ..analytics import call_metrics, team_metrics, format_duration
 
 
 def _user(request):
@@ -76,6 +77,9 @@ def serialize_call(call):
     return {
         "id": str(call.id),
         "source": call.source,
+        "talk_duration": format_duration(call.talk_duration_seconds),
+        "ring_duration": format_duration(call.ring_duration_seconds),
+        "total_duration": format_duration(call.total_duration_seconds),
         "source_call_id": call.source_call_id,
         "provider": call.provider,
         "provider_call_id": call.provider_call_id,
@@ -465,43 +469,20 @@ class CallDispositionCollectionView(APIView):
 class CallAnalyticsView(APIView):
     def get(self, request):
         user = _user(request)
-        since = timezone.now() - timedelta(days=30)
-        qs = _call_queryset(user).filter(ended_at__gte=since)
-        stats = qs.aggregate(
-            total=Count("id"),
-            answered=Count("id", filter=Q(status=CallRecord.Status.ANSWERED)),
-            missed=Count("id", filter=Q(status=CallRecord.Status.MISSED)),
-            average_talk=Avg("talk_duration_seconds"),
-            high_intent=Count(
-                "id",
-                filter=Q(intelligence__intent=CallIntelligenceResult.Intent.HIGH),
-            ),
-        )
-        agents = (
-            qs.exclude(user_id__isnull=True)
-            .values("user_id", "user__name", "user__email")
-            .annotate(
-                calls=Count("id"),
-                answered=Count("id", filter=Q(status=CallRecord.Status.ANSWERED)),
-                average_talk=Avg("talk_duration_seconds"),
-                high_intent=Count(
-                    "id",
-                    filter=Q(intelligence__intent=CallIntelligenceResult.Intent.HIGH),
-                ),
-            )
-            .order_by("-calls", "user__name")
-        )
-        return Response({
-            "window_days": 30,
-            "stats": {
-                "total": stats["total"] or 0,
-                "answered": stats["answered"] or 0,
-                "missed": stats["missed"] or 0,
-                "average_talk": int(stats["average_talk"] or 0),
-                "high_intent": stats["high_intent"] or 0,
-            },
-            "agents": list(agents),
-        })
+        from .dashboard import _filtered_calls
+        # Accept the existing mobile ID parameter names as well as web filters.
+        params = request.GET.copy()
+        for mobile, web in (("pipeline_id", "pipeline"), ("agent_id", "agent")):
+            if params.get(mobile):
+                params[web] = params[mobile]
+        request.GET = params
+        qs = _filtered_calls(request, user)
+        if not params.get("date_from") and not params.get("date_to"):
+            qs = qs.filter(ended_at__gte=timezone.now() - timedelta(days=30))
+        if params.get("mine") == "1":
+            qs = qs.filter(user=user)
+        stats = call_metrics(qs)
+        return Response({"window_days": None if params.get("date_from") or params.get("date_to") else 30, "stats": stats, "agents": team_metrics(qs)})
 
 
 class CallSettingsView(APIView):
@@ -623,15 +604,22 @@ class MobileReminderActionView(APIView):
         return Response({"ok": True})
 
 
+def get_mobile_pipelines(user):
+    owned = get_user_pipelines(user).filter(owner=user)
+    return owned if owned.exists() else get_user_pipelines(user)
+
+
 class MobileLeadCollectionView(APIView):
     def get(self, request):
         user = _user(request)
         pipelines = list(
-            get_user_pipelines(user)
+            get_mobile_pipelines(user)
             .filter(organization=user.organization)
             .prefetch_related("stages")
         )
-        selected = next((p for p in pipelines if p.name.casefold() == "leads"), None)
+        selected = next((p for p in pipelines if p.owner_id == user.id), None)
+        if selected is None:
+            selected = next((p for p in pipelines if p.name.casefold() == "leads"), None)
         if selected is None and pipelines:
             selected = pipelines[0]
         definitions = AttributeDefinition.objects.filter(
@@ -677,7 +665,7 @@ class MobileLeadCollectionView(APIView):
             return Response({"detail": "Choose a pipeline and stage."}, status=400)
         try:
             if pipeline_id:
-                pipeline = get_user_pipelines(user).filter(
+                pipeline = get_mobile_pipelines(user).filter(
                     organization=user.organization, pk=pipeline_id
                 ).first()
                 if pipeline is None:
@@ -690,7 +678,7 @@ class MobileLeadCollectionView(APIView):
             else:
                 # Existing 1.1 clients only send name and phone.
                 settings_obj = get_call_settings(user.organization)
-                pipeline, stage = resolve_default_pipeline_stage(settings_obj)
+                pipeline, stage = resolve_user_pipeline_stage(user, settings_obj)
 
             incoming_attributes = request.data.get("attributes", {})
             if not isinstance(incoming_attributes, dict):

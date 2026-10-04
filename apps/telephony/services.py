@@ -1,6 +1,6 @@
 import re
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
@@ -35,7 +35,9 @@ DEFAULT_DISPOSITIONS = (
     ("switched_off", "Switched Off", CallDisposition.Category.NOT_CONNECTED),
     ("rejected", "Rejected", CallDisposition.Category.NOT_CONNECTED),
     ("invalid_number", "Invalid Number", CallDisposition.Category.NOT_CONNECTED),
-    ("call_back_later", "Call Back Later", CallDisposition.Category.NOT_CONNECTED),
+    ("call_back_later", "Callback Requested", CallDisposition.Category.CONNECTED),
+    ("information_sent", "Information Sent", CallDisposition.Category.CONNECTED),
+    ("do_not_call", "Do Not Call", CallDisposition.Category.CONNECTED),
 )
 
 
@@ -64,22 +66,21 @@ def get_call_settings(organization):
 
 
 def get_call_dispositions(organization):
-    if not CallDisposition.objects.filter(organization=organization).exists():
-        CallDisposition.objects.bulk_create(
-            [
-                CallDisposition(
-                    organization=organization,
-                    code=code,
-                    name=name,
-                    category=category,
-                    position=position,
-                )
-                for position, (code, name, category) in enumerate(
-                    DEFAULT_DISPOSITIONS, start=1
-                )
-            ],
-            ignore_conflicts=True,
-        )
+    CallDisposition.objects.bulk_create(
+        [
+            CallDisposition(
+                organization=organization,
+                code=code,
+                name=name,
+                category=category,
+                position=position,
+            )
+            for position, (code, name, category) in enumerate(
+                DEFAULT_DISPOSITIONS, start=1
+            )
+        ],
+        ignore_conflicts=True,
+    )
     return CallDisposition.objects.filter(
         organization=organization,
         is_active=True,
@@ -131,6 +132,27 @@ def normalize_call_phone(raw_phone, *, pipeline=None):
     else:
         candidate = f"+{digits}"
     return normalize_phone(candidate)
+
+
+def resolve_user_pipeline_stage(user, settings_obj):
+    """Mobile creation belongs to the authenticated employee, never a peer."""
+    from apps.accounts.models import User
+
+    pipeline = Pipeline.objects.filter(
+        organization=user.organization, owner=user, is_active=True,
+    ).order_by("created_at", "id").first()
+    if pipeline is None:
+        if user.role == User.Role.AGENT:
+            raise ValidationError("Ask your administrator to assign an active pipeline before creating leads.")
+        return resolve_default_pipeline_stage(settings_obj)
+    stage = settings_obj.default_stage
+    if stage is None or stage.pipeline_id != pipeline.id or not stage.is_active:
+        stage = (pipeline.stages.filter(is_active=True, name__iexact="New Lead").first()
+                 or pipeline.stages.filter(is_active=True, name__iexact="New Leads").first()
+                 or pipeline.stages.filter(is_active=True).order_by("display_order", "name").first())
+    if stage is None:
+        raise ValidationError("The employee pipeline needs an active stage.")
+    return pipeline, stage
 
 
 def resolve_default_pipeline_stage(settings_obj):
@@ -309,9 +331,15 @@ def _ingest_call_event_atomic(*, user, payload):
         )
 
     settings_obj = get_call_settings(user.organization)
+    normalization_pipeline = settings_obj.default_pipeline
+    if source == CallRecord.Source.ANDROID_SIM:
+        normalization_pipeline = (
+            Pipeline.objects.filter(organization=user.organization, owner=user, is_active=True)
+            .order_by("created_at", "id").first() or normalization_pipeline
+        )
     phone = normalize_call_phone(
         payload.get("phone_number") or payload.get("raw_phone_number"),
-        pipeline=settings_obj.default_pipeline,
+        pipeline=normalization_pipeline,
     )
     source_call_id = _clean_text(payload.get("source_call_id"))
     if not source_call_id:
@@ -414,7 +442,9 @@ def _ingest_call_event_atomic(*, user, payload):
     lead_created = False
     terminal = event_type in TERMINAL_EVENTS
     if lead is None and terminal and should_auto_create(settings_obj, direction, call_status):
-        pipeline, stage = resolve_default_pipeline_stage(settings_obj)
+        pipeline, stage = (resolve_user_pipeline_stage(user, settings_obj)
+                           if source == CallRecord.Source.ANDROID_SIM
+                           else resolve_default_pipeline_stage(settings_obj))
         lead = create_lead(
             organization=user.organization,
             pipeline=pipeline,
@@ -476,3 +506,27 @@ def _ingest_call_event_atomic(*, user, payload):
         )
         device.save(update_fields=["last_seen_at", "app_version", "updated_at"])
     return {"call": record, "event": event, "event_created": True, "lead_created": lead_created}
+
+
+def capture_manual_crm_call(call):
+    """Mirror a CRM manual call once, retaining its original lead and employee."""
+    return CallRecord.objects.get_or_create(
+        crm_call=call,
+        defaults={
+            "organization": call.lead.organization,
+            "lead": call.lead,
+            "user": call.user,
+            "source": CallRecord.Source.MANUAL,
+            "source_call_id": f"crm-{call.id}",
+            "phone_number": call.lead.phone,
+            "contact_name": call.lead.name,
+            "direction": CallRecord.Direction.OUTGOING,
+            "status": {"completed": "answered", "busy": "busy"}.get(call.status, "no_answer"),
+            "call_name": call.call_name,
+            "talk_duration_seconds": call.duration_seconds or 0,
+            "total_duration_seconds": call.duration_seconds or 0,
+            "started_at": call.called_at,
+            "ended_at": call.called_at + timedelta(seconds=call.duration_seconds or 0),
+            "notes": call.notes,
+        },
+    )[0]

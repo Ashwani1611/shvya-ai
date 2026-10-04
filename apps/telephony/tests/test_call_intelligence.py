@@ -41,8 +41,9 @@ class CallIntelligenceTests(TestCase):
             organization=self.org,
             name="Leads",
         )
+        self.pipeline.owner = self.user
         self.pipeline.country_code = "+91"
-        self.pipeline.save(update_fields=["country_code", "updated_at"])
+        self.pipeline.save(update_fields=["owner", "country_code", "updated_at"])
         self.stage = self.pipeline.stages.filter(is_active=True).order_by(
             "display_order", "name"
         ).first()
