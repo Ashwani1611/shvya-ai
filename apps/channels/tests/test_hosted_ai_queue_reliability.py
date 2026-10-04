@@ -445,7 +445,7 @@ class HostedQueueSourceOfTruthTests(TestCase):
         self.assertEqual([row["id"] for row in payload["items"]], [str(welcome.pk), str(reply.pk)])
         self.assertEqual(payload["items"][0]["message_type"], "Welcome message")
         self.assertEqual(payload["pending_ai_count"], 2)
-        self.assertEqual(payload["ai_min_send_gap_seconds"], 5)
+        self.assertEqual(payload["ai_min_send_gap_seconds"], 45)
 
     def test_queue_stale_processing_lease_is_reported_as_recovering(self):
         job = self._ai_job(status=HostedAutomationJob.Status.PROCESSING, started_at=timezone.now())
