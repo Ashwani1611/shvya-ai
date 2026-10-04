@@ -361,11 +361,13 @@ class Phase56AuditFixTests(TestCase):
             with patch(
                 "apps.ai_engagement.graph.evidence.OpenAIProvider"
             ) as provider_cls:
-                provider_cls.return_value.generate_text.return_value = SimpleNamespace(
-                    text='{"approved": false, "reason": "unsupported_price"}'
-                )
+                provider_cls.return_value.generate_text.side_effect = [
+                    SimpleNamespace(text='{"approved": false, "reason": "unsupported_claim"}'),
+                    SimpleNamespace(text='{"message":"Our price is ₹1999/month."}'),
+                    SimpleNamespace(text='{"approved": false, "reason": "unsupported_claim"}'),
+                ]
                 result = check_grounding(state)
-            provider_cls.assert_called_once()
+            self.assertEqual(provider_cls.return_value.generate_text.call_count, 3)
             self.assertFalse(result["grounding_approved"])
             self.assertEqual(result["decision"].reason_code, "UNKNOWN_INFORMATION")
             self.assertNotIn("₹1999", result["decision"].message)

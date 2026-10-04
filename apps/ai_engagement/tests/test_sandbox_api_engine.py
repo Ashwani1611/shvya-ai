@@ -79,7 +79,7 @@ class SandboxAPIEngineTests(TestCase):
         phase = kwargs.get("metadata", {}).get("phase")
         if phase == "grounding":
             self.grounding_messages.append(payload)
-            return AITextResult('{"approved":true,"reason":"supported by fixture"}', "test-transport")
+            return AITextResult('{"approved":true,"reason":"approved"}', "test-transport")
         if phase == "intent_classification":
             return AITextResult(json.dumps({
                 "primary_intent": "UNKNOWN", "secondary_intents": [],

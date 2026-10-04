@@ -112,6 +112,9 @@ Important fields:
   current_requirement after a valid answer to the current requirement.
 - capture_only_requirements: unresolved future requirements that may accept
   explicit volunteered information but MUST NOT be presented as questions.
+- unanswered_requirements_for_evidence: every unresolved authored information
+  goal eligible for explicit capture, including the current and following goals.
+  This list authorizes evidence-backed answer proposals, not additional questions.
 - answered_requirement_ids / answers: already completed backend state.
 - current_requirement_was_asked: whether the active question was actually sent.
 - latest_message_already_processed: whether this inbound message has already
@@ -146,11 +149,16 @@ PROCESSING THE LATEST INBOUND MESSAGE
   before asking it, when the statement unambiguously supplies that information.
   Resolve short option letters, numbers and Yes/No only when
   current_requirement_was_asked is true. Use exact inbound evidence.
-- The same inbound message may also explicitly volunteer information for one or
-  more supplied capture_only_requirements. Such information may be captured only
-  when the natural-language evidence is unambiguous for that requirement. Never
-  ask a capture-only requirement and never bind A/B/C/D, Yes/No, or another
-  ambiguous short reply to a capture-only requirement.
+- During draft understanding, inspect every supplied
+  unanswered_requirements_for_evidence and emit qualification_updates for ALL
+  information unambiguously volunteered in the current inbound message, even on
+  a first turn before any qualification question was asked. Do not omit supported
+  answers because the customer also requests a call, a human, information or a
+  file. Use exact evidence for each answer and the configured option meaning.
+- Capture of supplied capture_only_requirements follows the same rule. Never
+  present their questions or bind A/B/C/D, isolated Yes/No, or another ambiguous
+  short reply to an unasked requirement. A clearly stated current-status sentence
+  is explicit evidence; an isolated Yes/No is not.
 - If the latest message does not answer current_requirement, do not mark it
   answered just because a human replied.
 - "yes"/"no" is an answer only when current_requirement is a yes/no or boolean
@@ -162,7 +170,8 @@ PROCESSING THE LATEST INBOUND MESSAGE
   without resetting qualification. Do not repeat the active qualification
   question in the same response merely because it remains pending. Set
   next_requirement_id to null for that turn; the backend keeps the pending
-  requirement for a later turn.
+  requirement for a later turn. This controls asking questions, not capturing
+  other explicit qualification facts supplied in the same message.
 - If the latest inbound answers current_requirement and
   next_requirement_if_current_answered is supplied, follow conversation_policy.
   When policy says ASK_QUALIFICATION or ANSWER_THEN_QUALIFY, acknowledge naturally

@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import unittest
 
 from apps.ai_engagement.services.playground_finalization import (
+    enforce_preview_action_honesty,
     language_only_decision,
     needs_final_composition,
     preserve_preview_state,
@@ -176,6 +177,91 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
                 self.visitor.attributes["industry"] = "Temporary"
             self.assertEqual(self.visitor.attributes["industry"], "Intermediate")
         self.assertEqual(self.visitor.attributes["industry"], "Retail")
+
+    def honest(self, message, *, files=None, events=None, languages=(), request="Please call me tomorrow and share the brochure."):
+        return enforce_preview_action_honesty(
+            decision=Decision(message=message), files=files or [], events=events or [],
+            requested_text=request, allowed_languages=languages,
+        ).message
+
+    def test_slow_turn_raw_future_assurance_becomes_preview_only(self):
+        result = self.honest(
+            "Thank you for sharing your details. I will now proceed to set up the call for tomorrow "
+            "at 3 PM India time and share the product brochure with you.",
+            files=[{"id": 18}], events=[{"type": "reminder", "status": "preview"}],
+        )
+        self.assertIn("Thank you for sharing your details.", result)
+        self.assertNotIn("I will", result)
+        self.assertIn("document is available in this preview", result)
+        self.assertIn("no live call is confirmed", result)
+
+    def test_factual_possession_and_decimal_pricing_survive_action_guard(self):
+        facts = "We have a brochure describing the ₹2,999.50 monthly plan. I am a product assistant."
+        result = self.honest(facts, files=[{"id": 18}])
+        self.assertIn(facts, result)
+
+    def test_supported_price_clause_is_retained_when_promise_is_in_same_sentence(self):
+        result = self.honest("The plan costs ₹2,999.50 monthly, and I will share the brochure.", files=[{"id": 18}])
+        self.assertIn("The plan costs ₹2,999.50 monthly", result)
+        self.assertNotIn("I will share", result)
+
+    def test_hinglish_reply_gets_hinglish_preview_wording(self):
+        result = self.honest("Plan ₹2,999 monthly hai. Main brochure bhejunga.", files=[{"id": 18}], languages=["Hinglish", "English"])
+        self.assertIn("Plan ₹2,999 monthly hai.", result)
+        self.assertNotIn("Main brochure bhejunga", result)
+        self.assertIn("preview mein available hai", result)
+
+    def test_configured_hindi_preview_does_not_add_english(self):
+        result = self.honest("I will send the brochure.", files=[{"id": 18}], languages=["Hindi"])
+        self.assertIn("दस्तावेज़", result)
+        self.assertNotIn("The document", result)
+
+    def test_other_configured_languages_do_not_get_english_preview_paragraph(self):
+        result = self.honest("El plan cuesta 20 euros.", files=[{"id": 18}], languages=["Spanish"])
+        self.assertEqual(result, "El plan cuesta 20 euros.")
+
+    def test_no_file_result_cannot_claim_file_preview(self):
+        result = self.honest("I'll send the brochure now.")
+        self.assertNotIn("I'll send", result)
+        self.assertIn("No document was shared", result)
+        self.assertNotIn("document is available", result)
+
+    def test_call_only_does_not_invent_a_file_outcome(self):
+        result = self.honest("We will call you tomorrow.", events=[{"type": "reminder", "status": "preview"}], request="Please call me tomorrow.")
+        self.assertIn("reminder is shown", result)
+        self.assertNotIn("document", result)
+
+    def test_truthful_preview_reply_is_not_repeated(self):
+        text = "The document is available in this preview. The reminder is simulated in this preview."
+        self.assertEqual(self.honest(text, files=[{"id": 18}], events=[{"type": "reminder", "status": "preview"}]), text)
+
+    def test_prior_or_failed_effect_cannot_establish_a_new_preview(self):
+        result = self.honest("I have scheduled the call.", events=[{"type": "reminder", "status": "failed"}])
+        self.assertNotIn("scheduled the call", result)
+        self.assertNotIn("reminder is shown", result)
+
+    def test_created_product_and_shared_pricing_are_facts_not_action_receipts(self):
+        facts = "We have created a booking platform for small businesses. We have shared pricing in our brochure. We share the brochure with prospective customers."
+        self.assertEqual(self.honest(facts), facts)
+
+    def test_unrelated_negation_does_not_mask_a_call_assurance(self):
+        result = self.honest("I will schedule your call, not send the brochure.", events=[{"type": "reminder", "status": "preview"}])
+        self.assertNotIn("I will schedule", result)
+        self.assertIn("no live call is confirmed", result)
+
+    def test_preview_disclaimer_does_not_mask_a_file_assurance(self):
+        result = self.honest("I will send the brochure; this is a Sandbox preview.")
+        self.assertNotIn("I will send", result)
+        self.assertIn("No document was shared", result)
+
+    def test_negative_action_clause_is_retained(self):
+        text = "I will not send the brochure. No call is confirmed."
+        self.assertEqual(self.honest(text), text)
+
+    def test_typed_human_handoff_promise_is_not_live_confirmation(self):
+        result = self.honest("I will connect you with our team.", request="Please connect me to a human.")
+        self.assertNotIn("I will connect", result)
+        self.assertIn("no live call or handoff is confirmed", result)
 
 
 if __name__ == "__main__":

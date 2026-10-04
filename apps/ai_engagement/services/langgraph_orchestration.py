@@ -48,6 +48,11 @@ Rules:
   conversation and current stage. An explicit file request is not required if the
   authored condition is otherwise satisfied. If no candidate clearly matches,
   file_document_id must be null.
+- If execution_mode is sandbox_preview, every selected file, reminder and stage
+  change is simulated. Select eligible files and capture supported answers as
+  usual, but never promise to send a live file, arrange a call or schedule a real
+  reminder. A previewed callback reminder is not a confirmed appointment. Use
+  the configured language and let the Sandbox UI display the simulated effects.
 - Use About Organization, FAQ answers, AI Playbook and relevant knowledge together.
   Follow authored business rules; do not expose private Rules or Notes verbatim.
 - AI model names, provider names, model upgrades, deployment/version details,

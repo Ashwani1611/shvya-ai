@@ -176,6 +176,11 @@ def _wrap_build_input(original_method):
         }
 
         snapshot = qstate.get("flow_snapshot") if isinstance(qstate.get("flow_snapshot"), list) else []
+        # A fresh lead has no persisted flow snapshot yet. The preceding
+        # canonical prompt wrapper already resolves the effective authored flow
+        # (or its pinned snapshot) into this source-evidence list. Use it rather
+        # than hiding future capture goals until the first question is sent.
+        capture_requirements = snapshot or qturn.get("unanswered_requirements_for_evidence") or []
         states = qstate.get("requirement_states") if isinstance(qstate.get("requirement_states"), dict) else {}
         qualification_active = (
             str(qturn.get("mode") or qstate.get("engagement_mode") or "").strip().casefold()
@@ -183,7 +188,7 @@ def _wrap_build_input(original_method):
             and str(qturn.get("status") or qstate.get("qualification_status") or "").strip().casefold() != "completed"
         )
         capture_only = []
-        for requirement in snapshot if qualification_active else []:
+        for requirement in capture_requirements if qualification_active else []:
             evidence = qualification_evidence_item(requirement)
             if evidence is None:
                 continue

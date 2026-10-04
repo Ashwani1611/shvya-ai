@@ -50,7 +50,7 @@ class EvidencePipelineTests(SimpleTestCase):
     def test_grounding_validates_non_org_fact_turns_too(self):
         state = self._state(reason_code="QUALIFICATION_NEXT")
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"supported"}'
+            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"approved"}'
             result = check_grounding(state)
         provider.return_value.generate_text.assert_called_once()
         self.assertTrue(result["grounding_approved"])
@@ -111,7 +111,7 @@ class EvidencePipelineTests(SimpleTestCase):
     def test_grounding_rejection_returns_safe_reply_instead_of_silence(self):
         state = self._state()
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-            provider.return_value.generate_text.return_value.text = '{"approved":false,"reason":"unsupported"}'
+            provider.return_value.generate_text.return_value.text = '{"approved":false,"reason":"unsupported_claim"}'
             result = check_grounding(state)
         self.assertFalse(result["grounding_approved"])
         self.assertEqual(result["decision"].reason_code, "UNKNOWN_INFORMATION")
@@ -156,7 +156,7 @@ class EvidencePipelineTests(SimpleTestCase):
         }
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
             provider.return_value.generate_text.return_value.text = (
-                '{"approved":false,"reason":"unsupported"}'
+                '{"approved":false,"reason":"unsupported_claim"}'
             )
             result = check_grounding(state)
 
@@ -210,7 +210,7 @@ class EvidencePipelineTests(SimpleTestCase):
         }
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
             provider.return_value.generate_text.return_value.text = (
-                '{"approved":false,"reason":"unsupported"}'
+                '{"approved":false,"reason":"unsupported_claim"}'
             )
             result = check_grounding(state)
 
@@ -231,7 +231,7 @@ class EvidencePipelineTests(SimpleTestCase):
     def test_grounding_approval_keeps_original_decision(self):
         state = self._state()
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"supported"}'
+            provider.return_value.generate_text.return_value.text = '{"approved":true,"reason":"approved"}'
             result = check_grounding(state)
         self.assertTrue(result["grounding_approved"])
         self.assertNotIn("decision", result)

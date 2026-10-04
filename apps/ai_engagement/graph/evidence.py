@@ -77,6 +77,8 @@ unsupported_claim, invalid_qualification, invalid_file, unperformed_action,
 policy_violation. Use language_mismatch, instruction_disclosure, or
 unanswered_question only when the selected actions, file, and qualification
 updates are otherwise supported. Reject unsupported facts before style issues.
+When approved is true, reason must be approved. When approved is false, reason
+must be one of the rejection codes. Never return a sentence or a new reason code.
 """.strip()
 
 
@@ -84,6 +86,10 @@ _REPAIRABLE_REASONS = {"language_mismatch", "instruction_disclosure", "unanswere
 _GROUNDING_REASONS = _REPAIRABLE_REASONS | {
     "approved", "unsupported_claim", "invalid_qualification", "invalid_file",
     "unperformed_action", "policy_violation",
+}
+_VERDICT_CONTRACT_ERRORS = {
+    "invalid_verdict", "invalid_verdict_shape", "invalid_verdict_approval",
+    "invalid_verdict_reason", "inconsistent_verdict",
 }
 _REPAIR_INSTRUCTIONS = """
 Correct only the customer-facing reply using About/company description, authored
@@ -108,18 +114,26 @@ def _verdict(result):
         value = json.loads(result.text)
     except (TypeError, ValueError):
         return False, "invalid_verdict"
-    if not isinstance(value, dict):
-        return False, "invalid_verdict"
-    approved = value.get("approved") is True
-    reason = str(value.get("reason") or "")
-    return approved, reason if reason in _GROUNDING_REASONS else "unspecified_rejection"
+    if not isinstance(value, dict) or set(value) != {"approved", "reason"}:
+        return False, "invalid_verdict_shape"
+    if not isinstance(value["approved"], bool):
+        return False, "invalid_verdict_approval"
+    approved, reason = value["approved"], value["reason"]
+    if not isinstance(reason, str) or reason not in _GROUNDING_REASONS:
+        return False, "invalid_verdict_reason"
+    if approved != (reason == "approved"):
+        return False, "inconsistent_verdict"
+    return approved, reason
 
 
-def _record_verdict(*, approved, reason, repair_attempted=False):
+def _record_verdict(*, approved, reason, repair_attempted=False, contract_error=""):
     # Record bounded codes only; a verifier's free text can contain private data.
     from apps.ai_engagement.services.trace_service import record
-    record("grounding", {"approved": approved, "validation_reason": reason,
-                         "repair_attempted": repair_attempted})
+    fields = {"approved": approved, "validation_reason": reason,
+              "repair_attempted": repair_attempted}
+    if contract_error in _VERDICT_CONTRACT_ERRORS:
+        fields.update(contract_retry_attempted=True, contract_error=contract_error)
+    record("grounding", fields)
 
 
 SAFE_UNKNOWN_REPLY = (
@@ -302,18 +316,36 @@ def check_grounding(state):
         "phase": "grounding",
     }
 
+    contract_error = ""
+
     def validate(reply_payload):
-        result = provider.generate_text(
-            instructions=GROUNDING_INSTRUCTIONS,
-            input_text=json.dumps(reply_payload, ensure_ascii=False),
-            metadata=metadata,
-            response_schema={"name": "engagement_grounding", "strict": True, "schema": {
-                "type": "object", "properties": {
-                    "approved": {"type": "boolean"}, "reason": {"type": "string"}},
-                "required": ["approved", "reason"], "additionalProperties": False,
-            }},
-        )
-        return _verdict(result)
+        nonlocal contract_error
+
+        def request_verdict(active_provider, phase):
+            result = active_provider.generate_text(
+                instructions=GROUNDING_INSTRUCTIONS,
+                input_text=json.dumps(reply_payload, ensure_ascii=False),
+                metadata={**metadata, "phase": phase},
+                response_schema={"name": "engagement_grounding", "strict": True, "schema": {
+                    "type": "object", "properties": {
+                        "approved": {"type": "boolean"},
+                        "reason": {"type": "string", "enum": sorted(_GROUNDING_REASONS)}},
+                    "required": ["approved", "reason"], "additionalProperties": False,
+                }},
+            )
+            return _verdict(result)
+
+        approved, reason = request_verdict(provider, "grounding")
+        if reason in _VERDICT_CONTRACT_ERRORS and not contract_error:
+            # Correct a malformed verifier contract, not the reply or its
+            # evidence. One retry for the whole turn, including repair rechecks,
+            # still requires an independent, consistent approval of that reply.
+            # Never feed a free-form reason back into a prompt or diagnostic.
+            contract_error = reason
+            approved, reason = request_verdict(
+                OpenAIProvider(timeout_seconds=20), "grounding_contract_retry",
+            )
+        return approved, reason
 
     try:
         provider = OpenAIProvider()
@@ -373,7 +405,8 @@ def check_grounding(state):
         except (AIProviderError, TypeError, ValueError):
             approved, reason = False, "repair_failed"
 
-    _record_verdict(approved=approved, reason=reason, repair_attempted=repair_attempted)
+    _record_verdict(approved=approved, reason=reason, repair_attempted=repair_attempted,
+                    contract_error=contract_error)
     if not approved:
         return {
             "decision": _safe_unknown_decision(

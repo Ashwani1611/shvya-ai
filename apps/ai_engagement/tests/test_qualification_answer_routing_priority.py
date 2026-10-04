@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
 from apps.ai_engagement.services.playbook import playbook_for_engagement
 
@@ -388,10 +389,7 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 "apps.ai_engagement.graph.evidence.OpenAIProvider", OpenAIProvider,
             ), patch.object(
                 OpenAIProvider, "generate_text",
-                return_value=AITextResult(
-                    text='{"approved":false,"reason":"unsupported_fact"}',
-                    model="test",
-                ),
+                return_value=AITextResult(text='{"approved":false,"reason":"unsupported_claim"}', model="test"),
             ) as grounding_provider:
                 grounded = evidence_module.check_grounding(state)
                 self.assertFalse(grounded["grounding_approved"])
@@ -399,6 +397,16 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 self.assertFalse(grounded.get("qualification_answer_authoritative"))
                 self.assertFalse(grounded.get("grounding_recovered"))
                 if api_key:
+                    # There is no authored fact from which to repair this
+                    # rejected price. A valid verdict needs no contract retry.
                     grounding_provider.assert_called_once()
+                    call = grounding_provider.call_args.kwargs
+                    payload = json.loads(call["input_text"])
+                    self.assertEqual(call["metadata"]["phase"], "grounding")
+                    self.assertEqual(payload["organization_facts"], "")
+                    self.assertEqual(payload["ai_playbook"], "")
+                    self.assertEqual(payload["knowledge"], [])
+                    self.assertEqual(payload["authored_faq_candidates"], [])
+                    self.assertFalse((payload["allowed_grounding"] or {}).get("evidence"))
                 else:
                     grounding_provider.assert_not_called()
