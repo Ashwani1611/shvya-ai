@@ -10,6 +10,9 @@ from apps.crm.models import Lead
 from apps.organizations.models import Organization
 from apps.sales.document_services import (
     SalesDeliveryError,
+    default_email_body,
+    default_email_subject,
+    default_whatsapp_body,
     delivery_drafts,
     merge_values,
     render_document_html,
@@ -86,9 +89,44 @@ class TemplateRenderingTests(SimpleTestCase):
             ):
                 send(document=self.doc, user=self.user, body="Hi {{unknown}}", **kwargs)
 
+    def test_default_messages_resolve_document_number_for_every_type(self):
+        for document_type in ("quotation", "agreement", "invoice"):
+            with self.subTest(document_type=document_type):
+                self.doc.document_type = document_type
+                self.doc.template = None
+                snapshot_document_presentation(self.doc)
+                drafts = delivery_drafts(self.doc, public_url="https://example.com/doc")
+                for key, default in (
+                    ("email_subject", default_email_subject),
+                    ("email_body", default_email_body),
+                    ("whatsapp_body", default_whatsapp_body),
+                ):
+                    self.assertIn("{{document.number}}", default(document_type))
+                    self.assertIn("QT-123", drafts[key])
+                    self.assertNotIn("{document.number}", drafts[key])
+
+    def test_saved_single_brace_templates_resolve_without_resnapshot(self):
+        self.doc.email_subject_snapshot = "Quotation {document.number}"
+        self.doc.email_body_snapshot = "Hi {{recipient.name}}, your quotation {document.number} is ready."
+        self.doc.whatsapp_body_snapshot = self.doc.email_body_snapshot
+        drafts = delivery_drafts(self.doc, public_url="https://example.com/doc")
+        self.assertEqual(drafts["email_subject"], "Quotation QT-123")
+        for key in ("email_body", "whatsapp_body"):
+            self.assertEqual(drafts[key], "Hi Alex <Morgan>, your quotation QT-123 is ready.")
+
+    def test_single_brace_fields_and_literal_blocks(self):
+        values = merge_values(self.doc)
+        source = '{ document.number } / {{document_number}} / {"count": 1} / { color: red; }'
+        self.assertEqual(
+            render_text_template(source, values, strict=True),
+            'QT-123 / QT-123 / {"count": 1} / { color: red; }',
+        )
+        with self.assertRaisesMessage(SalesDeliveryError, "document.missing"):
+            render_text_template("{document.missing}", values, strict=True)
+
     def test_user_edited_drafts_resolved_at_delivery_boundary(self):
         for send, kwargs in (
-            (deliver_email, {"subject": "{{document.number}} {{document.url}}"}),
+            (deliver_email, {"subject": "{document.number} {{document.url}}"}),
             (deliver_whatsapp, {}),
         ):
             with (
@@ -102,11 +140,11 @@ class TemplateRenderingTests(SimpleTestCase):
                     send(
                         document=self.doc,
                         user=self.user,
-                        body="Hello {{recipient.name}}",
+                        body="Hello {{recipient.name}}, document {document.number}",
                         base_url="https://example.com",
                         **kwargs,
                     )
-                self.assertEqual(row.call_args.kwargs["body"], "Hello Alex <Morgan>")
+                self.assertEqual(row.call_args.kwargs["body"], "Hello Alex <Morgan>, document QT-123")
                 if kwargs:
                     self.assertIn(
                         "QT-123 https://example.com/", row.call_args.kwargs["subject"]
