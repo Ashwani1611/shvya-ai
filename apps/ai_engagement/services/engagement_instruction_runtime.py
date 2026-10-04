@@ -361,11 +361,26 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     # Unsupported exceptions stay closed instead of being silently discarded.
     if re.search(r"\b(?:unless|except|only if)\b", condition_normalized):
         return False
+    # Unsupported/malformed Boolean syntax must fail closed. In particular,
+    # `and/or`, `(or ...)` and a leading/trailing operator previously matched
+    # the operator detector but not the whitespace splitter, recursively calling
+    # this function with the identical condition until the whole turn crashed.
+    if re.search(
+        r"[()]|\S\b(?:and|or)\b|\b(?:and|or)\b\S|"
+        r"^(?:and|or)\b|\b(?:and|or)$|\b(?:and|or)\s+(?:and|or)\b",
+        condition_normalized,
+    ):
+        return False
     if re.search(r"\bor\b", condition_normalized):
         alternatives = re.split(r",\s*|\s+or\s+", condition_normalized)
+        if len(alternatives) < 2 or any(not part.strip(" ,") for part in alternatives):
+            return False
         return any(_strong_evidence_match(latest_text, part.strip(" ,")) for part in alternatives if part.strip(" ,"))
     if re.search(r"\band\b", condition_normalized):
-        return all(_strong_evidence_match(latest_text, part) for part in re.split(r"\s+and\s+", condition_normalized))
+        conjuncts = re.split(r"\s+and\s+", condition_normalized)
+        if len(conjuncts) < 2 or any(not part.strip() for part in conjuncts):
+            return False
+        return all(_strong_evidence_match(latest_text, part) for part in conjuncts)
     if re.search(r"\d", condition_normalized):
         return condition_tokens.issubset(latest_tokens)
 

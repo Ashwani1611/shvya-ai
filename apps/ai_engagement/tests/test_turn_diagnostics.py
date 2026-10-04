@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from django.test import SimpleTestCase
 
 from apps.ai_engagement.services import trace_service
-from apps.ai_engagement.services.turn_diagnostics import provider_diagnostics, summary
+from apps.ai_engagement.services.turn_diagnostics import provider_diagnostics, record_failure, summary
 
 
 class TurnDiagnosticsTests(SimpleTestCase):
@@ -37,6 +37,16 @@ class TurnDiagnosticsTests(SimpleTestCase):
             return SimpleNamespace(model="gpt-test")
         generate(None)
         self.assertEqual(summary(), "")
+
+    def test_runtime_failure_includes_code_locations_without_exception_text(self):
+        try:
+            raise RecursionError("private customer content")
+        except RecursionError as exc:
+            record_failure(exc)
+        diagnostic = summary()
+        self.assertIn("application/test_turn_diagnostics.py:", diagnostic)
+        self.assertNotIn("private", diagnostic)
+        self.assertLessEqual(len(diagnostic), 1000)
 
     def test_nested_sandbox_scope_restores_previous_trace(self):
         from apps.ai_engagement.services.playground import PlaygroundError
