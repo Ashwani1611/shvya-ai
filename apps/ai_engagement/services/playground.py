@@ -507,6 +507,15 @@ class PlaygroundService:
             if self.engagement_service is not None:
                 service.context_builder = previous_builder
 
+        from apps.ai_engagement.services.turn_diagnostics import provider_quota_exhausted
+        if provider_quota_exhausted():
+            raise PlaygroundError(
+                "OpenAI rejected this test because the connected API account has exhausted its billing quota. "
+                "Your SHVYA AI coins are separate from OpenAI API credits. "
+                "Ask your platform administrator to replenish the connected OpenAI account or configure a funded API key, then retry. "
+                "No test reply or preview changes were saved."
+            )
+
         profile = compile_org_ai_profile_from_context(
             context_builder.organization_context()
         )
@@ -687,8 +696,7 @@ class PlaygroundService:
                     organization={**context.organization, "_file_candidates": candidates},
                     lead={**context.lead, "operational_state": {
                         **context.lead.get("operational_state", {}),
-                        "execution_mode": "sandbox_preview",
-            "resolved_actions": resolved,
+                        "execution_mode": "sandbox_preview", "resolved_actions": resolved,
                     }},
                 )
                 service.context_builder = context_builder

@@ -446,3 +446,23 @@ class SandboxAPIEngineTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("No test reply was saved", response.data["error"])
         self.assertIsNone(cache.get(key))
+
+    def test_quota_failure_cannot_be_saved_as_a_successful_authored_fallback(self):
+        from apps.ai_engagement.services import trace_service
+        from apps.ai_engagement.services.engagement import EngagementDecision
+        service = PlaygroundService()
+        key = service._session_cache_key(organization=self.org, session_id="quota-error")
+        def failed_generation(**kwargs):
+            trace_service.record("provider", billing_exhausted=True)
+            return EngagementDecision(should_engage=True, message="We automate customer conversations.",
+                file_document_id=None, crm_actions=[], reason="ANSWER_ORG_QUESTION", model="deterministic-fallback")
+        request = self.factory.post("/api/v1/ai-engagement/playground/",
+            {"session_id": "quota-error", "message": "What do you do?", "stage_id": str(self.qualified.pk)}, format="json")
+        force_authenticate(request, user=SimpleNamespace(is_authenticated=True, organization=self.org))
+        with patch("apps.ai_engagement.services.engagement.EngagementService.engage", side_effect=failed_generation), \
+             patch("apps.ai_engagement.services.playground_effects.preview_effects") as effects:
+            response = PlaygroundAPIView.as_view()(request)
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("exhausted its billing quota", response.data["error"])
+        self.assertIsNone(cache.get(key))
+        effects.assert_not_called()

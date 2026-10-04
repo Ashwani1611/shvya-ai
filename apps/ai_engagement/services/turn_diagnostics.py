@@ -12,6 +12,9 @@ def provider_diagnostics(method):
     @wraps(method)
     def wrapped(self, *args, **kwargs):
         from apps.ai_engagement.services import trace_service
+        if provider_quota_exhausted():
+            from apps.ai_engagement.services.ai_provider import AIProviderQuotaError
+            raise AIProviderQuotaError("OpenAI API billing quota is exhausted.")
         metadata = kwargs.get("metadata") or {}
         entry = {"phase": identifier(metadata.get("phase")) or "generation"}
         try:
@@ -20,6 +23,9 @@ def provider_diagnostics(method):
             return result
         except Exception as exc:
             entry.update(status="failed", error_type=type(exc).__name__)
+            from apps.ai_engagement.services.ai_provider import AIProviderQuotaError
+            if isinstance(exc, AIProviderQuotaError):
+                trace_service.record("provider", billing_exhausted=True)
             cause = exc.__cause__ or exc
             body = getattr(cause, "body", None)
             if isinstance(body, dict):
@@ -46,6 +52,12 @@ def record_failure(exc):
         "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else "",
         "site": (frame.filename.rsplit("/", 1)[-1] + ":" + str(frame.lineno)) if frame else "",
     })
+
+
+def provider_quota_exhausted():
+    from apps.ai_engagement.services import trace_service
+    trace = trace_service.current()
+    return bool(trace and (trace.data.get("provider") or {}).get("billing_exhausted"))
 
 
 def summary():
