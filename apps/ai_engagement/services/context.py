@@ -304,6 +304,7 @@ class AIContextBuilder:
                     organization.id
                 ),
                 "name": organization.name,
+                "timezone": organization.timezone,
                 "ai_enabled": False,
                 "about": "",
                 "bot_languages": "",
@@ -320,6 +321,7 @@ class AIContextBuilder:
                 organization.id
             ),
             "name": organization.name,
+            "timezone": organization.timezone,
             "ai_enabled": org_info.ai_enabled,
             "about": org_info.about,
             "bot_languages": org_info.bot_languages,

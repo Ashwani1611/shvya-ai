@@ -137,7 +137,7 @@ def _configured_completion_reminders(config: dict[str, Any]) -> list[dict[str, A
         if not _REMINDER_CREATE_RE.search(text):
             continue
 
-        due_at = parse_grounded_due_at(text)
+        due_at = parse_grounded_due_at(text, timezone_name=config.get("timezone") or None)
         if due_at is None:
             continue
 

@@ -43,13 +43,19 @@ class InstagramAIContextBuilder(AIContextBuilder):
     def __init__(self, *, conversation_id):
         self.conversation_id = conversation_id
 
-    def _get_messages(self, *, organization, lead, limit):
-        messages = list(
-            InstagramMessage.objects.filter(
-                organization=organization,
-                conversation_id=self.conversation_id,
-                conversation__lead=lead,
+    def _get_messages(self, *, organization, lead, limit, through_message=None):
+        query = InstagramMessage.objects.filter(
+            organization=organization,
+            conversation_id=self.conversation_id,
+            conversation__lead=lead,
+        )
+        if through_message is not None:
+            query = query.filter(account_id=through_message.account_id).filter(
+                Q(created_at__lt=through_message.created_at)
+                | Q(created_at=through_message.created_at, pk__lte=through_message.pk)
             )
+        messages = list(
+            query
             .exclude(
                 Q(direction=InstagramMessage.Direction.OUTBOUND)
                 & ~Q(
@@ -250,12 +256,21 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
     from apps.ai_engagement.services.qualification_state import (
         normalize_stage_name,
         persist_answer_updates,
+        project_answer_updates,
         state_for_lead,
     )
     from apps.ai_engagement.services.transactional_turn_runtime import (
         _qualified_action,
         _requirements_for_turn,
         _split_actions,
+    )
+    from apps.ai_engagement.services.qualification_execution.actions import (
+        answers_captured_for_source,
+        rebuild_mapped_attribute_actions,
+    )
+    from apps.ai_engagement.services.qualification_execution.config import _config
+    from apps.ai_engagement.services.qualification_execution.completion import (
+        _configured_completion_reminders,
     )
 
     if _source_state_resolved(source):
@@ -267,8 +282,44 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
         organization=organization,
         lead=lead,
     )
+    before = state_for_lead(lead, requirements=requirements)
+    updates_by_id = {
+        str(item["requirement_id"]): item
+        for item in answers_captured_for_source(state=before, source=source)
+    }
+    proposed_updates = getattr(decision, "qualification_updates", []) or []
+    try:
+        project_answer_updates(
+            state=before, requirements=requirements, updates=proposed_updates,
+            messages=[{"id": str(source.pk), "body": source.body, "direction": "inbound"}],
+        )
+    except ValueError as exc:
+        raise CRMActionExecutionError("Invalid source-bound qualification updates.") from exc
+    for item in proposed_updates:
+        updates_by_id[str(item["requirement_id"])] = item
+    updates = list(updates_by_id.values())
+    config = _config(organization=organization, requirements=requirements)
+    actions = rebuild_mapped_attribute_actions(
+        actions=getattr(decision, "crm_actions", []) or [], updates=updates,
+        requirements=requirements, config=config,
+    )
     attribute_actions, proposed_stage_actions, other_actions = _split_actions(
-        getattr(decision, "crm_actions", []) or []
+        actions
+    )
+    from types import SimpleNamespace
+    from apps.ai_engagement.services.crm_routing_reliability import _ensure_datetime_reminder
+
+    builder = InstagramAIContextBuilder(conversation_id=source.conversation_id)
+    reminder_context = SimpleNamespace(
+        organization={"timezone": organization.timezone},
+        conversation=builder._build_conversation_context(messages=builder._get_messages(
+            organization=organization, lead=lead, limit=12, through_message=source,
+        )),
+    )
+    _ensure_datetime_reminder(
+        other_actions, source.body,
+        {"crm": {"reminders": config.get("reminder_rules") or []}},
+        context=reminder_context,
     )
     executor = CRMActionExecutor()
     results = []
@@ -284,7 +335,6 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
         )
         lead.refresh_from_db(fields=["attributes", "pipeline", "stage"])
 
-    updates = getattr(decision, "qualification_updates", []) or []
     qualification = (
         persist_answer_updates(lead=lead, updates=updates)
         if updates
@@ -301,6 +351,10 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
         str(qualification.get("qualification_status") or "").casefold() == "completed"
         and normalize_stage_name(getattr(lead.stage, "name", "")) == "new lead"
     )
+    if completed_in_new_lead and updates and not any(
+        action.get("type") == "create_reminder" for action in other_actions
+    ):
+        other_actions.extend(_configured_completion_reminders(config))
     stage_actions = (
         [completion_action] if completed_in_new_lead and completion_action
         else ([] if completed_in_new_lead else proposed_stage_actions[:1])
@@ -338,6 +392,8 @@ def _resolve_instagram_state(*, organization, lead, source, decision, revision):
     from apps.ai_engagement.services.runtime_state import state_revision
     from apps.ai_engagement.services.transactional_decision_reuse import _PENDING_FILE_RESOLUTION
     from apps.ai_engagement.services.transactional_turn_runtime import _mark_state_resolved
+    from apps.ai_engagement.services.qualification_execution.actions import answers_captured_for_source
+    from apps.ai_engagement.services.qualification_state import state_for_lead
 
     document_id = getattr(decision, "file_document_id", None)
     if document_id is not None and FileSharingService().get_guided_document(
@@ -380,7 +436,9 @@ def _resolve_instagram_state(*, organization, lead, source, decision, revision):
             str(result.get("type") or "") for result in results
             if isinstance(result, dict) and result.get("status") == "executed"
         ]
-        if getattr(decision, "qualification_updates", []):
+        if getattr(decision, "qualification_updates", []) or answers_captured_for_source(
+            state=state_for_lead(locked_lead), source=inbound,
+        ):
             action_types.append("qualification_state")
         token = _PENDING_FILE_RESOLUTION.set({
             "lead_id": str(lead.pk), "source_message_id": str(source.pk), "document_id": document_id,
@@ -508,7 +566,11 @@ def execute_instagram_ai_engagement(*, task, message_id):
         # turn. Its validated revision includes that own write, but does not
         # bless unrelated changes by refreshing the lead after provider I/O.
         revision = getattr(decision, "backend_revision", "") or revision
-        if not _source_state_resolved(source) and _state_changing_decision(decision):
+        from apps.ai_engagement.services.qualification_execution.actions import answers_captured_for_source
+        from apps.ai_engagement.services.qualification_state import state_for_lead
+
+        captured = answers_captured_for_source(state=state_for_lead(lead), source=source)
+        if not _source_state_resolved(source) and (_state_changing_decision(decision) or captured):
             resolution = _resolve_instagram_state(
                 organization=source.organization, lead=lead, source=source, decision=decision, revision=revision,
             )

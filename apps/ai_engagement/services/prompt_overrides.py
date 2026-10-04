@@ -9,6 +9,22 @@ from apps.ai_engagement.services.summary_limits import compact, merge_summary
 _INSTALLED = False
 
 
+def qualification_evidence_item(requirement):
+    """Expose semantic capture metadata only for a valid authored requirement."""
+    if not isinstance(requirement, dict):
+        return None
+    requirement_id = str(requirement.get("id") or "").strip()
+    label = str(requirement.get("label") or requirement.get("question") or "").split("\n", 1)[0].strip().rstrip("?")
+    if not requirement_id or not label:
+        return None
+    return {
+        "id": requirement_id,
+        "label": label,
+        "options": deepcopy(requirement.get("options") or []),
+        "askable": False,
+    }
+
+
 def _first_following_requirement(requirements, states, current_id):
     seen_current = not current_id
     for requirement in requirements or []:
@@ -173,13 +189,9 @@ def install_fixed_prompt_overrides() -> None:
                 "answered_requirement_ids": qstate.get("answered_requirement_ids") or [],
                 "answers": qstate.get("qualification_answers") or {},
                 "unanswered_requirements_for_evidence": [
-                    {
-                        "id": str(item.get("id") or ""),
-                        "label": str(item.get("label") or item.get("question") or "").splitlines()[0].rstrip("?"),
-                        "options": deepcopy(item.get("options") or []),
-                        "askable": False,
-                    } for item in requirements
-                    if qualification_active and str((states.get(str(item.get("id"))) or {}).get("status") or "unknown")
+                    evidence for item in requirements
+                    if qualification_active and (evidence := qualification_evidence_item(item)) is not None
+                    and str((states.get(evidence["id"]) or {}).get("status") or "unknown")
                     not in {"answered", "skipped", "not_applicable"}
                 ],
                 "evidence_scope": (

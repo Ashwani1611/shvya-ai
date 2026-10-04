@@ -273,6 +273,7 @@ class OrganizationAIRuntimeProfileBuilder:
         legacy_organization = {
             "id": str(organization.id),
             "name": str(organization.name or ""),
+            "timezone": str(getattr(organization, "timezone", "") or ""),
             "ai_enabled": bool(org_info.get("ai_enabled", False)),
             "about": str(org_info.get("about") or ""),
             "bot_languages": str(org_info.get("bot_languages") or ""),

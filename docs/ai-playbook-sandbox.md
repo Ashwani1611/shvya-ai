@@ -38,8 +38,10 @@ engagement use semantic plus keyword retrieval, with keyword fallback if
 embeddings are unavailable. Scanned PDFs without extractable text still require
 a readable source.
 
-AI-Guided File Sharing requires an active, processed uploaded file and a clear
-sharing condition. Conditions are evaluated even if the customer does not use
+AI-Guided File Sharing requires a delivery-ready uploaded file and a clear
+sharing condition. Validated guided uploads can be shared while knowledge
+indexing is pending or failed; their unindexed contents are not factual evidence.
+Conditions are evaluated even if the customer does not use
 words such as "file" or "brochure". The shared engine permits only eligible
 organization files; the grounding guard checks the selected file's condition.
 Previously shared files are not offered again unsolicited.

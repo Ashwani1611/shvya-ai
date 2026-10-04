@@ -8,7 +8,7 @@ from apps.ai_engagement.services.langgraph_orchestration import _RUNTIME_POLICY_
 
 
 class PromptQualificationScopeTests(SimpleTestCase):
-    def _payload(self, *, engagement_mode):
+    def _payload(self, *, engagement_mode, extra_requirements=()):
         requirement = {
             "id": "biggest_challenge",
             "stable_id": "biggest_challenge",
@@ -29,7 +29,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
             "qualification_status": "not_started",
             "engagement_mode": engagement_mode,
             "flow_version": "flow-v1",
-            "flow_snapshot": [requirement],
+            "flow_snapshot": [requirement, *extra_requirements],
             "current_requirement_id": requirement["id"],
             "next_requirement_id": requirement["id"],
             "last_asked_requirement_id": None,
@@ -43,7 +43,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
         profile = {
             "identity": {},
             "communication": {},
-            "qualification": {"requirements": [requirement]},
+            "qualification": {"requirements": [requirement, *extra_requirements]},
         }
         context = AIContext(
             organization={
@@ -89,6 +89,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
         self.assertIsNone(turn["next_requirement_if_current_answered"])
         self.assertFalse(turn["current_requirement_was_asked"])
         self.assertEqual(turn["unanswered_requirements_for_evidence"], [])
+        self.assertEqual(turn["capture_only_requirements"], [])
         self.assertIsNone(payload["next_requirement"])
         self.assertIsNone(payload["backend_state"]["current_requirement_id"])
         self.assertNotIn("qualification_notes", payload)
@@ -109,6 +110,14 @@ class PromptQualificationScopeTests(SimpleTestCase):
         self.assertNotIn("question", evidence[0])
         self.assertEqual(payload["next_requirement"]["id"], requirement["id"])
         self.assertEqual(payload["backend_state"]["current_requirement_id"], requirement["id"])
+
+    def test_incomplete_legacy_snapshot_cannot_crash_or_expose_capture_fields(self):
+        payload, requirement = self._payload(
+            engagement_mode="qualification", extra_requirements=[{"id": "legacy-removed"}],
+        )
+        turn = payload["qualification_turn"]
+        self.assertEqual([item["id"] for item in turn["unanswered_requirements_for_evidence"]], [requirement["id"]])
+        self.assertEqual(turn["capture_only_requirements"], [])
 
     def test_runtime_policy_forbids_unverified_model_and_deployment_claims(self):
         self.assertIn("AI model names", _RUNTIME_POLICY_INSTRUCTIONS)

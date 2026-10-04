@@ -153,11 +153,8 @@ def install_qualification_execution_policy_guard() -> None:
         _completion_target,
         _config,
         _configured_completion_reminders,
-        _mapping_keys,
-        _mapped_value,
         _norm,
         _plan_from_reconciled,
-        _requirement_ref,
         _stage_success,
     )
 
@@ -318,77 +315,18 @@ def install_qualification_execution_policy_guard() -> None:
                 organization=organization,
                 requirements=requirements,
             )
-            # Qualification-owned mapped keys are rebuilt from deterministic
-            # backend configuration. Preserve unrelated evidence-validated CRM
-            # facts from the same customer message (for example company/team
-            # size volunteered alongside a qualification answer), while never
-            # allowing the model to override a configured qualification mapping.
-            proposed_attribute_updates = []
-            actions = []
-            for action in getattr(decision, "crm_actions", []) or []:
-                if not isinstance(action, dict) or not action.get("type"):
-                    continue
-                if action.get("type") == "attribute_updates":
-                    proposed_attribute_updates.extend(
-                        deepcopy(item)
-                        for item in action.get("updates") or []
-                        if isinstance(item, dict) and item.get("key")
-                    )
-                    continue
-                if action.get("type") in {"pipeline_transition", "create_reminder"}:
-                    continue
-                actions.append(deepcopy(action))
+            from apps.ai_engagement.services.qualification_execution.actions import (
+                rebuild_mapped_attribute_actions,
+            )
 
-            exact_updates = []
-            deterministic_keys = set()
-            for update in qualification_updates:
-                requirement = _requirement_ref(
-                    str(update.get("requirement_id") or ""),
-                    requirements,
-                )
-                if requirement is None:
-                    continue
-                requirement_id = str(requirement.get("id") or "")
-                for attribute_key in _mapping_keys(config, requirement_id):
-                    deterministic_keys.add(str(attribute_key))
-                    exact_updates.append(
-                        {
-                            "key": attribute_key,
-                            "value": _mapped_value(config, attribute_key, update.get("value")),
-                        }
-                    )
-
-            # Keep only distinct non-qualification facts from the already
-            # policy-filtered decision. If a model proposes the same value as a
-            # qualification answer under another key, treat it as an attempted
-            # fuzzy/shadow mapping and discard it. This preserves the existing
-            # exact-mapping contract while allowing genuinely separate facts
-            # volunteered in the same message.
-            qualification_values = {
-                re.sub(r"\s+", " ", str(item.get("value") or "")).strip().casefold()
-                for item in qualification_updates
-                if str(item.get("value") or "").strip()
-            }
-            by_key = {}
-            for item in proposed_attribute_updates:
-                key = str(item.get("key") or "")
-                value = re.sub(
-                    r"\s+", " ", str(item.get("value") or "")
-                ).strip().casefold()
-                if not key or key in deterministic_keys or value in qualification_values:
-                    continue
-                by_key[key] = item
-            for item in exact_updates:
-                if item.get("key"):
-                    by_key[str(item["key"])] = item
-            if by_key:
-                actions.insert(
-                    0,
-                    {
-                        "type": "attribute_updates",
-                        "updates": list(by_key.values()),
-                    },
-                )
+            actions = rebuild_mapped_attribute_actions(
+                actions=getattr(decision, "crm_actions", []) or [],
+                updates=qualification_updates,
+                requirements=requirements,
+                config=config,
+            )
+            actions = [action for action in actions
+                       if action.get("type") != "pipeline_transition"]
 
             # Apply authored completion-reminder rules only if this inbound answer
             # actually completes qualification. A reminder is never invented from
@@ -401,7 +339,7 @@ def install_qualification_execution_policy_guard() -> None:
                     organization=organization,
                     direction="inbound",
                 )
-                .values("id", "body", "direction")
+                .values("id", "body", "direction", "account_id", "created_at")
                 .first()
             )
             if source is not None:
@@ -411,10 +349,22 @@ def install_qualification_execution_policy_guard() -> None:
                 from apps.ai_engagement.services.crm_routing_reliability import (
                     _ensure_datetime_reminder,
                 )
+                from types import SimpleNamespace
+
+                messages = list(lead.whatsapp_messages.filter(
+                    organization=organization, account_id=source["account_id"],
+                    created_at__lte=source["created_at"],
+                ).order_by("-created_at", "-id").values("id", "body", "direction", "status")[:12])
+                reminder_context = SimpleNamespace(
+                    organization={"timezone": organization.timezone},
+                    conversation={"messages": list(reversed(messages))},
+                )
 
                 _ensure_datetime_reminder(
                     actions,
                     str(source.get("body") or ""),
+                    {"crm": {"reminders": config.get("reminder_rules") or []}},
+                    context=reminder_context,
                 )
 
                 base_state = qs.state_for_lead(lead, requirements=requirements)

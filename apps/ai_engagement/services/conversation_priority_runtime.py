@@ -4,6 +4,8 @@ import json
 import re
 from copy import deepcopy
 
+from apps.ai_engagement.services.prompt_overrides import qualification_evidence_item
+
 
 _INSTALLED = False
 _TERMINAL_REQUIREMENT_STATES = {"answered", "skipped", "not_applicable"}
@@ -123,7 +125,7 @@ def _question_text(requirement) -> str:
 
 
 def _normalize_question(value: str) -> str:
-    first_line = str(value or "").splitlines()[0]
+    first_line = str(value or "").split("\n", 1)[0]
     return re.sub(r"[^a-z0-9]+", " ", first_line.casefold()).strip()
 
 
@@ -175,12 +177,18 @@ def _wrap_build_input(original_method):
 
         snapshot = qstate.get("flow_snapshot") if isinstance(qstate.get("flow_snapshot"), list) else []
         states = qstate.get("requirement_states") if isinstance(qstate.get("requirement_states"), dict) else {}
+        qualification_active = (
+            str(qturn.get("mode") or qstate.get("engagement_mode") or "").strip().casefold()
+            in {"qualification", "qualifying"}
+            and str(qturn.get("status") or qstate.get("qualification_status") or "").strip().casefold() != "completed"
+        )
         capture_only = []
-        for requirement in snapshot:
-            if not isinstance(requirement, dict):
+        for requirement in snapshot if qualification_active else []:
+            evidence = qualification_evidence_item(requirement)
+            if evidence is None:
                 continue
-            requirement_id = str(requirement.get("id") or "").strip()
-            if not requirement_id or requirement_id in visible_ids:
+            requirement_id = evidence["id"]
+            if requirement_id in visible_ids:
                 continue
             status = str((states.get(requirement_id) or {}).get("status") or "unknown").strip().casefold()
             if status in _TERMINAL_REQUIREMENT_STATES:
@@ -188,12 +196,9 @@ def _wrap_build_input(original_method):
             hint = _capture_hint(requirement)
             capture_only.append(
                 {
-                    "id": requirement_id,
+                    **evidence,
                     "stable_id": str(requirement.get("stable_id") or "").strip() or None,
                     "hint": hint,
-                    "label": str(requirement.get("label") or requirement.get("question") or "").splitlines()[0].rstrip("?"),
-                    "options": deepcopy(requirement.get("options") or []),
-                    "askable": False,
                 }
             )
 

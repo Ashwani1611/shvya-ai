@@ -140,7 +140,14 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     if final_composition and inbound.get("id") and str(resolved.get("source_message_id") or "") == str(inbound["id"]):
         for item in resolved.get("action_outcomes") or resolved.get("outcomes") or []:
             if isinstance(item, dict) and item.get("type") in {"create_reminder", "file_share", "contact_updates"}:
-                outcomes.append({"type": item["type"], "status": item.get("status")})
+                outcome = {"type": item["type"], "status": item.get("status")}
+                # A committed receipt does not imply the reminder is still active.
+                # Keep its safe current-state qualifiers beside the status that
+                # the composer uses, without exposing contact handles or IDs.
+                for key in ("still_exists", "current_status", "due_at", "present_contact_count"):
+                    if key in item:
+                        outcome[key] = deepcopy(item[key])
+                outcomes.append(outcome)
         file_result = resolved.get("file_share")
         if isinstance(file_result, dict):
             outcomes.append({"type": "file_share", "status": file_result.get("status"),

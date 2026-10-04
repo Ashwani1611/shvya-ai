@@ -18,7 +18,11 @@ from services.channels.instagram_ai import InstagramAIContextBuilder, execute_in
 
 class InstagramPostStateResponseTests(TransactionTestCase):
     task = fixtures.InstagramAIEngagementTests.task
-    setUp = fixtures.InstagramAIEngagementTests.setUp
+
+    def setUp(self):
+        fixtures.InstagramAIEngagementTests.setUp(self)
+        self.inbound.body = "Please call me tomorrow at 3 PM"
+        self.inbound.save(update_fields=["body"])
 
     @override_settings(OPENAI_API_KEY="")
     @patch("services.channels.instagram_ai._dispatch_instagram_ai_message")

@@ -261,6 +261,7 @@ def _config(
         )
 
     return {
+        "timezone": str(getattr(organization, "timezone", "") or ""),
         "mappings": mappings,
         "mapping_targets": mapping_targets,
         "mapping_value_rules": value_rules,
