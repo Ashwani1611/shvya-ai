@@ -1,4 +1,5 @@
 from datetime import timedelta
+import json
 from unittest.mock import patch
 
 from django.db import connection
@@ -6,7 +7,7 @@ from django.test import TransactionTestCase, override_settings
 from django.utils import timezone
 
 from apps.ai_engagement.models import AIActionReceipt, OrgInfo
-from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+from apps.ai_engagement.services.ai_provider import AIProviderTransientError, AITextResult
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
 from apps.ai_engagement.services.transactional_decision_reuse import operational_state_for_context
@@ -27,7 +28,8 @@ class InstagramPostStateResponseTests(TransactionTestCase):
     @override_settings(OPENAI_API_KEY="")
     @patch("services.channels.instagram_ai._dispatch_instagram_ai_message")
     @patch("services.channels.instagram_inbox.assert_reply_allowed")
-    def test_real_graph_accepts_its_own_deterministic_answer_revision(self, allowed, dispatch):
+    @patch("apps.ai_engagement.services.engagement.OpenAIProvider")
+    def test_real_graph_accepts_its_own_deterministic_answer_revision(self, provider_class, allowed, dispatch):
         from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
         from apps.ai_engagement.services.qualification_state import record_last_asked_requirement, state_for_lead
 
@@ -43,6 +45,23 @@ class InstagramPostStateResponseTests(TransactionTestCase):
         self.inbound.body = "A"
         self.inbound.save(update_fields=["body"])
 
+        def compose(**kwargs):
+            self.assertTrue(_FINAL_LANGUAGE_ONLY.get())
+            self.assertFalse(connection.in_atomic_block)
+            self.lead.refresh_from_db()
+            committed = state_for_lead(self.lead, requirements=requirements)
+            self.assertEqual(committed["requirement_states"][requirements[0]["id"]]["value"], "WhatsApp")
+            payload = json.loads(kwargs["input_text"])
+            self.assertEqual(payload["response_plan"]["phase"], "FINAL_COMPOSITION")
+            self.assertEqual(payload["next_requirement"]["id"], requirements[1]["id"])
+            return AITextResult(json.dumps({
+                "should_engage": True, "silence_rule": None,
+                "message": requirements[1]["question"], "file_document_id": None,
+                "crm_actions": [], "qualification_updates": [],
+                "next_requirement_id": requirements[1]["id"], "reason_code": "QUALIFICATION_NEXT",
+            }), "recorded-final-response")
+
+        provider_class.return_value.generate_text.side_effect = compose
         result = execute_instagram_ai_engagement(task=self.task(), message_id=self.inbound.pk)
 
         self.assertEqual(result["status"], "completed")
@@ -52,6 +71,7 @@ class InstagramPostStateResponseTests(TransactionTestCase):
         self.assertEqual(state["requirement_states"][requirements[0]["id"]]["status"], "answered")
         outbound = InstagramMessage.objects.get(conversation=self.conversation, direction="outbound")
         self.assertIn("How many leads", outbound.body)
+        provider_class.return_value.generate_text.assert_called_once()
         dispatch.assert_called_once()
 
     def decision(self, *, final=False):

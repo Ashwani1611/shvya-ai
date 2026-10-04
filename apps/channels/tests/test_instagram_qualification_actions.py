@@ -184,7 +184,8 @@ class InstagramQualificationActionTests(TestCase):
             return replace(self.decision(), backend_revision=state_revision(kwargs["lead"]))
 
         engage.side_effect = generate
-        result = execute_instagram_ai_engagement(task=self.task(), message_id=self.inbound.pk)
+        with self.captureOnCommitCallbacks(execute=True):
+            result = execute_instagram_ai_engagement(task=self.task(), message_id=self.inbound.pk)
         self.assertEqual(result["status"], "completed")
         self.assertEqual(phases, [False, True])
         self.lead.refresh_from_db()
