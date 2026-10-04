@@ -153,6 +153,19 @@ class GroundingVerdictContractTests(SimpleTestCase):
         self.assertFalse(result["grounding_approved"])
         self.assertEqual(len(calls), 1)
 
+    def test_valid_fact_rejection_without_authored_evidence_does_not_attempt_repair(self):
+        state = self.state()
+        state["context"].organization.update(about="", ai_playbook="", _authored_faq_candidates=[])
+        result, calls, record = self.run_guard([
+            {"approved": False, "reason": "unsupported_claim"},
+        ], state=state)
+        self.assertFalse(result["grounding_approved"])
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(calls[0].kwargs["metadata"]["phase"], "grounding")
+        self.assertNotEqual(result["decision"].message, PRICING_REPLY)
+        record.assert_called_with("grounding", {
+            "approved": False, "validation_reason": "unsupported_claim", "repair_attempted": False})
+
     def test_conflicting_retrieved_price_is_preserved_and_never_auto_approved(self):
         state = self.state()
         state["context"].knowledge = [{
