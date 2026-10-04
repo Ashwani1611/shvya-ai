@@ -141,8 +141,9 @@ class InstagramServiceTests(TestCase):
         self.assertIsNotNone(self.account.last_sync_at)
         self.assertIn("/ig-business-1/conversations", request.call_args_list[0].args[1])
 
+    @patch("apps.channels.services.instagram_automation.outbound_allowed", return_value=True)
     @patch("services.channels.instagram_service.requests.request")
-    def test_send_queued_message_uses_meta_send_api_and_persists_message_id(self, request):
+    def test_send_queued_message_uses_meta_send_api_and_persists_message_id(self, request, automation_allowed):
         conversation = self.add_conversation()
         queued = queue_text_message(
             self.org,

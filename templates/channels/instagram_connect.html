@@ -8,6 +8,7 @@
 <script src="{% static 'js/instagram_connect.js' %}" defer></script>
 {% endblock %}
 {% block content %}
+{% if request.crm_user.role == "admin" %}{% include "channels/_instagram_automation_settings.html" %}{% endif %}
 <div class="ig-connect-page">
   <div class="ig-connect-shell">
     <header class="ig-connect-heading">
@@ -43,6 +44,7 @@
         {% if not instagram_meta_ready %}<div class="ig-connect-alert" role="alert">Instagram connection is currently unavailable. Ask your SHVYA administrator to check the Instagram app configuration below.</div>{% endif %}
 
         <div class="ig-connect-actions">
+          {% if instagram_connected and request.crm_user.role == "admin" %}<button type="button" class="ig-button ig-button-secondary" data-instagram-settings-url="{% url 'crm-instagram-automation-settings' %}"><i class="ti ti-settings"></i> Automation Settings</button>{% endif %}
           {% if instagram_meta_ready %}
           <div class="ig-pending-action" id="ig-pending-action" {% if not instagram_oauth_pending %}hidden{% endif %}><span class="ig-spinner" aria-hidden="true"></span> Completing connection…</div>
           <a href="{% url 'crm-instagram-oauth-start' %}" class="ig-button {% if instagram_inbox_ready %}ig-button-secondary{% else %}ig-button-primary{% endif %}" id="ig-start-connect" {% if instagram_oauth_pending %}hidden{% endif %}><i class="ti ti-brand-instagram" aria-hidden="true"></i> <span>{% if instagram_connected %}Reconnect Instagram{% else %}Continue with Instagram{% endif %}</span> <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>

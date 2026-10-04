@@ -509,7 +509,8 @@ def _organization_validation(organization):
                 }
             )
         if (
-            sequence.whatsapp_account.connection_type
+            sequence.whatsapp_account_id
+            and sequence.whatsapp_account.connection_type
             == WhatsAppAccount.ConnectionType.coexisted
         ):
             missing = [

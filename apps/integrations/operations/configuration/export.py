@@ -80,6 +80,8 @@ def _json_hash(value) -> str:
 
 
 def _account_ref(account) -> str:
+    if account is None:
+        return ""
     return (
         f"{account.connection_type}:"
         f"{str(account.display_phone_number or account.phone_number_id or '').strip()}"
@@ -102,6 +104,7 @@ def _step_export(step):
         "template_name": (
             step.whatsapp_template.name if step.whatsapp_template_id else None
         ),
+        "instagram_body": step.instagram_body,
         "hosted_body": hosted.body if hosted else None,
         "hosted_attachment": (
             {
@@ -274,7 +277,7 @@ def _portable_configuration(organization):
                 "description": sequence.description,
                 "active": sequence.is_active,
                 "provider": (
-                    "api"
+                    "instagram" if sequence.instagram_account_id else "api"
                     if sequence.whatsapp_account.connection_type
                     == WhatsAppAccount.ConnectionType.API
                     else "hosted"

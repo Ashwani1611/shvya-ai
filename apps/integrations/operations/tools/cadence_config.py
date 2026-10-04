@@ -251,6 +251,8 @@ def upsert_cadence_configuration(*, identity, arguments):
     if duplicate.exists():
         raise OperationsToolError("A Cadence with this name already exists.")
 
+    if sequence is not None and sequence.instagram_account_id:
+        raise OperationsToolError("Manage Instagram sequences in the Cadence dashboard.")
     account = sequence.whatsapp_account if sequence else None
     if sequence is not None:
         existing_provider = (
@@ -397,7 +399,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             )
             if sequence is not None:
                 sequence = (
-                    FollowupSequence.objects.select_for_update()
+                    FollowupSequence.objects.select_for_update(of=("self",))
                     .select_related("whatsapp_account")
                     .defer("whatsapp_account__access_token")
                     .filter(
@@ -708,7 +710,7 @@ def add_cadence_step(*, identity, arguments):
     try:
         with transaction.atomic():
             sequence = (
-                FollowupSequence.objects.select_for_update()
+                FollowupSequence.objects.select_for_update(of=("self",))
                 .select_related("whatsapp_account")
                 .defer("whatsapp_account__access_token")
                 .filter(

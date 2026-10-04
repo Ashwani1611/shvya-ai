@@ -17,7 +17,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Max
+from django.db.models import Max, Q
 from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage, WhatsAppTemplate
@@ -228,9 +228,16 @@ def create_sequence(
         raise FollowupError("Sequence name must be 255 characters or fewer.")
     if len(description) > 300:
         raise FollowupError("Description must be 300 characters or fewer.")
-    if provider not in {"api", "hosted"}:
+    instagram_account = None
+    if provider not in {"api", "hosted", "instagram"}:
         raise FollowupError("Choose Use WhatsApp API or Use WhatsApp.")
-    if provider == "api":
+    if provider == "instagram":
+        from apps.channels.instagram_models import InstagramAccount
+        instagram_account = InstagramAccount.objects.filter(organization=organization, status="connected").first()
+        if instagram_account is None:
+            raise FollowupError("Connect Instagram before creating an Instagram sequence.")
+        whatsapp_account = None
+    elif provider == "api":
         if not whatsapp_account or whatsapp_account.organization_id != organization.id:
             raise FollowupError("Choose a WhatsApp API number for this sequence.")
         if whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
@@ -275,6 +282,7 @@ def create_sequence(
         name=name,
         description=description,
         whatsapp_account=whatsapp_account,
+        instagram_account=instagram_account,
     )
 
 
@@ -311,6 +319,7 @@ def duplicate_sequence(*, sequence, created_by):
             name=name,
             description=sequence.description,
             whatsapp_account=sequence.whatsapp_account,
+            instagram_account=sequence.instagram_account,
             is_active=sequence.is_active,
         )
         for step in sequence.steps.order_by("position", "created_at"):
@@ -320,6 +329,7 @@ def duplicate_sequence(*, sequence, created_by):
                 step_type=step.step_type,
                 title=step.title,
                 whatsapp_template=step.whatsapp_template,
+                instagram_body=step.instagram_body,
                 email_subject=step.email_subject,
                 email_body=step.email_body,
                 reminder_text=step.reminder_text,
@@ -854,8 +864,7 @@ def available_sequences_for_lead(*, lead):
     """Use the assignment rules for every sequence picker."""
     candidates = FollowupSequence.objects.filter(
         organization=lead.organization, is_active=True,
-        whatsapp_account__organization=lead.organization,
-    ).select_related("whatsapp_account").order_by("name")
+    ).filter(Q(whatsapp_account__organization=lead.organization) | Q(instagram_account__organization=lead.organization)).select_related("whatsapp_account").order_by("name")
     sequences = []
     for sequence in candidates:
         try:
@@ -867,6 +876,9 @@ def available_sequences_for_lead(*, lead):
 
 
 def _validate_lead_sender(lead, sequence):
+    if sequence.instagram_account_id:
+        from apps.followups.instagram import conversation_for_sequence
+        return conversation_for_sequence(lead, sequence).account
     account = sequence.whatsapp_account
     if account.organization_id != lead.organization_id:
         raise FollowupError("The sequence WhatsApp sender belongs to another organization.")
@@ -915,6 +927,9 @@ def _automation_settings_for_state(state):
         account = _validate_lead_sender(state.lead, state.sequence)
     except FollowupError:
         return None
+    if state.sequence.instagram_account_id:
+        from apps.channels.services.instagram_automation import get_settings
+        return get_settings(organization_id=state.organization_id)
     from services.channels.hosted_whatsapp_service import get_session_settings
 
     return get_session_settings(account=account)
@@ -1083,6 +1098,10 @@ def _template_components(template, lead, user=None):
 
 
 def _create_execution(state, step):
+    if state.sequence.instagram_account_id:
+        processing = state.executions.filter(step=step, status=FollowupExecution.Status.PROCESSING, created_at__gte=state.activated_at).first()
+        if processing:
+            return processing
     pending = (
         state.executions.filter(step=step, status=FollowupExecution.Status.PENDING)
         .order_by("-created_at")
@@ -1356,7 +1375,7 @@ def process_due_state(state_id):
     )
     if not state or state.status != LeadSequenceState.Status.ACTIVE:
         return False
-    if state.sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
+    if not state.sequence.instagram_account_id and state.sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.API:
         return False
     if not state.lead.auto_followup_enabled or not state.lead_auto_followup_enabled or not state.sequence.is_active:
         return False
@@ -1377,7 +1396,10 @@ def process_due_state(state_id):
     step = state.next_step
     execution = _create_execution(state, step)
     try:
-        if step.step_type == FollowupStep.StepType.WHATSAPP:
+        if step.step_type == FollowupStep.StepType.INSTAGRAM:
+            from apps.followups.instagram import send_step
+            send_step(state, step, execution)
+        elif step.step_type == FollowupStep.StepType.WHATSAPP:
             _send_whatsapp_step(state, step, execution)
         elif step.step_type == FollowupStep.StepType.EMAIL:
             _send_email_step(state, step, execution)
@@ -1422,6 +1444,17 @@ def dispatch_one_due_state():
 def _refresh_conversation_pause(state, automation_settings):
     """Recompute the quiet period from real activity and the current setting."""
     activity = [value for value in (state.last_inbound_at, state.last_manual_outbound_at) if value]
+    if state.sequence.instagram_account_id:
+        from apps.channels.instagram_models import InstagramMessage
+        from django.db.models.functions import Coalesce
+        latest = InstagramMessage.objects.filter(
+            organization_id=state.organization_id, account_id=state.sequence.instagram_account_id,
+            conversation__lead_id=state.lead_id,
+        ).filter(Q(direction="inbound") | Q(direction="outbound", status__in=["queued", "sent", "read"])).exclude(
+            raw_payload__has_key="shvya_ai",
+        ).exclude(raw_payload__has_key="shvya_followup").annotate(activity_at=Coalesce("sent_at", "created_at")).order_by("-activity_at").first()
+        if latest:
+            activity.append(latest.activity_at)
     if activity:
         pause_until = max(activity) + _delay_delta(
             automation_settings.get("active_conversation_delay_value", 2),

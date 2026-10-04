@@ -60,3 +60,41 @@ The current Instagram inbox follows the same customer-context principles as the 
 - OAuth uses the dedicated Instagram App ID/Secret and signed webhook handling; WhatsApp Embedded Signup credentials are not substitutes.
 
 The inbox must not create cross-organization lead links. Any automatic/new lead association must validate the organization and current account context before persisting the link.
+
+## Automation settings and follow-ups
+
+Organization admins can open **Automation Settings** from Instagram connection
+settings or the Instagram Chats sidebar. These account controls are independent
+of WhatsApp's pipeline/account controls:
+
+- AI Auto-Reply: defaults on to preserve existing behavior; organization,
+  pipeline, stage and lead AI permissions still apply.
+- Auto Lead Creation: defaults on; disabling it retains inbox conversations and
+  existing lead links while preventing automatic creation of new leads.
+- Bump-Up Messages and Count: defaults off, maximum 1–10 per unanswered customer
+  turn (also capped by the organization bump-up limit). Uses Instagram-only
+  context and the existing AI bump-up prompt after an hour of silence.
+- Auto Follow-up: defaults off; controls assigned Instagram Cadence sequences.
+- Business Hours: uses the organization's timezone and supports overnight hours;
+  equal start/end times mean all day.
+- Active Conversation Delay: defers follow-ups after inbound or human outbound
+  activity. Settings changes recalculate pending schedules without restarting
+  completed steps.
+
+Create a Cadence with **Use Instagram**, add Instagram text messages (up to 1000
+characters), email or reminder steps, and assign it to a linked CRM lead. The
+lead must have exactly one conversation on the connected Instagram account;
+no phone number or WhatsApp sender is required. The usual per-lead follow-up
+switch remains authoritative. Instagram sends use the existing durable inbox
+queue and provider throttling, and advance only after a persisted sent/read
+receipt. Unknown delivery outcomes pause for review rather than being replayed.
+
+The existing customer reply-window checks apply at queue/claim time. Automation
+controls are checked again before delivery. Expired windows pause the sequence;
+review it after the customer messages again. No HUMAN_AGENT exception is used.
+
+Deploy migration `followups.0009` before restarting web and workers. The existing
+follow-up and bump-up periodic tasks also dispatch Instagram work; no new Beat
+entry or secret is required. Existing WhatsApp sequences retain their sender and
+settings. Operations configuration writes for Instagram Cadences currently use
+the dashboard; the Operations MCP returns an explicit guidance error.

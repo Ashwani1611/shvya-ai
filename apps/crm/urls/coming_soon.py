@@ -16,6 +16,7 @@ from apps.support.views import customer_list as support_customer_list
 
 
 coming_soon_urlpatterns = [
+    path("instagram/automation-settings/", instagram_ui.instagram_automation_settings_view, name="crm-instagram-automation-settings"),
     path("instagram/chats/<uuid:conversation_id>/lead/", instagram_link_lead, name="crm-instagram-link-lead"),
     # Call tools now live inside Connect Hub.
     path(

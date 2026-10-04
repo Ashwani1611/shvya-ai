@@ -1,0 +1,42 @@
+{% load followup_tags %}
+{% followup_placeholders sequence.organization as personalization_placeholders %}
+<div class="fixed inset-0 z-[210] flex items-center justify-center bg-black/45 p-4" role="dialog" aria-modal="true">
+    <div class="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+            <div>
+                <h3 class="font-semibold text-gray-900">Add Instagram Message</h3>
+                <p class="mt-1 text-xs text-gray-500">Sends an Instagram DM within the customer’s reply window.</p>
+            </div>
+            <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="inline-flex h-8 w-8 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100"><i class="ti ti-x"></i></button>
+        </div>
+        <form method="post" action="{% url 'followups-instagram-step-add' sequence.id %}" class="space-y-5 p-5">
+            {% csrf_token %}
+            <div class="rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-xs text-orange-800">
+                <i class="ti ti-info-circle mr-1"></i>Instagram follow-ups send only within 24 hours of the customer’s latest message. Business hours and active conversation delay also apply.
+            </div>
+
+            <div>
+                <label class="text-sm font-medium text-gray-700">Message <span class="text-red-500">*</span></label>
+                <textarea
+                    name="instagram_body"
+                    data-personalization-target
+                    required
+                    rows="6"
+                    maxlength="1000" placeholder="Write your Instagram follow-up message"
+                    class="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+                ></textarea>
+                {% include "followups/partials/personalization_chips.html" %}
+            </div>
+
+            <div class="rounded-xl bg-gray-50 p-4">
+                <p class="mb-1 text-sm font-semibold text-gray-800">Delivery Settings</p>
+                {% include "followups/partials/schedule_fields.html" %}
+            </div>
+
+            <div class="flex justify-end gap-2 border-t border-gray-100 pt-4">
+                <button type="button" onclick="document.getElementById('modal-root').innerHTML=''" class="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-600">Cancel</button>
+                <button class="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700">Add Message</button>
+            </div>
+        </form>
+    </div>
+</div>

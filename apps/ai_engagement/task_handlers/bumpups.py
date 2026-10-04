@@ -180,4 +180,6 @@ def dispatch_bump_ups():
             )
             queued += 1
 
-    return {"queued": queued}
+    from apps.channels.services.instagram_automation import dispatch_bumps
+    instagram = dispatch_bumps()
+    return {"queued": queued, "instagram": instagram}

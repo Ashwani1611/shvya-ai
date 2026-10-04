@@ -48,8 +48,13 @@ class FollowupSequence(models.Model):
     description = models.CharField(max_length=300, blank=True)
     whatsapp_account = models.ForeignKey(
         "channels.WhatsAppAccount",
+        null=True, blank=True,
         on_delete=models.RESTRICT,
         related_name="followup_sequences",
+    )
+    instagram_account = models.ForeignKey(
+        "channels.InstagramAccount", on_delete=models.RESTRICT,
+        null=True, blank=True, related_name="followup_sequences",
     )
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
@@ -65,6 +70,10 @@ class FollowupSequence(models.Model):
     class Meta:
         ordering = ["-updated_at"]
         constraints = [
+            models.CheckConstraint(
+                condition=(Q(whatsapp_account__isnull=False, instagram_account__isnull=True) | Q(whatsapp_account__isnull=True, instagram_account__isnull=False)),
+                name="fu_seq_exactly_one_channel",
+            ),
             models.UniqueConstraint(
                 fields=["organization", "name"],
                 name="fu_seq_org_name_uniq",
@@ -86,6 +95,7 @@ class FollowupStep(models.Model):
 
     class StepType(models.TextChoices):
         WHATSAPP = "whatsapp", "WhatsApp API"
+        INSTAGRAM = "instagram", "Instagram DM"
         EMAIL = "email", "Email"
         REMINDER = "reminder", "Call Reminder"
 
@@ -126,6 +136,7 @@ class FollowupStep(models.Model):
         blank=True,
         related_name="followup_steps",
     )
+    instagram_body = models.TextField(blank=True)
     email_subject = models.CharField(max_length=255, blank=True)
     email_body = models.TextField(blank=True)
     reminder_text = models.TextField(blank=True)

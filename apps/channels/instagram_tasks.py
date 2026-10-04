@@ -229,6 +229,10 @@ def send_instagram_message_task(self, message_id):
 
     message = None
     try:
+        from apps.channels.services.instagram_automation import outbound_allowed
+        candidate = InstagramMessage.objects.select_related("conversation__lead", "account").filter(pk=message_id).first()
+        if candidate and not outbound_allowed(candidate):
+            return {"status": "deferred", "reason": "instagram_automation_disabled_or_delayed"}
         message = claim_message(message_id)
         if message is None:
             existing = InstagramMessage.objects.filter(pk=message_id).values_list("status", flat=True).first()

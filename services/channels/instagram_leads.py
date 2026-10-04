@@ -173,6 +173,11 @@ def ensure_instagram_lead(*, conversation_id):
         persist_intent_score(lead=lead)
         return conversation, lead
 
+    from apps.channels.services.instagram_automation import get_settings
+
+    if not get_settings(organization_id=conversation.organization_id)["auto_lead_creation"]:
+        return conversation, None
+
     pipeline, stage = _preferred_pipeline_stage(conversation.organization)
     if pipeline is None or stage is None:
         # The DM remains visible in the Instagram inbox. AI cannot engage until
