@@ -47,10 +47,18 @@ def record_failure(exc):
     import traceback
     frames = traceback.extract_tb(exc.__traceback__)
     frame = frames[-1] if frames else None
+    # A terminal standard-library frame cannot identify a recursive application
+    # call loop. Keep only bounded code locations, never source lines or locals.
+    app_sites = [
+        item.filename.rsplit("/", 1)[-1] + ":" + str(item.lineno)
+        for item in frames if "/apps/ai_engagement/" in item.filename
+    ]
+    repeated_sites = sorted(set(app_sites), key=app_sites.count, reverse=True)[:6]
     trace_service.record("sandbox_failure", {
         "error_type": type(exc).__name__,
         "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else "",
         "site": (frame.filename.rsplit("/", 1)[-1] + ":" + str(frame.lineno)) if frame else "",
+        "application_sites": repeated_sites,
     })
 
 
@@ -80,6 +88,8 @@ def summary():
     failure = trace.data.get("sandbox_failure") or {}
     if failure:
         parts.append("runtime/" + "/".join(str(failure.get(key) or "") for key in ("error_type", "cause_type", "site")))
+        if failure.get("application_sites"):
+            parts.append("application/" + "/".join(failure["application_sites"]))
     return "; ".join(dict.fromkeys(parts))[:1000]
 
 
