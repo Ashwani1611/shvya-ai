@@ -88,6 +88,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
         self.assertIsNone(turn["current_requirement"])
         self.assertIsNone(turn["next_requirement_if_current_answered"])
         self.assertFalse(turn["current_requirement_was_asked"])
+        self.assertEqual(turn["unanswered_requirements_for_evidence"], [])
         self.assertIsNone(payload["next_requirement"])
         self.assertIsNone(payload["backend_state"]["current_requirement_id"])
         self.assertNotIn("qualification_notes", payload)
@@ -101,6 +102,7 @@ class PromptQualificationScopeTests(SimpleTestCase):
         turn = payload["qualification_turn"]
         self.assertEqual(turn["mode"], "qualification")
         self.assertEqual(turn["current_requirement"]["id"], requirement["id"])
+        self.assertEqual(turn["unanswered_requirements_for_evidence"], [requirement])
         self.assertEqual(payload["next_requirement"]["id"], requirement["id"])
         self.assertEqual(payload["backend_state"]["current_requirement_id"], requirement["id"])
 

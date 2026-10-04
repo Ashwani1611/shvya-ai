@@ -172,6 +172,17 @@ def install_fixed_prompt_overrides() -> None:
                 "next_requirement_if_current_answered": following,
                 "answered_requirement_ids": qstate.get("answered_requirement_ids") or [],
                 "answers": qstate.get("qualification_answers") or {},
+                "unanswered_requirements_for_evidence": [
+                    deepcopy(item) for item in requirements
+                    if qualification_active and str((states.get(str(item.get("id"))) or {}).get("status") or "unknown")
+                    not in {"answered", "skipped", "not_applicable"}
+                ],
+                "evidence_scope": (
+                    "Use explicit customer statements to capture any supported volunteered answers "
+                    "according to the AI Playbook. An option letter answers only the last asked "
+                    "requirement. The evidence list does not authorize asking multiple questions; "
+                    "ask only the backend-selected next unanswered requirement."
+                ),
                 "current_requirement_was_asked": bool(
                     qualification_active
                     and current_id
