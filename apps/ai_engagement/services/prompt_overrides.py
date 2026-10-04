@@ -173,7 +173,12 @@ def install_fixed_prompt_overrides() -> None:
                 "answered_requirement_ids": qstate.get("answered_requirement_ids") or [],
                 "answers": qstate.get("qualification_answers") or {},
                 "unanswered_requirements_for_evidence": [
-                    deepcopy(item) for item in requirements
+                    {
+                        "id": str(item.get("id") or ""),
+                        "label": str(item.get("label") or item.get("question") or "").splitlines()[0].rstrip("?"),
+                        "options": deepcopy(item.get("options") or []),
+                        "askable": False,
+                    } for item in requirements
                     if qualification_active and str((states.get(str(item.get("id"))) or {}).get("status") or "unknown")
                     not in {"answered", "skipped", "not_applicable"}
                 ],

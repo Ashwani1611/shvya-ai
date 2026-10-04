@@ -168,7 +168,7 @@ def _ensure_datetime_reminder(controlled, latest_text, runtime_policy=None):
     if any(item.get("type") == "create_reminder" for item in controlled):
         return
     rules = ((runtime_policy or {}).get("crm") or {}).get("reminders") or []
-    if rules:
+    if any(re.search(r"(?im)^\s*[-*•]?\s*Title:", rule) for rule in rules):
         from apps.ai_engagement.services.authored_reminder_rules import requested_reminder
         action = requested_reminder(rules=rules, text=latest_text)
         if action:
