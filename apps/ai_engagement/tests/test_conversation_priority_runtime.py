@@ -76,6 +76,11 @@ class ConversationPriorityPayloadTests(SimpleTestCase):
             [requirements[2]["id"]],
         )
         self.assertFalse(turn["capture_only_requirements"][0]["askable"])
+        self.assertEqual(
+            turn["capture_only_requirements"][0]["label"],
+            str(requirements[2].get("label") or requirements[2]["question"]).splitlines()[0].rstrip("?"),
+        )
+        self.assertEqual(turn["capture_only_requirements"][0]["options"], requirements[2].get("options") or [])
         self.assertNotIn(requirements[2]["question"], raw)
 
 

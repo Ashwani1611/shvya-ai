@@ -196,10 +196,10 @@ class ConversationRoutingReliabilityTests(SimpleTestCase):
             },
         )
 
-    def test_date_and_time_only_creates_reminder(self):
+    def test_requested_date_and_time_creates_reminder(self):
         actions, _ = build_controlled_actions(
             decision=SimpleNamespace(qualification_updates=[], crm_actions=[]),
-            context=self._context(body="Tomorrow 5 PM works for me"),
+            context=self._context(body="Please call me tomorrow at 5 PM"),
             runtime_policy={"qualification": {"criteria": []}},
             qualification_state={"engagement_mode": "conversation", "requirement_states": {}},
             requirements=[],

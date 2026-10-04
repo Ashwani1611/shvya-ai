@@ -142,9 +142,10 @@ requirement that may be presented. Do not independently calculate another one.
 
 PROCESSING THE LATEST INBOUND MESSAGE
 - First handle the lead's actual intent.
-- If current_requirement_was_asked is true and the latest inbound message
-  clearly answers current_requirement, qualification_updates may contain an
-  update for that current requirement using exact inbound evidence.
+- Capture an explicit natural-language answer to current_requirement even
+  before asking it, when the statement unambiguously supplies that information.
+  Resolve short option letters, numbers and Yes/No only when
+  current_requirement_was_asked is true. Use exact inbound evidence.
 - The same inbound message may also explicitly volunteer information for one or
   more supplied capture_only_requirements. Such information may be captured only
   when the natural-language evidence is unambiguous for that requirement. Never
@@ -287,7 +288,7 @@ QUALIFICATION UPDATES
 qualification_updates is an array of objects with exactly:
 requirement_id, value, source_message_id, evidence.
 - Emit updates only for the supplied active current_requirement and/or explicitly
-  supplied capture_only_requirements.
+  supplied capture_only_requirements or unanswered_requirements_for_evidence.
 - A capture-only update requires unambiguous natural-language evidence. Never map
   an isolated option letter/number or Yes/No to a capture-only requirement.
 - Use only supplied IDs and exact nonempty evidence from the current inbound

@@ -3,14 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from django.utils import timezone
-
-
 _INSTALLED = False
-_CALL_REQUEST_RE = re.compile(
-    r"\b(?:call\s+me|please\s+call|give\s+me\s+a\s+call|connect\s+with\s+me|speak\s+with\s+me)\b",
-    flags=re.IGNORECASE,
-)
 _STOP_TOKENS = {
     "a",
     "an",
@@ -163,35 +156,80 @@ def _confirmation_context(context, latest_text: str) -> str:
     return ""
 
 
-def _ensure_datetime_reminder(controlled, latest_text, runtime_policy=None):
+def _reminder_evidence(context, latest_text):
+    """Bind a requested or confirmed callback time to the adjacent exchange."""
+    from apps.ai_engagement.services.authored_reminder_rules import reminder_request_evidence
+
+    evidence = reminder_request_evidence(latest_text)
+    if evidence:
+        return evidence
+    if re.search(
+        r"\b(?:not|no|never|busy|unavailable|cannot|can't|won't|nahi|nahin|mat)\b|नहीं|मत", latest_text, re.I,
+    ):
+        return ""  # A rejected/unavailable time cannot confirm the callback.
+    messages = (getattr(context, "conversation", None) or {}).get("messages") or []
+    last_inbound = next((index for index in range(len(messages) - 1, -1, -1)
+                         if isinstance(messages[index], dict) and messages[index].get("direction") == "inbound"), None)
+    if last_inbound is None:
+        return ""
+    previous = next((item for item in reversed(messages[:last_inbound])
+                     if isinstance(item, dict) and _clean(item.get("body"))), {})
+    if previous.get("direction") != "outbound" or previous.get("status", "sent") not in {"sent", "delivered", "read"}:
+        return ""
+    prompt = _clean(previous.get("body"))
+    question = re.split(r"(?<=[.!?])\s+", prompt)[-1]
+    if not re.search(
+        r"\b(?:(?:what|which)\s+(?:date|time|day)|when)\b.{0,100}\b(?:call|callback|follow[ -]?up|remind)|"
+        r"\b(?:can|shall|should|may|could|will|would)\s+(?:i|we|the team)\s+(?:call|follow[ -]?up|remind)\b|"
+        r"\b(?:would|do)\s+you\s+(?:like|want)\s+(?:(?:me|us|the team)\s+to\s+)?"
+        r"(?:a\s+)?(?:call|callback|reminder|follow[ -]?up)\b|"
+        r"\bconfirm\b.{0,60}\b(?:callback|call time|reminder)\b", question, re.I,
+    ):
+        return ""
+    confirmation = _clean(latest_text).casefold().strip(" .,!?:;'\"")
+    if confirmation in {"yes", "yes please", "correct", "sure", "okay", "ok", "haan", "han", "ji"}:
+        return f"Please call me {question}" if re.search(r"\b(?:call|callback)\b", question, re.I) else f"Remind me {question}"
+    # A supplied date/time can answer the immediately preceding callback-time
+    # question. Unrelated prose does not become callback authority.
+    if re.match(r"^(?:tomorrow|today|tonight|kal|aaj|parso[n]?|next\s+\w+|\d{1,4}[ /-]|\d{1,2}\s*(?:am|pm))\b", confirmation, re.I):
+        return f"Please call me {latest_text}" if re.search(r"\b(?:call|callback)\b", question, re.I) else f"Remind me {latest_text}"
+    return ""
+
+
+def _ensure_datetime_reminder(controlled, latest_text, runtime_policy=None, context=None):
     """Create deterministic normal-conversation reminders without qualification logic."""
-    if any(item.get("type") == "create_reminder" for item in controlled):
-        return
+    from apps.ai_engagement.services.authored_reminder_rules import requested_reminder, reminder_request_kind
+    from apps.ai_engagement.services.reminder_time_runtime import parse_grounded_due_at
+
     rules = ((runtime_policy or {}).get("crm") or {}).get("reminders") or []
+    evidence = _reminder_evidence(context, latest_text) if context is not None else latest_text
+    timezone_name = (getattr(context, "organization", None) or {}).get("timezone") if context is not None else None
+    existing = [item for item in controlled if item.get("type") == "create_reminder"]
+    controlled[:] = [item for item in controlled if item.get("type") != "create_reminder"]
+    if not reminder_request_kind(evidence):
+        return
     if any(re.search(r"(?im)^\s*[-*•]?\s*Title:", rule) for rule in rules):
-        from apps.ai_engagement.services.authored_reminder_rules import requested_reminder
-        action = requested_reminder(rules=rules, text=latest_text)
+        action = requested_reminder(rules=rules, text=evidence, timezone_name=timezone_name)
         if action:
             controlled.append(action)
+        elif existing:
+            # Extra organization-authored conditions stay on their model and
+            # evidence validation path, but may never invent a callback time.
+            due_at = parse_grounded_due_at(evidence, timezone_name=timezone_name)
+            if due_at:
+                controlled.extend({**item, "due_at": due_at} for item in existing)
         return
-    from apps.ai_engagement.services.reminder_time_runtime import (
-        parse_grounded_due_at,
-    )
-
-    due_at = parse_grounded_due_at(latest_text)
-    if due_at:
-        description = "Lead provided a specific date/time for follow-up."
-    elif _CALL_REQUEST_RE.search(str(latest_text or "")):
-        due_at = timezone.now().isoformat()
-        description = "Lead explicitly requested a call or direct connection."
-    else:
+    due_at = parse_grounded_due_at(evidence, timezone_name=timezone_name)
+    if not due_at:
         return
-
+    if existing:
+        controlled.extend({**item, "due_at": due_at} for item in existing)
+        return
     controlled.append(
         {
             "type": "create_reminder",
             "title": "Follow up with lead",
-            "description": description,
+            "description": "Lead requested or confirmed this specific follow-up date/time.",
             "due_at": due_at,
         }
     )
@@ -415,7 +453,7 @@ def _wrap_controlled_actions(current_builder):
             qualification_state=qualification_state,
             latest_text=latest_text,
         )
-        _ensure_datetime_reminder(controlled, latest_text, runtime_policy)
+        _ensure_datetime_reminder(controlled, latest_text, runtime_policy, context=context)
         return controlled, result
 
     return build

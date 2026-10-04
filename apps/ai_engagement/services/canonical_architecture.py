@@ -17,13 +17,6 @@ _INSTALLED = False
 
 _FILE_ID_KEY = "pre_resolved_file_document_id"
 _FILE_STATUS_KEY = "pre_resolved_file_status"
-_SHARED_FILES_KEY = "shared_files"
-
-_FILE_REQUEST_RE = re.compile(
-    r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|"
-    r"prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)\b",
-    flags=re.IGNORECASE,
-)
 _FILE_SUCCESS_RE = re.compile(
     r"\b(?:(?:i(?:'ve| have)?|we(?:'ve| have)?)\s+)?(?:successfully\s+)?"
     r"(?:sent|shared|attached)(?:\s+(?:the|a|your|this))?\s+"
@@ -688,8 +681,9 @@ def install_canonical_ai_architecture() -> None:
     # File eligibility: do not unsolicited-resend an already delivered file.
     # Explicit customer file requests remain eligible for repeat sharing.
     # ------------------------------------------------------------
-    from apps.ai_engagement.services.file_sharing import FileSharingService
-    from apps.ai_engagement.services.runtime_state import STATE_KEY
+    from apps.ai_engagement.services.file_sharing import (
+        FileSharingService, explicit_file_request, shared_document_ids,
+    )
 
     current_file_candidates = FileSharingService.build_file_candidates
 
@@ -701,21 +695,10 @@ def install_canonical_ai_architecture() -> None:
             context=context,
         )
         latest_text = _latest_inbound_text_from_context(context)
-        if _FILE_REQUEST_RE.search(latest_text or ""):
-            return candidates
         lead_data = context.lead if isinstance(context.lead, dict) else {}
-        attrs = lead_data.get("attributes")
-        attrs = attrs if isinstance(attrs, dict) else {}
-        runtime = attrs.get(STATE_KEY)
-        runtime = runtime if isinstance(runtime, dict) else {}
-        shared_ids: set[int] = {int(item) for item in lead_data.get("shared_document_ids", []) if str(item).isdigit()}
-        for item in runtime.get(_SHARED_FILES_KEY) or []:
-            if not isinstance(item, dict):
-                continue
-            try:
-                shared_ids.add(int(item.get("document_id")))
-            except (TypeError, ValueError):
-                continue
+        shared_ids = shared_document_ids(lead_data)
+        if explicit_file_request(latest_text, has_shared_files=bool(shared_ids)):
+            return candidates
         if not shared_ids:
             return candidates
         return [

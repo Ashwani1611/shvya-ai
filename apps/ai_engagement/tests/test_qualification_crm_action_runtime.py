@@ -33,15 +33,22 @@ class ConversationCRMActionRuntimeTests(SimpleTestCase):
             },
         )
 
-    def test_explicit_call_request_creates_immediate_reminder(self):
+    def test_explicit_immediate_call_request_obeys_authored_reminder_rule(self):
         before = timezone.now()
         actions, _ = build_controlled_actions(
             decision=SimpleNamespace(qualification_updates=[], crm_actions=[]),
             context=self._context(
                 stage_name="Follow-up",
-                latest_text="I want to connect, please call me",
+                latest_text="I want to connect, please call me now",
             ),
-            runtime_policy={"qualification": {"criteria": []}},
+            runtime_policy={
+                "qualification": {"criteria": []},
+                "crm": {"reminders": [
+                    "Reminder 1:\n"
+                    "- Create when the customer explicitly requests a callback immediately.\n"
+                    "- Title: Customer Callback.",
+                ]},
+            },
             qualification_state={
                 "engagement_mode": MODE_CONVERSATION,
                 "requirement_states": {},
@@ -49,9 +56,30 @@ class ConversationCRMActionRuntimeTests(SimpleTestCase):
             requirements=[],
         )
         reminder = next(item for item in actions if item.get("type") == "create_reminder")
+        self.assertEqual(reminder["title"], "Customer Callback")
         due_at = timezone.datetime.fromisoformat(reminder["due_at"])
         self.assertGreaterEqual(due_at, before)
         self.assertLessEqual(due_at, timezone.now() + timezone.timedelta(minutes=1))
+
+    def test_undated_call_request_cannot_invent_immediate_reminder(self):
+        dated_rule = (
+            "Reminder 1:\n"
+            "- Create when the customer explicitly requests a callback and provides or confirms a future date and time.\n"
+            "- Title: Customer Callback."
+        )
+        for rules in ([], [dated_rule]):
+            with self.subTest(rules=rules):
+                actions, _ = build_controlled_actions(
+                    decision=SimpleNamespace(qualification_updates=[], crm_actions=[{
+                        "type": "create_reminder", "title": "Callback", "description": "",
+                        "due_at": (timezone.now() + timezone.timedelta(days=1)).isoformat(),
+                    }]),
+                    context=self._context(stage_name="Follow-up", latest_text="Please call me"),
+                    runtime_policy={"qualification": {"criteria": []}, "crm": {"reminders": rules}},
+                    qualification_state={"engagement_mode": MODE_CONVERSATION, "requirement_states": {}},
+                    requirements=[],
+                )
+                self.assertFalse(any(item.get("type") == "create_reminder" for item in actions))
 
     def test_other_stage_stays_conversation_only_but_can_shift_by_stage_rule(self):
         destination = {

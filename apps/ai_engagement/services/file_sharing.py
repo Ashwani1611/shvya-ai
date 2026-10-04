@@ -19,6 +19,63 @@ from apps.ai_engagement.services.context import (
 )
 
 
+_FILE_REQUEST = re.compile(
+    r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|"
+    r"prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)\b|"
+    r"(?:ब्रोशर|ब्रोशुर|कैटलॉग|कैटालॉग|पीडीएफ|पीडीएफ़|फ़ाइल|फाइल|दस्तावेज़|दस्तावेज|मेन्यू|मेनू)",
+    re.IGNORECASE,
+)
+_CONTEXTUAL_RESHARE = re.compile(
+    r"\b(?:resend|re-send)\b|"
+    r"\b(?:send|share)\s+(?:(?:it|that|this|one|the\s+same)\s+)?(?:again|once\s+more)\b|"
+    r"\b(?:dobara|dubara|phir\s+se)\s+(?:(?:wo|woh|vo|voh|use|usse|isko|ye|yeh|ise)\s+)?bhej\w*\b|"
+    r"\bbhej\w*\s+(?:do\s+)?(?:dobara|dubara|phir\s+se)\b|"
+    r"(?:दोबारा|दुबारा|फिर(?:\s+से)?)\s+(?:(?:वह|वो|उसे|इसको|यह|इसे)\s+)?भेज\S*|"
+    r"भेज\S*\s+(?:दो\s+)?(?:दोबारा|दुबारा|फिर\s+से)",
+    re.IGNORECASE,
+)
+
+
+def shared_document_ids(lead_context) -> set[int]:
+    """Read the channel's confirmed/preview file history, excluding failed attempts.
+
+    Sandbox supplies its simulated shared IDs explicitly. Live context builds
+    those IDs from provider-accepted/successful transport records; neither form
+    grants permission to send or establishes a new delivery outcome.
+    """
+    from apps.ai_engagement.services.file_delivery_receipts import positive_id
+    from apps.ai_engagement.services.runtime_state import STATE_KEY
+
+    lead_context = lead_context if isinstance(lead_context, dict) else {}
+    if "shared_document_ids" in lead_context:
+        # Channel adapters deliberately supply an empty list when this
+        # conversation has no shared files. Legacy WhatsApp history must not
+        # suppress a first Instagram share (or another sender's conversation).
+        values = lead_context["shared_document_ids"]
+        return {
+            parsed for value in values if (parsed := positive_id(value)) is not None
+        } if isinstance(values, (list, tuple, set)) else set()
+    ids: set[int] = set()
+    attrs = lead_context.get("attributes")
+    attrs = attrs if isinstance(attrs, dict) else {}
+    runtime = attrs.get(STATE_KEY)
+    runtime = runtime if isinstance(runtime, dict) else {}
+    history = runtime.get("shared_files")
+    for item in history if isinstance(history, list) else []:
+        if not isinstance(item, dict) or item.get("status") not in {"sent", "delivered", "read"}:
+            continue
+        document_id = positive_id(item.get("document_id"))
+        if document_id is not None:
+            ids.add(document_id)
+    return ids
+
+
+def explicit_file_request(text: str, *, has_shared_files: bool = False) -> bool:
+    """Retrieve repeat candidates for file requests, never authorize their send."""
+    text = " ".join(str(text or "").split())
+    return bool(_FILE_REQUEST.search(text) or (has_shared_files and _CONTEXTUAL_RESHARE.search(text)))
+
+
 class FileSharingError(Exception):
     """
     Raised when AI-guided file sharing cannot be completed safely.
@@ -254,24 +311,16 @@ Rules for the fields:
                 latest_text = str(message.get("body") or "").strip()
                 if latest_text:
                     break
-        explicit_file_request = bool(re.search(
-            r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|deck|presentation|menu|prospectus|portfolio|flyer|leaflet|datasheet|price\s*list|pricelist)\b",
-            latest_text,
-            flags=re.IGNORECASE,
-        ))
-
-        shared_ids = {
-            int(value) for value in context_data.get("lead", {}).get("shared_document_ids") or []
-            if str(value).isdigit()
-        }
+        shared_ids = shared_document_ids(context_data.get("lead"))
+        requested_file = explicit_file_request(latest_text, has_shared_files=bool(shared_ids))
         documents = []
         # Authored sharing conditions may trigger on an ordinary enquiry, not
         # an explicit file request. Expose guided files for model evaluation;
         # inclusion is not permission to send without satisfying the condition.
         for document in self.get_eligible_documents(organization=organization):
-            if document.id in shared_ids and not explicit_file_request:
+            if document.id in shared_ids and not requested_file:
                 continue
-            if (document.id not in document_ids and not explicit_file_request
+            if (document.id not in document_ids and not requested_file
                     and not str(document.share_instruction or "").strip()):
                 continue
             documents.append(document)
