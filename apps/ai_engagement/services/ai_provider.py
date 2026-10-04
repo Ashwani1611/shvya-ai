@@ -25,6 +25,8 @@ from apps.ai_engagement.services.credits import (
 )
 from apps.core.observability import emit_event, increment, observe_latency
 
+from apps.ai_engagement.services.turn_diagnostics import provider_diagnostics
+
 logger = logging.getLogger(__name__)
 
 
@@ -427,6 +429,7 @@ class OpenAIProvider:
             }
         }
 
+    @provider_diagnostics
     def generate_text(
         self,
         *,

@@ -51,6 +51,8 @@ from apps.ai_engagement.services.runtime_state import (
 )
 
 
+from apps.ai_engagement.services.turn_diagnostics import sandbox_diagnostics
+
 logger = logging.getLogger(__name__)
 
 
@@ -286,6 +288,7 @@ class _SandboxContextBuilder:
                 "lead_source": getattr(self.visitor, "lead_source", "system"),
                 "operational_state": {
                     "execution_mode": "sandbox_preview",
+            "diagnostics": self.diagnostics,
                     "reminder": deepcopy(getattr(self.visitor, "preview_reminder", None)),
                 },
                 "shared_document_ids": list(getattr(self.visitor, "shared_document_ids", [])),
@@ -300,6 +303,7 @@ class _SandboxContextBuilder:
             conversation={
                 "channel": self.channel,
                 "execution_mode": "sandbox_preview",
+            "diagnostics": self.diagnostics,
                 "message_count": len(recent_conversation),
                 "messages": recent_conversation,
             },
@@ -335,6 +339,7 @@ class PlaygroundResult:
     files: list = field(default_factory=list)
     channel: str = "sandbox"
     lead_source: str = "system"
+    diagnostics: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -347,6 +352,7 @@ class PlaygroundResult:
             "stage": self.stage, "events": self.events, "files": self.files,
             "channel": self.channel, "lead_source": self.lead_source,
             "execution_mode": "sandbox_preview",
+            "diagnostics": self.diagnostics,
         }
 
 
@@ -373,6 +379,7 @@ class PlaygroundService:
         self.embedding_service = embedding_service or EmbeddingService()
         self.retrieval_service = retrieval_service or KnowledgeRetrievalService()
 
+    @sandbox_diagnostics
     def run(
         self,
         *,
@@ -680,7 +687,8 @@ class PlaygroundService:
                     organization={**context.organization, "_file_candidates": candidates},
                     lead={**context.lead, "operational_state": {
                         **context.lead.get("operational_state", {}),
-                        "execution_mode": "sandbox_preview", "resolved_actions": resolved,
+                        "execution_mode": "sandbox_preview",
+            "diagnostics": self.diagnostics, "resolved_actions": resolved,
                     }},
                 )
                 service.context_builder = context_builder

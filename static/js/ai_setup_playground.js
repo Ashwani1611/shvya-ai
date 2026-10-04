@@ -384,6 +384,9 @@
             removePendingMessage();
             appendMessage("assistant", assistantText);
             renderEffects(payload);
+            if (payload.diagnostics) {
+                appendMessage("assistant", "Test diagnostic: " + payload.diagnostics, { error: true });
+            }
 
             history.push({
                 role: "user",
