@@ -18,3 +18,12 @@ class StageRuleRecursionTests(SimpleTestCase):
         self.assertFalse(_strong_evidence_match("call", "call and payment"))
         self.assertTrue(_strong_evidence_match("call payment", "call and payment"))
         self.assertFalse(_strong_evidence_match("not interested", "call or demo"))
+
+    def test_live_ultra_hot_description_does_not_crash_an_unrelated_pricing_turn(self):
+        description = (
+            "A highly engaged qualified lead showing strong buying intent, urgency, "
+            "or clear readiness to purchase or proceed."
+        )
+        self.assertFalse(_strong_evidence_match(
+            "What plans and pricing does SHVYA offer?", description,
+        ))
