@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.ai_engagement.graph.workflow import _generate
-from apps.ai_engagement.services.ai_provider import AITextResult
+from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementDecision, EngagementService
 from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
@@ -195,6 +195,9 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         self.greeting_requirement = None
         self.reply = "We have a product brochure. I will now proceed to set up the call and share the product brochure with you."
         for patcher in (
+            # The AI test autouse fixture substitutes an approving verifier. Restore
+            # its real class so the mocked transport records the actual gate.
+            patch("apps.ai_engagement.graph.evidence.OpenAIProvider", new=OpenAIProvider),
             patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=self.provider),
             patch("apps.ai_engagement.services.embeddings.EmbeddingService._get_client", side_effect=EmbeddingError("no live embeddings")),
         ):

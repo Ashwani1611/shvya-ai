@@ -98,10 +98,6 @@ def recover_omitted_answers(*, service, organization, lead, context, decision,
             or qualification_state.get("qualification_completed")):
         _record(review_status="skipped")
         return decision
-    if (str((context.organization or {}).get("id")) != str(organization.id)
-            or str((context.lead or {}).get("id")) != str(lead.id)):
-        raise ValueError("Qualification capture scope does not match the current turn.")
-
     inbound = next((item for item in reversed((context.conversation or {}).get("messages") or [])
                     if isinstance(item, dict) and item.get("direction") == "inbound"), None)
     if not inbound or not inbound.get("id") or not str(inbound.get("body") or "").strip():
@@ -113,6 +109,12 @@ def recover_omitted_answers(*, service, organization, lead, context, decision,
     if len(body.split()) < 4:
         _record(review_status="no_candidates")
         return decision
+    # No-op short-answer composition also serves synthetic policy previews.
+    # Require scope agreement before examining or reviewing eligible facts;
+    # the main engagement service validates every production context earlier.
+    if (str((context.organization or {}).get("id")) != str(organization.id)
+            or str((context.lead or {}).get("id")) != str(lead.id)):
+        raise ValueError("Qualification capture scope does not match the current turn.")
     messages = (context.conversation or {}).get("messages") or []
     existing_state = project_answer_updates(state=qualification_state, requirements=requirements,
                                            updates=decision.qualification_updates, messages=messages)

@@ -86,6 +86,20 @@ class TurnDiagnosticsTests(SimpleTestCase):
         trace_service.record("qualification_capture", {"candidate_count": "secret", "review_status": "secret"})
         self.assertNotIn("secret", summary())
 
+    def test_irrelevant_zero_capture_skip_keeps_successful_pricing_diagnostics_empty(self):
+        for status in ("skipped", "no_candidates"):
+            with self.subTest(status=status):
+                trace_service.record("qualification_capture", {
+                    "candidate_count": 0, "accepted_count": 0, "review_status": status,
+                })
+                self.assertEqual(summary(), "")
+
+    def test_zero_count_semantic_review_failure_is_still_visible(self):
+        trace_service.record("qualification_capture", {
+            "candidate_count": 0, "accepted_count": 0, "review_status": "failed",
+        })
+        self.assertIn("capture/candidates=0/review=failed/accepted=0", summary())
+
     def test_missing_graph_observation_for_file_request_is_visible(self):
         diagnostic = summary(SimpleNamespace(files=[], message="Please send the product brochure."))
         self.assertIn("file/draft/path=not_observed", diagnostic)

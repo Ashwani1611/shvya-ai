@@ -200,7 +200,12 @@ class MetaInboundMediaScopeTests(TestCase):
         self.assertEqual(response["X-Content-Type-Options"], "nosniff")
         self.assertIn("sandbox", response["Content-Security-Policy"])
         download.assert_called_once_with("123456789", max_bytes=100 * 1024 * 1024)
-        response.close()
+        # The test client's stream iterator closes the response and file while
+        # suppressing request_finished's database connection cleanup. Calling
+        # response.close() again closes TestCase's atomic PostgreSQL connection.
+        self.assertTrue(response.closed)
+        self.assertTrue(download.return_value["file"].closed)
+        message.refresh_from_db()  # Cleanup must leave the test transaction usable.
 
     @patch("apps.channels.providers.whatsapp.WhatsAppClient.download_media")
     def test_foreign_org_account_hosted_outbound_and_invalid_media_are_rejected(self, download):
@@ -227,7 +232,7 @@ class MetaInboundMediaScopeTests(TestCase):
         download.return_value = {"file": io.BytesIO(b"%PDF-test"), "mime_type": "application/pdf"}
         response = self.client.get(self.media_url(message))
         self.assertEqual(response.status_code, 200)
-        response.close()
+        self.assertEqual(b"".join(response.streaming_content), b"%PDF-test")
         message.refresh_from_db()
         self.assertIsNone(message.lead_id)
         self.client.cookies.clear()
@@ -254,11 +259,11 @@ class MetaInboundMediaScopeTests(TestCase):
                 self.assertEqual(response["Content-Type"], expected_type)
                 self.assertNotIn("X-Test", response.headers)
                 self.assertNotIn("\r", response["Content-Disposition"])
-                response.close()
+                self.assertEqual(b"".join(response.streaming_content), b"file")
         download.return_value = {"file": io.BytesIO(b"file"), "mime_type": "image/png"}
         response = self.client.get(self.media_url(message), {"download": "1"})
         self.assertTrue(response["Content-Disposition"].startswith("attachment"))
-        response.close()
+        self.assertEqual(b"".join(response.streaming_content), b"file")
 
     @patch("apps.channels.providers.whatsapp.WhatsAppClient.download_media")
     def test_provider_errors_are_fixed_private_responses(self, download):

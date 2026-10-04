@@ -107,12 +107,16 @@ def _decision_details(trace, result):
             parts.append("file/preview=" + str(min(len(getattr(result, "files", []) or []), 30)))
     capture = trace.data.get("qualification_capture") or {}
     capture = capture if isinstance(capture, dict) else {}
-    if capture:
+    capture_relevant = bool(capture) and (
+        capture.get("review_status") not in ("skipped", "no_candidates")
+        or _count(capture.get("candidate_count")) or _count(capture.get("accepted_count"))
+    )
+    if capture_relevant:
         status = capture.get("review_status")
         status = status if isinstance(status, str) and status in {"skipped", "no_candidates", "reviewed", "rejected", "failed"} else "unknown"
         parts.append("capture/candidates=" + str(_count(capture.get("candidate_count")))
                      + "/review=" + status + "/accepted=" + str(_count(capture.get("accepted_count"))))
-    if relevant or capture:
+    if relevant or capture_relevant:
         draft = dict(phases)["draft"]
         parts.append("capture/proposed=" + str(_count(draft.get("proposed_capture_count")))
                      + "/graph=" + str(_count(draft.get("graph_capture_count"))))

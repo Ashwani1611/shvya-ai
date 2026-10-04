@@ -141,6 +141,21 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
             _FINAL_LANGUAGE_ONLY.reset(token)
         self.provider.generate_text.assert_not_called()
 
+    def test_short_alias_policy_preview_remains_a_no_op_before_recovery_scope_check(self):
+        context = replace(self.context, organization={**self.context.organization, "id": "synthetic-org"},
+                          conversation={"messages": [{"id": "source-current", "direction": "inbound", "body": "A"}]})
+        draft = _draft(file_document_id=7)
+        self.assertIs(self.recover(draft, context=context), draft)
+        self.provider.generate_text.assert_not_called()
+
+    def test_eligible_fact_review_requires_matching_organization_and_lead_scope(self):
+        for field in ("organization", "lead"):
+            with self.subTest(field=field):
+                context = replace(self.context, **{field: {**getattr(self.context, field), "id": "other-scope"}})
+                with self.assertRaisesMessage(ValueError, "Qualification capture scope does not match"):
+                    self.recover(context=context)
+        self.provider.generate_text.assert_not_called()
+
     def test_review_failure_preserves_valid_original_proposals(self):
         self.provider.generate_text.side_effect = RuntimeError("provider unavailable")
         draft = _draft(self.updates[:1])
