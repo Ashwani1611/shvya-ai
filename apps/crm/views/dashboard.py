@@ -832,6 +832,7 @@ def lead_call_modal(
 
 @crm_login_required
 @require_POST
+@transaction.atomic
 def lead_call_save(
     request,
     lead_id,
@@ -896,10 +897,6 @@ def lead_call_save(
         "duration_seconds",
         "0",
     ).strip()
-    duration_seconds = int(
-    duration_seconds_raw or 0
-    )
-
     try:
 
         duration_seconds = int(
@@ -996,6 +993,9 @@ def lead_call_save(
     # --------------------------------------------------------
     # PERMANENT ACTIVITY
     # --------------------------------------------------------
+
+    from apps.telephony.services import capture_manual_crm_call
+    capture_manual_crm_call(call)
 
     record_call_logged(
         lead=lead,

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static call_metrics %}
 
 {% block title %}Call Intelligence · SHVYA{% endblock %}
 
 {% block extra_head %}
 {{ block.super }}
-<link rel="stylesheet" href="{% static 'telephony/call-intelligence.css' %}?v=20260922b">
+<link rel="stylesheet" href="{% static 'telephony/call-intelligence.css' %}?v=20261004a">
 {% endblock %}
 
 {% block content %}
@@ -102,7 +102,7 @@
         <div class="ci-feature-copy">
           <span>AUTO LEAD CREATION</span>
           <h3>Unknown caller?<br>Not for long.</h3>
-          <p>Choose which call types can create a lead and exactly which pipeline and stage receive it.</p>
+          <p>New leads go to the signed-in employee’s pipeline; existing leads keep their current pipeline and stage.</p>
         </div>
       </article>
 
@@ -156,18 +156,24 @@
       <article><small>Answered</small><strong>{{ stats.answered }}</strong><span>Connected conversations</span></article>
       <article><small>Missed</small><strong>{{ stats.missed }}</strong><span>Need attention</span></article>
       <article><small>Outgoing</small><strong>{{ stats.outgoing }}</strong><span>Team dial-outs</span></article>
-      <article><small>Avg talk time</small><strong>{{ stats.average_talk }}s</strong><span>Answered calls</span></article>
-      <article><small>Avg response</small><strong>{% if stats.average_response != None %}{{ stats.average_response }}s{% else %}—{% endif %}</strong><span>Incoming ring time</span></article>
-      <article><small>Total ringing time</small><strong>{{ stats.total_ring }}s</strong><span>{{ stats.measured_ring }} calls with measured ring time</span></article>
-      <article><small>Avg ringing time</small><strong>{% if stats.measured_ring %}{{ stats.average_ring }}s{% else %}—{% endif %}</strong><span>Measured calls only</span></article>
+      <article><small>Avg talk time</small><strong>{{ stats.average_talk|call_duration }}</strong><span>Answered calls</span></article>
+      <article><small>Avg response</small><strong>{% if stats.average_response != None %}{{ stats.average_response|call_duration }}{% else %}—{% endif %}</strong><span>Incoming ring time</span></article>
+      <article><small>Total ringing time</small><strong>{{ stats.total_ring|call_duration }}</strong><span>{{ stats.measured_ring }} calls with measured ring time</span></article>
+      <article><small>Avg ringing time</small><strong>{% if stats.measured_ring %}{{ stats.average_ring|call_duration }}{% else %}—{% endif %}</strong><span>Measured calls only</span></article>
+      <article><small>Answer rate</small><strong>{{ stats.answer_rate }}%</strong><span>Answered / all calls</span></article>
+      <article><small>Total talk time</small><strong>{{ stats.total_talk|call_duration }}</strong><span>Answered calls</span></article>
+      <article><small>CRM linked</small><strong>{{ stats.linked }}</strong><span>Calls attached to a lead</span></article>
+      <article><small>Disposition completion</small><strong>{{ stats.disposition_rate }}%</strong><span>{{ stats.unclassified }} need an outcome</span></article>
+      <article><small>Overdue follow-ups</small><strong>{{ stats.overdue }}</strong><span>Past their scheduled time</span></article>
       <article><small>Converted</small><strong>{{ stats.converted }}</strong><span>Converted dispositions</span></article>
-      <article><small>Follow-ups</small><strong>{{ stats.followups }}</strong><span>Due within 24 hours</span></article>
+      <article><small>Follow-ups</small><strong>{{ stats.followups }}</strong><span>Due in next 24 hours</span></article>
     </div>
 
     <form class="ci-filter-bar" method="get" action="{% url 'call-intelligence-dashboard' %}">
       <input type="hidden" name="section" value="analytics">
       <label class="ci-filter-search"><i class="ti ti-search"></i><input type="search" name="q" value="{{ filters.q }}" placeholder="Search lead, contact or phone" aria-label="Search calls"></label>
       <select name="status" aria-label="Call status"><option value="">All statuses</option>{% for value,label in call_statuses %}<option value="{{ value }}" {% if filters.status == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+      <select name="disposition" aria-label="Call outcome"><option value="">All outcomes</option><option value="unclassified" {% if filters.disposition == 'unclassified' %}selected{% endif %}>Not classified</option>{% for disposition in dispositions %}<option value="{{ disposition.code }}" {% if filters.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</select>
       <select name="direction" aria-label="Call direction"><option value="">All directions</option>{% for value,label in call_directions %}<option value="{{ value }}" {% if filters.direction == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       <select name="intent" aria-label="Buying intent"><option value="">All intent</option>{% for value,label in call_intents %}<option value="{{ value }}" {% if filters.intent == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
       <select name="source" aria-label="Call source"><option value="">All sources</option>{% for value,label in call_sources %}<option value="{{ value }}" {% if filters.source == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
@@ -179,6 +185,17 @@
       <a href="{% url 'call-intelligence-dashboard' %}?section=analytics#calls" class="ci-filter-clear">Clear</a>
     </form>
 
+    <details class="ci-source-guide ci-panel">
+      <summary>What does call source mean?</summary>
+      <p>Source is how the call was logged, separate from how the lead entered CRM.</p>
+      <ul><li>Android APK · SIM: calls synced from the employee’s signed-in Android app.</li>
+      <li>CRM · Manual call: calls logged using Mark call in CRM. Manually creating a lead does not create a call.</li>
+      <li>Cloud · API events: call events submitted to the API by a configured integration. This option does not confirm a provider is connected.</li></ul>
+      <p>New APK leads go to the signed-in employee’s pipeline. Calls to existing leads stay attached to that lead in its current pipeline.</p>
+    </details>
+    <div class="ci-disposition-chips" aria-label="Call outcomes in selected period">
+      {% for outcome in disposition_counts %}<span>{{ outcome.name }} <small>{{ outcome.total }} calls</small></span>{% endfor %}
+    </div>
     <div id="calls" class="ci-data-grid">
       <section class="ci-panel">
         <div class="ci-panel-head">
@@ -221,8 +238,8 @@
                 {% endif %}
               </div>
               <div class="ci-call-time">
-                <strong>{{ call.talk_duration_seconds }}s talk</strong>
-                <small>Rang: {% if call.ring_duration_seconds %}{{ call.ring_duration_seconds }}s{% else %}Not available{% endif %}</small>
+                <strong>{{ call.talk_duration_seconds|call_duration }} talk</strong>
+                <small>Rang: {% if call.ring_duration_seconds %}{{ call.ring_duration_seconds|call_duration }}{% else %}Not available{% endif %}</small>
                 <small>{{ call.ended_at|date:"d M, H:i"|default:"Syncing…" }}</small>
               </div>
             </summary>
@@ -234,8 +251,8 @@
                     <div><dt>Agent</dt><dd>{{ call.user.name|default:call.user.email|default:"System" }}</dd></div>
                     <div><dt>Direction</dt><dd>{{ call.get_direction_display }}</dd></div>
                     <div><dt>Status</dt><dd>{{ call.get_status_display }}</dd></div>
-                    <div><dt>Ringing time</dt><dd>{% if call.ring_duration_seconds %}{{ call.ring_duration_seconds }}s{% else %}Not available{% endif %}</dd></div>
-                    <div><dt>Talk</dt><dd>{{ call.talk_duration_seconds }}s</dd></div>
+                    <div><dt>Ringing time</dt><dd>{% if call.ring_duration_seconds %}{{ call.ring_duration_seconds|call_duration }}{% else %}Not available{% endif %}</dd></div>
+                    <div><dt>Talk</dt><dd>{{ call.talk_duration_seconds|call_duration }}</dd></div>
                     {% if call.provider %}<div><dt>Provider</dt><dd>{{ call.provider }}</dd></div>{% endif %}
                   </dl>
                 </section>
@@ -290,7 +307,7 @@
                   <textarea name="notes" maxlength="20000" placeholder="What happened? What should happen next?">{{ call.notes }}</textarea>
                 </div>
                 <div class="ci-post-call-controls">
-                  <label>Disposition<select name="disposition"><option value="">Choose outcome</option>{% for disposition in dispositions %}<option value="{{ disposition.code }}" {% if call.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</select></label>
+                  <label>Call outcome<select name="disposition"><option value="">Not classified — choose outcome</option>{% regroup dispositions by category as outcome_groups %}{% for group in outcome_groups %}<optgroup label="{% if group.grouper == 'connected' %}Connected conversation{% else %}Could not connect{% endif %}">{% for disposition in group.list %}<option value="{{ disposition.code }}" {% if call.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
                   <label>Follow-up<input type="datetime-local" name="follow_up_at" {% if call.follow_up_at %}value="{{ call.follow_up_at|date:'Y-m-d\TH:i' }}"{% endif %}></label>
                   <button type="submit" class="ci-primary-btn"><i class="ti ti-sparkles"></i> Save & analyze</button>
                 </div>
@@ -315,11 +332,11 @@
       <span>{{ call_page.paginator.count }} calls · Page {{ call_page.number }} of {{ call_page.paginator.num_pages }}</span>
       {% if call_page.has_next %}<a href="?{{ page_query }}&page={{ call_page.next_page_number }}#calls">Next</a>{% endif %}
     </nav>
-    <p class="ci-analytics-caption">Ringing time is shown in seconds when captured. Android does not provide an exact number of audible rings. Unavailable timings are excluded from ring averages.</p>
+    <p class="ci-analytics-caption">Durations use hours, minutes and seconds. Android does not provide an exact number of audible rings. Unavailable timings are excluded from ring averages.</p>
     <div class="ci-intelligence-grid">
       <section class="ci-panel">
         <div class="ci-panel-head">
-          <div><small>MISSED-CALL RECOVERY</small><h3>Call back queue</h3></div>
+          <div><small>MISSED-CALL RECOVERY</small><h3>Recent missed calls</h3></div>
           <span>{{ missed_calls|length }} recent</span>
         </div>
         <div class="ci-missed-list">
@@ -330,7 +347,7 @@
             <div><small>{% if call.user %}{{ call.user.name|default:call.user.email }}{% else %}Unassigned{% endif %}</small>{% if call.lead %}<a href="{% url 'call-intelligence-dashboard' %}?section=analytics&q={{ call.phone_number|urlencode }}#calls">Open call</a>{% endif %}</div>
           </article>
           {% empty %}
-          <div class="ci-empty small"><i class="ti ti-circle-check"></i><strong>No missed calls waiting.</strong><span>Your recent missed-call queue is clear.</span></div>
+          <div class="ci-empty small"><i class="ti ti-circle-check"></i><strong>No missed calls found.</strong><span>No missed calls match the selected filters.</span></div>
           {% endfor %}
         </div>
       </section>
@@ -338,17 +355,22 @@
       <section class="ci-panel">
         <div class="ci-panel-head">
           <div><small>AGENT INTELLIGENCE</small><h3>Team performance</h3></div>
-          <span>Grounded call metrics</span>
+          <span>Same filters as call history</span>
         </div>
-        <div class="ci-agent-list">
-          {% for agent in agent_stats %}
-          <article>
-            <div><strong>{{ agent.user__name|default:agent.user__email }}</strong><span>{{ agent.calls }} calls · {{ agent.answered }} answered · {{ agent.missed }} missed</span></div>
-            <div class="ci-agent-metrics"><span>{{ agent.average_talk|floatformat:0 }}s avg</span><span>{{ agent.high_intent }} high intent</span><span>{{ agent.converted }} converted</span></div>
-          </article>
-          {% empty %}
-          <div class="ci-empty small"><i class="ti ti-users"></i><strong>No agent activity yet.</strong><span>Filtered call performance will appear here.</span></div>
-          {% endfor %}
+        <div class="ci-team-table-wrap" tabindex="0" aria-label="Team performance table">
+          <table class="ci-team-table">
+            <thead><tr><th scope="col">Employee</th><th scope="col">Calls</th><th scope="col">Answer rate</th><th scope="col">Talk time</th><th scope="col">Outcomes logged</th><th scope="col">High intent / converted</th><th scope="col">Overdue</th><th scope="col">AI score</th></tr></thead>
+            <tbody>{% for agent in agent_stats %}<tr>
+              <th scope="row">{{ agent.user__name|default:agent.user__email }}<small>{{ agent.incoming }} incoming · {{ agent.outgoing }} outgoing</small></th>
+              <td>{{ agent.calls }}<small>{{ agent.answered }} answered · {{ agent.missed }} missed</small></td>
+              <td>{{ agent.answer_rate }}%</td>
+              <td>{{ agent.total_talk|call_duration }}<small>{{ agent.average_talk|call_duration }} avg talk</small></td>
+              <td>{{ agent.disposition_rate }}%<small>{{ agent.unclassified }} need outcome</small></td>
+              <td>{{ agent.high_intent }} / {{ agent.converted }}</td>
+              <td>{{ agent.overdue }}</td>
+              <td>{% if agent.average_ai_score != None %}{{ agent.average_ai_score|floatformat:1 }}/10{% else %}—{% endif %}<small>{{ agent.analyzed }} analyzed</small></td>
+            </tr>{% empty %}<tr><td colspan="8">No employee calls match the selected filters.</td></tr>{% endfor %}</tbody>
+          </table>
         </div>
       </section>
     </div>
@@ -426,8 +448,9 @@
         <label><input type="checkbox" name="auto_create_unknown" {% if call_settings.auto_create_unknown %}checked{% endif %}><span></span><div><strong>Unknown calls</strong><small>Optional lead creation when Android/provider status cannot be classified.</small></div></label>
       </div>
 
+      <p>APK calls create leads in the signed-in employee’s own active pipeline. Assign a pipeline owner in CRM before employees start syncing.</p>
       <div class="ci-select-grid">
-        <label><span>Default pipeline</span><select name="default_pipeline" id="ci-pipeline"><option value="">Automatic: Leads / first active</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if call_settings.default_pipeline_id == pipeline.id %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select></label>
+        <label><span>Fallback pipeline (admins / cloud)</span><select name="default_pipeline" id="ci-pipeline"><option value="">Automatic: Leads / first active</option>{% for pipeline in pipelines %}<option value="{{ pipeline.id }}" {% if call_settings.default_pipeline_id == pipeline.id %}selected{% endif %}>{{ pipeline.name }}</option>{% endfor %}</select></label>
         <label><span>Default stage</span><select name="default_stage" id="ci-stage"><option value="">Automatic: New Lead / first active</option>{% for stage in stages %}<option value="{{ stage.id }}" data-pipeline="{{ stage.pipeline_id }}" {% if call_settings.default_stage_id == stage.id %}selected{% endif %}>{{ stage.pipeline.name }} · {{ stage.name }}</option>{% endfor %}</select></label>
         <label><span>Default owner</span><select name="default_owner"><option value="">Call employee / pipeline owner</option>{% for owner in owners %}<option value="{{ owner.id }}" {% if call_settings.default_owner_id == owner.id %}selected{% endif %}>{{ owner.name|default:owner.email }}</option>{% endfor %}</select></label>
       </div>

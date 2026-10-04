@@ -1,8 +1,7 @@
-from datetime import timedelta
 
 from django.conf import settings as django_settings
 from django.db import transaction
-from django.db.models import Avg, Count, Q, Sum
+from django.db.models import Count, Q
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
@@ -26,6 +25,7 @@ from ..models import (
     CallRecord,
 )
 from ..services import get_call_dispositions
+from ..analytics import call_metrics, team_metrics
 from ..tasks import analyze_call_intelligence
 
 
@@ -39,6 +39,7 @@ def _scoped_calls(user):
 def _filtered_calls(request, user):
     qs = _scoped_calls(user)
     status = str(request.GET.get("status") or "").strip()
+    disposition = str(request.GET.get("disposition") or "").strip()
     direction = str(request.GET.get("direction") or "").strip()
     source = str(request.GET.get("source") or "").strip()
     intent = str(request.GET.get("intent") or "").strip()
@@ -50,6 +51,10 @@ def _filtered_calls(request, user):
 
     if status in CallRecord.Status.values:
         qs = qs.filter(status=status)
+    if disposition == "unclassified":
+        qs = qs.filter(disposition="")
+    elif disposition:
+        qs = qs.filter(disposition=disposition)
     if direction in CallRecord.Direction.values:
         qs = qs.filter(direction=direction)
     if source in CallRecord.Source.values:
@@ -87,22 +92,7 @@ def call_intelligence_dashboard(request):
     )
     calls = _filtered_calls(request, user)
     today = calls  # All analytics share the activity filters, including dates.
-    stats = today.aggregate(
-        total=Count("id"),
-        average_talk=Avg("talk_duration_seconds", filter=Q(status=CallRecord.Status.ANSWERED)),
-        average_response=Avg(
-            "ring_duration_seconds",
-            filter=Q(
-                direction=CallRecord.Direction.INCOMING,
-                status=CallRecord.Status.ANSWERED,
-                ring_duration_seconds__gt=0,
-            ),
-        ),
-        converted=Count("id", filter=Q(disposition="converted")),
-        total_ring=Sum("ring_duration_seconds"),
-        measured_ring=Count("id", filter=Q(ring_duration_seconds__gt=0)),
-        average_ring=Avg("ring_duration_seconds", filter=Q(ring_duration_seconds__gt=0)),
-    )
+    stats = call_metrics(today)
 
     page = Paginator(calls.select_related(
         "lead", "lead__pipeline", "lead__stage", "user", "intelligence"
@@ -124,22 +114,7 @@ def call_intelligence_dashboard(request):
         .select_related("user")
         .order_by("-last_seen_at", "user__name")
     )
-    agent_stats = list(
-        today.exclude(user_id__isnull=True)
-        .values("user_id", "user__name", "user__email")
-        .annotate(
-            calls=Count("id"),
-            answered=Count("id", filter=Q(status=CallRecord.Status.ANSWERED)),
-            missed=Count("id", filter=Q(status=CallRecord.Status.MISSED)),
-            average_talk=Avg("talk_duration_seconds", filter=Q(status=CallRecord.Status.ANSWERED)),
-            high_intent=Count(
-                "id",
-                filter=Q(intelligence__intent=CallIntelligenceResult.Intent.HIGH),
-            ),
-            converted=Count("id", filter=Q(disposition="converted")),
-        )
-        .order_by("-calls", "user__name")
-    )
+    agent_stats = team_metrics(today)
     release = CallAppRelease.objects.filter(is_active=True).first()
     release_url = release.download_url if release else getattr(
         django_settings, "CALL_INTELLIGENCE_APK_URL", ""
@@ -151,10 +126,12 @@ def call_intelligence_dashboard(request):
         organization=user.organization, is_active=True
     ).order_by("name", "email")
 
+    dispositions = list(get_call_dispositions(user.organization))
+    disposition_names = {row.code: row.name for row in dispositions}
     return render(request, "telephony/call_intelligence.html", {
         "crm_user": user,
         "active_section": "analytics" if request.GET.get("section") == "analytics" or any(
-            request.GET.get(k) for k in ("q", "status", "direction", "source", "intent", "pipeline", "agent", "date_from", "date_to")
+            request.GET.get(k) for k in ("q", "status", "disposition", "direction", "source", "intent", "pipeline", "agent", "date_from", "date_to")
         ) else "overview",
         "call_page": page,
         "page_query": page_query.urlencode(),
@@ -163,7 +140,7 @@ def call_intelligence_dashboard(request):
         "missed_calls": missed_calls,
         "devices": devices,
         "agent_stats": agent_stats,
-        "dispositions": list(get_call_dispositions(user.organization)),
+        "dispositions": dispositions,
         "pipelines": pipelines,
         "stages": Stage.objects.filter(
             pipeline__organization=user.organization,
@@ -171,27 +148,11 @@ def call_intelligence_dashboard(request):
             is_active=True,
         ).select_related("pipeline").order_by("pipeline__name", "display_order"),
         "owners": owners,
-        "stats": {
-            "total": stats["total"] or 0,
-            "total_ring": stats["total_ring"] or 0,
-            "measured_ring": stats["measured_ring"] or 0,
-            "average_ring": int(stats["average_ring"] or 0),
-            "answered": today.filter(status=CallRecord.Status.ANSWERED).count(),
-            "missed": today.filter(status=CallRecord.Status.MISSED).count(),
-            "outgoing": today.filter(direction=CallRecord.Direction.OUTGOING).count(),
-            "average_talk": int(stats["average_talk"] or 0),
-            "average_response": int(stats["average_response"]) if stats["average_response"] is not None else None,
-            "converted": stats["converted"] or 0,
-            "followups": calls.filter(
-                follow_up_required=True,
-                follow_up_at__isnull=False,
-                follow_up_at__lte=timezone.now() + timedelta(days=1),
-            ).count(),
-        },
+        "stats": stats,
         "filters": {
             key: str(request.GET.get(key) or "")
             for key in (
-                "q", "status", "direction", "source", "intent",
+                "q", "status", "disposition", "direction", "source", "intent",
                 "pipeline", "agent", "date_from", "date_to",
             )
         },
@@ -200,7 +161,12 @@ def call_intelligence_dashboard(request):
         "is_admin": user.role == User.Role.ADMIN,
         "call_statuses": CallRecord.Status.choices,
         "call_directions": CallRecord.Direction.choices,
-        "call_sources": CallRecord.Source.choices,
+        "call_sources": [("android_sim", "Android APK · SIM"), ("manual", "CRM · Manual call"), ("cloud", "Cloud · API events")],
+        "source_counts": list(calls.values("source").annotate(total=Count("id")).order_by("source")),
+        "disposition_counts": [
+            {"name": disposition_names.get(row["disposition"], row["disposition"] or "Not classified"), "total": row["total"]}
+            for row in calls.values("disposition").annotate(total=Count("id")).order_by("-total")
+        ],
         "call_intents": CallIntelligenceResult.Intent.choices,
     })
 

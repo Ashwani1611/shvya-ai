@@ -85,3 +85,12 @@ Additional mobile API behavior:
   builds can upgrade from earlier lower version codes.
 
 Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
+
+## Analytics and employee routing
+
+- Call source means the capture channel, not the lead acquisition source. Android SIM events are synced by the APK. New manual CRM `Mark call` entries now create a linked CallRecord. Historical CRM calls without a CallRecord are not automatically backfilled. Cloud events use the authenticated generic event API; this does not imply a named provider is installed.
+- New APK leads route to the authenticated employee's active owned pipeline. Agents without a pipeline receive an actionable validation error; their leads are never silently routed to another employee. Admins without an owned pipeline retain organization fallback settings. Mobile manual creation uses the same routing and limits available choices to owned pipelines when assigned.
+- Existing leads are matched organization-wide by normalized phone. Calls attach to the existing lead and canonical LeadCall, retaining its pipeline/stage regardless of which employee made the call. Repeated events do not duplicate CRM calls.
+- Duration labels use hours/minutes/seconds, while APIs preserve raw seconds and provide formatted duration strings. Talk averages and totals include answered calls only. Ring averages exclude unavailable zero measurements.
+- Dashboard outcome, source, pipeline, employee, status, intent, search and date filters apply to all cards and team rows. Answer rate is answered/all calls; conversion rate is converted dispositions/answered calls. Conversion is a call outcome, not a unique lead or revenue metric. Follow-ups due next 24 hours exclude overdue calls, which have a separate count.
+- Missing standard dispositions are seeded for existing organizations without overwriting custom or disabled choices. Connected and not-connected outcomes are grouped in the call form. AI scores show only analyzed calls; absent analysis is not treated as a zero score.
