@@ -279,5 +279,8 @@ def paced_ai_send(sender):
             deferred = True
             raise
         finally:
-            _finish(message, token, deferred=deferred)
+            if deferred:
+                _finish(message, token, deferred=True)
+            else:
+                _finish(message, token)
     return send
