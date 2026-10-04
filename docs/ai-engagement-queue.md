@@ -20,8 +20,10 @@ Redis publication is not the source of truth for whether a reply is pending.
 - Qualified leads can receive contextual replies when their controls allow AI.
   Qualification completion does not override a stage's AI OFF control.
 
-By default, rapid inbound messages are given a 4-second quiet window and normal
-AI sends use a 5-second per-sender pacing gap. These are separate controls:
+Hosted replies become eligible 45 seconds after the first queued inbound in a
+burst; newer messages inherit that deadline instead of extending it. Hosted
+successful AI sends are separated by 45 seconds. Meta API inbound bursts use a
+4-second quiet window and a 5-second per-sender pacing gap. These are separate controls:
 the first coalesces a customer burst, while the second prevents provider-side
 send bursts. Follow-up cadence and bump-up timing remain separate business
 schedules.

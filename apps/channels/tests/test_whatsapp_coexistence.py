@@ -135,6 +135,28 @@ class WhatsAppCoexistenceTests(TestCase):
 
     @patch("services.channels.realtime.queue_message_publish")
     @patch("services.channels.whatsapp_service._queue_whatsapp_engagement")
+    def test_live_customer_inbound_queues_exact_coexistence_source(self, engage, publish):
+        from services.channels.whatsapp_service import handle_inbound_message
+
+        self.pipeline.ai_enabled = True
+        self.pipeline.save(update_fields=["ai_enabled"])
+        account = WhatsAppAccount.objects.create(
+            organization=self.org, connection_type=WhatsAppAccount.ConnectionType.API,
+            waba_id="waba-live", phone_number_id="phone-live",
+            display_phone_number="+918700274739", access_token="token",
+            status=WhatsAppAccount.Status.CONNECTED, is_active=True,
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            message = handle_inbound_message(
+                organization=self.org, account=account, external_id="wamid.customer-live",
+                from_number="919999999999", to_number="918700274739", body="Please help",
+                raw_payload={"id": "wamid.customer-live", "type": "text", "text": {"body": "Please help"}},
+            )
+        self.assertIsNotNone(message.lead_id)
+        engage.assert_called_once_with(lead_id=str(message.lead_id), source_message_id=str(message.pk))
+
+    @patch("services.channels.realtime.queue_message_publish")
+    @patch("services.channels.whatsapp_service._queue_whatsapp_engagement")
     def test_business_app_echo_is_mirrored_as_outbound_without_waking_ai(
         self,
         engage,

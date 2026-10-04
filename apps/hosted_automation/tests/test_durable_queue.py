@@ -67,6 +67,21 @@ class DurableHostedQueueTests(TestCase):
         self.assertNotEqual(first.pk, third.pk)
         self.assertEqual(second.status, "queued")
 
+    def test_newer_turn_inherits_first_burst_deadline(self):
+        first = self._job()
+        deadline = timezone.now() + timedelta(seconds=20)
+        HostedAutomationJob.objects.filter(pk=first.pk).update(available_at=deadline)
+        # The post-save enqueue must inherit the original wait, not add 45s.
+        with patch("apps.ai_engagement.services.ai_permissions.AIPermissionService.evaluate",
+                   return_value=SimpleNamespace(allowed=True, reason="allowed")):
+            inbound = WhatsAppMessage.objects.create(
+                organization=self.org, account=self.account, lead=self.lead,
+                direction="inbound", from_number=self.lead.phone,
+                to_number=self.account.display_phone_number, body="And availability?", status="received",
+            )
+        job = HostedAutomationJob.objects.get(source_message=inbound)
+        self.assertLessEqual(job.available_at, deadline)
+
     def _bulk_welcomes(self, count):
         leads = [Lead(organization=self.org, pipeline=self.pipeline, stage=self.stage,
                       name=f"Bulk {index}", phone=f"+919888{index:06d}") for index in range(count)]

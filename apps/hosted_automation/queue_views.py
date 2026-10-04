@@ -18,7 +18,7 @@ from services.channels.hosted_automation_service import (
     automation_pause_until,
     job_ai_block_reason,
 )
-from services.channels.ai_send_gate import AI_SEND_GAP_SECONDS, next_ai_send_at
+from services.channels.ai_send_gate import ai_send_gap_seconds, next_ai_send_at
 from services.channels.hosted_whatsapp_service import account_ai_block_reason, get_session_settings
 
 
@@ -172,7 +172,7 @@ def hosted_session_queue_view(request, account_id):
             status_text = "Paused by Account Health"
             effective_status = "paused"
         elif sender_available_at and sender_available_at > now:
-            status_text = f"Waiting for sender · {AI_SEND_GAP_SECONDS}-second minimum gap"
+            status_text = f"Waiting for sender · {ai_send_gap_seconds(account)}-second minimum gap"
         elif job.available_at <= now:
             status_text = "Queued · waiting for worker"
         else:
@@ -358,7 +358,7 @@ def hosted_session_queue_view(request, account_id):
             "pending_ai_count": pending_ai_count,
             "shown_ai_count": shown_ai_count,
             "ai_queue_has_more": pending_ai_count > shown_ai_count,
-            "ai_min_send_gap_seconds": AI_SEND_GAP_SECONDS,
+            "ai_min_send_gap_seconds": ai_send_gap_seconds(account),
             "sender_available_at": _iso(sender_available_at),
             "next_execution_at": next_execution_at,
             "updated_at": now.isoformat(),

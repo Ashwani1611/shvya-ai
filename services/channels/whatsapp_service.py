@@ -545,8 +545,8 @@ def handle_inbound_message(
         from services.channels.hosted_whatsapp_service import get_session_settings
         if get_session_settings(account=account).get("ai_auto_reply"):
             transaction.on_commit(
-                lambda lead_id=lead_id: _queue_whatsapp_engagement(
-                    lead_id=lead_id,
+                lambda lead_id=lead_id, source_id=str(message.pk): _queue_whatsapp_engagement(
+                    lead_id=lead_id, source_message_id=source_id,
                 )
             )
 

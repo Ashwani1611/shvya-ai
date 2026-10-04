@@ -49,9 +49,7 @@ def hosted_job_allows_history(job) -> bool:
 
 
 def _ai_response_delay_seconds() -> int:
-    from apps.ai_engagement.services.turn_burst import turn_burst_seconds
-
-    return turn_burst_seconds()
+    return 45
 
 
 AI_RESPONSE_DELAY_SECONDS = _ai_response_delay_seconds()
@@ -393,6 +391,9 @@ def media_url_for_config(hosted_config):
 def enqueue_ai_engagement(*, account, lead, source_message, activation=""):
     if account.connection_type != HOSTED_CONNECTION_TYPE:
         return None
+    # Serialize bursts on this sender so every newer turn inherits the original
+    # deadline instead of extending the customer wait indefinitely.
+    WhatsAppAccount.objects.select_for_update().get(pk=account.pk)
     activation = (
         EXPLICIT_LEAD_CREATION_AI_ACTIVATION
         if activation == EXPLICIT_LEAD_CREATION_AI_ACTIVATION
@@ -401,6 +402,13 @@ def enqueue_ai_engagement(*, account, lead, source_message, activation=""):
     available_at = (source_message.created_at or timezone.now()) + timedelta(
         seconds=AI_RESPONSE_DELAY_SECONDS
     )
+    pending = HostedAutomationJob.objects.filter(
+        account=account, lead=lead, kind=HostedAutomationJob.Kind.AI_ENGAGEMENT,
+        status=HostedAutomationJob.Status.QUEUED,
+    ).exclude(source_message=source_message).order_by("created_at", "id")
+    previous = pending.first()
+    if previous is not None:
+        available_at = min(available_at, previous.available_at)
     defaults = {
         "organization": account.organization,
         "account": account,
