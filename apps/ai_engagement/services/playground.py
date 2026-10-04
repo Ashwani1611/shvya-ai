@@ -288,7 +288,6 @@ class _SandboxContextBuilder:
                 "lead_source": getattr(self.visitor, "lead_source", "system"),
                 "operational_state": {
                     "execution_mode": "sandbox_preview",
-            "diagnostics": self.diagnostics,
                     "reminder": deepcopy(getattr(self.visitor, "preview_reminder", None)),
                 },
                 "shared_document_ids": list(getattr(self.visitor, "shared_document_ids", [])),
@@ -303,7 +302,6 @@ class _SandboxContextBuilder:
             conversation={
                 "channel": self.channel,
                 "execution_mode": "sandbox_preview",
-            "diagnostics": self.diagnostics,
                 "message_count": len(recent_conversation),
                 "messages": recent_conversation,
             },
@@ -349,10 +347,10 @@ class PlaygroundResult:
             "should_engage": self.should_engage,
             "knowledge": self.knowledge,
             "model": self.model,
+            "diagnostics": self.diagnostics,
             "stage": self.stage, "events": self.events, "files": self.files,
             "channel": self.channel, "lead_source": self.lead_source,
             "execution_mode": "sandbox_preview",
-            "diagnostics": self.diagnostics,
         }
 
 
@@ -690,7 +688,7 @@ class PlaygroundService:
                     lead={**context.lead, "operational_state": {
                         **context.lead.get("operational_state", {}),
                         "execution_mode": "sandbox_preview",
-            "diagnostics": self.diagnostics, "resolved_actions": resolved,
+            "resolved_actions": resolved,
                     }},
                 )
                 service.context_builder = context_builder
