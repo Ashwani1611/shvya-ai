@@ -22,6 +22,8 @@ class EngagementStructuredOutputContractTests(SimpleTestCase):
         self.assertTrue(response_format["strict"])
         schema = response_format["schema"]
         self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["properties"]["should_engage"]["enum"], [True])
+        self.assertEqual(schema["properties"]["silence_rule"], {"type": "null"})
 
         crm_items = schema["properties"]["crm_actions"]["items"]["anyOf"]
         self.assertEqual(len(crm_items), 5)

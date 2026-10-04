@@ -73,6 +73,7 @@ def test_nested_attribute_credentials_are_removed_before_model_context():
     assert "_runtime" not in serialized
 
 
-def test_response_schema_only_accepts_canonical_playbook_silence_evidence():
-    field_schema = ENGAGEMENT_RESPONSE_SCHEMA["schema"]["properties"]["silence_rule"]["anyOf"][1]
-    assert field_schema["properties"]["field"]["enum"] == ["ai_playbook"]
+def test_response_schema_keeps_silence_backend_owned():
+    properties = ENGAGEMENT_RESPONSE_SCHEMA["schema"]["properties"]
+    assert properties["silence_rule"] == {"type": "null"}
+    assert properties["should_engage"]["enum"] == [True]

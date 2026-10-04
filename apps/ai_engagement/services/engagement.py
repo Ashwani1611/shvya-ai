@@ -77,16 +77,9 @@ ENGAGEMENT_RESPONSE_SCHEMA = {
     "schema": {
         "type": "object",
         "properties": {
-            "should_engage": {"type": "boolean"},
-            "silence_rule": {"anyOf": [{"type": "null"}, {
-                "type": "object",
-                "properties": {
-                    "field": {"type": "string", "enum": ["ai_playbook"]},
-                    "quote": {"type": "string"},
-                },
-                "required": ["field", "quote"],
-                "additionalProperties": False,
-            }]},
+            # Backend gates own silence; a provider-generated decision must reply.
+            "should_engage": {"type": "boolean", "enum": [True]},
+            "silence_rule": {"type": "null"},
             "message": {"type": "string"},
             "file_document_id": {"anyOf": [{"type": "integer"}, {"type": "null"}]},
             "crm_actions": {"type": "array", "items": {"type": "object"}},
