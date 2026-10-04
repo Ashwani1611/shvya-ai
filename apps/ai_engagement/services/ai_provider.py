@@ -48,6 +48,19 @@ class AIProviderPermanentError(AIProviderError):
     retryable = False
 
 
+class AIProviderQuotaError(AIProviderPermanentError):
+    """Provider billing needs operator action; retrying cannot restore credits."""
+
+
+def is_provider_quota_error(error):
+    body = getattr(error, "body", None)
+    detail = body.get("error", body) if isinstance(body, dict) else {}
+    if not isinstance(detail, dict):
+        return False
+    return bool({str(detail.get("code") or ""), str(detail.get("type") or "")}
+                & {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached"})
+
+
 class AIProviderTransientError(AIProviderError):
     """Temporary provider/network failure safe for Celery retry."""
 
@@ -499,8 +512,11 @@ class OpenAIProvider:
         try:
             response = self.client.responses.create(**request_kwargs)
         except RateLimitError as exc:
-            provider_error = "rate_limit"
+            exhausted = is_provider_quota_error(exc)
+            provider_error = "quota_exhausted" if exhausted else "rate_limit"
             self._release_credit_reservation(reservation)
+            if exhausted:
+                raise AIProviderQuotaError("OpenAI API billing quota is exhausted.") from exc
             increment(
                 "ai.provider_throttled",
                 labels={"provider": "openai"},
