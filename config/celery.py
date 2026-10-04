@@ -29,6 +29,7 @@ from config import celery_observability  # noqa: E402,F401
 # self-schedules a due-time wake-up, and the dedicated recovery scans catch jobs
 # or sender publications that were missed around a deploy/broker interruption.
 app.conf.beat_schedule = {
+    "meta-conversions-outbox": {"task": "integrations.recover_meta_conversions", "schedule": 30.0},
     "signup-verification-delivery": {"task": "accounts.deliver_signup_verifications", "schedule": 60.0},
     "cleanup-deleted-organizations": {"task": "organizations.cleanup_deleted", "schedule": 60.0},
     "recover-api-ai-every-10-seconds": {"task": "ai.recover_api_engagement", "schedule": 10.0},

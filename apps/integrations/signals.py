@@ -1,10 +1,45 @@
 from django.db import transaction
-from django.db.models.signals import post_save
+from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 
 from apps.crm.models import Lead
 from apps.integrations.models import WebhookConfiguration, WebhookDelivery
 from apps.integrations.services.webhook import build_lead_webhook_payload
+
+
+@receiver(pre_save, sender=Lead, dispatch_uid="integrations.meta_conversion_previous_stage")
+def remember_meta_conversion_stage(sender, instance, raw=False, update_fields=None, **kwargs):
+    instance._meta_conversion_context = None
+    if raw or not instance.organization_id:
+        return
+    if update_fields is not None and not {"pipeline", "stage", "attributes", "lead_source"}.intersection(update_fields):
+        return
+    from apps.integrations.models import MetaConversionsConfiguration
+    configuration = MetaConversionsConfiguration.objects.filter(
+        organization_id=instance.organization_id, is_enabled=True,
+    ).first()
+    if configuration is None:
+        return
+    previous = Lead.objects.filter(pk=instance.pk, organization_id=instance.organization_id).values(
+        "pipeline_id", "stage_id", "attributes__meta_leadgen_id",
+    ).first()
+    meta_id = str((instance.attributes or {}).get("meta_leadgen_id") or "")
+    changed = (previous is None or previous["pipeline_id"] != instance.pipeline_id or
+               previous["stage_id"] != instance.stage_id or
+               (meta_id and meta_id != str(previous["attributes__meta_leadgen_id"] or "")))
+    if changed:
+        from django.utils import timezone
+        instance._meta_conversion_context = (configuration, timezone.now())
+
+
+@receiver(post_save, sender=Lead, dispatch_uid="integrations.capture_meta_conversion")
+def capture_meta_conversion(sender, instance, raw=False, **kwargs):
+    context = getattr(instance, "_meta_conversion_context", None)
+    if raw or context is None:
+        return
+    from apps.integrations.services.meta_conversions import capture_stage_event
+    configuration, occurred_at = context
+    capture_stage_event(configuration, instance, occurred_at=occurred_at)
 
 
 @receiver(post_save, sender=Lead, dispatch_uid="integrations.queue_lead_webhook")

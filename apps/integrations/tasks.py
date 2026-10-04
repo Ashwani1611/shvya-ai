@@ -189,3 +189,16 @@ def process_google_sheet_rows_task(self, integration_id, rows):
             last_error=str(exc)[:2000]
         )
         raise self.retry(exc=exc, countdown=min(30 * (2 ** self.request.retries), 300))
+
+
+@shared_task(name="integrations.deliver_meta_conversion", acks_late=True,
+             reject_on_worker_lost=True, soft_time_limit=25, time_limit=35)
+def deliver_meta_conversion_task(delivery_id):
+    from apps.integrations.services.meta_conversions_delivery import deliver_event
+    return deliver_event(delivery_id)
+
+
+@shared_task(name="integrations.recover_meta_conversions")
+def recover_meta_conversions_task():
+    from apps.integrations.services.meta_conversions_delivery import recover_due_events
+    return recover_due_events()

@@ -814,6 +814,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # Used to verify X-Hub-Signature-256 on incoming webhook POSTs so
 # we can trust the payload actually came from Meta.
 
+META_CONVERSIONS_API_VERSION = config("META_CONVERSIONS_API_VERSION", default="v26.0")
+
 META_VERIFY_TOKEN = config(
     "META_VERIFY_TOKEN",
     default="",

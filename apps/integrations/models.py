@@ -553,3 +553,9 @@ from .operations_models import (  # noqa: E402,F401
 )
 
 from .setup_models import OperationsIntakeEntry  # noqa: E402,F401
+
+from .meta_conversions_models import (  # noqa: E402,F401
+    MetaConversionsConfiguration,
+    MetaConversionMapping,
+    MetaConversionDelivery,
+)
