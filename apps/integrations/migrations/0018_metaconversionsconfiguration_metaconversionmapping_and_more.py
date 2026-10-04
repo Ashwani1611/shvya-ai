@@ -80,7 +80,7 @@ class Migration(migrations.Migration):
                 ('delivered_at', models.DateTimeField(blank=True, null=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('updated_at', models.DateTimeField(auto_now=True)),
-                ('lead', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, to='crm.lead')),
+                ('lead', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='crm.lead')),
                 ('organization', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='organizations.organization')),
                 ('mapping', models.ForeignKey(null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='deliveries', to='integrations.metaconversionmapping')),
                 ('configuration', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='deliveries', to='integrations.metaconversionsconfiguration')),

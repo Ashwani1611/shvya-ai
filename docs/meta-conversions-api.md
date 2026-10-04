@@ -64,6 +64,8 @@ attribution, event match quality or campaign optimization.
   disconnecting invalidates pending work for the former destination; queued
   work cannot be redirected to another dataset. Removing a mapping skips its
   pending events. Requests already in flight may complete.
+- Deleting a CRM lead deletes its stored delivery snapshots and pending events,
+  following the existing Lead-owned data deletion policy.
 - Event timestamps are never rewritten to overcome Meta's seven-day limit.
   Failed deliveries may be retried after correction within that window.
   Existing CRM rows and historical spreadsheet imports are not backfilled:

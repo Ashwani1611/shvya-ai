@@ -108,7 +108,7 @@ class MetaConversionDelivery(models.Model):
         MetaConversionMapping, null=True, on_delete=models.SET_NULL, related_name="deliveries",
     )
     organization = models.ForeignKey("organizations.Organization", on_delete=models.CASCADE)
-    lead = models.ForeignKey("crm.Lead", null=True, on_delete=models.SET_NULL)
+    lead = models.ForeignKey("crm.Lead", on_delete=models.CASCADE)
     event_id = models.CharField(max_length=100)
     dataset_id = models.CharField(max_length=30)
     destination_version = models.UUIDField()

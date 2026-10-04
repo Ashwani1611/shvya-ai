@@ -365,6 +365,16 @@ class MetaConversionsTests(TestCase):
         self.assertEqual(delivery.payload, original_payload)
         self.assertEqual(delivery.attempt_count, 0)
 
+    @patch("apps.integrations.services.meta_conversions_delivery.requests.post")
+    def test_lead_deletion_removes_conversion_payload_and_pending_delivery(self, post):
+        self.enable()
+        delivery = self.delivery()
+        delivery_id = delivery.pk
+        self.lead.delete()
+        self.assertFalse(Delivery.objects.filter(pk=delivery_id).exists())
+        self.assertEqual(deliver_event(delivery_id)["status"], "missing")
+        post.assert_not_called()
+
     def test_page_and_json_are_admin_only_and_tenant_scoped(self):
         self.authenticate("agent")
         self.assertEqual(self.client.get(self.url).status_code, 403)
