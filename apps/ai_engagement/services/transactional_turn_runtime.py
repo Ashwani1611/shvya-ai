@@ -304,10 +304,14 @@ def _resolve_state_before_response(
             and normalize_stage_name(getattr(locked_lead.stage, "name", "")) == "new lead"
         )
         if completed_in_qualification_stage:
-            # Completing the questionnaire is backend-owned while still in New
-            # Lead. A completed qualification remains recorded in later stages;
-            # that historical status must not suppress ordinary CRM routing.
-            stage_actions = [completion_stage] if completion_stage else []
+            from apps.ai_engagement.services.qualification_execution.actions import completion_stage_actions
+            from apps.ai_engagement.services.qualification_execution.config import _config
+
+            stage_actions = completion_stage_actions(
+                organization=organization, lead=locked_lead, source=inbound,
+                proposed=proposed_stage_actions, completion=completion_stage,
+                config=_config(organization=organization, requirements=requirements),
+            )
         else:
             stage_actions = proposed_stage_actions[:1]
         if stage_actions:

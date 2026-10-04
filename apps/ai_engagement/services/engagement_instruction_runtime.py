@@ -348,7 +348,43 @@ def _condition_part(rule: str, destination: dict[str, Any]) -> str:
     return _clean(stripped)
 
 
+def _request_after_standalone_answer(latest_text: str, condition: str) -> str:
+    """Separate a negative advertising answer from an affirmative handoff."""
+    request_tokens = {"call", "callback", "demo", "human", "consultant", "specialist", "meeting", "appointment"}
+    if not (_tokens(condition) & request_tokens):
+        return latest_text
+    match = None
+    for clause in re.finditer(r"([^.!?;]+)[.!?;]\s*", str(latest_text)):
+        answer = clause.group(1).strip()
+        standalone_no = answer.casefold() in {"no", "nope"}
+        advertising_no = (
+            re.search(r"\b(?:ads?|advertising)\b", answer, re.I)
+            and re.search(r"\b(?:no|not|never|don't|do not|aren't|isn't)\b", answer, re.I)
+            and not (_tokens(answer) & (request_tokens | {"contact", "connect", "person", "someone", "agent"}))
+        )
+        if standalone_no or advertising_no:
+            match = clause
+            break
+    if match is None:
+        return latest_text
+    request = str(latest_text)[match.end():]
+    # A mention, hypothetical, or declined request must not become positive
+    # merely because a separate qualification answer has been removed.
+    if re.search(r"\b(?:if|unless|maybe|perhaps|might|whether|know|learn|information)\b|"
+                 r"\b(?:would|could)\s+(?:want|need)\b", request, re.I):
+        return latest_text
+    if not re.search(
+        r"\b(?:want|need|would\s+like|please|request|book|schedule|arrange|connect|speak|talk)\b"
+        r".{0,60}\b(?:call|callback|demo|human|consultant|specialist|meeting|appointment|person|someone|agent)\b|"
+        r"\b(?:call|contact)\s+(?:me|us)\b",
+        request, re.I,
+    ):
+        return latest_text
+    return str(latest_text)[:match.start()] + request
+
+
 def _strong_evidence_match(latest_text: str, condition: str) -> bool:
+    latest_text = _request_after_standalone_answer(latest_text, condition)
     latest_normalized = _normalized(latest_text)
     condition_normalized = _normalized(condition)
     latest_tokens = _tokens(latest_text)
@@ -382,7 +418,7 @@ def _strong_evidence_match(latest_text: str, condition: str) -> bool:
     ):
         return False
     if re.search(r"\bor\b", condition_normalized):
-        alternatives = re.split(r",\s*|\s+or\s+", condition_normalized)
+        alternatives = re.split(r",\s*(?:or\s+)?|\s+or\s+", condition_normalized)
         if len(alternatives) < 2 or any(not part.strip(" ,") for part in alternatives):
             return False
         return any(_strong_evidence_match(latest_text, part.strip(" ,")) for part in alternatives if part.strip(" ,"))

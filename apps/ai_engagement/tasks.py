@@ -68,6 +68,21 @@ def _execute_ai_engagement_response(*, task, lead_id):
         .order_by("-created_at", "-id")
         .first()
     )
+    # Run before installed execution wrappers: their transactional prepass can
+    # generate a reply or apply qualification effects before the base executor.
+    # Old queued notification/blank-text rows must never enter that prepass.
+    if source:
+        from services.channels.whatsapp_service import inbound_message_supports_ai
+
+        if not inbound_message_supports_ai(
+            body=source.body, raw_payload=source.raw_payload,
+            message_type=source.message_type,
+        ):
+            record_execution(source.pk, status="skipped", reason="nonconversational_inbound")
+            return {
+                "status": "skipped", "reason": "nonconversational_inbound",
+                "lead_id": str(lead_id), "source_message_id": str(source.pk),
+            }
     if source and not claim_execution(source.pk):
         return {
             "status": "skipped",

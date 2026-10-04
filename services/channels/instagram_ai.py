@@ -266,6 +266,7 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
     )
     from apps.ai_engagement.services.qualification_execution.actions import (
         answers_captured_for_source,
+        completion_stage_actions,
         rebuild_mapped_attribute_actions,
     )
     from apps.ai_engagement.services.qualification_execution.config import _config
@@ -355,10 +356,10 @@ def _apply_decision_state(*, organization, lead, source, decision, finalize=True
         action.get("type") == "create_reminder" for action in other_actions
     ):
         other_actions.extend(_configured_completion_reminders(config))
-    stage_actions = (
-        [completion_action] if completed_in_new_lead and completion_action
-        else ([] if completed_in_new_lead else proposed_stage_actions[:1])
-    )
+    stage_actions = completion_stage_actions(
+        organization=organization, lead=lead, source=source, proposed=proposed_stage_actions,
+        completion=completion_action, config=config,
+    ) if completed_in_new_lead else proposed_stage_actions[:1]
     if stage_actions:
         results.extend(
             executor.execute(

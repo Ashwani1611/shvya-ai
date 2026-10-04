@@ -243,6 +243,14 @@ def _whatsapp_send_eligible(
             "source_message_not_inbound",
         )
 
+    from services.channels.whatsapp_service import inbound_message_supports_ai
+
+    if not inbound_message_supports_ai(
+        body=inbound_message.body, raw_payload=inbound_message.raw_payload,
+        message_type=inbound_message.message_type,
+    ):
+        return False, "nonconversational_inbound"
+
     if (
         inbound_message.created_at
         is None

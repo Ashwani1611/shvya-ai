@@ -50,6 +50,10 @@ def reminder_request_evidence(text):
     requests = []
     temporal_fragment = re.compile(
         r"^(?:(?:at|on|in|after|am|pm|a\.?m\.?|p\.?m\.?|utc|gmt|ist|india(?:n)?|time|"
+        r"today|tomorrow|tonight|day|next|aaj|kal|parso[n]?|subah|shaam|sham|dopahar|raat|ko|baje|"
+        r"monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
+        r"one|two|three|four|five|six|seven|eight|nine|ten|ek|do|teen|char|paanch|"
+        r"ghant[ae]|din|haft[ae]|baad|"
         r"minutes?|mins?|hours?|hrs?|days?|weeks?|jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|"
         r"may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b|"
         r"[\d\s:+/.-])+$", re.I,

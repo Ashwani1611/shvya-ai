@@ -75,3 +75,38 @@ def answers_captured_for_source(*, state, source):
             "source_message_id": source_id, "evidence": evidence,
         })
     return output
+
+
+def completion_stage_actions(*, organization, lead, source, proposed, completion, config):
+    """Preserve an authored, evidence-backed request before completion routing.
+
+    Qualification completion cannot erase a supported ordinary stage rule on
+    the same customer turn. A model proposal alone never overrides completion:
+    require an authored destination rule and the existing source-bound guard.
+    """
+    from apps.ai_engagement.services.engagement_instruction_runtime import (
+        _stage_rule_references_destination,
+    )
+    from apps.ai_engagement.services.stage_transition_evidence import (
+        _destination_for_action,
+        _filter_stage_actions,
+    )
+
+    rules = config.get("stage_rules") or []
+    protected = set(config.get("protected_completion_stage_ids") or [])
+    if completion:
+        protected.add(str((completion.get("stage_shift") or {}).get("stage_id") or ""))
+    candidates = []
+    for action in proposed or []:
+        destination = _destination_for_action(organization=organization, action=action)
+        if destination is None or str(destination.pk) in protected:
+            continue
+        payload = {"id": str(destination.pk), "name": destination.name,
+                   "pipeline_id": str(destination.pipeline_id),
+                   "pipeline_name": destination.pipeline.name}
+        if any(_stage_rule_references_destination(rule, payload) for rule in rules):
+            candidates.append(action)
+    supported = _filter_stage_actions(
+        organization=organization, lead=lead, actions=candidates, source_message=source,
+    ) if candidates else []
+    return supported[:1] or ([completion] if completion else [])
