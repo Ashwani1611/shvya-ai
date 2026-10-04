@@ -611,6 +611,8 @@ def install_engagement_failsoft() -> None:
             )
             return _ensure_customer_reply(decision, lead=lead)
         except engagement_module.EngagementError as exc:
+            from apps.ai_engagement.services.turn_diagnostics import record_failure
+            record_failure(exc)
             # Explicit/injected providers are used by callers that need strict
             # validation semantics. Do not convert their failures into replies.
             if self.provider is not None:

@@ -66,3 +66,5 @@ class PlaygroundResponseSerializer(
     channel = serializers.CharField(required=False)
     lead_source = serializers.CharField(required=False)
     execution_mode = serializers.CharField(required=False)
+
+    diagnostics = serializers.CharField(required=False, allow_blank=True)
