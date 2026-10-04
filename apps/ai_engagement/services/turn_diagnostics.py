@@ -68,7 +68,72 @@ def provider_quota_exhausted():
     return bool(trace and (trace.data.get("provider") or {}).get("billing_exhausted"))
 
 
-def summary():
+def _count(value):
+    return min(max(value, 0), 30) if type(value) is int else 0
+
+
+def _decision_details(trace, result):
+    """Useful successful Sandbox counters without prompts, IDs or provider prose."""
+    parts = []
+    files = trace.data.get("file_decision") or {}
+    files = files if isinstance(files, dict) else {}
+    phases = [(phase, files.get(phase) if isinstance(files.get(phase), dict) else {}) for phase in ("draft", "final")]
+    relevant = any(item.get("explicit_request") is True or item.get("welcome_due") is True or _count(item.get("candidate_count"))
+                   or _count(item.get("selected_count")) for _, item in phases)
+    if result is not None and not files:
+        from apps.ai_engagement.services.file_sharing import explicit_file_request
+        if explicit_file_request(str(getattr(result, "message", "") or "")):
+            relevant = True
+            parts.append("file/draft/path=not_observed")
+    statuses = {"final_language_only", "already_selected", "silenced", "not_requested",
+                "no_candidates", "pending", "selected", "declined", "failed"}
+    if relevant:
+        for phase, item in phases:
+            if not item:
+                continue
+            status = item.get("review_status")
+            status = status if isinstance(status, str) and status in statuses else "unknown"
+            fields = {"candidates": _count(item.get("candidate_count")), "review": status,
+                      "selected": _count(item.get("selected_count")),
+                      "validated": _count(item.get("validated_selected_count")),
+                      "validation_drop": _count(item.get("validation_drop")),
+                      "graph": _count(item.get("graph_selected_count"))}
+            if item.get("review_trigger") in ("explicit_request", "welcome", "none"):
+                fields["trigger"] = item["review_trigger"]
+            if isinstance(item.get("grounding_status"), str) and item["grounding_status"] in {"approved", "rejected"}:
+                fields["grounding"] = item["grounding_status"]
+            parts.append("file/" + phase + "/" + "/".join(f"{key}={value}" for key, value in fields.items()))
+        if result is not None:
+            parts.append("file/preview=" + str(min(len(getattr(result, "files", []) or []), 30)))
+    capture = trace.data.get("qualification_capture") or {}
+    capture = capture if isinstance(capture, dict) else {}
+    capture_relevant = bool(capture) and (
+        capture.get("review_status") not in ("skipped", "no_candidates")
+        or _count(capture.get("candidate_count")) or _count(capture.get("accepted_count"))
+    )
+    if capture_relevant:
+        status = capture.get("review_status")
+        status = status if isinstance(status, str) and status in {"skipped", "no_candidates", "reviewed", "rejected", "failed"} else "unknown"
+        parts.append("capture/candidates=" + str(_count(capture.get("candidate_count")))
+                     + "/review=" + status + "/accepted=" + str(_count(capture.get("accepted_count"))))
+    if relevant or capture_relevant:
+        draft = dict(phases)["draft"]
+        parts.append("capture/proposed=" + str(_count(draft.get("proposed_capture_count")))
+                     + "/graph=" + str(_count(draft.get("graph_capture_count"))))
+        counts = {}
+        allowed_phases = {"primary", "intent_classification", "file_selection_review", "qualification_capture_recovery",
+                          "grounding", "grounding_contract_retry", "grounding_reply_repair", "schema_repair"}
+        for call in (trace.data.get("provider") or {}).get("calls", []):
+            phase, status = call.get("phase"), call.get("status")
+            if isinstance(phase, str) and isinstance(status, str) and phase in allowed_phases and status in {"ok", "failed"}:
+                key = phase + ":" + status
+                counts[key] = min(counts.get(key, 0) + 1, 30)
+        if counts:
+            parts.append("calls/" + "/".join(f"{key}={value}" for key, value in counts.items()))
+    return parts
+
+
+def summary(result=None):
     from apps.ai_engagement.services import trace_service
     trace = trace_service.current()
     if trace is None:
@@ -90,6 +155,7 @@ def summary():
         parts.append("runtime/" + "/".join(str(failure.get(key) or "") for key in ("error_type", "cause_type", "site")))
         if failure.get("application_sites"):
             parts.append("application/" + "/".join(failure["application_sites"]))
+    parts.extend(_decision_details(trace, result))
     return "; ".join(dict.fromkeys(parts))[:1000]
 
 
@@ -102,7 +168,7 @@ def sandbox_diagnostics(method):
         token = trace_service.begin_trace(organization=kwargs.get("organization"))
         try:
             result = method(self, *args, **kwargs)
-            return replace(result, diagnostics=summary())
+            return replace(result, diagnostics=summary(result))
         except PlaygroundError as exc:
             detail = summary()
             if detail:

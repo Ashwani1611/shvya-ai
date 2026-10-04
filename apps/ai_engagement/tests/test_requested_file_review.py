@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.ai_engagement.graph.workflow import _generate
-from apps.ai_engagement.services.ai_provider import AITextResult
+from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementDecision, EngagementService
 from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
@@ -109,8 +109,44 @@ class RequestedFileReviewTests(SimpleTestCase):
         self.assertEqual(decision.file_document_id, 18)
         self.assertEqual(self.calls, [])
 
-    def test_unrequested_guided_file_does_not_trigger_extra_repair_model_call(self):
-        context = replace(self.context, conversation={"messages": [{"id": "plain", "direction": "inbound", "body": "Thanks"}]})
+    def test_first_greeting_reviews_authored_welcome_guidance_without_changing_other_decisions(self):
+        context = replace(self.context, conversation={"message_count": 1, "messages": [{"id": "welcome", "direction": "inbound", "body": "Hi"}]})
+        with patch("apps.ai_engagement.services.file_sharing.FileSharingService.get_eligible_documents", return_value=[object()]):
+            decision = self.run_graph_generation(context=context)
+        self.assertEqual(decision.file_document_id, 18)
+        self.assertEqual(decision.message, self.draft.message)
+        self.assertEqual(decision.qualification_updates, self.updates)
+        self.assertTrue(json.loads(self.calls[0]["input_text"])["welcome_due"])
+        self.assertIn("allowed only on explicit request must not be selected for a greeting", self.calls[0]["instructions"])
+
+    def test_first_greeting_does_not_force_request_only_file_selection(self):
+        self.candidate["share_instruction"] = "Send only when the lead explicitly requests the product brochure."
+        self.review = {"should_share": False, "document_id": None, "reason": "A greeting is not an explicit request."}
+        context = replace(self.context, conversation={"messages": [{"id": "welcome", "direction": "inbound", "body": "Hi"}]})
+        decision = self.run_graph_generation(context=context)
+        self.assertIsNone(decision.file_document_id)
+        self.assertTrue(json.loads(self.calls[0]["input_text"])["welcome_due"])
+
+    def test_scoped_live_context_cannot_claim_welcome_when_canonical_predicate_rejects_it(self):
+        from apps.crm.models import Lead
+        self.lead = Lead()
+        context = replace(self.context, conversation={"messages": [{"id": "welcome", "direction": "inbound", "body": "Hi"}]})
+        with patch("apps.ai_engagement.services.first_inbound_welcome_runtime._is_first_inbound_turn", return_value=False) as first_turn:
+            self.assertEqual(self.run_graph_generation(context=context), self.draft)
+        first_turn.assert_called_once_with(self.lead)
+        self.assertEqual(self.calls, [])
+
+    def test_first_information_answer_does_not_claim_a_welcome_attachment(self):
+        context = replace(self.context, stage={"name": "Qualified"}, conversation={"messages": [{"id": "info", "direction": "inbound", "body": "What is your price?"}]})
+        draft = replace(self.draft, reason_code="ANSWER_ORG_QUESTION")
+        self.assertEqual(self.run_graph_generation(context=context, draft=draft), draft)
+        self.assertEqual(self.calls, [])
+
+    def test_unrequested_guided_file_on_later_turn_does_not_trigger_extra_repair_model_call(self):
+        context = replace(self.context, conversation={"messages": [
+            {"id": "reply", "direction": "outbound", "body": "How can I help?"},
+            {"id": "plain", "direction": "inbound", "body": "Thanks"},
+        ]})
         self.assertEqual(self.run_graph_generation(context=context), self.draft)
         self.assertEqual(self.calls, [])
 
@@ -154,8 +190,14 @@ class SandboxRequestedFileIntegrationTests(TestCase):
             share_instruction="Send this product brochure along with welcome message or whenever the lead asks for the product brochure.",
         )
         self.phases = []
+        self.grounding_inputs = []
+        self.review_should_share = True
+        self.greeting_requirement = None
         self.reply = "We have a product brochure. I will now proceed to set up the call and share the product brochure with you."
         for patcher in (
+            # The AI test autouse fixture substitutes an approving verifier. Restore
+            # its real class so the mocked transport records the actual gate.
+            patch("apps.ai_engagement.graph.evidence.OpenAIProvider", new=OpenAIProvider),
             patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=self.provider),
             patch("apps.ai_engagement.services.embeddings.EmbeddingService._get_client", side_effect=EmbeddingError("no live embeddings")),
         ):
@@ -166,16 +208,25 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         phase = kwargs.get("metadata", {}).get("phase")
         self.phases.append(phase)
         if phase == "grounding":
+            self.grounding_inputs.append(json.loads(kwargs["input_text"]))
             return AITextResult('{"approved":true,"reason":"approved"}', "recorded")
         if phase == "intent_classification":
             return AITextResult(json.dumps({
-                "primary_intent": "CALL_REQUEST", "secondary_intents": [], "confidence": 0.9,
+                "primary_intent": "GREETING" if self.greeting_requirement else "CALL_REQUEST", "secondary_intents": [], "confidence": 0.9,
                 "entities": [], "facts": [], "direct_question": None, "qualification_candidate": None,
-                "requested_action": None, "language": "English", "requires_knowledge": False, "requires_human": True,
+                "requested_action": None, "language": "English", "requires_knowledge": False, "requires_human": not bool(self.greeting_requirement),
             }), "recorded")
         if phase == "file_selection_review":
-            return AITextResult(json.dumps({"should_share": True, "document_id": self.document.pk,
+            return AITextResult(json.dumps({"should_share": self.review_should_share,
+                                            "document_id": self.document.pk if self.review_should_share else None,
                                             "reason": "The request satisfies the authored guidance."}), "recorded")
+        if self.greeting_requirement:
+            return AITextResult(json.dumps({
+                "should_engage": True, "silence_rule": None,
+                "message": self.greeting_requirement["question"], "file_document_id": None,
+                "qualification_updates": [], "next_requirement_id": self.greeting_requirement["id"],
+                "crm_actions": [], "reason_code": "QUALIFICATION_NEXT",
+            }), "recorded")
         return AITextResult(json.dumps({
             "should_engage": True, "silence_rule": None, "message": self.reply,
             "file_document_id": None, "qualification_updates": [], "next_requirement_id": None,
@@ -210,10 +261,10 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         for model in (Lead, LeadActivity, LeadNote, LeadReminder, WhatsAppMessage):
             self.assertEqual(model.objects.count(), 0, model.__name__)
 
-    def test_slow_first_pass_still_recovers_file_and_removes_future_assurance(self):
-        with patch("apps.ai_engagement.services.playground.monotonic", side_effect=[0, 16]):
-            result = self.run_turn()
+    def test_omitted_file_recovers_before_final_language_composition(self):
+        result = self.run_turn()
         self.assertEqual(self.phases.count("file_selection_review"), 1)
+        self.assertEqual(self.phases.count("primary"), 2)
         self.assert_preview_only(result)
 
     def test_final_language_pass_cannot_drop_preview_file_or_promise_live_callback(self):
@@ -221,13 +272,84 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         self.assertEqual(self.phases.count("file_selection_review"), 1)
         self.assert_preview_only(result)
 
+    def test_sparse_actual_reply_declined_file_review_is_visible_and_never_promises_a_callback(self):
+        self.review_should_share = False
+        self.reply = (
+            "Thank you for your message. I've noted your request for a call on 1 January 2030 "
+            "at 3 PM India time and your interest in the product brochure. "
+            "Our team will be in touch to confirm the details."
+        )
+        result = self.run_turn("sparse-declined")
+        self.assertEqual(result.files, [])
+        self.assertEqual(result.stage["name"], "Call Requested")
+        self.assertTrue(any(item["type"] == "reminder" for item in result.events))
+        self.assertIn("I've noted your request", result.response)
+        self.assertNotIn("will be in touch", result.response)
+        self.assertIn("file/draft/candidates=1/review=declined", result.diagnostics)
+        self.assertIn("file/preview=0", result.diagnostics)
+        from apps.channels.models import WhatsAppMessage
+        from apps.crm.models import Lead, LeadActivity, LeadNote, LeadReminder
+        for model in (Lead, LeadActivity, LeadNote, LeadReminder, WhatsAppMessage):
+            self.assertEqual(model.objects.count(), 0, model.__name__)
+
+    def run_greeting_turn(self, session):
+        from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
+        from apps.ai_engagement.services.playground import PlaygroundService
+        question = (
+            "Q1. What is your biggest challenge with managing or converting leads right now? "
+            "A. Slow replies B. Missed follow-ups C. Leads going cold D. No proper tracking"
+        )
+        self.greeting_requirement = compile_qualification_requirements(question)["requirements"][0]
+        self.info.ai_playbook += (
+            "\n## Welcome Message\nHi, I'm Ria. Welcome to Shvya AI.\n"
+            "## Qualification Questions\n" + question
+        )
+        self.info.save()
+        return PlaygroundService().run(
+            organization=self.organization, session_id=session, stage_id=str(self.new_lead.pk), message="Hi",
+        )
+
+    def assert_greeting_only_preview(self, result):
+        from apps.channels.models import WhatsAppMessage
+        from apps.crm.models import Lead, LeadActivity, LeadNote, LeadReminder
+        self.assertIn("Hi, I'm Ria. Welcome to Shvya AI.", result.response)
+        self.assertIn(self.greeting_requirement["question"], result.response)
+        for option in ("Slow replies", "Missed follow-ups", "Leads going cold", "No proper tracking"):
+            self.assertIn(option, result.response)
+        self.assertEqual(result.stage["name"], "New leads")
+        self.assertFalse(any(item["type"] in {"attribute_updates", "stage_transition", "reminder"} for item in result.events), result.events)
+        for model in (Lead, LeadActivity, LeadNote, LeadReminder, WhatsAppMessage):
+            self.assertEqual(model.objects.count(), 0, model.__name__)
+
+    def test_authored_welcome_guidance_recovers_brochure_while_preserving_q1_and_options(self):
+        result = self.run_greeting_turn("welcome-file")
+        self.assertEqual([item["id"] for item in result.files], [self.document.pk])
+        self.assertEqual(self.phases.count("file_selection_review"), 1)
+        self.assertIn("trigger=welcome", result.diagnostics)
+        self.assertIn("review=selected", result.diagnostics)
+        selected_grounding = [item for item in self.grounding_inputs if item.get("selected_file_document_id") == self.document.pk]
+        self.assertTrue(selected_grounding, self.phases)
+        self.assertTrue(selected_grounding[0]["welcome_due"])
+        self.assertNotIn("Welcome to Shvya AI", selected_grounding[0]["reply"])
+        self.assert_greeting_only_preview(result)
+
+    def test_greeting_does_not_select_brochure_authorized_only_on_explicit_request(self):
+        self.document.share_instruction = "Send only when the lead explicitly requests the product brochure."
+        self.document.save()
+        self.review_should_share = False
+        result = self.run_greeting_turn("welcome-request-only")
+        self.assertEqual(result.files, [])
+        self.assertEqual(self.phases.count("file_selection_review"), 1)
+        self.assertIn("trigger=welcome", result.diagnostics)
+        self.assertIn("review=declined", result.diagnostics)
+        self.assert_greeting_only_preview(result)
+
     def test_unknown_configured_language_cannot_save_empty_successful_reply(self):
         from apps.ai_engagement.services.playground import PlaygroundError, PlaygroundService
         self.info.bot_languages = "German"
         self.info.save()
         self.reply = "I will send the brochure."
         with (
-            patch("apps.ai_engagement.services.playground.monotonic", side_effect=[0, 16]),
             patch("apps.ai_engagement.services.playground.apply_first_inbound_welcome", side_effect=lambda **kwargs: kwargs["decision"]),
         ):
             with self.assertRaises(PlaygroundError):

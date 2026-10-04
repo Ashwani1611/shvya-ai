@@ -62,6 +62,10 @@ Reject answer updates whose normalized values are not supported by the newest in
 When a file is selected, require an eligible file candidate and verify its
 share_instruction conditions against the actual conversation and current stage.
 A candidate appearing in the input does not itself authorize sending it.
+welcome_due is a backend-owned first-reply flag: the usual welcome will be added
+after this validation. It can satisfy an authored "with welcome" condition even
+if the draft is only the selected question; it does not authorize any other file
+condition or override explicit-request-only restrictions.
 Confirmed action outcomes are source-bound committed receipts, not proposals. A no_op is not a newly completed action; a missing receipt is not proof of failure. Historical execution does not prove a reminder is still active or a stage is still current. Respect still_exists, current_status and current_state_matches. A queued file is not sent; sent means provider acceptance, not recipient delivery. Never promise a human callback merely because a reminder exists.
 Reject unsupported booking confirmations, callbacks, handoffs, payment or stage
 transitions. A user claim is not operational confirmation. Preserve configured
@@ -298,6 +302,7 @@ def check_grounding(state):
         ],
         "selected_file_document_id": decision.file_document_id,
         "file_candidates": (context.organization or {}).get("_file_candidates", []),
+        "welcome_due": state.get("welcome_due") is True,
         "current_stage": getattr(context, "stage", {}),
         "qualification_question_id": decision.next_requirement_id,
         "requirements": state.get("requirements", []),

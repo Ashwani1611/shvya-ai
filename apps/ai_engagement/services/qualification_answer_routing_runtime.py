@@ -465,6 +465,11 @@ def _is_safe_backend_question(state, persisted: dict[str, Any]) -> bool:
     decision = state.get("decision")
     if decision is None or str(getattr(decision, "model", "")) != "deterministic":
         return False
+    from apps.ai_engagement.services.grounding_safety import language_only
+    # A known question proves only its wording. Selected files, captures and
+    # CRM proposals still require the independent action/condition verifier.
+    if not language_only(decision):
+        return False
     if str(getattr(decision, "reason_code", "") or "").upper() != "QUALIFICATION_NEXT":
         return False
 

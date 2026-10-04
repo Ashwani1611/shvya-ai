@@ -20,7 +20,7 @@ _PREVIEW_ACTION_TYPES = {
 
 _OWN_ACTION = r"\b(?:i|we|our\s+team|the\s+team)(?:\s+(?:will|shall|am|are|have|has)|['’](?:ll|m|re|ve))\s+(?:now\s+)?(?:proceed\s+to\s+)?"
 _FILE_SEND = r"(?:send|sending|sent|share|sharing|shared|attach|attaching|attached)\s+(?:you\s+)?(?:(?:the|a|your|our|product|requested)\s+){0,3}(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b"
-_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo)\b(?!\s+(?:platform|software|system|tool|service|feature))|call\s+you\b|connect\s+you\b)"
+_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo)\b(?!\s+(?:platform|software|system|tool|service|feature))|call\s+you\b|connect\s+you\b|be\s+in\s+touch\b)"
 _ACTION_ASSURANCE = re.compile(
     _OWN_ACTION + r"(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
     r"\b(?:i|we|our\s+team|the\s+team)\s+(?=(?:sent|shared|attached|scheduled|booked|confirmed|created|arranged)\b)(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"

@@ -105,6 +105,25 @@ class GroundingVerdictContractTests(SimpleTestCase):
         self.assertTrue(sent["format"]["strict"])
         self.assertEqual(sent["format"]["schema"]["properties"]["reason"]["enum"], codes)
 
+    def test_welcome_file_guard_receives_only_the_backend_first_reply_flag(self):
+        from dataclasses import replace
+        state = self.state(reply="What is your biggest challenge?")
+        state["welcome_due"] = True
+        state["context"].stage = {"name": "New leads"}
+        state["context"].organization["_file_candidates"] = [{
+            "document_id": 18, "name": "Product brochure", "share_instruction": "Send with the welcome message.",
+        }]
+        state["decision"] = replace(state["decision"], file_document_id=18, reason_code="NORMAL_CONVERSATION")
+        _, calls, _ = self.run_guard([{"approved": True, "reason": "approved"}], state=state)
+        payload = json.loads(calls[0].kwargs["input_text"])
+        self.assertTrue(payload["welcome_due"])
+        self.assertEqual(payload["selected_file_document_id"], 18)
+        self.assertIn("does not authorize any other file", calls[0].kwargs["instructions"])
+        state.pop("welcome_due")
+        state["context"].organization["welcome_due"] = True
+        _, calls, _ = self.run_guard([{"approved": True, "reason": "approved"}], state=state)
+        self.assertFalse(json.loads(calls[0].kwargs["input_text"])["welcome_due"])
+
     def test_contradictory_approval_requires_valid_independent_approval(self):
         result, calls, _ = self.run_guard([
             {"approved": True, "reason": "unsupported_claim"},

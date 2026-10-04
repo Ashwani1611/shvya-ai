@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -94,6 +95,60 @@ class GroundingSafetyContractTests(SimpleTestCase):
         from apps.ai_engagement.services.grounding_safety import safe_acknowledgement
         decision = replace(decision, reason_code="NORMAL_CONVERSATION")
         self.assertFalse(safe_acknowledgement(decision, None))
+
+    def backend_question_state(self):
+        question = "Where do you currently manage your leads?\nA. WhatsApp\nB. CRM"
+        persisted = {"engagement_mode": "qualification", "current_requirement_id": "q2", "next_requirement_id": "q2",
+                     "requirement_states": {"q1": {"status": "answered", "source_message_id": "source-current"}}}
+        return {
+            "organization": SimpleNamespace(id="org-a", settings={}),
+            "lead": SimpleNamespace(id="lead-a", attributes={}),
+            "context": SimpleNamespace(organization={"id": "org-a", "bot_languages": "English",
+                "_file_candidates": [{"document_id": 18, "name": "Product brochure",
+                                      "share_instruction": "Only on explicit brochure request."}]},
+                lead={"id": "lead-a", "attributes": {}}, stage={"name": "New leads"}, knowledge=[],
+                conversation={"messages": [{"id": "source-current", "direction": "inbound", "body": "Slow replies"}]}),
+            "decision": EngagementDecision(should_engage=True, message=question, file_document_id=None,
+                crm_actions=[], qualification_updates=[], next_requirement_id="q2", reason="QUALIFICATION_NEXT",
+                reason_code="QUALIFICATION_NEXT", model="deterministic"),
+            "requirements": [{"id": "q2", "question": question}], "qualification_state": persisted,
+            "latest_message_id": "source-current", "latest_text": "Slow replies", "runtime_policy": {},
+        }
+
+    def test_persisted_answer_preserves_safe_question_without_verifier_call(self):
+        state = self.backend_question_state()
+        with patch("apps.ai_engagement.services.qualification_answer_routing_runtime._latest_persisted_answer",
+                   return_value=("q1", state["qualification_state"])), \
+             patch.object(graph, "OpenAIProvider") as provider:
+            result = graph.check_grounding(state)
+        self.assertTrue(result["grounding_approved"])
+        self.assertTrue(result["qualification_answer_authoritative"])
+        provider.assert_not_called()
+
+    def test_persisted_answer_cannot_authorize_a_selected_file_or_other_mutation(self):
+        cases = (
+            ({"file_document_id": 18}, "invalid_file", "selected_file_document_id", 18),
+            ({"crm_actions": [{"type": "create_reminder", "title": "Unauthorized"}]}, "unperformed_action", "proposed_crm_actions", [{"type": "create_reminder", "title": "Unauthorized"}]),
+            ({"qualification_updates": [{"requirement_id": "q2", "value": "CRM", "evidence": "invented"}]}, "invalid_qualification", "proposed_answer_updates", [{"requirement_id": "q2", "value": "CRM", "evidence": "invented"}]),
+        )
+        for overrides, reason, field, expected in cases:
+            with self.subTest(reason=reason):
+                state = self.backend_question_state()
+                state["decision"] = replace(state["decision"], **overrides)
+                with patch("apps.ai_engagement.services.qualification_answer_routing_runtime._latest_persisted_answer",
+                           return_value=("q1", state["qualification_state"])), \
+                     patch.object(graph, "OpenAIProvider") as provider:
+                    provider.return_value.generate_text.return_value.text = json.dumps({"approved": False, "reason": reason})
+                    result = graph.check_grounding(state)
+                self.assertFalse(result["grounding_approved"])
+                self.assertFalse(result.get("qualification_answer_authoritative"))
+                provider.return_value.generate_text.assert_called_once()
+                payload = json.loads(provider.return_value.generate_text.call_args.kwargs["input_text"])
+                self.assertEqual(payload[field], expected)
+                self.assertEqual(payload["file_candidates"][0]["share_instruction"], "Only on explicit brochure request.")
+                self.assertIsNone(result["decision"].file_document_id)
+                self.assertEqual(result["decision"].crm_actions, [])
+                self.assertEqual(result["decision"].qualification_updates, [])
 
     def test_customer_cannot_retrieve_internal_pipeline_or_stage_state(self):
         organization = SimpleNamespace(id="org-a")

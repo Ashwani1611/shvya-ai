@@ -263,7 +263,9 @@
                         {% endif %}
                         {% if message.template_display.buttons %}<div class="wa-template-actions">{% for button in message.template_display.buttons %}<div class="wa-template-action"><i class="ti {% if button.type == 'visit_website' %}ti-external-link{% elif button.type == 'call_phone' %}ti-phone{% elif button.type == 'copy_offer' %}ti-copy{% else %}ti-message-circle{% endif %}"></i><span>{{ button.text }}{% if button.detail %}<small>{{ button.detail }}</small>{% endif %}</span></div>{% endfor %}</div>{% endif %}
                     </div>
-                    {% elif message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
+                    {% elif message.inbound_attachment %}
+                    {% include "channels/_whatsapp_inbound_attachment.html" with attachment=message.inbound_attachment body=message.body only %}
+                    {% elif message.body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ message.body }}</p>{% elif message.inbound_details %}{% include "channels/_whatsapp_inbound_details.html" with details=message.inbound_details only %}{% else %}<p class="italic text-gray-400">Unsupported message type</p>{% endif %}
 
                     <div class="mt-1 flex items-center justify-end gap-1 text-[10px] text-gray-500">
 
@@ -390,4 +392,3 @@
 <script src="{% static 'js/whatsapp_composer.js' %}" defer></script>
 
 {% endblock %}
-
