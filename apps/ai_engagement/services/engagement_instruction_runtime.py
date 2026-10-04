@@ -146,6 +146,16 @@ def _definition_reference_score(rule: str, definition: dict[str, Any]) -> int:
     normalized = _normalized(rule)
     key = _normalized(definition.get("key"))
     name = _normalized(definition.get("name"))
+    declared = re.search(
+        r"^[ \t]*(?:[-*•][ \t]*)?attribute[ \t]+(?:name|key)[ \t]*:[ \t]*([^\n]+)",
+        str(rule), re.IGNORECASE | re.MULTILINE,
+    )
+    if declared:
+        target = _normalized(declared.group(1).strip(" \t`'\"*"))
+        # Descriptions, Source: and value examples are supporting metadata,
+        # not additional destinations. An unknown explicit target fails closed.
+        references = {key, name, key.replace("_", " ")}
+        return 100 if target and target in references else 0
     if key and re.search(rf"(?<![a-z0-9]){re.escape(key)}(?![a-z0-9])", normalized):
         return 100
     if name and name in normalized:

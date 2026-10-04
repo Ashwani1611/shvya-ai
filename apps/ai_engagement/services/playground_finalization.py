@@ -20,6 +20,18 @@ _PREVIEW_ACTION_TYPES = {
 
 def needs_final_composition(*, decision, events, files) -> bool:
     """Also finalize attempted effects that were rejected or made no change."""
+    # The validated qualification reply already asks the next question. Running
+    # it again after projecting the answer exposes the following question as
+    # active and lets the model reinterpret the same option letter against it.
+    # Attribute-only progress needs no customer-facing execution claim.
+    if (
+        decision.should_engage and (decision.qualification_updates or events)
+        and decision.next_requirement_id
+        and not files and decision.file_document_id is None
+        and all(item.get("type") == "attribute_updates" for item in decision.crm_actions or [])
+        and all(item.get("type") == "attribute_updates" for item in events or [])
+    ):
+        return False
     return bool(
         decision.should_engage
         and (
