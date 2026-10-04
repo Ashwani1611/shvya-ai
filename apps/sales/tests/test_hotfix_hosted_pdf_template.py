@@ -1,9 +1,13 @@
 from datetime import date
+from io import BytesIO
 from unittest.mock import patch
+
+from PIL import Image
 
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from apps.accounts.models import User
@@ -62,6 +66,41 @@ class SalesHotfixBase(TestCase):
 
 
 class SalesTemplateSaveHotfixTests(SalesHotfixBase):
+    @override_settings(STORAGES={
+        "default": {"BACKEND": "django.core.files.storage.InMemoryStorage"},
+    })
+    def test_edit_saves_logo_and_signature_with_mismatched_extensions(self):
+        template = SalesTemplate.objects.create(
+            organization=self.org,
+            document_type=DocumentType.QUOTATION,
+            name="Branding quotation",
+            body_template="<section>{{document.title}}</section>",
+            created_by=self.admin,
+        )
+        self.login()
+        payload = self.template_payload(name="Updated branding quotation")
+        contents = {}
+        for field, name, image_format in (
+            ("logo_file", "logo.jpg", "PNG"),
+            ("signature_file", "signature.png", "JPEG"),
+        ):
+            content = BytesIO()
+            Image.new("RGB", (8, 8), "white").save(content, format=image_format)
+            contents[field] = content.getvalue()
+            payload[field] = SimpleUploadedFile(
+                name, contents[field], content_type="application/octet-stream",
+            )
+        response = self.client.post(
+            reverse("shvya-sales-template-edit", args=[template.id]), payload,
+        )
+        self.assertEqual(response.status_code, 302)
+        template.refresh_from_db()
+        self.assertTrue(template.logo_file.name.endswith(".png"))
+        self.assertTrue(template.signature_file.name.endswith(".jpg"))
+        for field, content in contents.items():
+            with getattr(template, field).open("rb") as stored:
+                self.assertEqual(stored.read(), content)
+
     def test_plain_validation_error_is_rendered_instead_of_500(self):
         self.login()
 

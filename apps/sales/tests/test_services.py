@@ -1,4 +1,8 @@
 from decimal import Decimal
+from io import BytesIO
+from unittest.mock import patch
+
+from PIL import Image
 
 from django.core.exceptions import ValidationError
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -96,16 +100,61 @@ class SalesTemplateSafetyTests(SimpleTestCase):
 
 
 class SalesBrandAssetTests(SimpleTestCase):
+    @staticmethod
+    def image_bytes(image_format="PNG"):
+        content = BytesIO()
+        Image.new("RGB", (8, 8), "white").save(content, format=image_format)
+        return content.getvalue()
+
     def test_png_brand_asset_requires_matching_file_signature(self):
         upload = SimpleUploadedFile(
             "logo.png",
-            b"\x89PNG\r\n\x1a\n" + b"safe-image-body",
+            self.image_bytes(),
             content_type="image/png",
         )
 
         validated = validate_brand_asset(upload, label="Logo")
 
         self.assertEqual(validated.name, "logo.png")
+
+    def test_mismatched_extensions_are_normalized_for_logo_and_signature(self):
+        for label in ("Logo", "Signature"):
+            for image_format, name, expected in (
+                ("PNG", "asset.jpg", "asset.png"),
+                ("JPEG", "asset.png", "asset.jpg"),
+                ("JPEG", "asset.jpeg", "asset.jpeg"),
+                ("WEBP", "asset.png", "asset.webp"),
+            ):
+                with self.subTest(label=label, image_format=image_format):
+                    content = self.image_bytes(image_format)
+                    upload = SimpleUploadedFile(name, content, content_type="image/png")
+                    validated = validate_brand_asset(upload, label=label)
+                    self.assertEqual(validated.name, expected)
+                    self.assertEqual(validated.read(), content)
+                    self.assertEqual(validated.content_type, Image.MIME[image_format])
+
+    def test_validation_reads_from_start_and_rewinds_for_storage(self):
+        content = self.image_bytes()
+        upload = SimpleUploadedFile("logo.png", content, content_type="application/octet-stream")
+        upload.read(16)
+        self.assertIs(validate_brand_asset(upload, label="Logo"), upload)
+        self.assertEqual(upload.tell(), 0)
+        self.assertEqual(upload.read(), content)
+
+    def test_corrupt_and_truncated_images_are_rejected(self):
+        for content in (b"\x89PNG\r\n\x1a\n" + b"fake", self.image_bytes()[:30]):
+            with self.subTest(content=content), self.assertRaises(ValidationError):
+                validate_brand_asset(SimpleUploadedFile("logo.png", content), label="Logo")
+
+    def test_empty_oversized_and_unsupported_uploads_are_rejected(self):
+        for name, content in (("logo.png", b""), ("logo.svg", b"<svg></svg>"),
+                              ("logo.png", b"x" * (5 * 1024 * 1024 + 1))):
+            with self.subTest(name=name, size=len(content)), self.assertRaises(ValidationError):
+                validate_brand_asset(SimpleUploadedFile(name, content), label="Logo")
+
+    def test_excessive_image_dimensions_are_rejected(self):
+        with patch("PIL.Image.MAX_IMAGE_PIXELS", 10), self.assertRaises(ValidationError):
+            validate_brand_asset(SimpleUploadedFile("logo.png", self.image_bytes()), label="Logo")
 
     def test_spoofed_image_extension_is_rejected(self):
         upload = SimpleUploadedFile(

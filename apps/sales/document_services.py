@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import html
 import re
+import warnings
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
 from bs4 import BeautifulSoup
+from PIL import Image, UnidentifiedImageError
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils.text import get_valid_filename
@@ -127,29 +129,42 @@ def validate_brand_asset(uploaded_file, *, label):
     if extension not in ALLOWED_BRAND_ASSET_EXTENSIONS:
         raise ValidationError(f"{label} must be PNG, JPG, JPEG or WEBP.")
 
-    content_type = str(getattr(uploaded_file, "content_type", "") or "").split(";", 1)[0]
-    if not content_type.startswith("image/"):
-        raise ValidationError(f"{label} must be a valid image file.")
+    # Filename extensions and browser MIME types can disagree with the actual
+    # image (for example, a downloaded WebP named logo.png). Validate the bytes
+    # and normalize metadata instead of rejecting an otherwise valid upload.
+    formats = {
+        "PNG": (".png", "image/png"),
+        "JPEG": (".jpg", "image/jpeg"),
+        "WEBP": (".webp", "image/webp"),
+    }
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            uploaded_file.seek(0)
+            with Image.open(uploaded_file, formats=list(formats)) as image:
+                image_format = image.format
+                image.verify()
+            uploaded_file.seek(0)
+            with Image.open(uploaded_file, formats=list(formats)) as image:
+                image.load()
+    except (
+        UnidentifiedImageError, OSError, SyntaxError, ValueError,
+        Image.DecompressionBombError, Image.DecompressionBombWarning,
+    ) as exc:
+        raise ValidationError(
+            f"{label} must be a valid, undamaged PNG, JPG, JPEG or WEBP image."
+        ) from exc
+    finally:
+        uploaded_file.seek(0)
 
-    position = uploaded_file.tell() if hasattr(uploaded_file, "tell") else 0
-    header = uploaded_file.read(16)
-    if hasattr(uploaded_file, "seek"):
-        uploaded_file.seek(position)
-
-    is_png = extension == ".png" and header.startswith(b"\x89PNG\r\n\x1a\n")
-    is_jpeg = extension in {".jpg", ".jpeg"} and header.startswith(b"\xff\xd8\xff")
-    is_webp = (
-        extension == ".webp"
-        and len(header) >= 12
-        and header[:4] == b"RIFF"
-        and header[8:12] == b"WEBP"
-    )
-    if not (is_png or is_jpeg or is_webp):
-        raise ValidationError(f"{label} content does not match its image file type.")
+    actual_extension, content_type = formats[image_format]
+    if extension != actual_extension and not (image_format == "JPEG" and extension == ".jpeg"):
+        original_name = str(Path(original_name).with_suffix(actual_extension))
+    uploaded_file.content_type = content_type
 
     uploaded_file.name = (
         get_valid_filename(original_name)
-        or f"{label.lower().replace(' ', '-')}{extension}"
+        or f"{label.lower().replace(' ', '-')}{actual_extension}"
     )
     return uploaded_file
 
