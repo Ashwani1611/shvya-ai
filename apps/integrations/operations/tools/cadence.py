@@ -146,7 +146,7 @@ def add_hosted_whatsapp_step(*, identity, arguments):
 
     with transaction.atomic():
         sequence = (
-            FollowupSequence.objects.select_for_update()
+            FollowupSequence.objects.select_for_update(of=("self",))
             .select_related("whatsapp_account")
             .filter(pk=sequence.pk, organization=organization, is_active=True)
             .first()

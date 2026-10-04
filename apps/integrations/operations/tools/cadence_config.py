@@ -399,7 +399,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             )
             if sequence is not None:
                 sequence = (
-                    FollowupSequence.objects.select_for_update()
+                    FollowupSequence.objects.select_for_update(of=("self",))
                     .select_related("whatsapp_account")
                     .defer("whatsapp_account__access_token")
                     .filter(
@@ -710,7 +710,7 @@ def add_cadence_step(*, identity, arguments):
     try:
         with transaction.atomic():
             sequence = (
-                FollowupSequence.objects.select_for_update()
+                FollowupSequence.objects.select_for_update(of=("self",))
                 .select_related("whatsapp_account")
                 .defer("whatsapp_account__access_token")
                 .filter(
