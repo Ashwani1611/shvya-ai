@@ -45,6 +45,9 @@ Conditions are evaluated even if the customer does not use
 words such as "file" or "brochure". The shared engine permits only eligible
 organization files; the grounding guard checks the selected file's condition.
 Previously shared files are not offered again unsolicited.
+If a draft overlooks an explicit file request, one bounded review evaluates the
+same eligible candidates and authored conditions without changing the reply's
+captured answers or CRM proposals; a simultaneous call request does not cancel it.
 
 Meta API/coexistence uses the existing document-media sender. CSV bytes retain
 their filename and use Meta's supported plain-text content type. Hosted uses the
@@ -60,6 +63,9 @@ selected stage, conversation, qualification state and shared-file history persis
 until Restart chat. Changes to a test lead never create or move a real CRM lead
 and never send WhatsApp messages. Preview stage movement uses the shared graph's
 validated actions and qualification completion criteria.
+If the final language pass is skipped or fails, Sandbox removes unsupported
+action assurances and describes only this turn's simulated results in supported
+configured languages; other configured languages retain the UI's preview facts.
 
 Regression coverage includes compacted language settings, FAQ separation,
 Hindi keyword retrieval, historical stage conditions, stage persistence,

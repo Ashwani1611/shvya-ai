@@ -406,6 +406,35 @@ def _generate(state: EngagementGraphState) -> dict:
         knowledge_query=None,
         context=context,
     )
+    # Multi-intent replies can acknowledge a call while silently omitting the
+    # requested file. Review only that missing choice, retaining the validated
+    # reply, qualification evidence and CRM proposals from the first pass.
+    from apps.ai_engagement.services.file_sharing import FileSharingService, explicit_file_request
+    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+    candidates = (context.organization or {}).get("_file_candidates") or []
+    if (decision.should_engage and decision.file_document_id is None and candidates
+            and not _FINAL_LANGUAGE_ONLY.get()
+            and explicit_file_request(state.get("latest_text", ""))):
+        from apps.ai_engagement.services.ai_provider import OpenAIProvider
+        try:
+            provider = state["service"].provider or OpenAIProvider(timeout_seconds=20)
+            if isinstance(provider, OpenAIProvider):
+                from copy import copy
+                # Preserve organization/model configuration and the injected
+                # client, while bounding this optional call independently.
+                provider = copy(provider)
+                provider.client = provider.client.with_options(timeout=20)
+            selected = FileSharingService().review_requested_file(
+                organization=state["organization"], lead=state["lead"], context=context,
+                candidates=candidates, provider=provider,
+                generate=state["service"]._generate_provider_text,
+                model_override=getattr(state.get("turn_policy"), "model_override", ""),
+            )
+            decision = replace(decision, file_document_id=selected)
+        except Exception:
+            # A failed optional review must not invent a send, discard captured
+            # answers or turn a valid customer reply into a provider error.
+            logger.exception("Requested file review failed organization=%s", state["organization"].id)
     return {"decision": decision, "context": context}
 
 

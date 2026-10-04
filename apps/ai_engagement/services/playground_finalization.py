@@ -8,6 +8,7 @@ from __future__ import annotations
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import replace
+import re
 from typing import Any, Iterator
 
 
@@ -16,6 +17,105 @@ _PREVIEW_ACTION_TYPES = {
     "reminder": "create_reminder",
     "stage_transition": "pipeline_transition",
 }
+
+_OWN_ACTION = r"\b(?:i|we|our\s+team|the\s+team)(?:\s+(?:will|shall|am|are|have|has)|['’](?:ll|m|re|ve))\s+(?:now\s+)?(?:proceed\s+to\s+)?"
+_FILE_SEND = r"(?:send|sending|sent|share|sharing|shared|attach|attaching|attached)\s+(?:you\s+)?(?:(?:the|a|your|our|product|requested)\s+){0,3}(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b"
+_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo)\b(?!\s+(?:platform|software|system|tool|service|feature))|call\s+you\b|connect\s+you\b)"
+_ACTION_ASSURANCE = re.compile(
+    _OWN_ACTION + r"(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
+    r"\b(?:i|we|our\s+team|the\s+team)\s+(?=(?:sent|shared|attached|scheduled|booked|confirmed|created|arranged)\b)(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
+    r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide|call|callback|reminder|appointment|booking|demo)\s+"
+    r"(?:has|have|is|are|was|were)\s+(?:been\s+)?(?:now\s+)?(?:sent|shared|attached|scheduled|booked|confirmed|created)\b|"
+    r"\b(?:main|hum|ham|team)\s+(?:ab\s+)?(?:(?:aapko|apko)\s+)?(?:(?:brochure|file|document|guide)\s+)?(?:bhejunga|bhejenge|bhej\s+(?:raha|rahe)|"
+    r"(?:call|reminder|file|brochure)\s+.{0,40}?kar\s+(?:diya|di|dunga|denge))\b|"
+    r"(?:मैं|हम|टीम)\s*(?:अभी\s*)?(?:भेज(?:ूँगा|ेंगी|ेंगे)|.{0,40}?कर\s*(?:दिया|दूँगा|देंगे))", re.IGNORECASE,
+)
+_PREVIEW_WORD = re.compile(r"\b(?:preview|simulated|simulation|sandbox)\b|(?:प्रीव्यू|सिम्युलेट)", re.IGNORECASE)
+_FILE_OBJECT = re.compile(r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b|(?:ब्रोशर|ब्रोशुर|फ़ाइल|फाइल|दस्तावेज़|दस्तावेज)", re.IGNORECASE)
+_CALL_OBJECT = re.compile(r"\b(?:call|callback|handoff|human|appointment|booking|demo)\b|(?:कॉल|हैंडऑफ़)", re.IGNORECASE)
+
+
+def enforce_preview_action_honesty(*, decision, events, files, requested_text="", allowed_languages=()):
+    """Keep simulated outcomes honest even when the final model pass is skipped.
+
+    Receipts come exclusively from this turn's preview result. This changes
+    language only, and cannot select a file, schedule a call or mutate state.
+    """
+    if not decision.should_engage:
+        return decision
+    message = str(decision.message or "")
+    sentences = re.split(r"(?<=[.!?।])\s+(?!\d)|\n+", message)
+    retained, removed = [], False
+    for sentence in sentences:
+        # Keep a supported price/business clause when an unsupported promise
+        # is appended to it. Currency/grouping commas never match this split.
+        clauses = re.split(r";\s*|,\s*(?:and\s+)?(?=(?:i|we|our\s+team|the\s+team)\b)", sentence, flags=re.IGNORECASE)
+        for clause in clauses:
+            assurance = _ACTION_ASSURANCE.search(clause)
+            negated_subject = assurance and re.search(r"\b(?:no|not|never)\s*$", clause[:assurance.start()], re.IGNORECASE)
+            if assurance and not negated_subject:
+                removed = True
+            else:
+                retained.append(clause)
+    text = "\n".join(retained).strip() if removed else message
+    preview_types = {
+        item.get("type") for item in events or []
+        if isinstance(item, dict) and item.get("status") == "preview"
+    }
+    file_id = preview_file_id(files)
+    file_requested = bool(_FILE_OBJECT.search(requested_text))
+    call_requested = bool(_CALL_OBJECT.search(requested_text))
+    # Plain factual answers and qualification questions remain untouched.
+    if not removed:
+        return decision
+    from apps.ai_engagement.services.intent_rules import detect_language
+    language = detect_language(text or message or requested_text)
+    aliases = {"english": "en", "en": "en", "hindi": "hi", "hi": "hi", "hinglish": "hinglish"}
+    configured = [aliases.get(str(item).casefold(), str(item).casefold()) for item in allowed_languages or ()]
+    if configured and language not in configured:
+        language = configured[0]
+    if language == "hi":
+        clauses = []
+        if file_id is not None:
+            clauses.append("दस्तावेज़ इस प्रीव्यू में उपलब्ध है; किसी ग्राहक को भेजा नहीं गया है।")
+        elif removed and file_requested:
+            clauses.append("इस प्रीव्यू में कोई दस्तावेज़ भेजा नहीं गया है।")
+        if "reminder" in preview_types:
+            clauses.append("फ़ॉलो-अप रिमाइंडर केवल प्रीव्यू में दिखाया गया है; वास्तविक कॉल तय नहीं हुई है।")
+        elif call_requested and ("stage_transition" in preview_types or removed):
+            clauses.append("यह केवल सैंडबॉक्स प्रीव्यू है; वास्तविक कॉल या हैंडऑफ़ की पुष्टि नहीं हुई है।")
+    elif language == "hinglish":
+        clauses = []
+        if file_id is not None:
+            clauses.append("Document is preview mein available hai; customer ko live send nahi hua hai.")
+        elif removed and file_requested:
+            clauses.append("Is preview mein koi document send nahi hua hai.")
+        if "reminder" in preview_types:
+            clauses.append("Follow-up reminder sirf preview mein hai; live call confirm nahi hui hai.")
+        elif call_requested and ("stage_transition" in preview_types or removed):
+            clauses.append("Yeh Sandbox preview hai; live call ya handoff confirm nahi hua hai.")
+    elif language == "en":
+        clauses = []
+        if file_id is not None:
+            clauses.append("The document is available in this preview; it has not been sent to a customer.")
+        elif removed and file_requested:
+            clauses.append("No document was shared in this preview.")
+        if "reminder" in preview_types:
+            clauses.append("The follow-up reminder is shown in this preview only; no live call is confirmed.")
+        elif call_requested and ("stage_transition" in preview_types or removed):
+            clauses.append("This is a Sandbox preview; no live call or handoff is confirmed.")
+    else:
+        # The UI already displays preview facts. Do not inject English into
+        # another configured language when no deterministic translation exists.
+        clauses = []
+    # Avoid repeating a truthful final explanation when the model already
+    # distinguished the simulated outcome from a live action.
+    described = [sentence for sentence in retained if _PREVIEW_WORD.search(sentence)]
+    file_described = any(_FILE_OBJECT.search(sentence) for sentence in described)
+    reminder_described = any(re.search(r"\breminder\b|रिमाइंडर", sentence, re.IGNORECASE) for sentence in described)
+    if not removed and (file_id is None or file_described) and ("reminder" not in preview_types or reminder_described):
+        return decision
+    return replace(decision, message="\n".join(part for part in [text, *clauses] if part))
 
 
 def needs_final_composition(*, decision, events, files) -> bool:

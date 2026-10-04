@@ -36,6 +36,7 @@ from apps.ai_engagement.services.qualification_state import (
     state_for_lead,
 )
 from apps.ai_engagement.services.playground_finalization import (
+    enforce_preview_action_honesty,
     language_only_decision,
     needs_final_composition,
     preserve_preview_state,
@@ -582,6 +583,17 @@ class PlaygroundService:
             lead=visitor,
             first_turn=(turn == 1),
         )
+        # The optional final language pass has a latency budget and can fail.
+        # Simulated receipts still govern every displayed action assurance.
+        decision = enforce_preview_action_honesty(
+            decision=decision, events=events, files=files, requested_text=message,
+            allowed_languages=profile.get("communication", {}).get("languages", []),
+        )
+        if decision.should_engage and not str(decision.message or "").strip():
+            raise PlaygroundError(
+                "The AI response could not be validated in the configured language. "
+                "No test reply was saved."
+            )
         # Record only the question selected for the displayed final response,
         # not an earlier draft which post-effect composition may have replaced.
         if decision.should_engage and decision.next_requirement_id:
