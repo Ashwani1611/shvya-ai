@@ -39,6 +39,21 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
     def test_plain_reply_does_not_start_another_pass(self):
         self.assertFalse(needs_final_composition(decision=Decision(), events=[], files=[]))
 
+    def test_answer_progress_keeps_validated_next_question_without_reinterpreting_letter(self):
+        decision = Decision(
+            message="Where do you manage leads?\nA. WhatsApp\nB. CRM",
+            qualification_updates=[{"requirement_id": "q1", "value": "Slow replies"}],
+            next_requirement_id="q2",
+            crm_actions=[{"type": "attribute_updates"}],
+        )
+        self.assertFalse(needs_final_composition(
+            decision=decision, events=[{"type": "attribute_updates"}], files=[],
+        ))
+        for event in ({"type": "stage_transition"}, {"type": "reminder"}):
+            with self.subTest(event=event):
+                self.assertTrue(needs_final_composition(decision=decision, events=[event], files=[]))
+        self.assertTrue(needs_final_composition(decision=decision, events=[], files=[{"id": 5}]))
+
     def test_silence_never_starts_final_composition(self):
         self.assertFalse(needs_final_composition(
             decision=Decision(should_engage=False, file_document_id=5), events=[], files=[{"id": 5}],

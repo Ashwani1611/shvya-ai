@@ -297,6 +297,15 @@ def _mapped_value(config, key, value):
         source = source.strip('"“”')
         target = target.strip().rstrip(".").strip('"“”')
         aliases = [source, *re.split(r"\s*/\s*", source)]
-        if _norm(value) == _norm(target) or any(_norm(value) == _norm(alias) for alias in aliases):
+        normalized_value = _norm(value).translate(str.maketrans({"–": "-", "—": "-", "−": "-"}))
+        normalized_aliases = [_norm(alias).translate(str.maketrans({"–": "-", "—": "-", "−": "-"})) for alias in aliases]
+        # Authored numeric bands may include units/context, e.g. an answer
+        # "11–30" mapped by "11–30 leads per day → 10-30". Only the same
+        # complete numeric band may drop its trailing description.
+        band = bool(re.fullmatch(r"\d+\s*-\s*\d+|\d+\+", normalized_value))
+        if normalized_value == _norm(target) or any(
+            normalized_value == alias or (band and alias.startswith(normalized_value + " "))
+            for alias in normalized_aliases
+        ):
             targets.add(target)
     return next(iter(targets)) if len(targets) == 1 else value

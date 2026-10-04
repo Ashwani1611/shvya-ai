@@ -3,6 +3,7 @@ from django.test import SimpleTestCase
 from apps.ai_engagement.services.engagement_instruction_runtime import (
     _definition_reference_score, _mapped_attribute_key,
 )
+from apps.ai_engagement.services.qualification_execution.config import _mapped_value
 
 
 class AuthoredMappingTargetTests(SimpleTestCase):
@@ -45,3 +46,16 @@ class AuthoredMappingTargetTests(SimpleTestCase):
         self.assertEqual(_definition_reference_score(
             "- Attribute key: `biggest_problem`", self.definitions[1],
         ), 100)
+
+    def test_authored_numeric_band_maps_to_configured_crm_value(self):
+        config = {"mapping_value_rules": {"volume": (
+            "- Attribute name: VOLUME\n- Source: Question 3\n"
+            "- 0–10 leads per day → 0-10.\n"
+            "- 11–30 leads per day → 10-30.\n"
+            "- More than 30 leads per day → 30+."
+        )}}
+        self.assertEqual(_mapped_value(config, "volume", "11–30"), "10-30")
+        self.assertEqual(_mapped_value(config, "volume", "11-30"), "10-30")
+        self.assertEqual(_mapped_value(config, "volume", "0–10"), "0-10")
+        self.assertEqual(_mapped_value(config, "volume", "11"), "11")
+        self.assertEqual(_mapped_value(config, "volume", "31–40"), "31–40")
