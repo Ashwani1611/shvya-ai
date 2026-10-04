@@ -1,7 +1,7 @@
 """One durable conversational AI send gate per WhatsApp sender.
 
-The old fixed 45-second gap made healthy AI feel stalled. Normal conversational
-AI now uses a short configurable pacing gap after the inbound burst collector;
+Hosted conversational AI uses a fixed 45-second gap. Meta API conversational
+AI uses a short configurable pacing gap after the inbound burst collector;
 follow-up cadence timing still controls when bump-ups/follow-ups are created.
 Redis/Celery determine when to wake work; PostgreSQL decides who may send.
 Reservations commit before provider I/O and survive a worker crash.
@@ -32,6 +32,11 @@ def _conversation_send_gap_seconds() -> int:
 
 
 AI_SEND_GAP_SECONDS = _conversation_send_gap_seconds()
+
+
+def ai_send_gap_seconds(account):
+    return 45 if account.connection_type == "hosted" else AI_SEND_GAP_SECONDS
+
 # Longer than the transport's longest bounded HTTP send (90 seconds).
 AI_SEND_LEASE_SECONDS = 300
 SENT_STATUSES = ("sent", "delivered", "read")
@@ -65,7 +70,7 @@ def next_ai_send_at(account):
         # recent successful send too. Legacy receipt time is conservative when
         # exact historical sent_at is unavailable.
         previous = _last_recorded_ai_send(account)
-        return previous + timedelta(seconds=AI_SEND_GAP_SECONDS) if previous else None
+        return previous + timedelta(seconds=ai_send_gap_seconds(account)) if previous else None
     now = timezone.now()
     if state.claimed_until and state.claimed_until > now:
         # The provider may finish in a second. Recheck promptly instead of
@@ -165,7 +170,7 @@ def _reserve(message):
         previous = _last_recorded_ai_send(account)
         if previous:
             state.last_sent_at = previous
-            state.next_send_at = previous + timedelta(seconds=AI_SEND_GAP_SECONDS)
+            state.next_send_at = previous + timedelta(seconds=ai_send_gap_seconds(account))
             state.save(update_fields=["last_sent_at", "next_send_at"])
     state = AIMessageSendState.objects.select_for_update().get(pk=state.pk)
     if state.claimed_until and state.claimed_until > now:
@@ -179,21 +184,31 @@ def _reserve(message):
     token = uuid.uuid4()
     state.claim_token = token
     state.claimed_until = now + timedelta(seconds=AI_SEND_LEASE_SECONDS)
-    state.next_send_at = state.claimed_until + timedelta(seconds=AI_SEND_GAP_SECONDS)
+    state.next_send_at = state.claimed_until + timedelta(seconds=ai_send_gap_seconds(account))
     state.save(update_fields=["claim_token", "claimed_until", "next_send_at"])
     return token
 
 
-def _finish(message, token):
+def _finish(message, token, *, deferred=False):
     now = timezone.now()
     updates = {
         "claim_token": None, "claimed_until": None,
-        "next_send_at": now + timedelta(seconds=AI_SEND_GAP_SECONDS),
+        "next_send_at": now + timedelta(seconds=ai_send_gap_seconds(message.account)),
     }
+    if deferred:
+        # No provider call occurred. Release capacity without charging a new
+        # pacing gap on each fairness/priority retry.
+        state = AIMessageSendState.objects.filter(account_id=message.account_id, claim_token=token).first()
+        if state is None:
+            return
+        updates["next_send_at"] = (
+            state.last_sent_at + timedelta(seconds=ai_send_gap_seconds(message.account))
+            if state.last_sent_at else None
+        )
     if message.status in SENT_STATUSES:
         sent_at = message.sent_at or now
         updates["last_sent_at"] = sent_at
-        updates["next_send_at"] = sent_at + timedelta(seconds=AI_SEND_GAP_SECONDS)
+        updates["next_send_at"] = sent_at + timedelta(seconds=ai_send_gap_seconds(message.account))
     AIMessageSendState.objects.filter(account_id=message.account_id, claim_token=token).update(**updates)
 
 
@@ -256,9 +271,13 @@ def paced_ai_send(sender):
         token = _reserve(message)
         if token is None:
             return message
+        deferred = False
         try:
             _admit_ai_provider(message)
             return sender(*args, **kwargs)
+        except AIMessageDeferred:
+            deferred = True
+            raise
         finally:
-            _finish(message, token)
+            _finish(message, token, deferred=deferred)
     return send
