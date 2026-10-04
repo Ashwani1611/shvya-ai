@@ -331,9 +331,15 @@ def _ingest_call_event_atomic(*, user, payload):
         )
 
     settings_obj = get_call_settings(user.organization)
+    normalization_pipeline = settings_obj.default_pipeline
+    if source == CallRecord.Source.ANDROID_SIM:
+        normalization_pipeline = (
+            Pipeline.objects.filter(organization=user.organization, owner=user, is_active=True)
+            .order_by("created_at", "id").first() or normalization_pipeline
+        )
     phone = normalize_call_phone(
         payload.get("phone_number") or payload.get("raw_phone_number"),
-        pipeline=Pipeline.objects.filter(organization=user.organization, owner=user, is_active=True).order_by("created_at", "id").first() or settings_obj.default_pipeline,
+        pipeline=normalization_pipeline,
     )
     source_call_id = _clean_text(payload.get("source_call_id"))
     if not source_call_id:

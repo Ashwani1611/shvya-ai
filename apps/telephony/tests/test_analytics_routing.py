@@ -173,3 +173,16 @@ class AnalyticsRoutingTests(TestCase):
         self.assertEqual(manual.crm_call.duration_seconds, 120)
         self.assertEqual(manual.talk_duration_seconds, 120)
         self.assertEqual(manual.user_id, self.user.id)
+
+    def test_cloud_normalization_retains_configured_pipeline_country_code(self):
+        self.pipeline.owner = None
+        self.pipeline.save(update_fields=["owner"])
+        Pipeline.objects.create(
+            organization=self.org,
+            name="US employee",
+            owner=self.user,
+            country_code="+1",
+        )
+        call = self.call(source="cloud", device_id="")
+        self.assertEqual(call.phone_number, "+919876543210")
+        self.assertEqual(call.lead.pipeline_id, self.pipeline.id)
