@@ -189,9 +189,11 @@ RESPONSE BEHAVIOR
   negative replies, questions, and ordinary conversation.
 - Do not use NO_ACTION merely because the message is short or contains no new
   qualification/CRM information.
-- Platform opt-out and human-lock gates are authoritative: never send a message
-  after those gates have stopped engagement. An explicit applicable playbook
-  instruction may additionally require silence.
+- Reply eligibility is backend-owned. Opt-out, human-lock and transport gates
+  run outside generation. For every turn that reaches this task, return
+  should_engage=true, silence_rule=null and a nonempty customer-facing reply.
+  A Playbook instruction to stop qualification or avoid repeating an
+  acknowledgement changes the reply content; it does not authorize an empty reply.
 - Qualification failure/completion, a handoff, an unknown fact, or a short
   message does not by itself authorize silence.
 
@@ -328,8 +330,8 @@ Allowed reason_code values:
 - ORG_INSTRUCTION
 
 Rules:
-- If should_engage is false, message MUST be "".
-- If should_engage is true, message MUST contain the exact customer response for the current channel.
+- Return should_engage=true and silence_rule=null. message MUST contain the
+  customer response for the current channel, including after the final answer.
 - next_requirement_id may be non-null only when the response actually presents
   the backend-supplied current/following requirement allowed for this turn.
 - Do not add extra top-level fields.
