@@ -381,6 +381,29 @@ class MetaConversionsTests(TestCase):
         self.assertTrue(Mapping.objects.filter(pk=foreign_mapping.pk).exists())
         self.assertEqual(self.client.get(self.url + "?format=json").headers["Cache-Control"], "no-store")
 
+    def test_manual_tests_require_owned_lead_in_current_mapped_stage(self):
+        other_pipeline = Pipeline.objects.filter(organization=self.other).first()
+        foreign_lead = Lead.objects.create(
+            organization=self.other, pipeline=other_pipeline, stage=other_pipeline.stages.first(),
+            name="Foreign tenant lead", phone="+919876540000", lead_source="meta_ads",
+            attributes={"meta_leadgen_id": "1234567890123466"},
+        )
+        with self.assertRaises(ValidationError):
+            perform_action(self.configuration, {"action": "test_event",
+                "mapping_id": str(self.mapping.pk), "lead_id": str(foreign_lead.pk)})
+        qualified_mapping = save_mapping(self.configuration, self.mapping_data())
+        with self.assertRaises(ValidationError):
+            perform_action(self.configuration, {"action": "test_event",
+                "mapping_id": str(qualified_mapping.pk), "lead_id": str(self.lead.pk)})
+        self.assertFalse(Delivery.objects.exists())
+        self.authenticate()
+        response = self.client.get(self.url, {"lookup": "leads", "mapping_id": str(self.mapping.pk)})
+        self.assertEqual(response.json()["leads"], [{"id": str(self.lead.pk), "name": self.lead.name}])
+        perform_action(self.configuration, {"action": "test_event",
+            "mapping_id": str(self.mapping.pk), "lead_id": str(self.lead.pk)})
+        self.assertTrue(Delivery.objects.get().is_probe)
+        self.assertTrue(Delivery.objects.get().is_test)
+
     def test_browser_mutations_require_csrf_and_malformed_json_is_rejected(self):
         strict_client = Client(enforce_csrf_checks=True)
         self.authenticate(client=strict_client)
