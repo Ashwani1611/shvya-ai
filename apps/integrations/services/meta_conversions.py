@@ -283,6 +283,9 @@ def capture_stage_event(configuration, lead, *, occurred_at=None):
 
 @transaction.atomic
 def perform_action(configuration, data):
+    configuration = Configuration.objects.select_for_update().get(
+        pk=configuration.pk, organization_id=configuration.organization_id,
+    )
     action = data.get("action")
     if action == "save_settings":
         save_settings(configuration, data)
@@ -325,6 +328,10 @@ def perform_action(configuration, data):
             raise ValidationError("This event belongs to a previous dataset connection.")
         if not configuration.is_enabled and not delivery.is_probe:
             raise ValidationError("Enable event tracking before retrying a live event.")
+        if delivery.mapping_id is None:
+            raise ValidationError("This event mapping was removed. Create a mapping and record a new stage change.")
+        if not delivery.is_probe and not delivery.mapping.is_enabled:
+            raise ValidationError("Enable this event mapping before retrying its delivery.")
         if delivery.created_at < timezone.now() - timedelta(days=7):
             raise ValidationError("This event is outside Meta's seven-day delivery window.")
         delivery.status, delivery.attempt_count = Delivery.Status.QUEUED, 0

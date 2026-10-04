@@ -333,6 +333,38 @@ class MetaConversionsTests(TestCase):
         self.assertEqual(Delivery.objects.count(), 1)
         self.assertEqual(Delivery.objects.get().status, "queued")
 
+    @patch("apps.integrations.services.meta_conversions_delivery.requests.post")
+    def test_removed_mapping_recovers_abandoned_delivery_without_sending(self, post):
+        self.enable()
+        mapping = save_mapping(self.configuration, self.mapping_data())
+        delivery = queue_event(self.configuration, mapping, self.lead, occurred_at=timezone.now())
+        Delivery.objects.filter(pk=delivery.pk).update(
+            status="sending", lease_until=timezone.now() - timedelta(seconds=1),
+        )
+        perform_action(self.configuration, {"action": "delete_mapping", "id": str(mapping.pk)})
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(recover_due_events()["queued"], 1)
+        self.assertEqual(deliver_event(delivery.pk)["status"], "skipped")
+        post.assert_not_called()
+
+    def test_retry_reuses_event_identity_and_requires_active_mapping(self):
+        self.enable()
+        delivery = self.delivery(event_id="original-identity")
+        original_payload = delivery.payload.copy()
+        Delivery.objects.filter(pk=delivery.pk).update(status="failed", attempt_count=6)
+        self.mapping.is_enabled = False
+        self.mapping.save()
+        with self.assertRaises(ValidationError):
+            perform_action(self.configuration, {"action": "retry_delivery", "id": str(delivery.pk)})
+        self.mapping.is_enabled = True
+        self.mapping.save()
+        perform_action(self.configuration, {"action": "retry_delivery", "id": str(delivery.pk)})
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, "queued")
+        self.assertEqual(delivery.event_id, "original-identity")
+        self.assertEqual(delivery.payload, original_payload)
+        self.assertEqual(delivery.attempt_count, 0)
+
     def test_page_and_json_are_admin_only_and_tenant_scoped(self):
         self.authenticate("agent")
         self.assertEqual(self.client.get(self.url).status_code, 403)

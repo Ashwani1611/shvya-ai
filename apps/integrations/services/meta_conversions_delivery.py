@@ -54,9 +54,11 @@ def deliver_event(delivery_id):
         configuration = delivery.configuration
         if (delivery.organization_id != configuration.organization_id or
                 delivery.dataset_id != configuration.dataset_id or
-                delivery.destination_version != configuration.destination_version):
+                delivery.destination_version != configuration.destination_version or
+                delivery.mapping_id is None):
             delivery.status = Delivery.Status.SKIPPED
-            delivery.error_message = "The dataset connection changed before delivery."
+            delivery.error_message = ("The event mapping was removed before delivery." if delivery.mapping_id is None
+                                      else "The dataset connection changed before delivery.")
             delivery.lease_until, delivery.lease_token = None, None
             delivery.save(update_fields=["status", "error_message", "lease_until", "lease_token", "updated_at"])
             return {"status": "skipped"}
@@ -144,7 +146,7 @@ def recover_due_events():
     with transaction.atomic():
         rows = list(Delivery.objects.select_for_update(skip_locked=True, of=("self",)).filter(
             Q(configuration__is_enabled=True) | Q(is_probe=True),
-            Q(mapping__is_enabled=True) | Q(is_probe=True),
+            Q(mapping__is_enabled=True) | Q(mapping__isnull=True) | Q(is_probe=True),
             Q(last_enqueued_at__isnull=True) | Q(last_enqueued_at__lt=now - timedelta(seconds=90)),
             Q(status__in=[Delivery.Status.QUEUED, Delivery.Status.RETRYING]) |
             Q(status=Delivery.Status.SENDING, lease_until__lte=now),
