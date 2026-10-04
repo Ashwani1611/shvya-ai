@@ -138,7 +138,7 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         self.info.about = "We automate customer conversations."
         self.info.bot_languages = "English, Hinglish"
         self.info.ai_playbook = (
-            "## Stage shift logic\nWhen the customer requests a call, move to Call Requested.\n"
+            "## Stage shifting logic\nWhen the customer requests a call, move to Call Requested.\n"
             "## Reminder creation logic\nReminder 1: Customer Callback\n"
             "- Create when the customer explicitly requests a callback and provides or confirms a future date and time.\n"
             "- Title: Customer Callback.\n"
