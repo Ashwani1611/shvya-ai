@@ -163,9 +163,16 @@ def _confirmation_context(context, latest_text: str) -> str:
     return ""
 
 
-def _ensure_datetime_reminder(controlled, latest_text):
+def _ensure_datetime_reminder(controlled, latest_text, runtime_policy=None):
     """Create deterministic normal-conversation reminders without qualification logic."""
     if any(item.get("type") == "create_reminder" for item in controlled):
+        return
+    rules = ((runtime_policy or {}).get("crm") or {}).get("reminders") or []
+    if any(re.search(r"(?im)^\s*[-*•]?\s*Title:", rule) for rule in rules):
+        from apps.ai_engagement.services.authored_reminder_rules import requested_reminder
+        action = requested_reminder(rules=rules, text=latest_text)
+        if action:
+            controlled.append(action)
         return
     from apps.ai_engagement.services.reminder_time_runtime import (
         parse_grounded_due_at,
@@ -408,7 +415,7 @@ def _wrap_controlled_actions(current_builder):
             qualification_state=qualification_state,
             latest_text=latest_text,
         )
-        _ensure_datetime_reminder(controlled, latest_text)
+        _ensure_datetime_reminder(controlled, latest_text, runtime_policy)
         return controlled, result
 
     return build

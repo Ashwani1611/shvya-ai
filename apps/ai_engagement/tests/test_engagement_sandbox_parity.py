@@ -17,6 +17,14 @@ from apps.organizations.models import Organization
 
 
 class CompositionPolicyTests(SimpleTestCase):
+    def test_action_sections_after_ten_thousand_characters_remain_in_composition(self):
+        rules = "## Rules\n" + "Keep replies useful.\n" * 600
+        actions = "## Reminder creation logic\nCreate a reminder only for the customer's agreed future time."
+        payload = {"organization": {"id": "org", "ai_playbook": rules + actions},
+                   "lead": {"id": "lead"}}
+        plan = build_response_plan(payload=payload, organization_id="org", lead_id="lead")
+        self.assertIn(actions, plan.organization_instructions)
+
     def test_compacted_payload_keeps_allowed_languages_and_conditions(self):
         rules = 'Use Hindi for greetings. Use English for technical questions.'
         payload = {'organization': {'id': 'org', 'bot_languages': 'Hindi, English', 'ai_playbook': rules},
