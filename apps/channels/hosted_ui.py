@@ -18,6 +18,7 @@ from services.channels.hosted_whatsapp_service import (
     get_pipeline_for_account,
     get_session_settings,
     handle_gateway_event,
+    normalize_whatsapp_number,
     queue_hosted_text_message,
     queued_messages,
     update_session_settings,
@@ -111,6 +112,20 @@ def _reconcile_gateway_status(account, result):
         )
 
     account.refresh_from_db()
+    if raw_status == "running" and account.status != WhatsAppAccount.Status.CONNECTED:
+        # A live browser alone is not an eligible sender: number verification
+        # and gateway ownership may prevent its ready event from being accepted.
+        linked_number = normalize_whatsapp_number(phone_number=result.get("phoneNumber"))
+        expected_number = normalize_whatsapp_number(phone_number=account.display_phone_number)
+        if linked_number and expected_number and linked_number != expected_number:
+            result["lastError"] = "The linked WhatsApp number does not match this account. Link the number assigned to this pipeline."
+        else:
+            result["lastError"] = "Hosted connection verification is pending. Messages will wait until this account is connected."
+        raw_status = {
+            WhatsAppAccount.Status.FAILED: "failed",
+            WhatsAppAccount.Status.DISCONNECTED: "disconnected",
+        }.get(account.status, "connecting")
+        result["status"] = raw_status
     return raw_status
 
 
@@ -260,13 +275,14 @@ def hosted_session_status_view(request, account_id):
                 "error": result.get("lastError") or "",
             }
         )
-    except WhatsAppWebGatewayError as exc:
+    except WhatsAppWebGatewayError:
         return JsonResponse(
             {
                 "ok": False,
-                "status": account.status,
-                "label": _initial_status(account),
-                "error": str(exc),
+                "status": "unavailable",
+                "label": "Gateway unavailable",
+                "last_known_status": account.status,
+                "error": "The Hosted connection could not be checked. Try again once the gateway is available.",
             },
             status=503,
         )

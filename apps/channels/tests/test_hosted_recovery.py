@@ -229,6 +229,30 @@ class HostedWhatsAppRecoveryTests(TestCase):
         self.account.refresh_from_db()
         self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
 
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
+    def test_status_endpoint_does_not_claim_running_when_linked_number_is_rejected(self, get_session):
+        get_session.return_value = {"status": "running", "phoneNumber": "+919876543210"}
+        response = self.client.get(reverse("whatsapp-hosted-session-status", args=[self.account.id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "failed")
+        self.assertEqual(response.json()["label"], "Failed")
+        self.assertIn("does not match", response.json()["error"])
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.FAILED)
+
+    @patch("apps.channels.hosted_ui.WhatsAppWebClient.get_session")
+    def test_gateway_outage_is_visible_without_changing_last_connected_status(self, get_session):
+        self.account.status = WhatsAppAccount.Status.CONNECTED
+        self.account.save(update_fields=["status", "updated_at"])
+        get_session.side_effect = WhatsAppWebGatewayError("Private internal gateway unavailable", status_code=503)
+        response = self.client.get(reverse("whatsapp-hosted-session-status", args=[self.account.id]))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["status"], "unavailable")
+        self.assertEqual(response.json()["label"], "Gateway unavailable")
+        self.assertNotIn("Private internal", response.json()["error"])
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.status, WhatsAppAccount.Status.CONNECTED)
+
     @patch("apps.channels.hosted_chat_ui.sync_hosted_history_task.delay")
     @patch("apps.channels.hosted_chat_ui.WhatsAppWebClient.get_session")
     def test_empty_chat_page_queues_history_recovery(self, get_session, delay):
