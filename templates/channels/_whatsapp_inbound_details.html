@@ -1,0 +1,14 @@
+<p class="italic text-gray-500">No readable message text was included in the received event.</p>
+<details class="mt-2 text-[11px] text-gray-600" data-inbound-message-details="{{ details.message_id }}">
+    <summary class="cursor-pointer select-none font-medium">View message details</summary>
+    <dl class="mt-2 space-y-1 break-words [overflow-wrap:anywhere]">
+        {% if details.message_id %}<div><dt class="inline font-semibold">Message ID:</dt> <dd class="inline">{{ details.message_id }}</dd></div>{% endif %}
+        <div><dt class="inline font-semibold">Provider message type:</dt> <dd class="inline">{{ details.provider_type }}</dd></div>
+        {% if details.unsupported_type %}<div><dt class="inline font-semibold">Unsupported subtype:</dt> <dd class="inline">{{ details.unsupported_type }}</dd></div>{% endif %}
+        {% for error in details.errors %}<div class="border-t border-gray-200 pt-1">
+            {% if error.code %}<p><span class="font-semibold">Provider error code:</span> {{ error.code }}</p>{% endif %}
+            {% if error.title %}<p>{{ error.title }}</p>{% endif %}
+            {% if error.detail %}<p>{{ error.detail }}</p>{% endif %}
+        </div>{% endfor %}
+    </dl>
+</details>

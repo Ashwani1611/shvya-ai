@@ -26,6 +26,7 @@ from services.channels.whatsapp_template_delivery import template_display_snapsh
 from services.crm.lead_filter_service import active_filter_items, apply_lead_filters
 
 from .models import WhatsAppAccount, WhatsAppTemplate, WhatsAppMessage
+from .inbound_diagnostics import inbound_event_details
 from .whatsapp_chat_smooth_ui import _inject_chat_ui
 
 
@@ -57,6 +58,7 @@ def _attach_inbound_reply_display(chat_messages):
     from services.channels.whatsapp_service import extract_inbound_message_body
 
     for message in chat_messages:
+        message.inbound_details = None
         if message.direction != WhatsAppMessage.Direction.INBOUND:
             continue
         if str(message.body or "").strip():
@@ -64,6 +66,8 @@ def _attach_inbound_reply_display(chat_messages):
         recovered = extract_inbound_message_body(message.raw_payload)
         if recovered:
             message.body = recovered
+        else:
+            message.inbound_details = inbound_event_details(message)
 
 
 def _attach_template_display(chat_messages, *, organization):

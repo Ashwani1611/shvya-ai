@@ -9,6 +9,7 @@ LABELS = {
     'queued': 'Waiting for the AI worker', 'processing': 'Preparing a reply',
     'retrying': 'Retrying a temporary failure', 'failed': 'Reply could not be completed',
     'completed': 'AI processing completed', 'skipped': 'Reply was skipped',
+    'not_queued': 'No Hosted AI reply queued for the latest incoming message',
     'organization_ai_disabled': 'AI is disabled for this organization.',
     'pipeline_ai_disabled': 'AI is disabled for this pipeline.',
     'stage_ai_disabled': 'AI is disabled for this stage.',
@@ -30,6 +31,20 @@ LABELS = {
     'latest_message_not_inbound': 'The latest message is outgoing; waiting for the customer.',
     'outbound_queued_check_worker': 'The reply is saved and waiting for delivery.',
     'latest_outbound_delivery_failed_check_worker_logs': 'WhatsApp rejected or could not deliver the saved reply.',
+    'no_hosted_ai_job_check_live_inbound_and_lead_mapping': 'No Hosted AI job is recorded for this incoming message. Check live-message and lead mapping.',
+    'superseded_by_newer_lead_message': 'A newer incoming message replaced this reply.',
+    'source_message_is_history': 'Historical messages do not start AI replies.',
+    'conversation_changed_before_generation': 'The conversation changed before AI generation.',
+    'conversation_changed_before_send': 'The conversation changed before delivery.',
+    'duplicate_ai_response': 'A reply already exists for this incoming message.',
+    'message_already_processed': 'This incoming message was already processed.',
+    'no_engagement': 'AI processed this message and determined that no reply was needed.',
+    'account_health_pause': 'Account health protection has paused automation.',
+    'retry_scheduled': 'A temporary worker failure is waiting for another attempt.',
+    'retry_limit_exceeded': 'The worker exhausted its retry limit.',
+    'provider_transient': 'The AI provider is temporarily unavailable.',
+    'provider_ack_pending': 'WhatsApp delivery confirmation is pending.',
+    'session_reconnecting': 'The WhatsApp session is reconnecting.',
 }
 
 
