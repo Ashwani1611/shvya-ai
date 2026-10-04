@@ -18,7 +18,7 @@ from apps.followups.models import (
 )
 from apps.hosted_automation.models import HostedAutomationJob, HostedFollowupStepConfig
 from apps.organizations.models import Organization
-from services.channels.ai_send_gate import AI_SEND_GAP_SECONDS
+from services.channels.ai_send_gate import ai_send_gap_seconds
 from services.channels.hosted_chat_service import handle_hosted_gateway_event
 
 
@@ -470,7 +470,7 @@ class HostedQueueSourceOfTruthTests(TestCase):
         AIMessageSendState.objects.create(account=self.account, next_send_at=next_send)
         row, = self._queue()["items"]
         self.assertEqual(row["available_at"], next_send.isoformat())
-        self.assertIn(f"{AI_SEND_GAP_SECONDS}-second minimum gap", row["origin"])
+        self.assertIn(f"{ai_send_gap_seconds(self.account)}-second minimum gap", row["origin"])
         self.stage.ai_on = False
         self.stage.save(update_fields=["ai_on"])
         row, = self._queue()["items"]

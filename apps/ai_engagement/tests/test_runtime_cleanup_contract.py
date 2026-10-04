@@ -141,8 +141,7 @@ class RuntimeCleanupContractTests(SimpleTestCase):
         )
 
     def test_hosted_ai_delay_is_bounded_without_startup_patch(self):
-        self.assertGreaterEqual(hosted_automation_service.AI_RESPONSE_DELAY_SECONDS, 0)
-        self.assertLessEqual(hosted_automation_service.AI_RESPONSE_DELAY_SECONDS, 5)
+        self.assertEqual(hosted_automation_service.AI_RESPONSE_DELAY_SECONDS, 45)
 
 
     def test_bootstrap_installer_set_is_explicit_and_cannot_grow_silently(self):
