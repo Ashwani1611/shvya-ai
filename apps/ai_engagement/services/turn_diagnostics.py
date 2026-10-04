@@ -36,6 +36,18 @@ def provider_diagnostics(method):
     return wrapped
 
 
+def record_failure(exc):
+    from apps.ai_engagement.services import trace_service
+    import traceback
+    frames = traceback.extract_tb(exc.__traceback__)
+    frame = frames[-1] if frames else None
+    trace_service.record("sandbox_failure", {
+        "error_type": type(exc).__name__,
+        "cause_type": type(exc.__cause__).__name__ if exc.__cause__ else "",
+        "site": (frame.filename.rsplit("/", 1)[-1] + ":" + str(frame.lineno)) if frame else "",
+    })
+
+
 def summary():
     from apps.ai_engagement.services import trace_service
     trace = trace_service.current()
@@ -53,6 +65,9 @@ def summary():
     error = trace.data.get("error") or {}
     if error.get("error_type"):
         parts.append("runtime/" + identifier(error.get("error_type")))
+    failure = trace.data.get("sandbox_failure") or {}
+    if failure:
+        parts.append("runtime/" + "/".join(str(failure.get(key) or "") for key in ("error_type", "cause_type", "site")))
     return "; ".join(dict.fromkeys(parts))[:1000]
 
 

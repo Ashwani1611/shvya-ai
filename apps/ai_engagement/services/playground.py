@@ -490,6 +490,8 @@ class PlaygroundService:
                 with evidence_scope:
                     decision = service.engage(organization=organization, lead=visitor)
             except Exception as exc:
+                from apps.ai_engagement.services.turn_diagnostics import record_failure
+                record_failure(exc)
                 # The production runtime already has validation/schema fail-soft,
                 # but Sandbox is synchronous (no Celery retry owner). Never turn
                 # a temporary provider/runtime failure into a broken chat surface.
