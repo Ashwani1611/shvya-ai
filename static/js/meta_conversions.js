@@ -42,7 +42,7 @@
     return result;
   }
   async function run(form, errorTarget, task) {
-    const buttons = [...form.querySelectorAll('button[type=submit]')];
+    const buttons = [...form.elements].filter(control => control.tagName === 'BUTTON' && control.type === 'submit');
     buttons.forEach(button => { button.disabled = true; button.setAttribute('aria-busy', 'true'); });
     try { await task(); }
     catch (error) {
@@ -272,6 +272,7 @@
   mappingForm.elements.pipeline.addEventListener('change', () => updateStages());
   mappingForm.elements.value_source.addEventListener('change', updateMappingFields);
   $('capi-event-type').addEventListener('change', () => {
+    if ($('capi-event-type').value === 'custom') mappingForm.elements.event_name.value = '';
     if ($('capi-event-type').value === 'Purchase' && mappingForm.elements.value_source.value === 'none') mappingForm.elements.value_source.value = 'static';
     updateMappingFields();
   });

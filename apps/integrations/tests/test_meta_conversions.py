@@ -37,7 +37,7 @@ class MetaConversionsTests(TestCase):
         self.org = Organization.objects.create(name="Meta Conversions Test")
         self.other = Organization.objects.create(name="Other Conversions Tenant")
         self.pipeline = Pipeline.objects.filter(organization=self.org, is_active=True).first()
-        self.stage = self.pipeline.stages.get(name="New Lead")
+        self.stage = self.pipeline.stages.get(name="New leads")
         self.qualified = self.pipeline.stages.get(name="Qualified")
         self.configuration = get_configuration(self.org)
         self.configuration.dataset_id = "123456789012345"
