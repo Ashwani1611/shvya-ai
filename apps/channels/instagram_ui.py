@@ -331,3 +331,26 @@ def instagram_send_message_view(request, conversation_id):
     if errors:
         messages.error(request, errors[0])
     return redirect("crm-instagram-chat-detail", conversation_id=conversation_id)
+
+
+@crm_login_required
+@require_http_methods(["GET", "POST"])
+def instagram_automation_settings_view(request):
+    import json
+    from apps.accounts.models import User
+    from apps.channels.services.instagram_automation import get_settings, update_settings
+    from services.channels.hosted_whatsapp_service import HostedWhatsAppValidationError
+
+    user = request.crm_user
+    if user.role != User.Role.ADMIN:
+        return JsonResponse({"error": "Only organization admins can manage automation settings."}, status=403)
+    if not InstagramAccount.objects.filter(organization=user.organization).exists():
+        return JsonResponse({"error": "Connect Instagram before managing automation settings."}, status=404)
+    if request.method == "POST":
+        try:
+            payload = json.loads(request.body) if request.content_type == "application/json" else request.POST.dict()
+            controls = update_settings(organization_id=user.organization_id, payload=payload)
+        except (ValueError, UnicodeDecodeError, HostedWhatsAppValidationError) as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
+        return _private(JsonResponse({"ok": True, "settings": controls}))
+    return _private(JsonResponse({"ok": True, "settings": get_settings(organization_id=user.organization_id)}))

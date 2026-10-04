@@ -251,6 +251,8 @@ def upsert_cadence_configuration(*, identity, arguments):
     if duplicate.exists():
         raise OperationsToolError("A Cadence with this name already exists.")
 
+    if sequence is not None and sequence.instagram_account_id:
+        raise OperationsToolError("Manage Instagram sequences in the Cadence dashboard.")
     account = sequence.whatsapp_account if sequence else None
     if sequence is not None:
         existing_provider = (

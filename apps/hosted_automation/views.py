@@ -76,7 +76,7 @@ def sequence_create_save(request):
         return blocked
     user = request.crm_user
     provider = (request.POST.get("provider") or "api").strip().lower()
-    if provider not in {"api", "hosted"}:
+    if provider not in {"api", "hosted", "instagram"}:
         messages.error(request, "Choose Use WhatsApp API or Use WhatsApp.")
         return redirect("followups-sequence-create")
     account = None
@@ -98,7 +98,7 @@ def sequence_create_save(request):
         messages.error(request, str(exc))
         return redirect("followups-sequence-create")
 
-    label = "WhatsApp" if provider == "hosted" else "WhatsApp API"
+    label = "Instagram" if provider == "instagram" else "WhatsApp" if provider == "hosted" else "WhatsApp API"
     messages.success(request, f"{label} sequence created. Add the messages in delivery order.")
     return redirect("followups-sequence-edit", sequence_id=sequence.id)
 
@@ -113,16 +113,18 @@ def sequence_edit_page(request, sequence_id):
     from apps.followups.views.web import _step_context
 
     context = _step_context(sequence)
-    is_hosted = sequence.whatsapp_account.connection_type == "hosted"
+    is_instagram = bool(sequence.instagram_account_id)
+    is_hosted = not is_instagram and sequence.whatsapp_account.connection_type == "hosted"
     context.update(
         {
             "is_followup_admin": True,
             "is_hosted_sequence": is_hosted,
-            "provider_label": "WhatsApp" if is_hosted else "WhatsApp API",
+            "is_instagram_sequence": is_instagram,
+            "provider_label": "Instagram" if is_instagram else "WhatsApp" if is_hosted else "WhatsApp API",
             "approved_template_count": 0,
         }
     )
-    if not is_hosted:
+    if not is_hosted and not is_instagram:
         from apps.channels.models import WhatsAppTemplate
 
         context["approved_template_count"] = WhatsAppTemplate.objects.filter(
@@ -153,7 +155,7 @@ def hosted_whatsapp_step_modal(request, sequence_id):
     if blocked:
         return blocked
     sequence = _organization_sequence(request, sequence_id)
-    if sequence.whatsapp_account.connection_type != "hosted":
+    if sequence.instagram_account_id or sequence.whatsapp_account.connection_type != "hosted":
         raise Http404
     from apps.followups.views.web import _step_context
 
@@ -171,7 +173,7 @@ def hosted_whatsapp_step_add(request, sequence_id):
     if blocked:
         return blocked
     sequence = _organization_sequence(request, sequence_id)
-    if sequence.whatsapp_account.connection_type != "hosted":
+    if sequence.instagram_account_id or sequence.whatsapp_account.connection_type != "hosted":
         raise Http404
     from apps.followups.views.web import _schedule_payload
 
@@ -196,7 +198,8 @@ def step_update(request, sequence_id, step_id):
     sequence = _organization_sequence(request, sequence_id)
     step = get_object_or_404(FollowupStep, id=step_id, sequence=sequence)
     if not (
-        sequence.whatsapp_account.connection_type == "hosted"
+        not sequence.instagram_account_id
+        and sequence.whatsapp_account.connection_type == "hosted"
         and step.step_type == FollowupStep.StepType.WHATSAPP
     ):
         from apps.followups.views.web import step_update as original_step_update

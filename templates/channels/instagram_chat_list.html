@@ -2,6 +2,7 @@
 {% block title %}SHVYA AI — Instagram Chats{% endblock %}
 {% block header %}Instagram Chats{% endblock %}
 {% block content %}
+{% if request.crm_user.role == "admin" %}{% include "channels/_instagram_automation_settings.html" %}{% endif %}
 <style>
 .ig-inbox-host{height:calc(100dvh - 5rem);min-height:0}.ig-inbox{display:flex;height:100%;min-height:0}.ig-inbox aside,.ig-inbox main{min-height:0}.ig-inbox button:disabled{opacity:.45;cursor:not-allowed}.ig-inbox .conversation-row[aria-current="true"]{background:#f0f2f5}.ig-inbox [hidden]{display:none!important}.ig-inbox .ig-policy{font-size:11px;line-height:1.5}.ig-inbox img{max-width:100%}.ig-inbox .ig-media{min-width:160px}.ig-inbox textarea{max-height:130px}.ig-message{contain:layout style}.ig-empty{background:#f0f2f5}.ig-inbox button:focus-visible,.ig-inbox a:focus-visible{outline:2px solid #00a884;outline-offset:2px}
 @media(max-width:1199px){.ig-inbox .wa-context-pane{display:none}}@media(max-width:767px){.ig-inbox-host{height:calc(100dvh - 4rem)}.ig-inbox .wa-conversation-pane{width:100%!important}.ig-inbox .wa-thread-pane{width:100%}}
@@ -10,6 +11,7 @@
 <div id="instagram-inbox-shell" class="ig-inbox wa-web-shell {% if active_conversation %}wa-has-active-chat{% else %}wa-empty-chat{% endif %}">
   <aside class="wa-conversation-pane flex flex-shrink-0 flex-col border-r border-[#dfe3e5]">
     <div class="flex items-center justify-between px-4 py-4"><div><h2 class="font-semibold text-[#111b21]">Instagram Chats</h2><p class="text-xs text-[#667781]">@{{ instagram_connection.username|default:"instagram" }}</p></div><a href="{% url 'crm-instagram-connect' %}" aria-label="Instagram connection settings" class="p-2 text-[#54656f]"><i class="ti ti-settings text-xl"></i></a></div>
+    {% if request.crm_user.role == "admin" %}<button type="button" data-instagram-settings-url="{% url 'crm-instagram-automation-settings' %}" class="mx-4 mb-2 rounded-lg border border-gray-200 px-3 py-2 text-sm text-purple-700"><i class="ti ti-settings"></i> Automation Settings</button>{% endif %}
     <form id="ig-search-form" action="{{ list_url }}" class="p-3"><label for="ig-search" class="sr-only">Search chats</label><input id="ig-search" type="search" name="q" value="{{ search_query }}" placeholder="Search conversations" class="w-full rounded-lg border-0 bg-[#f0f2f5] px-4 py-2 text-sm"></form>
     <p id="ig-live-state" role="status" class="px-4 pb-2 text-[11px] text-[#667781]">Checking updates…</p>
     <div class="wa-scrollbar min-h-0 flex-1 overflow-y-auto"><div id="ig-conversations">{% for conversation in conversations %}{% include 'channels/_instagram_conversation.html' %}{% empty %}<p class="p-6 text-sm text-[#667781]">No conversations found. Customer-started DMs appear here after Meta delivers them.</p>{% endfor %}</div><button id="ig-more-chats" type="button" class="w-full p-3 text-xs text-[#008069]" {% if next_offset == None %}hidden{% endif %}>Load more chats</button></div>

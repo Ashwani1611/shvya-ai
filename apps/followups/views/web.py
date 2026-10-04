@@ -185,6 +185,9 @@ def sequence_list(request):
                 filter=Q(steps__step_type=FollowupStep.StepType.WHATSAPP),
                 distinct=True,
             ),
+            instagram_steps=Count(
+                "steps", filter=Q(steps__step_type=FollowupStep.StepType.INSTAGRAM), distinct=True,
+            ),
             email_steps=Count(
                 "steps",
                 filter=Q(steps__step_type=FollowupStep.StepType.EMAIL),
@@ -506,7 +509,11 @@ def step_update(request, sequence_id, step_id):
         step.recurring_unit = schedule["recurring_unit"]
         step.recurring_weekdays = schedule["recurring_weekdays"]
 
-        if step.step_type == FollowupStep.StepType.WHATSAPP:
+        if step.step_type == FollowupStep.StepType.INSTAGRAM:
+            from apps.followups.instagram import validate_body
+            step.instagram_body = validate_body(request.POST.get("instagram_body", ""))
+            step.title = request.POST.get("title", step.title).strip()
+        elif step.step_type == FollowupStep.StepType.WHATSAPP:
             step.retry_count = retry_count
             step.retry_delay_hours = 24
         elif step.step_type == FollowupStep.StepType.EMAIL:
@@ -678,3 +685,32 @@ def lead_toggle_sequence(request, lead_id):
     except FollowupError as exc:
         return HttpResponse(str(exc), status=400)
     return redirect("followups-lead-control", lead_id=lead.id)
+
+
+@crm_login_required
+@require_GET
+def instagram_step_modal(request, sequence_id):
+    blocked = _admin_required(request)
+    if blocked:
+        return blocked
+    sequence = _organization_sequence(request, sequence_id)
+    if not sequence.instagram_account_id:
+        return HttpResponse("Instagram sequence required.", status=400)
+    return render(request, "followups/partials/instagram_step_modal.html", _step_context(sequence))
+
+
+@crm_login_required
+@require_POST
+def instagram_step_add(request, sequence_id):
+    from apps.followups.instagram import add_step
+    blocked = _admin_required(request)
+    if blocked:
+        return blocked
+    sequence = _organization_sequence(request, sequence_id)
+    try:
+        add_step(sequence=sequence, body=request.POST.get("instagram_body", ""), title=request.POST.get("title", ""), **_schedule_payload(request))
+    except FollowupError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Instagram message added.")
+    return redirect("followups-sequence-edit", sequence_id=sequence.pk)

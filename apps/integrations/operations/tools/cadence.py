@@ -88,7 +88,7 @@ def add_hosted_whatsapp_step(*, identity, arguments):
         arguments=arguments,
     )
     sequence = _cadence(organization, (arguments or {}).get("cadence_id"))
-    if sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
+    if not sequence.whatsapp_account_id or sequence.whatsapp_account.connection_type != WhatsAppAccount.ConnectionType.coexisted:
         raise OperationsToolError("The selected Cadence is not a Hosted WhatsApp Cadence.")
     data = (arguments or {}).get("data")
     if not isinstance(data, dict):

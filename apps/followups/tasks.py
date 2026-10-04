@@ -27,6 +27,8 @@ def dispatch_auto_followups_task():
         hosted_result = dispatch_one_hosted_due_state()
 
     api_result = dispatch_one_api_due_state()
+    from apps.followups.instagram import dispatch_due
+    instagram_result = dispatch_due()
     logger.debug(
         "Auto Follow-ups dispatcher results: ai=%s hosted=%s api=%s",
         ai_result,
@@ -37,4 +39,5 @@ def dispatch_auto_followups_task():
         "hosted_ai": ai_result,
         "hosted_followup": hosted_result,
         "whatsapp_api": api_result,
+        "instagram": instagram_result,
     }

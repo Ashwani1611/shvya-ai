@@ -606,7 +606,7 @@ def _capture_inverse(*, organization, tool, arguments):
                     "name": obj.name,
                     "description": obj.description,
                     "provider": (
-                        "api"
+                        "instagram" if obj.instagram_account_id else "api"
                         if obj.whatsapp_account.connection_type
                         == WhatsAppAccount.ConnectionType.API
                         else "hosted"

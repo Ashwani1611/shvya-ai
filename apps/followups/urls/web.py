@@ -2,6 +2,8 @@ from django.urls import path
 
 from apps.followups.views.lead_control import lead_followup_control, lead_sequence_history
 from apps.followups.views.web import (
+    instagram_step_add,
+    instagram_step_modal,
     email_step_add,
     email_step_modal,
     lead_assign_sequence,
@@ -24,6 +26,8 @@ from apps.hosted_automation import views as hosted_views
 
 
 urlpatterns = [
+    path("sequences/<uuid:sequence_id>/instagram/new/", instagram_step_modal, name="followups-instagram-step-modal"),
+    path("sequences/<uuid:sequence_id>/instagram/add/", instagram_step_add, name="followups-instagram-step-add"),
     path("sequences/", sequence_list, name="crm-auto-follow-ups-sequences"),
     path("sequences/new/", hosted_views.sequence_create_page, name="followups-sequence-create"),
     path("sequences/new/save/", hosted_views.sequence_create_save, name="followups-sequence-create-save"),

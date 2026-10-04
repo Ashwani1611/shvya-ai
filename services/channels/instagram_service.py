@@ -1086,6 +1086,10 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     if account.status != InstagramAccount.Status.CONNECTED or not account.access_token:
         raise InstagramAPIError("Instagram is not connected. Reconnect before sending.")
 
+    from apps.channels.services.instagram_automation import outbound_allowed
+    if not outbound_allowed(message):
+        raise InstagramAPIError("Instagram automation is disabled or this message is no longer eligible.")
+
     ai_metadata = (message.raw_payload or {}).get("shvya_ai")
     guided_file = isinstance(ai_metadata, dict) and ai_metadata.get("file_document_id") is not None
     message_payload = {"text": message.body}
@@ -1129,7 +1133,7 @@ def send_queued_message(message: InstagramMessage) -> InstagramMessage:
                 or duplicate.direction != InstagramMessage.Direction.OUTBOUND
             ):
                 raise InstagramAPIError("Instagram send returned a message ID belonging to another conversation.")
-            if isinstance(ai_metadata, dict):
+            if isinstance(ai_metadata, dict) or (message.raw_payload or {}).get("shvya_followup"):
                 # AI source-turn metadata and signed file grants belong to the
                 # queued row. Keeping an unannotated echo instead would turn the
                 # bot response into a human reply and break retry/history checks.

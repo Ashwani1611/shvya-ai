@@ -208,6 +208,10 @@ class AIPermissionService:
 
         normalized_channel = str(channel or "whatsapp").strip().casefold()
         if normalized_channel == "instagram":
+            from apps.channels.services.instagram_automation import get_settings
+
+            if not get_settings(organization_id=organization.id)["ai_auto_reply"]:
+                return self._decision(allowed=False, reason="instagram_ai_disabled", organization=organization, lead=lead)
             # Instagram conversation identity is the Meta participant ID, not a
             # phone number or a pipeline-bound WhatsApp sender. The same org,
             # pipeline, stage, and lead AI toggles still apply above.
