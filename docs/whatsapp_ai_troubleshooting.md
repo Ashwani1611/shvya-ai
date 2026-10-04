@@ -68,6 +68,11 @@ or skipped jobs. An older job does not stand in for a newer message with no job.
 Hosted jobs do not require the API execution marker; missing markers alone do
 not mean Hosted processing never started. Private errors and provider responses
 are omitted from this read-only page.
+If that incoming message has the canonical Hosted `isHistory` flag and no job,
+the page identifies a historical import: those messages intentionally do not
+enqueue live AI replies. An existing explicitly activated history job still
+supplies its own durable progress. The diagnostic projects only the history
+boolean, without exposing the inbound payload.
 
 After deploying the fix, send a new message from a test contact. Verify it appears
 as inbound, is attached to the intended lead/pipeline, and is followed by an
@@ -101,5 +106,20 @@ and error code/title/detail. It does not expose the raw webhook or contact data,
 send a reply, or retry the message. An empty bubble alone does not establish a
 provider or encryption failure; use the recorded provider fields to identify
 what the event actually contained.
+
+API/Coexistence incoming documents and images preserve their Meta media ID,
+filename/MIME metadata and caption. The inbox shows a document download link or
+image preview, including historical rows whose stored webhook still contains
+that attachment. Historical recovery is render-only. Downloads are authenticated
+through the dashboard and scoped to the organization, receiving account and
+stored message; the browser receives neither Meta credentials nor its temporary
+download URL. The server retrieves a fresh phone-bound media URL on each request.
+An unavailable/expired provider attachment produces an unavailable response.
+This display/download path does not add PDF reading, image understanding or
+transcription to AI engagement.
+
+Provider contract: Meta's [Retrieve Media URL](https://www.postman.com/meta/whatsapp-business-platform/request/ptjyi84/retrieve-media-url)
+uses `GET /<MEDIA_ID>?phone_number_id=<RECEIVING_PHONE_NUMBER_ID>`; the returned
+temporary URL is fetched server-side with the receiving account's access token.
 
 Organizations can grant an API key the dedicated `can_read_diagnostics` permission and authorize the read-only SHVYA diagnostic connector. It can surface tenant-scoped diagnostic state without granting CRM mutation rights. OAuth/access tokens are hashed and access audit rows store request fingerprints/metadata rather than raw customer conversations, lead attributes or credentials.

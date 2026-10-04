@@ -401,6 +401,10 @@ def handle_inbound_message(
     if not str(body or "").strip():
         body = extract_inbound_message_body(raw_payload)
 
+    from apps.channels.meta_inbound_media import meta_inbound_media
+
+    inbound_type, inbound_media = meta_inbound_media(raw_payload)
+
     # --------------------------------------------------------
     # IDEMPOTENCY
     # --------------------------------------------------------
@@ -425,8 +429,17 @@ def handle_inbound_message(
             and str(body or "").strip()
         ):
             existing.body = body
-            existing.message_type = WhatsAppMessage.MessageType.TEXT
-            update_fields = ["body", "message_type"]
+            update_fields = ["body"]
+            # Recover media metadata with its caption, rather than downgrading
+            # a retried document/image to text. Other historical reply repair
+            # keeps the existing text contract.
+            if inbound_type != WhatsAppMessage.MessageType.TEXT:
+                existing.message_type = inbound_type
+                previous_media = existing.media_payload if isinstance(existing.media_payload, dict) else {}
+                existing.media_payload = {**previous_media, **inbound_media}
+                update_fields.extend(["message_type", "media_payload"])
+            elif existing.message_type == WhatsAppMessage.MessageType.TEXT:
+                update_fields.append("message_type")
             if (
                 isinstance(raw_payload, dict)
                 and raw_payload
@@ -528,8 +541,8 @@ def handle_inbound_message(
         "from_number": from_number,
         "to_number": to_number,
         "body": body,
-        "message_type": WhatsAppMessage.MessageType.TEXT,
-        "media_payload": {},
+        "message_type": inbound_type,
+        "media_payload": inbound_media,
         "status": WhatsAppMessage.Status.RECEIVED,
         "raw_payload": raw_payload,
         "is_read": False,

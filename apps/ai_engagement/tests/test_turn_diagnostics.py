@@ -38,6 +38,60 @@ class TurnDiagnosticsTests(SimpleTestCase):
         generate(None)
         self.assertEqual(summary(), "")
 
+    def test_successful_declined_file_review_is_observable_without_private_content(self):
+        trace_service.record("file_decision", {"draft": {
+            "candidate_count": 1, "explicit_request": True, "review_status": "declined",
+            "selected_count": 0, "validated_selected_count": 0, "graph_selected_count": 0,
+            "grounding_status": "approved", "private_reason": "secret user content",
+        }})
+        trace_service.append("provider", "calls", {"phase": "file_selection_review", "status": "ok", "model": "private-model"})
+        diagnostic = summary(SimpleNamespace(files=[]))
+        self.assertIn("file/draft/candidates=1/review=declined", diagnostic)
+        self.assertIn("file/preview=0", diagnostic)
+        self.assertIn("file_selection_review:ok=1", diagnostic)
+        self.assertNotIn("secret", diagnostic)
+        self.assertNotIn("private", diagnostic)
+
+    def test_final_phase_does_not_hide_draft_selection_and_grounding_drop(self):
+        trace_service.record("file_decision", {
+            "draft": {"candidate_count": 1, "explicit_request": True, "review_status": "selected",
+                      "selected_count": 1, "validated_selected_count": 1, "graph_selected_count": 0,
+                      "grounding_status": "rejected"},
+            "final": {"candidate_count": 0, "review_status": "final_language_only"},
+        })
+        diagnostic = summary(SimpleNamespace(files=[]))
+        self.assertIn("review=selected/selected=1/validated=1", diagnostic)
+        self.assertIn("graph=0/grounding=rejected", diagnostic)
+        self.assertIn("file/final/candidates=0/review=final_language_only", diagnostic)
+
+    def test_welcome_review_exposes_only_the_backend_trigger_and_bounded_counts(self):
+        trace_service.record("file_decision", {"draft": {
+            "candidate_count": 1, "welcome_due": True, "review_trigger": "welcome",
+            "review_status": "selected", "selected_count": 1, "document_name": "private name",
+        }})
+        diagnostic = summary(SimpleNamespace(files=[{}]))
+        self.assertIn("review=selected", diagnostic)
+        self.assertIn("trigger=welcome", diagnostic)
+        self.assertIn("file/preview=1", diagnostic)
+        self.assertNotIn("private", diagnostic)
+
+    def test_capture_diagnostic_accepts_only_safe_counters_and_enums(self):
+        trace_service.record("qualification_capture", {
+            "candidate_count": 4, "accepted_count": 4, "review_status": "reviewed",
+            "private_answers": ["secret lead details"],
+        })
+        diagnostic = summary()
+        self.assertIn("capture/candidates=4/review=reviewed/accepted=4", diagnostic)
+        self.assertNotIn("secret", diagnostic)
+        trace_service.record("qualification_capture", {"candidate_count": "secret", "review_status": "secret"})
+        self.assertNotIn("secret", summary())
+
+    def test_missing_graph_observation_for_file_request_is_visible(self):
+        diagnostic = summary(SimpleNamespace(files=[], message="Please send the product brochure."))
+        self.assertIn("file/draft/path=not_observed", diagnostic)
+        self.assertIn("file/preview=0", diagnostic)
+        self.assertNotIn("product brochure", diagnostic)
+
     def test_runtime_failure_includes_code_locations_without_exception_text(self):
         try:
             raise RecursionError("private customer content")

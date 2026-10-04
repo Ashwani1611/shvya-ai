@@ -116,9 +116,11 @@ def diagnose_engagement(*, lead):
     if not permission.allowed:
         blockers.append(permission.reason)
     if inbound:
+        inbound_payload = inbound.raw_payload if isinstance(inbound.raw_payload, dict) else {}
         report["latest_inbound_message"] = {
             "id": str(inbound.id),
             "created_at": inbound.created_at.isoformat(),
+            "is_history": bool(inbound_payload.get("isHistory")),
         }
         execution = (inbound.raw_payload or {}).get("shvya_ai_execution") or {}
         report["execution"] = {key: execution.get(key) for key in ("status", "reason", "attempts", "updated_at")}
@@ -184,9 +186,14 @@ def diagnose_engagement(*, lead):
                 for key in ("status", "reason", "attempts", "updated_at", "source_message_id")
             }
         else:
+            is_history = bool(inbound and report["latest_inbound_message"]["is_history"])
             report["execution"] = {
-                "status": "not_queued" if inbound else "not_started",
+                "status": "history_import" if is_history else "not_queued" if inbound else "not_started",
+                "reason": "source_message_is_history" if is_history else "",
                 "source_message_id": str(inbound.id) if inbound else None,
             }
-            blockers.append("no_hosted_ai_job_check_live_inbound_and_lead_mapping")
+            blockers.append(
+                "source_message_is_history" if is_history
+                else "no_hosted_ai_job_check_live_inbound_and_lead_mapping"
+            )
     return report

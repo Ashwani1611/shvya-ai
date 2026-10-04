@@ -1,0 +1,9 @@
+{% if attachment.url %}
+    {% if attachment.type == 'image' %}
+    <a href="{{ attachment.url }}?download=1" class="block" aria-label="Download image attachment"><img src="{{ attachment.url }}" alt="Image attachment" loading="lazy" class="mb-2 max-h-80 max-w-full rounded-lg"></a>
+    {% endif %}
+    <a href="{{ attachment.url }}?download=1" class="mb-1 block break-words font-medium text-emerald-700 underline [overflow-wrap:anywhere]"><i class="ti {% if attachment.type == 'image' %}ti-photo{% else %}ti-file-description{% endif %} mr-1"></i>{{ attachment.filename }}</a>
+{% else %}
+    <p class="mb-1 text-gray-500">{{ attachment.type|title }} attachment unavailable</p>
+{% endif %}
+{% if body %}<p class="whitespace-pre-wrap break-words leading-relaxed text-gray-900 [overflow-wrap:anywhere]">{{ body }}</p>{% endif %}

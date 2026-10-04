@@ -263,6 +263,16 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
         self.assertNotIn("I will connect", result)
         self.assertIn("no live call or handoff is confirmed", result)
 
+    def test_actual_team_future_assurance_is_removed_without_dropping_request_acknowledgment(self):
+        result = self.honest(
+            "I've noted your request for a call tomorrow and your interest in the product brochure. "
+            "Our team will be in touch to confirm the details.",
+            events=[{"type": "reminder", "status": "preview"}],
+        )
+        self.assertIn("I've noted your request", result)
+        self.assertNotIn("will be in touch", result)
+        self.assertIn("no live call is confirmed", result)
+
 
 if __name__ == "__main__":
     unittest.main()

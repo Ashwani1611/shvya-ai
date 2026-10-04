@@ -27,6 +27,7 @@ from . import whatsapp_template_send_ui
 from . import whatsapp_ui
 
 urlpatterns = [
+    path("chats/account/<uuid:account_id>/media/<uuid:message_id>/", whatsapp_api_chat_ui.whatsapp_api_chat_media_view, name="whatsapp-api-chat-media"),
     path("chats/account/<uuid:account_id>/unlinked/<uuid:message_id>/", whatsapp_api_chat_ui.unlinked_chat_view, name="whatsapp-unlinked-chat"),
     path("chats/account/<uuid:account_id>/contact/", contact_panel_ui.unlinked_contact, name="chat-unlinked-contact"),
     path("chats/instagram/<uuid:conversation_id>/contact/", contact_panel_ui.instagram_contact, name="chat-instagram-contact"),

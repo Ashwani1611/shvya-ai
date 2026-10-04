@@ -40,6 +40,32 @@ from apps.ai_engagement.services.runtime_state import (
 logger = logging.getLogger(__name__)
 
 
+def _file_trace(**fields):
+    """Keep draft/final counters separate; never log customer or file content."""
+    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+    from apps.ai_engagement.services.trace_service import record
+    phase = "final" if _FINAL_LANGUAGE_ONLY.get() else "draft"
+    record("file_decision", {phase: fields})
+
+
+def _welcome_due_for_context(*, decision, context, lead):
+    """Match the first-reply welcome boundary without inferring file permission."""
+    if not decision.should_engage or getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION":
+        return False
+    from apps.crm.models import Lead
+    if isinstance(lead, Lead):
+        from apps.ai_engagement.services.first_inbound_welcome_runtime import _is_first_inbound_turn
+        # Live context can be scoped to one account or omit empty bodies. The
+        # canonical welcome predicate checks all persisted lead messages.
+        return _is_first_inbound_turn(lead)
+    conversation = context.conversation or {}
+    messages = [item for item in conversation.get("messages", []) if isinstance(item, dict)]
+    return bool(
+        conversation.get("message_count", len(messages)) == 1
+        and len(messages) == 1 and messages[0].get("direction") == "inbound"
+    )
+
+
 def _min_rag_similarity() -> float:
     try:
         value = float(os.getenv("AI_RAG_MIN_SIMILARITY", "0.38"))
@@ -406,15 +432,36 @@ def _generate(state: EngagementGraphState) -> dict:
         knowledge_query=None,
         context=context,
     )
-    # Multi-intent replies can acknowledge a call while silently omitting the
-    # requested file. Review only that missing choice, retaining the validated
-    # reply, qualification evidence and CRM proposals from the first pass.
+    from apps.ai_engagement.services.qualification_capture_recovery import recover_omitted_answers
+    decision = recover_omitted_answers(
+        service=state["service"], organization=state["organization"], lead=state["lead"],
+        context=context, decision=decision, requirements=state.get("requirements") or [],
+        qualification_state=state.get("qualification_state") or {},
+        model_override=getattr(state.get("turn_policy"), "model_override", ""),
+    )
+    # A draft can omit a requested file or authored welcome attachment. Review
+    # only that missing choice, retaining the reply, qualification evidence and
+    # CRM proposals; the authored file condition remains the sharing authority.
     from apps.ai_engagement.services.file_sharing import FileSharingService, explicit_file_request
     from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
     candidates = (context.organization or {}).get("_file_candidates") or []
+    requested = explicit_file_request(state.get("latest_text", ""))
+    welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
+    review_trigger = "explicit_request" if requested else "welcome" if welcome_due else "none"
+    review_status = (
+        "final_language_only" if _FINAL_LANGUAGE_ONLY.get()
+        else "already_selected" if decision.file_document_id is not None
+        else "silenced" if not decision.should_engage
+        else "not_requested" if review_trigger == "none"
+        else "no_candidates" if not candidates
+        else "pending"
+    )
+    _file_trace(candidate_count=len(candidates), explicit_request=requested, welcome_due=welcome_due,
+                review_trigger=review_trigger,
+                draft_selected_count=int(decision.file_document_id is not None))
     if (decision.should_engage and decision.file_document_id is None and candidates
             and not _FINAL_LANGUAGE_ONLY.get()
-            and explicit_file_request(state.get("latest_text", ""))):
+            and review_trigger != "none"):
         from apps.ai_engagement.services.ai_provider import OpenAIProvider
         try:
             provider = state["service"].provider or OpenAIProvider(timeout_seconds=20)
@@ -429,13 +476,17 @@ def _generate(state: EngagementGraphState) -> dict:
                 candidates=candidates, provider=provider,
                 generate=state["service"]._generate_provider_text,
                 model_override=getattr(state.get("turn_policy"), "model_override", ""),
+                welcome_due=welcome_due,
             )
             decision = replace(decision, file_document_id=selected)
+            review_status = "selected" if selected is not None else "declined"
         except Exception:
             # A failed optional review must not invent a send, discard captured
             # answers or turn a valid customer reply into a provider error.
             logger.exception("Requested file review failed organization=%s", state["organization"].id)
-    return {"decision": decision, "context": context}
+            review_status = "failed"
+    _file_trace(review_status=review_status, selected_count=int(decision.file_document_id is not None))
+    return {"decision": decision, "context": context, "welcome_due": welcome_due}
 
 
 def _use_direct_decision(state: EngagementGraphState) -> dict:
@@ -484,6 +535,9 @@ def _validate_decision(state: EngagementGraphState) -> dict:
         requirements=state.get("requirements") or [],
     )
     validated_file_id = _validated_file_document_id(decision=decision, context=state["context"])
+    _file_trace(validated_selected_count=int(validated_file_id is not None),
+                validation_drop=int(decision.file_document_id is not None and validated_file_id is None),
+                proposed_capture_count=len(decision.qualification_updates or []))
     from apps.ai_engagement.services.qualification_state import project_answer_updates
 
     projected = project_answer_updates(
@@ -594,4 +648,7 @@ def run_engagement_graph(
             "supplied_context": context,
         }
     )
+    _file_trace(graph_selected_count=int(final["decision"].file_document_id is not None),
+                graph_capture_count=len(final["decision"].qualification_updates or []),
+                grounding_status="approved" if final.get("grounding_approved") else "rejected")
     return final["decision"]

@@ -6,9 +6,10 @@ inbox under /dashboard/whatsapp/connect/hosted/.
 
 from django.contrib import messages
 from django.db import models
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
+from django.urls import reverse
 
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import Lead
@@ -27,6 +28,7 @@ from services.crm.lead_filter_service import active_filter_items, apply_lead_fil
 
 from .models import WhatsAppAccount, WhatsAppTemplate, WhatsAppMessage
 from .inbound_diagnostics import inbound_event_details
+from .meta_inbound_media import attachment_filename, meta_inbound_media
 from .whatsapp_chat_smooth_ui import _inject_chat_ui
 
 
@@ -59,15 +61,73 @@ def _attach_inbound_reply_display(chat_messages):
 
     for message in chat_messages:
         message.inbound_details = None
+        message.inbound_attachment = None
         if message.direction != WhatsAppMessage.Direction.INBOUND:
             continue
+        media_type, media = meta_inbound_media(message.raw_payload)
+        if media_type != WhatsAppMessage.MessageType.TEXT:
+            # Legacy rows were saved as text with an empty media_payload. Read
+            # their stored webhook without rewriting history or enqueueing AI.
+            message.inbound_attachment = {
+                "type": media_type, "filename": attachment_filename(media_type, media),
+                "url": reverse("whatsapp-api-chat-media", args=[message.account_id, message.pk])
+                if media.get("media_id") else "",
+            }
         if str(message.body or "").strip():
             continue
         recovered = extract_inbound_message_body(message.raw_payload)
         if recovered:
             message.body = recovered
-        else:
+        elif not message.inbound_attachment:
             message.inbound_details = inbound_event_details(message)
+
+
+@crm_login_required
+@require_GET
+def whatsapp_api_chat_media_view(request, account_id, message_id):
+    """Download a stored inbound attachment through its receiving account."""
+    from apps.channels.providers.whatsapp import WhatsAppAPIError, WhatsAppClient
+
+    organization = request.crm_user.organization
+    account = get_object_or_404(
+        WhatsAppAccount, pk=account_id, organization=organization,
+        connection_type=WhatsAppAccount.ConnectionType.API, is_active=True,
+    )
+    message = get_object_or_404(
+        WhatsAppMessage.objects.filter(
+            models.Q(lead__isnull=True) | models.Q(lead__organization=organization),
+        ), pk=message_id, organization=organization, account=account,
+        direction=WhatsAppMessage.Direction.INBOUND,
+    )
+    media_type, media = meta_inbound_media(message.raw_payload)
+    if media_type == WhatsAppMessage.MessageType.TEXT or not media.get("media_id"):
+        raise Http404
+    try:
+        result = WhatsAppClient(
+            phone_number_id=account.phone_number_id, access_token=account.access_token,
+        ).download_media(
+            media["media_id"],
+            max_bytes=5 * 1024 * 1024 if media_type == "image" else 100 * 1024 * 1024,
+        )
+    except WhatsAppAPIError as exc:
+        status = 404 if exc.status_code in {404, 410} else 413 if exc.status_code == 413 else 502
+        response = JsonResponse({"error": "This attachment is currently unavailable."}, status=status)
+    else:
+        # Only passive raster types may render inline. Documents and unexpected
+        # provider content always download, including SVG/HTML masquerading as
+        # an image. No filename or provider header controls response headers.
+        mime_type = result.get("mime_type")
+        mime_type = mime_type.lower() if isinstance(mime_type, str) and len(mime_type) <= 120 else ""
+        inline = media_type == "image" and mime_type in {"image/jpeg", "image/png"}
+        response = FileResponse(
+            result["file"], as_attachment=not inline or request.GET.get("download") == "1",
+            filename=attachment_filename(media_type, media),
+            content_type=mime_type if inline or mime_type == "application/pdf" else "application/octet-stream",
+        )
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    return response
 
 
 def _attach_template_display(chat_messages, *, organization):

@@ -6,6 +6,10 @@ database writes, no CRM/lead awareness -- that all belongs in
 services.channels.whatsapp_service, per CLAUDE.md rule 2.
 """
 
+import tempfile
+import time
+from urllib.parse import urlsplit
+
 import requests
 
 
@@ -13,6 +17,8 @@ GRAPH_API_VERSION = "v21.0"
 GRAPH_API_BASE = f"https://graph.facebook.com/{GRAPH_API_VERSION}"
 
 REQUEST_TIMEOUT_SECONDS = 15
+MAX_INBOUND_MEDIA_BYTES = 100 * 1024 * 1024
+_MEDIA_DOWNLOAD_HOSTS = {"lookaside.fbsbx.com", "lookaside.facebook.com", "graph.facebook.com"}
 
 
 def _retry_after_seconds(response):
@@ -82,6 +88,86 @@ class WhatsAppClient:
             ),
             "Content-Type": "application/json",
         }
+
+    def download_media(self, media_id, *, max_bytes=MAX_INBOUND_MEDIA_BYTES):
+        """Retrieve a fresh, phone-bound Meta URL and return bounded binary media.
+
+        Credentials and the temporary URL remain server-side. Redirects are
+        rejected so credentials cannot be forwarded to another origin. The
+        caller owns/closes the returned file (normally via FileResponse).
+        """
+        if (
+            not isinstance(media_id, str) or not media_id.isascii()
+            or not media_id.isdigit() or len(media_id) > 64
+            or not self.phone_number_id or not self.access_token
+        ):
+            raise WhatsAppAPIError("Media is unavailable.")
+        max_bytes = min(max_bytes, MAX_INBOUND_MEDIA_BYTES)
+        headers = {"Authorization": f"Bearer {self.access_token}"}
+        metadata_response = None
+        media_response = None
+        file_obj = None
+        started_at = time.monotonic()
+        try:
+            metadata_response = requests.get(
+                f"{GRAPH_API_BASE}/{media_id}", headers=headers,
+                params={"phone_number_id": self.phone_number_id},
+                timeout=(5, REQUEST_TIMEOUT_SECONDS), allow_redirects=False,
+            )
+            if not 200 <= metadata_response.status_code < 300:
+                raise WhatsAppAPIError("Media is unavailable.", status_code=metadata_response.status_code)
+            metadata = metadata_response.json()
+            if not isinstance(metadata, dict):
+                raise WhatsAppAPIError("Media is unavailable.")
+            url = metadata.get("url")
+            if not isinstance(url, str) or len(url) > 8192:
+                raise WhatsAppAPIError("Media is unavailable.")
+            parsed = urlsplit(url)
+            if (
+                parsed.scheme != "https" or parsed.hostname not in _MEDIA_DOWNLOAD_HOSTS
+                or parsed.username or parsed.password or parsed.port not in (None, 443)
+                or parsed.fragment
+            ):
+                raise WhatsAppAPIError("Media is unavailable.")
+            file_size = metadata.get("file_size")
+            if isinstance(file_size, int) and file_size > max_bytes:
+                raise WhatsAppAPIError("Media exceeds the download size limit.", status_code=413)
+            media_response = requests.get(
+                url, headers=headers, stream=True,
+                timeout=(5, REQUEST_TIMEOUT_SECONDS), allow_redirects=False,
+            )
+            if not 200 <= media_response.status_code < 300:
+                raise WhatsAppAPIError("Media is unavailable.", status_code=media_response.status_code)
+            content_length = str(media_response.headers.get("Content-Length") or "")
+            if content_length.isdigit() and (len(content_length) > 10 or int(content_length) > max_bytes):
+                raise WhatsAppAPIError("Media exceeds the download size limit.", status_code=413)
+            file_obj = tempfile.SpooledTemporaryFile(max_size=2 * 1024 * 1024, mode="w+b")
+            size = 0
+            for chunk in media_response.iter_content(chunk_size=64 * 1024):
+                if time.monotonic() - started_at > 30:
+                    raise WhatsAppAPIError("Media could not be downloaded.")
+                size += len(chunk)
+                if size > max_bytes:
+                    raise WhatsAppAPIError("Media exceeds the download size limit.", status_code=413)
+                file_obj.write(chunk)
+            if not size:
+                raise WhatsAppAPIError("Media is unavailable.")
+            file_obj.seek(0)
+            return {"file": file_obj, "mime_type": metadata.get("mime_type", "")}
+        except (requests.RequestException, ValueError) as exc:
+            if file_obj is not None:
+                file_obj.close()
+            # Never attach a signed URL, token, raw provider body or exception.
+            raise WhatsAppAPIError("Media could not be downloaded.") from exc
+        except Exception:
+            if file_obj is not None:
+                file_obj.close()
+            raise
+        finally:
+            if metadata_response is not None:
+                metadata_response.close()
+            if media_response is not None:
+                media_response.close()
 
     # ============================================================
     # JSON POST

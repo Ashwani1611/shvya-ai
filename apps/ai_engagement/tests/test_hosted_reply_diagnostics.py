@@ -149,6 +149,46 @@ class HostedReplyDiagnosticsTests(TestCase):
         self.assertNotContains(response, "Hosted reply: skipped")
         self.assertNotContains(response, str(old_job.pk))
 
+    def test_latest_history_import_without_job_explains_pre_enqueue_skip(self):
+        older = self._message()
+        old_job = self._job(older, status="completed", reason="no_engagement")
+        latest = self._message(payload={"isHistory": True, "private_payload": "must not appear"})
+        report = diagnose_engagement(lead=self.lead)
+        self.assertNotIn("hosted_job", report)
+        self.assertIs(report["latest_inbound_message"]["is_history"], True)
+        self.assertEqual(report["execution"]["status"], "history_import")
+        self.assertEqual(report["execution"]["reason"], "source_message_is_history")
+        self.assertEqual(report["execution"]["source_message_id"], str(latest.pk))
+        self.assertNotIn("no_hosted_ai_job_check_live_inbound_and_lead_mapping", report["blockers"])
+        self.assertNotIn("private_payload", json.dumps(report))
+        response = self._response()
+        self.assertContains(response, "Historical import; no AI reply queued")
+        self.assertContains(response, "imported from WhatsApp history")
+        self.assertNotContains(response, "Check live-message and lead mapping")
+        self.assertNotContains(response, str(old_job.pk))
+
+    def test_explicitly_activated_history_job_retains_its_durable_status(self):
+        source = self._message(payload={"isHistory": True})
+        job = self._job(source, status="queued", reason="")
+        report = diagnose_engagement(lead=self.lead)
+        self.assertIs(report["latest_inbound_message"]["is_history"], True)
+        self.assertEqual(report["hosted_job"]["id"], str(job.pk))
+        self.assertEqual(report["execution"]["status"], "queued")
+        self.assertNotIn("source_message_is_history", report["blockers"])
+        response = self._response()
+        self.assertContains(response, "Waiting for the AI worker")
+        self.assertNotContains(response, "Historical import; no AI reply queued")
+
+    def test_only_canonical_history_flag_explains_a_missing_job(self):
+        for payload in ({"isHistory": False}, {"history": True}, {}):
+            with self.subTest(payload=payload):
+                self._message(payload=payload)
+                report = diagnose_engagement(lead=self.lead)
+                self.assertIs(report["latest_inbound_message"]["is_history"], False)
+                self.assertEqual(report["execution"]["status"], "not_queued")
+                self.assertNotIn("source_message_is_history", report["blockers"])
+                self.assertIn("no_hosted_ai_job_check_live_inbound_and_lead_mapping", report["blockers"])
+
     def test_completed_job_is_shown_after_outgoing_reply_without_api_marker(self):
         source = self._message()
         job = self._job(source, status="completed", reason="")

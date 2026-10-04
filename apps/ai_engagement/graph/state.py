@@ -30,6 +30,7 @@ class EngagementGraphState(TypedDict, total=False):
     latest_text: str
     latest_message_id: str
     answer_extracted: bool
+    welcome_due: bool
 
     route: str
     retrieval_query: str

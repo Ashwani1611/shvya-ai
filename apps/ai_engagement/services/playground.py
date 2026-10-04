@@ -4,7 +4,6 @@ import logging
 from copy import deepcopy
 from contextlib import nullcontext
 from dataclasses import dataclass, field, replace
-from time import monotonic
 from types import SimpleNamespace
 from typing import Any
 
@@ -390,7 +389,6 @@ class PlaygroundService:
         channel: str | None = None,
         lead_source: str | None = None,
     ) -> PlaygroundResult:
-        started_at = monotonic()
         if organization is None:
             raise PlaygroundError("Organization is required.")
 
@@ -558,10 +556,7 @@ class PlaygroundService:
             saved=visitor.attributes.get(STATE_KEY),
             organization_id=organization.id,
         )
-        if (
-            needs_final_composition(decision=decision, events=events, files=files)
-            and monotonic() - started_at < 15
-        ):
+        if needs_final_composition(decision=decision, events=events, files=files):
             decision = self._compose_after_preview(
                 organization=organization, visitor=visitor, message=message,
                 service=service, context_builder=context_builder,
