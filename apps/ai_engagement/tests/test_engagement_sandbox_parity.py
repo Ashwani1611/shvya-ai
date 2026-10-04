@@ -276,7 +276,7 @@ class EngagementParityTests(TestCase):
         def generate(**kwargs):
             payload = json.loads(kwargs['input_text'])
             if kwargs.get('metadata', {}).get('phase') == 'grounding':
-                return AITextResult('{"approved":true,"reason":"supported"}', 'test')
+                return AITextResult('{"approved":true,"reason":"approved"}', 'test')
             observed.append(payload)
             return AITextResult(json.dumps({'should_engage': True, 'silence_rule': None,
                 'message': 'Refunds are available within 7 days.', 'file_document_id': None,

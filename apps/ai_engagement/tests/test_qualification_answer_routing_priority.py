@@ -388,10 +388,11 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 "apps.ai_engagement.graph.evidence.OpenAIProvider", OpenAIProvider,
             ), patch.object(
                 OpenAIProvider, "generate_text",
-                return_value=AITextResult(
-                    text='{"approved":false,"reason":"unsupported_fact"}',
-                    model="test",
-                ),
+                side_effect=[
+                    AITextResult(text='{"approved":false,"reason":"unsupported_claim"}', model="test"),
+                    AITextResult(text='{"message":"The unavailable plan definitely costs 12345."}', model="test"),
+                    AITextResult(text='{"approved":false,"reason":"unsupported_claim"}', model="test"),
+                ],
             ) as grounding_provider:
                 grounded = evidence_module.check_grounding(state)
                 self.assertFalse(grounded["grounding_approved"])
@@ -399,6 +400,6 @@ class QualificationAnswerRoutingPriorityTests(TestCase):
                 self.assertFalse(grounded.get("qualification_answer_authoritative"))
                 self.assertFalse(grounded.get("grounding_recovered"))
                 if api_key:
-                    grounding_provider.assert_called_once()
+                    self.assertEqual(grounding_provider.call_count, 3)
                 else:
                     grounding_provider.assert_not_called()

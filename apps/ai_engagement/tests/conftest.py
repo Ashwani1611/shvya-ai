@@ -12,7 +12,6 @@ import pytest
 def grounding_provider():
     with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
         provider.return_value.generate_text.return_value = SimpleNamespace(
-            text='{"approved": true, "reason": "supported"}', model="test-verifier",
+            text='{"approved": true, "reason": "approved"}', model="test-verifier",
         )
         yield provider
-

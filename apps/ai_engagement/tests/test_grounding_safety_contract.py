@@ -1,3 +1,4 @@
+import json
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -37,7 +38,13 @@ class GroundingSafetyContractTests(SimpleTestCase):
                      "decision": self.decision(message), "requirements": [],
                      "qualification_state": {}, "runtime_policy": {}, "latest_text": "What is the price?"}
             with patch.object(graph, "OpenAIProvider") as provider:
-                provider.return_value.generate_text.return_value = SimpleNamespace(text='{"approved": false}')
+                provider.return_value.generate_text.side_effect = [
+                    SimpleNamespace(text=json.dumps(payload)) for payload in (
+                        {"approved": False, "reason": "unsupported_claim"},
+                        {"message": message},
+                        {"approved": False, "reason": "unsupported_claim"},
+                    )
+                ]
                 result = graph.check_grounding(state)
                 calls = provider.return_value.generate_text.call_count
             return result, calls
@@ -63,7 +70,7 @@ class GroundingSafetyContractTests(SimpleTestCase):
                 self.assertFalse(_deterministically_supported_reply(self.decision(reply), resolution))
                 result, calls = self.run_guard(reply, resolution)
                 self.assertFalse(result["grounding_approved"])
-                self.assertEqual(calls, 1)
+                self.assertEqual(calls, 3)
                 self.assertNotEqual(result["decision"].message, reply)
                 self.assertEqual(result["decision"].crm_actions, [])
 

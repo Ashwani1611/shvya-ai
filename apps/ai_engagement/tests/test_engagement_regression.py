@@ -56,7 +56,7 @@ class GenerationPolicyRegressionTests(SimpleTestCase):
             # Adding a claim must still invoke the independent verifier.
             from dataclasses import replace
             state['decision'] = replace(decision, message=question + ' Your appointment is confirmed.')
-            provider.return_value.generate_text.return_value.text = '{"approved": false}'
+            provider.return_value.generate_text.return_value.text = '{"approved": false,"reason":"unperformed_action"}'
             self.assertFalse(check_grounding(state)['grounding_approved'])
             provider.return_value.generate_text.assert_called_once()
 

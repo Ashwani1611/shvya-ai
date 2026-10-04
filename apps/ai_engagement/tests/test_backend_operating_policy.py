@@ -72,7 +72,7 @@ class BackendPolicyTests(SimpleTestCase):
             crm_actions=[], reason="ACK", reason_code="ACK", model="test")
         context = SimpleNamespace(organization={}, lead={}, conversation={}, knowledge=[])
         with patch("apps.ai_engagement.graph.evidence.OpenAIProvider") as provider:
-            provider.return_value.generate_text.return_value = AITextResult(text='{"approved":false,"reason":"unconfirmed"}', model="test")
+            provider.return_value.generate_text.return_value = AITextResult(text='{"approved":false,"reason":"unperformed_action"}', model="test")
             result = check_grounding({"decision": decision, "context": context,
                 "organization": SimpleNamespace(id="org"), "lead": SimpleNamespace(id="lead")})
         self.assertFalse(result["grounding_approved"])

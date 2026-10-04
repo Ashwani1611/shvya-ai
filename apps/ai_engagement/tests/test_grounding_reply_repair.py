@@ -147,12 +147,14 @@ class GroundingReplyRepairTests(SimpleTestCase):
                 self.assertEqual(len(calls), 2)
                 self.assertIsNone(result["decision"].file_document_id)
 
-    def test_unknown_reason_text_is_not_logged_or_retried(self):
+    def test_unknown_reason_text_is_rechecked_once_without_logging(self):
         _, result, calls, trace = self.run_guard([
+            {"approved": False, "reason": "private customer detail"},
             {"approved": False, "reason": "private customer detail"},
         ])
         self.assertFalse(result["grounding_approved"])
-        self.assertEqual(len(calls), 1)
+        self.assertEqual(len(calls), 2)
+        self.assertIn("invalid_verdict_reason", str(trace.call_args_list))
         self.assertNotIn("private customer detail", str(trace.call_args_list))
 
     def test_slow_generation_does_not_starve_answer_recovery(self):

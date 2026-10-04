@@ -189,7 +189,7 @@ class SandboxPostEffectGraphTests(TestCase):
         payload = json.loads(kwargs["input_text"])
         phase = kwargs.get("metadata", {}).get("phase")
         if phase == "grounding":
-            return AITextResult('{"approved":true,"reason":"recorded test evidence"}', "test-transport")
+            return AITextResult('{"approved":true,"reason":"approved"}', "test-transport")
         if phase == "intent_classification":
             return AITextResult(json.dumps({
                 "primary_intent": "UNKNOWN", "secondary_intents": [], "confidence": 0.8,

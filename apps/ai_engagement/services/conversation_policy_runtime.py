@@ -46,8 +46,10 @@ BACKEND CONVERSATION POLICY CONTRACT
 - ANSWER_THEN_QUALIFY: answer the direct customer question first from permitted
   evidence, then ask exactly the backend-selected next unanswered qualification
   requirement.
-- HUMAN_HANDOFF/CALL_HANDOFF: do not continue qualification and do not claim a
-  human/call was completed unless validated backend actions confirm it.
+- HUMAN_HANDOFF/CALL_HANDOFF: do not ask another qualification question. While
+  backend qualification mode remains active, still capture every explicit
+  supported answer volunteered in this message. Do not claim a human/call was
+  completed unless validated backend actions confirm it.
 - BOOKING_FLOW: never invent slots, dates, availability, or booking confirmation;
   only a validated booking system may confirm a booking.
 - OPT_OUT/NO_ACTION: never continue a sales or qualification flow.
