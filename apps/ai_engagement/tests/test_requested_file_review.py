@@ -127,14 +127,25 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         self.addCleanup(cache.clear)
         self.organization = Organization.objects.create(name="Combined preview company")
         self.pipeline = Pipeline.objects.create(organization=self.organization, name="Sales")
-        self.new_lead, _ = Stage.objects.get_or_create(pipeline=self.pipeline, name="New Lead")
-        self.call_stage, _ = Stage.objects.get_or_create(pipeline=self.pipeline, name="Call Requested")
+        self.new_lead, _ = Stage.objects.get_or_create(
+            pipeline=self.pipeline, name="New leads", defaults={"display_order": 1},
+        )
+        last_order = Stage.objects.filter(pipeline=self.pipeline).order_by("-display_order").values_list("display_order", flat=True).first()
+        self.call_stage, _ = Stage.objects.get_or_create(
+            pipeline=self.pipeline, name="Call Requested", defaults={"display_order": (last_order or 0) + 1},
+        )
         self.info, _ = OrgInfo.objects.get_or_create(organization=self.organization)
         self.info.about = "We automate customer conversations."
         self.info.bot_languages = "English, Hinglish"
         self.info.ai_playbook = (
             "## Stage shift logic\nWhen the customer requests a call, move to Call Requested.\n"
-            "## Reminder creation logic\nCreate a reminder when the customer requests a follow-up at a specific time."
+            "## Reminder creation logic\nReminder 1: Customer Callback\n"
+            "- Create when the customer explicitly requests a callback and provides or confirms a future date and time.\n"
+            "- Title: Customer Callback.\n"
+            "- Due time: The customer-agreed future date and time.\n"
+            "- Time zone: Asia/Kolkata unless the customer explicitly specifies another time zone.\n"
+            "- Notes: Record the factual callback purpose and requested timing.\n"
+            "- These are internal CRM reminders, not confirmed calls or appointments."
         )
         self.info.save()
         self.document = Document.objects.create(
@@ -169,7 +180,7 @@ class SandboxRequestedFileIntegrationTests(TestCase):
             "should_engage": True, "silence_rule": None, "message": self.reply,
             "file_document_id": None, "qualification_updates": [], "next_requirement_id": None,
             "crm_actions": [{"type": "pipeline_transition", "stage_shift": {"stage_id": str(self.call_stage.pk)}},
-                            {"type": "create_reminder", "title": "Customer callback", "description": "Requested callback",
+                            {"type": "create_reminder", "title": "Customer Callback", "description": "Requested callback",
                              "due_at": "2030-01-01T15:00:00+05:30"}],
             "reason_code": "NORMAL_CONVERSATION",
         }), "recorded")
@@ -187,7 +198,11 @@ class SandboxRequestedFileIntegrationTests(TestCase):
         from apps.channels.models import WhatsAppMessage
         from apps.crm.models import Lead, LeadActivity, LeadNote, LeadReminder
         self.assertEqual([item["id"] for item in result.files], [self.document.pk])
-        self.assertTrue(any(item["type"] == "reminder" for item in result.events), result.events)
+        reminders = [item for item in result.events if item["type"] == "reminder"]
+        self.assertEqual(len(reminders), 1, result.events)
+        self.assertEqual(reminders[0]["status"], "preview")
+        self.assertEqual(reminders[0]["title"], "Customer Callback")
+        self.assertEqual(reminders[0]["due_at"], "2030-01-01T15:00:00+05:30")
         self.assertEqual(result.stage["name"], "Call Requested")
         self.assertIn("We have a product brochure.", result.response)
         self.assertNotIn("I will now proceed", result.response)
