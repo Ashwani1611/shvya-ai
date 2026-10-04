@@ -24,6 +24,10 @@ CONTROLLED RESPONSE COMPOSITION
 Confirmed action outcomes are source-bound committed receipts, not proposals. A no_op is not a newly completed action; a missing receipt is not proof of failure. Historical execution does not prove a reminder is still active or a stage is still current. Respect still_exists, current_status and current_state_matches. A queued file is not sent; sent means provider acceptance, not recipient delivery. Never promise a human callback merely because a reminder exists.
 - Answer the customer's actual question before the one permitted next question.
   Preserve every configured option in order. Do not repeat answered questions.
+- Address an explicit file, reminder or handoff request before continuing qualification.
+  Use resolved_request_outcomes for this turn. A preview is simulated, not a live
+  send or scheduled reminder. Do not say a file cannot be shared when its current
+  outcome is preview or sent. A queued file is awaiting delivery.
 - Use only allowed_languages when configured. Apply the Playbook's conditional
   language rules within that list; these rules take precedence over the suggested
   language. Otherwise mirror a supported customer language, or use the first
@@ -62,6 +66,7 @@ class ResponsePlan:
     forbidden_claims: tuple[str, ...] = ()
     unknown_information: bool = False
     action_authority: str = "canonical_backend_only"
+    resolved_request_outcomes: tuple[dict[str, Any], ...] = ()
 
     def as_dict(self):
         return asdict(self)
@@ -125,8 +130,21 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     profile = org.get("ai_profile") or {}
     communication = profile.get("communication") or {}
     messages = (payload.get("recent_conversation") or {}).get("messages") or []
-    latest = next((str(item.get("body") or "") for item in reversed(messages)
-                   if isinstance(item, dict) and item.get("direction") == "inbound"), "")
+    inbound = next((item for item in reversed(messages)
+                    if isinstance(item, dict) and item.get("direction") == "inbound"), {})
+    latest = str(inbound.get("body") or "")
+    operational = payload.get("operational_state") or lead.get("operational_state") or {}
+    resolved = operational.get("resolved_actions") or {}
+    outcomes = []
+    # Historical receipts cannot establish the result of the customer's current request.
+    if final_composition and inbound.get("id") and str(resolved.get("source_message_id") or "") == str(inbound["id"]):
+        for item in resolved.get("action_outcomes") or resolved.get("outcomes") or []:
+            if isinstance(item, dict) and item.get("type") in {"create_reminder", "file_share", "contact_updates"}:
+                outcomes.append({"type": item["type"], "status": item.get("status")})
+        file_result = resolved.get("file_share")
+        if isinstance(file_result, dict):
+            outcomes.append({"type": "file_share", "status": file_result.get("status"),
+                             "document_name": file_result.get("document_name")})
     objections = ObjectionEngine().detect(text=latest, settings=settings, intent_decision=intent_decision)
     strategies = tuple({"category": item.category, "strategy": item.strategy,
                         "escalation_requested": item.escalate} for item in objections)
@@ -135,8 +153,12 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     instructions = str(communication.get("custom_instructions") or org.get("ai_playbook") or "")
     # Profile compaction deliberately moves these fields to organization. Never
     # interpret their absence from the compact profile as no language policy.
-    observed_language = getattr(intent_decision, "language", None)
+    from apps.ai_engagement.services.intent_rules import detect_language
+    observed_language = getattr(intent_decision, "language", None) or detect_language(latest)
     allowed = {str(item).casefold(): str(item) for item in languages}
+    for code, name in (("en", "english"), ("hi", "hindi")):
+        if name in allowed:
+            allowed[code] = allowed[name]
     selected_language = allowed.get(str(observed_language or "").casefold())
     if not selected_language:
         selected_language = str(languages[0]) if languages else str(observed_language or "follow_customer_language")
@@ -151,6 +173,7 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         language=selected_language[:150],
         organization_instructions=instructions[:50000],
         allowed_languages=tuple(str(item) for item in languages),
+        resolved_request_outcomes=tuple(outcomes),
         already_greeted=any(isinstance(item, dict) and item.get("direction") == "outbound" for item in messages),
         first_name=str(lead.get("name") or "").strip().split(" ")[0][:80],
         objection_strategy=strategies, forbidden_claims=configured_forbidden_claims(settings),

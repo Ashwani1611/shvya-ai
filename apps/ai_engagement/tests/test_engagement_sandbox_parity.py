@@ -17,6 +17,24 @@ from apps.organizations.models import Organization
 
 
 class CompositionPolicyTests(SimpleTestCase):
+    def test_sandbox_language_uses_latest_customer_without_memory_classifier(self):
+        payload = {"organization": {"id": "org", "bot_languages": "English, Hinglish"},
+                   "lead": {"id": "lead"},
+                   "recent_conversation": {"messages": [{"id": "m", "direction": "inbound", "body": "Brochure share karo"}]}}
+        plan = build_response_plan(payload=payload, organization_id="org", lead_id="lead")
+        self.assertEqual(plan.language, "Hinglish")
+
+    def test_composition_receipts_are_current_source_bound_and_keep_preview_status(self):
+        payload = {"organization": {"id": "org"}, "lead": {"id": "lead"},
+                   "recent_conversation": {"messages": [{"id": "m", "direction": "inbound", "body": "Share brochure"}]},
+                   "operational_state": {"resolved_actions": {"source_message_id": "old",
+                       "file_share": {"status": "preview", "document_name": "Guide"}}}}
+        plan = build_response_plan(payload=payload, organization_id="org", lead_id="lead", final_composition=True)
+        self.assertEqual(plan.resolved_request_outcomes, ())
+        payload["operational_state"]["resolved_actions"]["source_message_id"] = "m"
+        plan = build_response_plan(payload=payload, organization_id="org", lead_id="lead", final_composition=True)
+        self.assertEqual(plan.resolved_request_outcomes, ({"type": "file_share", "status": "preview", "document_name": "Guide"},))
+
     def test_action_sections_after_ten_thousand_characters_remain_in_composition(self):
         rules = "## Rules\n" + "Keep replies useful.\n" * 600
         actions = "## Reminder creation logic\nCreate a reminder only for the customer's agreed future time."

@@ -15,6 +15,7 @@ _DIRECT_REQUEST_TERMS = (
     "book a call", "book call", "schedule a call", "schedule call", "call me",
     "call back", "demo", "speak with", "talk to", "human", "agent", "support",
     "brochure", "catalog", "catalogue", "pdf", "document", "deck", "price list",
+    "follow up with me", "follow-up with me", "remind me", "set a reminder", "create a reminder",
 )
 _OBJECTION_PROBLEM_TERMS = (
     "problem", "issue", "concern", "confused", "confusion", "not working",
