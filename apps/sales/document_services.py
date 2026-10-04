@@ -28,6 +28,11 @@ DEFAULT_PREFIXES = {
     DocumentType.INVOICE: "INV",
 }
 MERGE_RE = re.compile(r"{{\s*([^{}]+?)\s*}}")
+# Older default message bodies lost one brace pair through f-string escaping.
+# Match those saved fields too, without treating JSON/CSS blocks as fields.
+TEXT_MERGE_RE = re.compile(
+    r"{{\s*([^{}]+?)\s*}}|(?<!{){\s*([A-Za-z_]\w*(?:\.\w+)*)\s*}(?!})"
+)
 HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 MAX_BRAND_ASSET_BYTES = 5 * 1024 * 1024
 ALLOWED_BRAND_ASSET_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
@@ -343,7 +348,7 @@ def default_email_body(document_type):
     label = DocumentType(document_type).label.lower()
     return (
         "Hi {{recipient.name}},\n\n"
-        f"Your {label} {{document.number}} is ready.\n"
+        f"Your {label} {{{{document.number}}}} is ready.\n"
         "Amount: {{document.total}}\n\n"
         "View securely: {{document.url}}\n\n"
         "Regards,\n{{organization.name}}"
@@ -354,7 +359,7 @@ def default_whatsapp_body(document_type):
     label = DocumentType(document_type).label.lower()
     return (
         "Hi {{recipient.name}},\n\n"
-        f"Your {label} {{document.number}} is ready.\n"
+        f"Your {label} {{{{document.number}}}} is ready.\n"
         "Amount: {{document.total}}\n"
         "{{document.url}}\n\n"
         "— {{organization.name}}"
@@ -589,13 +594,16 @@ def merge_values(document, *, public_url=""):
 
 def render_text_template(source, values, *, strict=False):
     def replace(match):
-        key = match.group(1).strip()
+        key = (match.group(1) or match.group(2)).strip()
         value = values.get(key, match.group(0))
         return str(value if value is not None else "")
 
-    rendered = MERGE_RE.sub(replace, str(source or ""))
+    rendered = TEXT_MERGE_RE.sub(replace, str(source or ""))
     if strict:
-        unresolved = sorted(set(MERGE_RE.findall(rendered)))
+        unresolved = sorted({
+            (match.group(1) or match.group(2)).strip()
+            for match in TEXT_MERGE_RE.finditer(rendered)
+        })
         if unresolved:
             raise SalesDeliveryError("Resolve these template variables before sending: " + ", ".join(unresolved))
     return rendered
