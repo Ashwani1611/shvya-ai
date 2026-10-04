@@ -311,6 +311,11 @@ def extract_inbound_message_body(raw_payload):
         if isinstance(text_payload, dict):
             return str(text_payload.get("body") or "")
 
+    if message_type in {"image", "video", "document"}:
+        media = raw_payload.get(message_type) or {}
+        if isinstance(media, dict):
+            return str(media.get("caption") or "").strip()
+
     if message_type == "button":
         button = raw_payload.get("button") or {}
         if isinstance(button, dict):
@@ -338,6 +343,27 @@ def extract_inbound_message_body(raw_payload):
                 ).strip()
 
     return ""
+
+
+def inbound_message_supports_ai(*, body, raw_payload, message_type="text"):
+    """Distinguish customer content from transport/system notifications.
+
+    Keep supported media on the existing engagement path, including media
+    without a caption. Unknown/system events and malformed empty text have no
+    customer request to answer. Legacy stored text without a provider type
+    remains supported, while a known notification cannot become a request just
+    because its diagnostic payload contains text.
+    """
+    payload = raw_payload if isinstance(raw_payload, dict) else {}
+    provider_type = str(payload.get("type") or payload.get("messageType") or "").strip().lower()
+    media_types = {"image", "audio", "video", "document"}
+    if provider_type in media_types:
+        return True
+    if provider_type in {"text", "chat", "button", "interactive"}:
+        return bool(str(body or "").strip() or extract_inbound_message_body(payload).strip())
+    if provider_type:
+        return False
+    return bool(str(body or "").strip() or str(message_type or "").lower() in media_types)
 
 
 @transaction.atomic
@@ -393,6 +419,8 @@ def handle_inbound_message(
         # row in place instead of leaving the inbox on "Unsupported message type".
         if (
             existing.direction == WhatsAppMessage.Direction.INBOUND
+            and existing.organization_id == organization.pk
+            and existing.account_id == account.pk
             and not str(existing.body or "").strip()
             and str(body or "").strip()
         ):
@@ -404,10 +432,39 @@ def handle_inbound_message(
                 and raw_payload
                 and existing.raw_payload != raw_payload
             ):
-                existing.raw_payload = raw_payload
+                previous = existing.raw_payload if isinstance(existing.raw_payload, dict) else {}
+                existing.raw_payload = {
+                    **raw_payload,
+                    **{key: value for key, value in previous.items() if key.startswith("shvya_")},
+                }
                 update_fields.append("raw_payload")
             update_fields.append("updated_at")
             existing.save(update_fields=update_fields)
+            # A previously empty reply was not eligible for generation. Its
+            # repaired customer text may now enter the normal source-bound
+            # path, but cannot replace a reply already owned by a worker/send.
+            state = existing.raw_payload if isinstance(existing.raw_payload, dict) else {}
+            processing = state.get("shvya_ai_processing") or {}
+            execution = state.get("shvya_ai_execution") or {}
+            if (
+                existing.lead_id
+                and inbound_message_supports_ai(body=existing.body, raw_payload=existing.raw_payload)
+                and not processing.get("processed")
+                and execution.get("status", "") in {"", "skipped"}
+            ):
+                from services.channels.hosted_whatsapp_service import get_session_settings
+
+                if (get_session_settings(account=account).get("ai_auto_reply")
+                        and not WhatsAppMessage.objects.filter(
+                            organization=organization, account=account,
+                            lead_id=existing.lead_id, direction=WhatsAppMessage.Direction.OUTBOUND,
+                            raw_payload__shvya_ai__source_inbound_message_id=str(existing.pk),
+                        ).exists()):
+                    transaction.on_commit(
+                        lambda lead_id=str(existing.lead_id), source_id=str(existing.pk): _queue_whatsapp_engagement(
+                            lead_id=lead_id, source_message_id=source_id,
+                        )
+                    )
         return existing
 
     # --------------------------------------------------------
@@ -543,7 +600,8 @@ def handle_inbound_message(
         # ----------------------------------------------------
 
         from services.channels.hosted_whatsapp_service import get_session_settings
-        if get_session_settings(account=account).get("ai_auto_reply"):
+        if (inbound_message_supports_ai(body=body, raw_payload=raw_payload)
+                and get_session_settings(account=account).get("ai_auto_reply")):
             transaction.on_commit(
                 lambda lead_id=lead_id, source_id=str(message.pk): _queue_whatsapp_engagement(
                     lead_id=lead_id, source_message_id=source_id,

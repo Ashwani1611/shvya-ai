@@ -75,6 +75,26 @@ def resolve_before_generation(
         if _norm(state.get("qualification_status")) == "completed":
             return {"applied": False, "reason": "qualification_already_complete"}
 
+        # A mixed answer and authored routing request needs the full controlled
+        # turn. Resolving only qualification here would mark the source resolved
+        # and suppress its independently supported stage request during generation.
+        from .actions import completion_stage_actions
+        from apps.crm.models import Stage
+
+        config = _config(organization=organization, requirements=requirements)
+        if config.get("stage_rules"):
+            candidates = [
+                {"type": "pipeline_transition", "stage_shift": {"stage_id": str(stage_id)}}
+                for stage_id in Stage.objects.filter(
+                    pipeline__organization=organization, pipeline__is_active=True, is_active=True,
+                ).exclude(pk=locked.stage_id).values_list("pk", flat=True)
+            ]
+            if completion_stage_actions(
+                organization=organization, lead=locked, source=source, proposed=candidates,
+                completion=None, config=config,
+            ):
+                return {"applied": False, "reason": "requires_llm_interpretation"}
+
         requirement = _asked_requirement(
             state=state,
             requirements=requirements,
@@ -146,11 +166,6 @@ def resolve_before_generation(
                 }
             ],
         )
-        config = _config(
-            organization=organization,
-            requirements=requirements,
-        )
-
         # Build the complete authoritative execution plan before mutating state.
         mapped_updates = []
         for item in updates:

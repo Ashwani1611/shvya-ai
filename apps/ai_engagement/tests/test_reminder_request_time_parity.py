@@ -121,6 +121,23 @@ class ReminderRequestTimeParityTests(SimpleTestCase):
                 self.assertEqual(self.apply(text, rules=[CALLBACK_RULE])[0]["due_at"],
                                  "2026-10-06T15:00:00+05:30")
 
+    def test_date_only_fragments_complete_the_same_explicit_request(self):
+        for text in ("Please call me, tomorrow at 3 PM", "Please call me and tomorrow at 3 PM",
+                     "Call karna, kal dopahar 3 baje", "Please call me; next Tuesday at 3 PM"):
+            with self.subTest(text=text):
+                action = self.apply(text, rules=[CALLBACK_RULE])[0]
+                self.assertEqual(action["title"], "Customer Callback")
+                self.assertEqual(action["due_at"], "2026-10-06T15:00:00+05:30")
+        action = self.apply("Please call me, after two hours", rules=[CALLBACK_RULE])[0]
+        self.assertEqual(datetime.fromisoformat(action["due_at"]), NOW + timedelta(hours=2))
+
+        for text in ("Please call me, my meeting is tomorrow at 3 PM",
+                     "Please call me and I am not free tomorrow at 3 PM",
+                     "Please call me, tomorrow at 3 PM is unavailable",
+                     "Please call me, tomorrow at 3 PM, or next Tuesday at 5 PM"):
+            with self.subTest(text=text):
+                self.assertEqual(self.apply(text, rules=[CALLBACK_RULE]), [])
+
     def test_positive_request_uses_its_own_time_excluding_negated_or_unrelated_dates(self):
         for text in (
             "Do not call me tomorrow at 5 PM; call me on 9 October 2026 at 3 PM",

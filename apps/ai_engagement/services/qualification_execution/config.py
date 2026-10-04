@@ -271,6 +271,7 @@ def _config(
         "completion_routes": completion_routes,
         "current_pipeline_completion_targets": current_pipeline_targets,
         "protected_completion_stage_ids": sorted(protected_completion_stage_ids),
+        "stage_rules": section_lines(engagement_raw, "stage_shifting"),
         "reminder_rules": section_lines(engagement_raw, "reminders"),
         "errors": errors,
     }

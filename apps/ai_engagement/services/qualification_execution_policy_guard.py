@@ -325,9 +325,6 @@ def install_qualification_execution_policy_guard() -> None:
                 requirements=requirements,
                 config=config,
             )
-            actions = [action for action in actions
-                       if action.get("type") != "pipeline_transition"]
-
             # Apply authored completion-reminder rules only if this inbound answer
             # actually completes qualification. A reminder is never invented from
             # qualification completion alone.
