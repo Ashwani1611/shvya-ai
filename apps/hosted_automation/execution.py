@@ -284,6 +284,20 @@ def execute_hosted_ai_engagement(*, task, job):
         raise task.retry(exc=exc)
 
     try:
+        from apps.ai_engagement.services.booking_runtime import prepare_booking_turn
+
+        lead.refresh_from_db(fields=["attributes"])
+        booking_plan = prepare_booking_turn(
+            organization=organization,
+            lead=lead,
+            source_message=source,
+        )
+    except Exception as exc:
+        logger.exception("Hosted AI booking preparation failed for lead %s", lead.id)
+        raise task.retry(exc=exc, countdown=30)
+    booking_result = None
+
+    try:
         with transaction.atomic():
             from apps.hosted_automation.models import HostedAutomationJob
             if job.claim_token and not HostedAutomationJob.objects.filter(
@@ -395,6 +409,26 @@ def execute_hosted_ai_engagement(*, task, job):
                 lead=locked_lead,
                 actions=decision.crm_actions,
             )
+
+            if booking_plan.handled:
+                from apps.ai_engagement.services.booking_runtime import apply_booking_plan
+
+                locked_lead.refresh_from_db(
+                    fields=["attributes", "pipeline", "stage", "updated_at"]
+                )
+                booking_result = apply_booking_plan(
+                    organization=organization,
+                    lead=locked_lead,
+                    source_message=latest,
+                    plan=booking_plan,
+                )
+                if booking_result.handled:
+                    body = str(booking_result.message or "").strip()
+                    if not body:
+                        raise ValueError(
+                            "Hosted booking execution returned an empty customer message."
+                        )
+
             outbound = _queue_decision_message(
                 organization=organization,
                 account=locked_account,
@@ -413,6 +447,8 @@ def execute_hosted_ai_engagement(*, task, job):
                     "provider": "hosted",
                 }
             }
+            if booking_result is not None and booking_result.handled:
+                outbound.raw_payload["shvya_ai"]["booking"] = booking_result.as_dict()
             outbound.save(update_fields=["raw_payload", "updated_at"])
 
     except (AIPermissionError, CRMActionExecutionError) as exc:
@@ -430,4 +466,9 @@ def execute_hosted_ai_engagement(*, task, job):
         "message_id": str(outbound.id),
         "source_message_id": str(source.id),
         "model": decision.model,
+        "booking": (
+            booking_result.as_dict()
+            if booking_result is not None and booking_result.handled
+            else None
+        ),
     }
