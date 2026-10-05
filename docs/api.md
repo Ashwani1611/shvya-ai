@@ -45,6 +45,14 @@ Historical implementation names such as `copilot` can remain in routes even thou
 
 Current AI-engagement routes cover organization info, FAQs, documents, reindexing, knowledge sources, bounded dashboard deletion and the playground.
 
+`GET /api/v1/ai-engagement/brain-bundle/` downloads the authenticated active CRM
+user's saved organization AI Brain as a versioned JSON attachment. The matching
+dashboard route is `GET /dashboard/knowledge-base/ai-brain/download/`. Both derive
+tenant scope from the authenticated identity; neither accepts another organization
+ID or configuration writes. See [the bundle schema](organization-ai-brain-bundle.md).
+Sandbox responses also include `brain_bundle.schema_version` and `brain_bundle.revision`
+for the configuration snapshot used by that turn.
+
 ### Call Intelligence / telephony
 
 The same telephony API set is available below both `/api/v1/call-intelligence/` and `/api/v1/telephony/`.
