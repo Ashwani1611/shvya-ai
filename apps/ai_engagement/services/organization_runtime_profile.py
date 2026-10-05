@@ -5,7 +5,6 @@ import json
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
-from urllib.parse import urlsplit, urlunsplit
 
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
@@ -13,7 +12,7 @@ from apps.ai_engagement.services.organization_profile import (
 from apps.ai_engagement.services.tenant_guard import TenantGuard
 
 
-RUNTIME_PROFILE_VERSION = "phase4.v1"
+RUNTIME_PROFILE_VERSION = "phase4.v2"
 
 MAX_PIPELINES = 50
 MAX_STAGES = 250
@@ -126,30 +125,6 @@ def _selected_settings(settings: Any, keys: tuple[str, ...]) -> dict[str, Any]:
     return _bounded_safe_copy(selected)
 
 
-def _safe_source_url(value: str) -> str:
-    raw = str(value or "").strip()
-    if not raw:
-        return ""
-    try:
-        parsed = urlsplit(raw)
-    except ValueError:
-        return ""
-    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-        return ""
-    # Query strings/fragments can carry signed credentials. Source metadata needs
-    # identity, not authorization material.
-    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))[
-        :MAX_STRING_LENGTH
-    ]
-
-
-def _safe_source_key(value: str) -> str:
-    raw = str(value or "").strip()
-    if raw.casefold().startswith(("http://", "https://")):
-        return _safe_source_url(raw)
-    return raw[:500]
-
-
 def _freeze(value: Any):
     if isinstance(value, dict):
         return MappingProxyType({str(key): _freeze(item) for key, item in value.items()})
@@ -187,6 +162,8 @@ class OrganizationAIRuntimeProfile:
     organization_name: str
     profile_version: str
     revision: str
+    brain_bundle_schema_version: int
+    brain_bundle_revision: str
     identity: Any
     business_information: Any
     ai_instructions: Any
@@ -205,6 +182,10 @@ class OrganizationAIRuntimeProfile:
             "organization_name": self.organization_name,
             "profile_version": self.profile_version,
             "revision": self.revision,
+            "brain_bundle": {
+                "schema_version": self.brain_bundle_schema_version,
+                "revision": self.brain_bundle_revision,
+            },
             "identity": _thaw(self.identity),
             "business_information": _thaw(self.business_information),
             "ai_instructions": _thaw(self.ai_instructions),
@@ -250,30 +231,20 @@ class OrganizationAIRuntimeProfileBuilder:
         if lead is not None:
             guard.validate_current_lead_context(lead)
 
-        from apps.ai_engagement.models import Document, OrgInfo
+        from apps.ai_engagement.services.organization_brain_bundle import (
+            get_organization_ai_brain_bundle,
+        )
         from apps.channels.models import WhatsAppAccount
-        from apps.crm.models import AttributeDefinition, Pipeline, Stage
 
-        org_info = (
-            OrgInfo.objects.filter(organization_id=organization.id)
-            .values(
-                "about",
-                "bot_languages",
-                "ai_playbook",
-                "ai_enabled",
-                "bump_up_enabled",
-                "bump_up_count",
-                "qualification_model",
-                "sales_support_model",
-                "summary_model",
-            )
-            .first()
-        ) or {}
-
+        # The downloadable artifact and all channel runtimes share these exact
+        # canonical rows. Only this adapter applies prompt/runtime size limits.
+        bundle = get_organization_ai_brain_bundle(organization=organization)
+        org_info = bundle["ai"]
+        identity = bundle["organization"]
         legacy_organization = {
-            "id": str(organization.id),
-            "name": str(organization.name or ""),
-            "timezone": str(getattr(organization, "timezone", "") or ""),
+            "id": identity["id"],
+            "name": identity["name"],
+            "timezone": identity["timezone"],
             "ai_enabled": bool(org_info.get("ai_enabled", False)),
             "about": str(org_info.get("about") or ""),
             "bot_languages": str(org_info.get("bot_languages") or ""),
@@ -286,45 +257,19 @@ class OrganizationAIRuntimeProfileBuilder:
         }
         compiled = compile_org_ai_profile_from_context(legacy_organization)
 
-        pipeline_rows = list(
-            Pipeline.objects.filter(
-                organization_id=organization.id,
-                is_active=True,
-            )
-            .order_by("name", "id")
-            .values(
-                "id",
-                "name",
-                "description",
-                "country_code",
-                "phone_number",
-                "ai_enabled",
-            )[:MAX_PIPELINES]
-        )
-        pipeline_ids = [row["id"] for row in pipeline_rows]
-        stage_rows = list(
-            Stage.objects.filter(
-                pipeline_id__in=pipeline_ids,
-                pipeline__organization_id=organization.id,
-                is_active=True,
-            )
-            .order_by("pipeline_id", "display_order", "name", "id")
-            .values(
-                "id",
-                "pipeline_id",
-                "name",
-                "description",
-                "display_order",
-                "color",
-                "ai_on",
-                "config",
-            )[:MAX_STAGES]
-        )
+        pipeline_rows = [
+            row for row in bundle["crm"]["pipelines"] if row["is_active"]
+        ][:MAX_PIPELINES]
+        stage_rows = sorted(
+            [(pipeline["id"], stage) for pipeline in pipeline_rows
+             for stage in pipeline["stages"] if stage["is_active"]],
+            key=lambda item: (item[0], item[1]["display_order"], item[1]["id"]),
+        )[:MAX_STAGES]
         stages_by_pipeline: dict[str, list[dict[str, Any]]] = {}
-        for row in stage_rows:
-            stages_by_pipeline.setdefault(str(row["pipeline_id"]), []).append(
+        for pipeline_id, row in stage_rows:
+            stages_by_pipeline.setdefault(pipeline_id, []).append(
                 {
-                    "id": str(row["id"]),
+                    "id": row["id"],
                     "name": row["name"],
                     "description": row["description"],
                     "display_order": row["display_order"],
@@ -333,16 +278,15 @@ class OrganizationAIRuntimeProfileBuilder:
                     "config": _bounded_safe_copy(row.get("config") or {}),
                 }
             )
-
         pipelines = [
             {
-                "id": str(row["id"]),
+                "id": row["id"],
                 "name": row["name"],
                 "description": row["description"],
                 "country_code": row["country_code"],
                 "phone_number": row["phone_number"],
                 "ai_enabled": bool(row["ai_enabled"]),
-                "stages": stages_by_pipeline.get(str(row["id"]), []),
+                "stages": stages_by_pipeline.get(row["id"], []),
             }
             for row in pipeline_rows
         ]
@@ -353,7 +297,7 @@ class OrganizationAIRuntimeProfileBuilder:
 
         attributes = [
             {
-                "id": str(row["id"]),
+                "id": row["id"],
                 "name": row["name"],
                 "key": row["key"],
                 "field_type": row["field_type"],
@@ -361,53 +305,32 @@ class OrganizationAIRuntimeProfileBuilder:
                 "options": _bounded_safe_copy(row.get("options") or []),
                 "display_order": row["display_order"],
             }
-            for row in AttributeDefinition.objects.filter(is_active=True, 
-                organization_id=organization.id
-            )
-            .order_by("display_order", "id")
-            .values(
-                "id",
-                "name",
-                "key",
-                "field_type",
-                "description",
-                "options",
-                "display_order",
-            )[:MAX_ATTRIBUTES]
+            for row in [item for item in bundle["crm"]["attributes"]
+                        if item["is_active"]][:MAX_ATTRIBUTES]
             if not is_sensitive_attribute_definition(row)
         ]
-
+        document_rows = sorted(
+            [row for row in bundle["knowledge"]["documents"]
+             if ((row["is_active"] and row["processing_status"] == "completed")
+                 or (row["file_sharing_ready"] and row["has_file"]
+                     and str(row["share_instruction"] or "").strip()))],
+            key=lambda row: (row["updated_at"] or "", int(row["id"])),
+            reverse=True,
+        )[:MAX_KNOWLEDGE_SOURCES]
         documents = [
             {
-                "id": row["id"],
+                "id": int(row["id"]),
                 "name": row["name"],
-                "source_key": _safe_source_key(row["source_key"]),
-                "source_url": _safe_source_url(row["source_url"]),
+                "source_key": row["source_url"] or "document:" + row["id"],
+                "source_url": row["source_url"],
                 "version": row["version"],
                 "processing_status": row["processing_status"],
                 "is_active": bool(row["is_active"]),
-                "has_file": bool(row["file"]),
-                "share_instruction": str(row["share_instruction"] or "")[
-                    :MAX_STRING_LENGTH
-                ],
+                "has_file": bool(row["has_file"]),
+                "file_sharing_ready": bool(row["file_sharing_ready"]),
+                "share_instruction": str(row["share_instruction"] or "")[:MAX_STRING_LENGTH],
             }
-            for row in Document.objects.filter(
-                organization_id=organization.id,
-                is_active=True,
-                processing_status=Document.ProcessingStatus.COMPLETED,
-            )
-            .order_by("-updated_at", "-id")
-            .values(
-                "id",
-                "name",
-                "source_key",
-                "source_url",
-                "version",
-                "processing_status",
-                "is_active",
-                "file",
-                "share_instruction",
-            )[:MAX_KNOWLEDGE_SOURCES]
+            for row in document_rows
         ]
 
         whatsapp_accounts = [
@@ -482,8 +405,8 @@ class OrganizationAIRuntimeProfileBuilder:
         }
         identity = {
             "organization_id": str(organization.id),
-            "name": str(organization.name or ""),
-            "timezone": str(getattr(organization, "timezone", "") or ""),
+            "name": legacy_organization["name"],
+            "timezone": legacy_organization["timezone"],
         }
 
         revision_payload = _bounded_safe_copy(
@@ -500,13 +423,20 @@ class OrganizationAIRuntimeProfileBuilder:
                 "channels": channels,
             }
         )
-        revision = _fingerprint(revision_payload)
+        # The complete hash includes FAQ/source changes and edits beyond the
+        # bounded adapter. Runtime-only permissions/account data stay covered too.
+        revision = _fingerprint({
+            "brain_bundle_revision": bundle["revision"],
+            "runtime_configuration": revision_payload,
+        })
 
         return OrganizationAIRuntimeProfile(
             organization_id=str(organization.id),
-            organization_name=str(organization.name or ""),
+            organization_name=legacy_organization["name"],
             profile_version=RUNTIME_PROFILE_VERSION,
             revision=revision,
+            brain_bundle_schema_version=bundle["schema_version"],
+            brain_bundle_revision=bundle["revision"],
             identity=_freeze(identity),
             business_information=_freeze(business_information),
             ai_instructions=_freeze(ai_instructions),
@@ -525,8 +455,14 @@ def get_organization_ai_runtime_profile(
     *,
     organization,
     lead=None,
+    refresh: bool = False,
 ) -> OrganizationAIRuntimeProfile:
-    """Return one per-Lead-object snapshot without creating persistent duplicate state."""
+    """Reuse configuration within a turn; context builders refresh new turns.
+
+    This is an in-memory snapshot, never a TTL cache of authoritative settings.
+    ``refresh`` ensures a reused Lead object cannot retain an older FAQ/Brain
+    revision when a new conversation context is assembled.
+    """
 
     cache_attr = "_shvya_ai_runtime_profile"
     if lead is not None:
@@ -534,7 +470,8 @@ def get_organization_ai_runtime_profile(
         guard.validate_current_lead_context(lead)
         cached = getattr(lead, cache_attr, None)
         if (
-            isinstance(cached, OrganizationAIRuntimeProfile)
+            not refresh
+            and isinstance(cached, OrganizationAIRuntimeProfile)
             and cached.organization_id == str(organization.id)
         ):
             return cached
