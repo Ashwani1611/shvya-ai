@@ -1,4 +1,5 @@
 from tests.playbook_fixtures import build_ai_playbook
+from tests.brain_fixtures import mocked_brain_profile_loader
 
 import json
 import os
@@ -90,7 +91,8 @@ class PlaygroundEngagementPolicyTests(SimpleTestCase):
         retrieval = Mock()
         retrieval.retrieve_by_vector.return_value = []
         service = PlaygroundService(provider=provider, org_info_service=info,
-            embedding_service=Mock(), retrieval_service=retrieval)
+            embedding_service=Mock(), retrieval_service=retrieval,
+            runtime_profile_loader=mocked_brain_profile_loader(info))
         session_id = f'test:{self._testMethodName}'
         return service.run(organization=SimpleNamespace(id='org', name='Org'),
                            session_id=session_id, message=message, history=[]), provider

@@ -31,6 +31,8 @@ def _record_profile_trace(profile: OrganizationAIRuntimeProfile) -> None:
                 "organization_id": profile.organization_id,
                 "profile_version": profile.profile_version,
                 "profile_revision": profile.revision,
+                "brain_bundle_schema_version": profile.brain_bundle_schema_version,
+                "brain_bundle_revision": profile.brain_bundle_revision,
                 "tenant_validation": "passed",
             },
         )
@@ -79,6 +81,7 @@ def _patch_context_builder() -> None:
             profile = get_organization_ai_runtime_profile(
                 organization=organization,
                 lead=lead,
+                refresh=True,
             )
         except TenantScopeError as exc:
             _record_tenant_failure(exc)

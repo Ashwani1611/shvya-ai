@@ -1,4 +1,5 @@
 from django.urls import path
+from apps.ai_engagement.views.brain_bundle import dashboard_ai_brain_download
 from apps.crm.views.lead_chat import lead_whatsapp
 from apps.crm.views.bulk import bulk_leads, bulk_move_status
 
@@ -507,6 +508,12 @@ path(
     "knowledge-base/ai-setup/",
     ai_setup_view,
     name="crm-knowledge-base-ai-setup",
+),
+
+path(
+    "knowledge-base/ai-brain/download/",
+    dashboard_ai_brain_download,
+    name="crm-ai-brain-download",
 ),
 
 path(

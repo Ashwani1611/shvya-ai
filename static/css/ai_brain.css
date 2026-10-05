@@ -19,6 +19,9 @@
     background: #fff;
     box-shadow: 0 4px 22px rgb(0 0 0 / 2%);
 }
+.brain-bundle-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 16px; }
+.brain-bundle-bar p { margin: 0; max-width: 380px; }
+.brain-bundle-bar .brain-button { flex-shrink: 0; }
 .brain-card-heading { padding: 36px 36px 28px; border-bottom: 1px solid var(--brain-line); }
 .brain-card-heading .brain-eyebrow { margin: 0 0 12px; color: var(--brain-muted); font-size: 10px; font-weight: 650; letter-spacing: .12em; }
 .brain-card-heading h2 { margin: 0; font-size: clamp(25px, 2.3vw, 34px); font-weight: 650; letter-spacing: -.04em; line-height: 1.15; }
@@ -107,6 +110,7 @@
 .brain-guided-actions { display: flex; justify-content: space-between; gap: 12px; }
 .brain-delete-button { color: #a42b25; }
 @media (max-width: 640px) {
+    .brain-bundle-bar { align-items: flex-start; flex-direction: column; gap: 10px; }
     .brain-card-heading { padding: 26px 22px; }
     .brain-fields, .ai-brain-editor .brain-guided-files { padding: 24px 22px; }
     .brain-save-bar { padding: 18px 22px; flex-wrap: wrap; }

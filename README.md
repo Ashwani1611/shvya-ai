@@ -437,6 +437,7 @@ SHVYA separates customer-facing AI engagement from internal enrichment and knowl
 Key runtime concepts:
 
 - `OrgInfo.ai_playbook` is the organization-owned operating specification for rules, welcome copy, qualification questions/criteria, CRM attribute mapping, stage routing and reminders
+- each organization can download a versioned AI Brain JSON bundle of its saved company information, languages, Playbook, models, FAQs, CRM definitions and knowledge/file metadata; live AI and Sandbox use a bounded projection of the same configuration
 - direct product, feature, pricing, policy, or other explicit questions are answered before qualification continues; qualification never suppresses a substantive customer question
 - qualification questions run only in the New Lead/New Leads stage family and advance using backend-validated evidence
 - final qualification actions use deterministic backend execution; stage movement requires the authored Playbook criteria, not an intent score alone
@@ -619,6 +620,7 @@ Useful project documentation includes:
 - [`docs/deployment_environments.md`](./docs/deployment_environments.md) - staging and production separation
 - [`database.md`](./database.md) - current relational schema and data-integrity map
 - [`docs/ai-playbook.md`](./docs/ai-playbook.md) - canonical organization AI Playbook and runtime authority
+- [`docs/organization-ai-brain-bundle.md`](./docs/organization-ai-brain-bundle.md) - versioned organization Brain exports, revisions and runtime projection
 - [`docs/ai-phases-1-11.md`](./docs/ai-phases-1-11.md) - AI reliability/observability phases
 - [`docs/grounded-engagement.md`](./docs/grounded-engagement.md) - grounded AI engagement and summaries
 - [`docs/smart-triggers.md`](./docs/smart-triggers.md) - Workflows product behavior (internal SmartTrigger engine)

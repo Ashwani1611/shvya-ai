@@ -1,4 +1,5 @@
 from tests.playbook_fixtures import build_ai_playbook
+from tests.brain_fixtures import mocked_brain_profile_loader
 
 import json
 from types import SimpleNamespace
@@ -116,6 +117,7 @@ class PlaygroundStructuredOutputTests(SimpleTestCase):
             org_info_service=org_info_service,
             embedding_service=embedding_service,
             retrieval_service=retrieval_service,
+            runtime_profile_loader=mocked_brain_profile_loader(org_info_service),
         )
         result = service.run(
             organization=SimpleNamespace(id="org-1", name="Test Org"),

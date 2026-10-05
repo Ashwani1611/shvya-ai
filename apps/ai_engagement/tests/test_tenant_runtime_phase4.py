@@ -348,17 +348,22 @@ class Phase4TenantRuntimeTests(TestCase):
         self.assertIn(WhatsAppAccount.ConnectionType.coexisted, account_types)
 
     def test_profile_loader_has_bounded_configuration_query_count(self):
+        # Load the complete lead ownership graph before measuring configuration
+        # queries. TenantGuard independently validates the stage's own pipeline.
         lead = Lead.objects.select_related(
             "organization",
             "pipeline",
-            "stage",
+            "stage__pipeline",
         ).get(pk=self.lead_a.pk)
         with CaptureQueriesContext(connection) as captured:
             OrganizationAIRuntimeProfileBuilder().build(
                 organization=lead.organization,
                 lead=lead,
             )
-        self.assertLessEqual(len(captured), 7)
+        # The shared complete Brain adds fresh organization identity, FAQs and
+        # source inventory to the former bounded profile. Queries stay constant
+        # with configuration size; knowledge chunks are never loaded here.
+        self.assertLessEqual(len(captured), 9)
 
     def test_context_and_qualification_use_only_current_organization_profile(self):
         context = AIContextBuilder().build(
