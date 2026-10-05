@@ -10,6 +10,7 @@ from typing import Any
 from django.core.cache import cache
 
 from apps.ai_engagement.services.ai_provider import (
+    AIProviderError,
     AIProviderTransientError,
     OpenAIProvider,
 )
@@ -626,11 +627,17 @@ class PlaygroundService:
                 "No test reply was saved."
             )
         from apps.ai_engagement.services.final_reply_language import finalize_reply_language
-        decision = finalize_reply_language(
-            service=service.service() if hasattr(service, "service") else service,
-            decision=decision, context=context_builder.build(organization=organization, lead=visitor),
-            organization=organization, lead=visitor,
-        )
+        try:
+            decision = finalize_reply_language(
+                service=service.service() if hasattr(service, "service") else service,
+                decision=decision, context=context_builder.build(organization=organization, lead=visitor),
+                organization=organization, lead=visitor,
+            )
+        except (AIProviderError, EngagementError) as exc:
+            raise PlaygroundError(
+                "The reply could not be generated in the selected language. "
+                "Please retry this test message. No test reply was saved."
+            ) from exc
         # Record only the question selected for the displayed final response,
         # not an earlier draft which post-effect composition may have replaced.
         if decision.should_engage and decision.next_requirement_id:

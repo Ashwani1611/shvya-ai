@@ -993,6 +993,8 @@ def _non_answer_evidence(evidence: str, source: str) -> bool:
         return True
     clauses = re.findall(r"[^.!?;，,\n।？]+[.!?;，,\n।？]?", source)
     containing = [part.strip() for part in clauses if evidence in part]
+    question_start = re.compile(r"^(?:what|which|where|when|why|how|who)\b|"
+                                r"^(?:was\s+kostet|wie\s+viel|welche\s+)\b", re.I)
     language_request = re.compile(
         r"^(?:please\s+)?(?:reply|respond|answer)\s+(?:to me\s+)?in\b|"
         r"^bitte\s+(?:antworten|antworte)\b|"
@@ -1000,7 +1002,7 @@ def _non_answer_evidence(evidence: str, source: str) -> bool:
         r"(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ).*(?:ਦਿਓ|दो|दें|द्या|ಕೊಡಿ)", re.I,
     )
     return bool(containing) and all(
-        part.endswith(("?", "？")) or language_request.search(part)
+        part.endswith(("?", "？")) or question_start.search(part) or language_request.search(part)
         for part in containing
     )
 
