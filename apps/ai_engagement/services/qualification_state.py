@@ -933,6 +933,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
             or not isinstance(evidence, str)
             or not evidence.strip()
             or evidence not in source_text
+            or _non_answer_evidence(evidence, source_text)
             or not isinstance(value, (str, int, float, bool))
             or (isinstance(value, str) and not value.strip())
         ):
@@ -979,6 +980,28 @@ def project_answer_updates(*, state, requirements, updates, messages):
         result["next_requirement_id"] = None
         result["engagement_mode"] = MODE_CONVERSATION
     return result
+
+
+def _non_answer_evidence(evidence: str, source: str) -> bool:
+    """A quoted enquiry or reply-language instruction is not a customer fact.
+
+    Retain punctuation while locating the quote. Splitting comma-separated
+    clauses lets a volunteered fact before a separate question remain usable.
+    Unknown declarative paraphrases still pass to the semantic evidence guard.
+    """
+    if "?" in evidence or "？" in evidence:
+        return True
+    clauses = re.findall(r"[^.!?;，,\n।？]+[.!?;，,\n।？]?", source)
+    containing = [part.strip() for part in clauses if evidence in part]
+    language_request = re.compile(
+        r"^(?:please\s+)?(?:reply|respond|answer)\s+(?:to me\s+)?in\b|"
+        r"^bitte\s+(?:antworten|antworte)\b|"
+        r"(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ)", re.I,
+    )
+    return bool(containing) and all(
+        part.endswith(("?", "？")) or language_request.search(part)
+        for part in containing
+    )
 
 
 def persist_answer_updates(*, lead, updates):

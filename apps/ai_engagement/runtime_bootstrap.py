@@ -224,6 +224,11 @@ def install_ai_runtime() -> None:
     engagement_workflow.check_grounding = evidence_graph.check_grounding
     engagement_workflow.ENGAGEMENT_GRAPH = engagement_workflow.build_engagement_graph()
 
+    # Authored welcome/qualification renderers can append source-language copy.
+    # Translate only the final text after every action-owning boundary.
+    from apps.ai_engagement.services.final_reply_language import install_final_reply_language
+    install_final_reply_language()
+
     # Phase 1 observability is installed last so it observes the final shared
     # API/Coexistence and Hosted runtime without becoming policy authority.
     from . import trace_signals  # noqa: F401
