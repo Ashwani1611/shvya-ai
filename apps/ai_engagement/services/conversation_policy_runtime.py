@@ -289,16 +289,26 @@ def _turn_matches(*, organization, lead, source_message_id=None) -> bool:
 
 
 def _capabilities(organization=None) -> frozenset[str]:
-    # SHVYA already has a validated reminder action used by the existing call-request
-    # runtime. No canonical booking executor exists in the engagement action contract,
-    # so booking is deliberately not advertised here.
+    """Advertise only backend capabilities that have a real executor."""
+    capabilities: set[str] = set()
     try:
         from apps.ai_engagement.services.organization_runtime_profile import configured_action_types
 
         allowed = configured_action_types(getattr(organization, "settings", {}))
-        return frozenset({"call"}) if "create_reminder" in allowed else frozenset()
+        if "create_reminder" in allowed:
+            capabilities.add("call")
     except Exception:
-        return frozenset()
+        pass
+
+    try:
+        from apps.ai_engagement.services.booking_runtime import booking_capability_available
+
+        if booking_capability_available(organization):
+            capabilities.add("booking")
+    except Exception:
+        pass
+
+    return frozenset(capabilities)
 
 
 def _accepted_result(*, state: dict[str, Any], source_message_id: str) -> dict[str, Any]:
