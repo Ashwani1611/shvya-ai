@@ -122,6 +122,8 @@ ${disconnected}`);
   replace('            caption: caption || undefined,', '            sendSeen: false,\n            caption: caption || undefined,');
   replace("      heartbeatCallbacks.push(callback(sessionId, 'gateway_heartbeat'));",
     "      heartbeatCallbacks.push(callback(sessionId, state.status === 'running' ? 'running' : 'gateway_heartbeat', { phoneNumber: state.phoneNumber }));");
+  replace('    metrics: gatewayMetrics,',
+    '    metrics: gatewayMetrics,\n    callbackOutbox: callbackOutbox.stats(),');
   replace('    await startRedis();', '    await startRedis();\n    callbackOutbox.start();');
   replace('  shuttingDown = true;', '  shuttingDown = true;\n  callbackOutbox.stop();');
   return source;
