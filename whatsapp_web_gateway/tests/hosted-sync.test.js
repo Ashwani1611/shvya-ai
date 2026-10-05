@@ -355,6 +355,26 @@ test('sync retries are bounded, deduplicated and fenced to the original running 
   assert.match(state.historyError, /temporary/);
 });
 
+test('message_create provides a recent-only inbound fallback without replaying old history', () => {
+  const ctx = context(['shouldForwardMessageCreateFallback'], {
+    LIVE_MESSAGE_CREATE_FALLBACK_MAX_AGE_MS: 5 * 60 * 1000,
+    LIVE_MESSAGE_CREATE_FUTURE_SKEW_MS: 60 * 1000,
+  });
+  const now = 1_800_000_000_000;
+  assert.equal(ctx.shouldForwardMessageCreateFallback({
+    fromMe: false, timestamp: (now - 30_000) / 1000,
+  }, now), true);
+  assert.equal(ctx.shouldForwardMessageCreateFallback({
+    fromMe: false, timestamp: (now - (6 * 60 * 1000)) / 1000,
+  }, now), false);
+  assert.equal(ctx.shouldForwardMessageCreateFallback({
+    fromMe: true, timestamp: now / 1000,
+  }, now), false);
+  assert.equal(ctx.shouldForwardMessageCreateFallback({
+    fromMe: false, timestamp: 0,
+  }, now), false);
+});
+
 test('live LID message is forwarded when message.getChat cannot resolve the LID', async () => {
   const lid = '109698229481999@lid';
   const phone = '+919811223344';
