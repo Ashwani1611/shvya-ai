@@ -114,6 +114,17 @@ def unconditional_welcome_document(candidates, *, welcome_due):
     return matches[0] if len(matches) == 1 else None
 
 
+def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request):
+    """Remove an exact welcome-only choice if final rendering omits welcome."""
+    if document_id is None or welcome_due or explicit_request:
+        return document_id
+    selected = [item for item in candidates if isinstance(item, dict)
+                and item.get("document_id") == document_id]
+    if unconditional_welcome_document(selected, welcome_due=True) == document_id:
+        return None
+    return document_id
+
+
 @dataclass(frozen=True)
 class FileSharingDecision:
     """

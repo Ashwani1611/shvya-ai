@@ -1,4 +1,6 @@
-from apps.ai_engagement.services.file_sharing import unconditional_welcome_document
+from apps.ai_engagement.services.file_sharing import (
+    unconditional_welcome_document, reconcile_welcome_document,
+)
 
 
 def candidate(instruction, **extra):
@@ -26,3 +28,12 @@ def test_restrictions_and_ambiguous_candidates_still_require_review():
     assert unconditional_welcome_document([valid, {**valid, "document_id": 19}], welcome_due=True) is None
     assert unconditional_welcome_document([{**valid, "already_shared": True}], welcome_due=True) is None
     assert unconditional_welcome_document([{**valid, "document_id": True}], welcome_due=True) is None
+
+
+def test_final_pricing_reply_cannot_keep_draft_welcome_only_attachment():
+    files = [candidate("send product brochure with welcome message or when lead ask product brochure")]
+    assert reconcile_welcome_document(18, files, welcome_due=False, explicit_request=False) is None
+    assert reconcile_welcome_document(18, files, welcome_due=True, explicit_request=False) == 18
+    assert reconcile_welcome_document(18, files, welcome_due=False, explicit_request=True) == 18
+    conditional = [candidate("send product brochure when lead has completed qualification")]
+    assert reconcile_welcome_document(18, conditional, welcome_due=False, explicit_request=False) == 18
