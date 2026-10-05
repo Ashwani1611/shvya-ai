@@ -1,5 +1,6 @@
 from django.urls import path
 
+from apps.ai_engagement.views.brain_bundle import OrganizationAIBrainBundleView
 from apps.ai_engagement.views.dashboard_knowledge_delete import (
     dashboard_knowledge_delete,
 )
@@ -23,6 +24,7 @@ from apps.ai_engagement.views.playground import (
 from apps.ai_engagement.views.shared_files import instagram_shared_file
 
 urlpatterns = [
+    path("brain-bundle/", OrganizationAIBrainBundleView.as_view(), name="ai-brain-bundle"),
     path("provider-files/<str:token>/", instagram_shared_file, {"provider_fetch": True}, name="ai-instagram-provider-file"),
     path("shared-files/<str:token>/", instagram_shared_file, name="ai-instagram-shared-file"),
     path("playground/files/<int:document_id>/", PlaygroundFileAPIView.as_view(), name="ai-playground-file"),
