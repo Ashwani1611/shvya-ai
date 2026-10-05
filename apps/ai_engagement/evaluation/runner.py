@@ -20,6 +20,8 @@ TEST_MODULES = (
     "test_conversation_policy_phase3.py", "test_phase7_composite_policy.py",
     "test_qualification_execution_contract_e2e.py", "test_engagement_recovery.py",
     "test_live_whatsapp_pipeline_regressions.py",
+    "test_adaptive_model_routing.py",
+    "test_provider_resilience.py",
 )
 CATEGORIES = ("hallucination", "qualification", "rag", "actions", "tenant_isolation", "language", "intent", "silence", "behaviour")
 
