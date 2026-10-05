@@ -7,6 +7,13 @@ The dashboard and configuration API no longer accept the separate qualification
 requirements or engagement instructions fields. AI Sandbox retains its existing
 interface and uses the same runtime as production.
 
+The AI Brain page also offers **Download saved AI Brain**. It generates a
+[versioned organization JSON bundle](organization-ai-brain-bundle.md) containing
+the saved Playbook, company information, languages, model choices, FAQs, CRM
+definitions and knowledge/file metadata. Save edits in the existing screens before
+downloading. Live channels and Sandbox use a bounded projection of the same
+configuration; the complete export is not placed in every model prompt.
+
 ## Authoring format
 
 Use the following headings, with the organization's own content under each:
