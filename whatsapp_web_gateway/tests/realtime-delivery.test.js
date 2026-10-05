@@ -104,6 +104,39 @@ test('callbacks wait for the owning session rather than crossing account boundar
   assert.equal(calls, 1);
   assert.equal((await records()).length, 0);
 });
+test('fresh callbacks stay in the dedicated live FIFO lane when concurrency is saturated', async t => {
+  const gates = [];
+  const delivered = [];
+  const { outbox, records } = await fixture(t, {
+    concurrency: 1,
+    intervalMs: 60000,
+    deliver: async (_sessionId, _event, payload) => {
+      delivered.push(payload.messageId);
+      await new Promise(resolve => gates.push(resolve));
+      return true;
+    },
+  });
+
+  await outbox.enqueue('account', 'message', { messageId: 'fresh-1' });
+  await outbox.enqueue('account', 'message', { messageId: 'fresh-2' });
+  await outbox.enqueue('account', 'message', { messageId: 'fresh-3' });
+
+  await until(() => delivered.length === 1);
+  assert.deepEqual(delivered, ['fresh-1']);
+  assert.deepEqual(outbox.stats(), { liveInFlight: 1, liveQueued: 2, active: 1 });
+  assert.equal((await records()).length, 3);
+
+  gates.shift()();
+  await until(() => delivered.length === 2);
+  assert.deepEqual(delivered, ['fresh-1', 'fresh-2']);
+  gates.shift()();
+  await until(() => delivered.length === 3);
+  assert.deepEqual(delivered, ['fresh-1', 'fresh-2', 'fresh-3']);
+  gates.shift()();
+  await until(async () => (await records()).length === 0);
+  assert.deepEqual(outbox.stats(), { liveInFlight: 0, liveQueued: 0, active: 0 });
+});
+
 test('duplicate callbacks share one active durable record', async t => {
   let resolveSend;
   const gate = new Promise(resolve => { resolveSend = resolve; });

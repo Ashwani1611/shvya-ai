@@ -53,6 +53,8 @@ function createCallbackOutbox({ root, deliver, isSessionReady, log = console.war
   let timer = null;
   let draining = null;
   const active = new Set();
+  const liveQueue = [];
+  const liveQueued = new Set();
   let liveInFlight = 0;
 
   async function write(file, record, exclusive = false) {
@@ -92,6 +94,19 @@ function createCallbackOutbox({ root, deliver, isSessionReady, log = console.war
     } finally { active.delete(file); }
   }
 
+  function pumpLive() {
+    while (liveInFlight < concurrency && liveQueue.length) {
+      const file = liveQueue.shift();
+      liveQueued.delete(file);
+      if (active.has(file)) continue;
+      liveInFlight += 1;
+      void attempt(file).finally(() => {
+        liveInFlight -= 1;
+        pumpLive();
+      });
+    }
+  }
+
   function flush() {
     if (draining) return draining;
     draining = (async () => {
@@ -127,14 +142,15 @@ function createCallbackOutbox({ root, deliver, isSessionReady, log = console.war
         return deliver(sessionId, event, payload);
       }
     }
-    // Reserve a separate bounded lane for new live events: an old backlog
-    // must not make a fresh message wait behind slow retry callbacks.
-    if (liveInFlight < concurrency) {
-      liveInFlight += 1;
-      void attempt(path.join(root, filename)).finally(() => { liveInFlight -= 1; });
-    } else {
-      void flush();
+    // Reserve a separate FIFO lane for new live events. When that lane is
+    // busy, queue the new callback behind other fresh events rather than
+    // handing it to the old-backlog directory scan.
+    const file = path.join(root, filename);
+    if (!active.has(file) && !liveQueued.has(file)) {
+      liveQueued.add(file);
+      liveQueue.push(file);
     }
+    pumpLive();
     return true;
   }
 
@@ -145,7 +161,14 @@ function createCallbackOutbox({ root, deliver, isSessionReady, log = console.war
     void flush();
   }
   function stop() { clearInterval(timer); timer = null; }
-  return { enqueue, flush, start, stop };
+  function stats() {
+    return {
+      liveInFlight,
+      liveQueued: liveQueue.length,
+      active: active.size,
+    };
+  }
+  return { enqueue, flush, start, stop, stats };
 }
 
 module.exports = { deadline, confirmSendOutcome, createCallbackOutbox };

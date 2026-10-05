@@ -75,11 +75,33 @@ replaceOnce(
   'drop inbound WhatsApp Status/newsletter callbacks',
 );
 
-replaceOnce(
-  "    if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;",
-  "    if (!message.fromMe || isHiddenHostedMessage(message) || isGatewayOriginatedOwnMessage(state, message)) return;",
-  'drop linked-device WhatsApp Status/newsletter callbacks',
-);
+const legacyMessageCreateGuard =
+  "    if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;";
+const currentMessageCreateSignature = "  client.on('message_create', async (message) => {";
+if (source.includes(legacyMessageCreateGuard)) {
+  replaceOnce(
+    legacyMessageCreateGuard,
+    "    if (!message.fromMe || isHiddenHostedMessage(message) || isGatewayOriginatedOwnMessage(state, message)) return;",
+    'drop linked-device WhatsApp Status/newsletter callbacks',
+  );
+} else if (
+  source.includes(currentMessageCreateSignature)
+  && source.includes('shouldForwardMessageCreateFallback(message)')
+) {
+  const guardedSignature =
+    currentMessageCreateSignature + "\n    if (isHiddenHostedMessage(message)) return;";
+  if (!source.includes(guardedSignature)) {
+    source = source.replace(
+      currentMessageCreateSignature,
+      guardedSignature,
+    );
+    console.log('Applied Hosted media/filter patch: drop message_create Status/newsletter callbacks');
+  }
+} else {
+  throw new Error(
+    'Unable to apply Hosted media/filter patch: drop linked-device WhatsApp Status/newsletter callbacks',
+  );
+}
 
 replaceOnce(
   "  if (!rawChatId || rawChatId === 'status@broadcast' || rawChatId.includes('@newsletter')) {",
