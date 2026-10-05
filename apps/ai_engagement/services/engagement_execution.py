@@ -821,14 +821,18 @@ def _execute_ai_engagement_response_impl(
             "generate_ai_engagement_response: booking preparation failed for lead %s",
             lead_id,
         )
+        booking_action_failed = False
         try:
             from apps.ai_engagement.services.intent_rules import deterministic_intents
             from apps.ai_engagement.services.intent_types import Intent
 
             intents = deterministic_intents(latest_after_generation.body)
+            booking_action_failed = bool(
+                intents & {Intent.BOOKING_INTENT, Intent.AVAILABILITY_QUESTION}
+            )
         except Exception:
-            intents = set()
-        if intents & {Intent.BOOKING_INTENT, Intent.AVAILABILITY_QUESTION}:
+            booking_action_failed = False
+        if booking_action_failed:
             return {
                 "status": "failed",
                 "reason": "booking_preparation_failed",
@@ -1003,6 +1007,12 @@ def _execute_ai_engagement_response_impl(
                     apply_booking_plan,
                 )
 
+                # CRMActionExecutor works on its own locked Lead instance. Refresh
+                # the outer instance so booking state merges with the latest
+                # qualification/attribute writes instead of overwriting them.
+                lead.refresh_from_db(
+                    fields=["attributes", "pipeline", "stage", "updated_at"]
+                )
                 booking_result = apply_booking_plan(
                     organization=organization,
                     lead=lead,
