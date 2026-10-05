@@ -1,4 +1,5 @@
 from tests.playbook_fixtures import build_ai_playbook
+from tests.brain_fixtures import mocked_brain_profile_loader
 
 import json
 from datetime import timedelta
@@ -58,7 +59,8 @@ class AuthoredQualificationTests(SimpleTestCase):
         retrieval = Mock()
         retrieval.retrieve_by_vector.return_value = []
         service = PlaygroundService(provider=provider, org_info_service=info,
-            embedding_service=Mock(), retrieval_service=retrieval)
+            embedding_service=Mock(), retrieval_service=retrieval,
+            runtime_profile_loader=mocked_brain_profile_loader(info, requirements=self.requirements))
         organization = SimpleNamespace(id='sandbox-regression', name='Test')
         answers = ['Hi', 'A', 'a', 'Yes' if runs_ads else 'No'] + ([] if runs_ads else ['Referrals'])
         for message in answers:
