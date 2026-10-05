@@ -165,14 +165,38 @@ def sandbox_diagnostics(method):
         from dataclasses import replace
         from apps.ai_engagement.services import trace_service
         from apps.ai_engagement.services.playground import PlaygroundError
-        token = trace_service.begin_trace(organization=kwargs.get("organization"))
+        token = trace_service.begin_sandbox_trace(
+            organization=kwargs.get("organization"), message=kwargs.get("message", ""),
+        )
         try:
             result = method(self, *args, **kwargs)
-            return replace(result, diagnostics=summary(result))
+            trace_service.record("generation", {
+                "generated_response": result.response, "model": result.model,
+                "should_engage": result.should_engage,
+            })
+            trace_service.record("finalization", {
+                "execution_mode": "sandbox_preview", "live_actions_executed": False,
+                "preview_events": result.events, "preview_files": result.files,
+            })
+            trace_service.record("brain_bundle", result.brain_bundle)
+            buffer = trace_service.current()
+            if buffer is not None:
+                buffer.data["status"] = "completed" if result.should_engage else "silenced"
+            return replace(result, diagnostics=summary(result), trace_id=buffer.trace_id if buffer else None)
         except PlaygroundError as exc:
+            trace_service.mark_error(step="sandbox", exc=exc, code="SANDBOX_PREVIEW_FAILED")
+            buffer = trace_service.current()
+            if buffer is not None:
+                buffer.data["status"] = "failed"
             detail = summary()
             if detail:
                 raise PlaygroundError(f"{exc} Diagnostic: {detail}") from exc
+            raise
+        except Exception as exc:
+            trace_service.mark_error(step="sandbox", exc=exc, code="SANDBOX_PREVIEW_EXCEPTION")
+            buffer = trace_service.current()
+            if buffer is not None:
+                buffer.data["status"] = "failed"
             raise
         finally:
             trace_service.flush(reset_token=token)

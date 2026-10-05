@@ -440,6 +440,7 @@ Key runtime concepts:
 - each organization can download a versioned AI Brain JSON bundle of its saved company information, languages, Playbook, models, FAQs, CRM definitions and knowledge/file metadata; live AI and Sandbox use a bounded projection of the same configuration
 - direct product, feature, pricing, policy, or other explicit questions are answered before qualification continues; qualification never suppresses a substantive customer question
 - qualification questions run only in the New Lead/New Leads stage family and advance using backend-validated evidence
+- superadmin selects each organization's qualification, sales-support and summary models; grounding, bounded reply repairs and optional evidence coverage use the same stage model as the turn
 - final qualification actions use deterministic backend execution; stage movement requires the authored Playbook criteria, not an intent score alone
 - safe, explicitly evidenced non-sensitive CRM attributes may be created through the validated dynamic-attribute contract when no equivalent definition exists
 - source-bound CRM actions use durable `AIActionReceipt` idempotency; `AITrace` provides bounded observability and `LeadSignal` provides explainable source-backed signals without becoming a second qualification state

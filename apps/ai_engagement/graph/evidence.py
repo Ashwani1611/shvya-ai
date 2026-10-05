@@ -314,11 +314,19 @@ def check_grounding(state):
         "operational_state": operational_state_for_context(context),
     }
 
+    from apps.ai_engagement.services.turn_controller import build_turn_policy
+    turn_policy = state.get("turn_policy") or build_turn_policy(
+        context=context, qualification_state=qualification_state,
+    )
+    # Verification and its bounded repairs belong to the same organization
+    # turn as the draft, including its superadmin-selected stage model.
     metadata = {
         "organization_id": str(state["organization"].id),
         "lead_id": str(state["lead"].id),
         "purpose": "engagement",
         "phase": "grounding",
+        "prompt_mode": turn_policy.prompt_mode,
+        "model_override": turn_policy.model_override,
     }
 
     contract_error = ""

@@ -432,6 +432,16 @@ def _generate(state: EngagementGraphState) -> dict:
         knowledge_query=None,
         context=context,
     )
+    return _review_draft_decision(state, context=context, decision=decision)
+
+
+def _review_draft_decision(state: EngagementGraphState, *, context, decision) -> dict:
+    """Review missing proposals for every draft, including recovered replies.
+
+    These bounded reviews propose evidence-backed answers and an eligible file;
+    the graph's existing validation and grounding nodes still authorize them.
+    """
+    context = _with_file_candidates(state, context)
     from apps.ai_engagement.services.qualification_capture_recovery import recover_omitted_answers
     decision = recover_omitted_answers(
         service=state["service"], organization=state["organization"], lead=state["lead"],

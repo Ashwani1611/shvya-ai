@@ -18,6 +18,10 @@ This change does not establish the current health of any production server.
 - A local message ID is not success. After the existing idempotency journal has saved
   the provider ID, check that same message for a WhatsApp server acknowledgement.
   Replays consult the same request; uncertain sends are never blindly repeated.
+- An ACK-pending response also binds its provider ID to the existing queued Django
+  message. This does not mark it sent: it lets a separately authenticated, fenced
+  ACK callback confirm that exact message when the browser lookup is delayed.
+  Confirmed callbacks clear the temporary error and record the first sent time.
 - AI jobs retain their generated reply while disconnected or awaiting an ACK.
   ACK checks do not consume generation retry attempts. A five-minute ACK wait ends
   with an explicit unconfirmed-delivery error, allowing later account jobs to proceed.
@@ -33,8 +37,8 @@ syntax and checks that text and uploaded-media paths both use the corrected boun
 The dedicated Hosted delivery regressions workflow runs these checks on pull requests.
 
 Run `pytest apps/channels/tests/test_hosted_realtime_delivery.py` using the repository's
-test settings/dependencies. These six tests exercise the transport and durable queue
-with explicit doubles; they do not contact WhatsApp. Existing pacing, tenant, media
+test settings/dependencies. These tests exercise the transport and durable queue
+with explicit doubles and database correlation; they do not contact WhatsApp. Existing pacing, tenant, media
 permission and idempotency regressions remain required before rollout.
 
 ## Rollout and live acceptance

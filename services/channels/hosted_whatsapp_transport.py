@@ -3,6 +3,7 @@
 import json
 from datetime import datetime, timedelta, timezone as datetime_timezone
 
+from django.db import transaction
 from django.utils import timezone
 
 from services.channels.ai_send_gate import paced_ai_send
@@ -58,6 +59,23 @@ def _mark_send_attempt(message):
     message.raw_payload = payload
     message.save(update_fields=["raw_payload", "updated_at"])
     return retry
+
+
+def _record_send_error(message, *, error, failed):
+    """Persist a transport error only while delivery remains unconfirmed."""
+    with transaction.atomic():
+        message.refresh_from_db(from_queryset=WhatsAppMessage.objects.select_for_update().filter(
+            organization_id=message.organization_id, account_id=message.account_id,
+        ))
+        if message.status in {"sent", "delivered", "read"}:
+            return True
+        message.error = error
+        fields = ["error", "updated_at"]
+        if failed:
+            message.status = WhatsAppMessage.Status.FAILED
+            fields.append("status")
+        message.save(update_fields=fields)
+    return False
 
 
 @paced_ai_send
@@ -217,8 +235,10 @@ def send_hosted_message(*, message, defer_on_pause=True):
         provider_confirmed = True
     except WhatsAppWebGatewayError as exc:
         try:
-            error_code = (json.loads(exc.response_body or "{}") or {}).get("code")
+            error_payload = json.loads(exc.response_body or "{}") or {}
+            error_code = error_payload.get("code")
         except (ValueError, TypeError, AttributeError):
+            error_payload = {}
             error_code = None
         if not request_is_retry and error_code == "send_claim_unavailable":
             # Gateway explicitly confirms it did not call WhatsApp. A later
@@ -230,6 +250,25 @@ def send_hosted_message(*, message, defer_on_pause=True):
         transient = exc.status_code is None or exc.status_code >= 500
         ack_pending = error_code == "provider_ack_pending"
         if ack_pending:
+            # The provider ID is correlation evidence, not proof of delivery.
+            # Persist it while still queued so the authenticated ACK callback
+            # can find this exact row even when browser ACK lookup is stale.
+            # Otherwise callbacks retry forever against an empty external_id.
+            pending_id = str(error_payload.get("messageId") or "").strip()
+            if pending_id:
+                external_id = f"wweb:{pending_id}"
+                if message.external_id and message.external_id != external_id:
+                    raise WhatsAppSendError("Hosted provider message identity changed during acknowledgement.") from exc
+                message.external_id = external_id
+                message.save(update_fields=["external_id", "updated_at"])
+                message.refresh_from_db()
+                if message.status in {"sent", "delivered", "read"}:
+                    # A callback may win this race. Do not replace confirmed
+                    # delivery with a stale HTTP acknowledgement timeout.
+                    provider_confirmed = True
+                    finalize_hosted_send(account=account, message=message)
+                    _push_chat_refresh(message, "sent")
+                    return message
             # Query the existing request, never regenerate/resend the content.
             # Bound this wait so an unacknowledged message cannot block every
             # other lead on the same account indefinitely.
@@ -253,9 +292,24 @@ def send_hosted_message(*, message, defer_on_pause=True):
         # gateway/network failures. Keep the exact generated message queued and
         # let the durable automation job retry it shortly instead of marking the
         # conversation permanently failed after one transient provider error.
-        if defer_on_pause and is_automation and transient:
-            message.error = f"Temporary Hosted gateway failure; retry scheduled: {exc}"
-            message.save(update_fields=["error", "updated_at"])
+        retrying = defer_on_pause and is_automation and transient
+        error = (
+            f"Temporary Hosted gateway failure; retry scheduled: {exc}"
+            if retrying else (
+                "WhatsApp did not acknowledge this message within five minutes. "
+                "Delivery is unconfirmed; automatic resend is blocked to prevent duplicates."
+                if ack_pending and not transient else str(exc)
+            )
+        )
+        # An ACK may commit after the earlier pending-ID refresh. Recheck and
+        # persist under one short row lock so neither a timeout nor a retry
+        # error can overwrite confirmed delivery. Provider I/O is finished.
+        if _record_send_error(message, error=error, failed=not retrying):
+            provider_confirmed = True
+            finalize_hosted_send(account=account, message=message)
+            _push_chat_refresh(message, "sent")
+            return message
+        if retrying:
             _push_chat_refresh(message, "retrying")
             paused = HostedAutomationPaused(
                 timezone.now() + timedelta(seconds=TRANSIENT_AUTOMATION_RETRY_SECONDS)
@@ -263,13 +317,6 @@ def send_hosted_message(*, message, defer_on_pause=True):
             paused.reason = "provider_ack_pending" if ack_pending else "provider_transient"
             raise paused from exc
 
-        message.status = WhatsAppMessage.Status.FAILED
-        message.error = (
-            "WhatsApp did not acknowledge this message within five minutes. "
-            "Delivery is unconfirmed; automatic resend is blocked to prevent duplicates."
-            if ack_pending and not transient else str(exc)
-        )
-        message.save(update_fields=["status", "error", "updated_at"])
         _push_chat_refresh(message, "failed")
         raise WhatsAppSendError(message.error) from exc
     finally:

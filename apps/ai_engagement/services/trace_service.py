@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+import uuid
 from contextvars import ContextVar, Token
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -64,15 +65,16 @@ def begin_trace(*, organization, lead=None, source_message=None, account=None) -
         )
         if safe_lead is not None and safe_source is not None:
             incoming = preview(getattr(safe_source, "body", ""), limit=500)
+            is_instagram = getattr(safe_source, "conversation_id", None) is not None
             with transaction.atomic():
                 trace = AITrace.objects.create(
                     organization=organization,
                     lead=safe_lead,
                     pipeline_id=getattr(safe_lead, "pipeline_id", None),
                     stage_id=getattr(safe_lead, "stage_id", None),
-                    whatsapp_account_id=getattr(safe_account, "id", None),
+                    whatsapp_account_id=None if is_instagram else getattr(safe_account, "id", None),
                     source_inbound_message_id=getattr(safe_source, "id", None),
-                    connection_type=str(
+                    connection_type="instagram" if is_instagram else str(
                         getattr(safe_account, "connection_type", "") or "api"
                     ),
                     incoming_message_preview=incoming,
@@ -109,6 +111,31 @@ def begin_trace(*, organization, lead=None, source_message=None, account=None) -
         },
     )
     return _CURRENT.set(buffer)
+
+
+def begin_sandbox_trace(*, organization, message) -> Token:
+    """Persist one preview turn without inventing a lead or a channel message."""
+    token = begin_trace(organization=organization)
+    buffer = current()
+    message = message if isinstance(message, str) else ""
+    source_id = uuid.uuid4()
+    record("input", {"source_inbound_message_id": str(source_id),
+                     "source_kind": "sandbox_preview", "message": preview(message)})
+    record("identity", {"connection_type": "sandbox", "execution_mode": "sandbox_preview"})
+    try:
+        from django.db import transaction
+        from apps.ai_engagement.models import AITrace
+        with transaction.atomic():
+            trace = AITrace.objects.create(
+                organization=organization, lead=None, connection_type="sandbox",
+                source_inbound_message_id=source_id,
+                incoming_message_preview=preview(message, limit=500),
+                details=sanitize(buffer.data), status=AITrace.Status.STARTED,
+            )
+        buffer.trace_id = str(trace.pk)
+    except Exception:
+        logger.exception("Sandbox trace creation failed; preview remains unchanged")
+    return token
 
 
 def current() -> TraceBuffer | None:
@@ -238,6 +265,9 @@ def finalize_from_result(result: Any) -> None:
             ),
         },
     )
+    if (buffer.data.get("identity") or {}).get("connection_type") == "instagram":
+        record("finalization", {"whatsapp_24h_eligibility": "not_applicable",
+                                "delivery_owner": "instagram_send_task"})
     proposed_updates = list(
         (buffer.data.get("qualification") or {}).get("updates_proposed") or []
     )
@@ -293,10 +323,22 @@ def flush(*, reset_token: Token | None = None) -> None:
         outbound_id = buffer.data.get("outbound_message_id")
         if outbound_id:
             updates["outbound_message_id"] = outbound_id
-        AITrace.objects.filter(
-            pk=buffer.trace_id,
-            organization_id=buffer.organization_id,
-        ).update(**updates)
+        from django.db import transaction
+        with transaction.atomic():
+            rows = AITrace.objects.filter(pk=buffer.trace_id, organization_id=buffer.organization_id)
+            persisted = rows.select_for_update().first()
+            if persisted is not None:
+                # A send task or on-commit callback may finish before the turn
+                # flush. Never erase its newer delivery observation with this
+                # generation buffer, which does not own provider status.
+                stored = persisted.details if isinstance(persisted.details, dict) else {}
+                if isinstance(stored.get("delivery"), dict):
+                    updates["details"] = sanitize({"delivery": stored["delivery"], **{
+                        key: value for key, value in updates["details"].items() if key != "delivery"
+                    }})
+                    if persisted.outbound_message_id:
+                        updates["outbound_message_id"] = persisted.outbound_message_id
+                rows.update(**updates)
     except Exception:
         logger.exception("AI Trace flush failed; normal AI result remains authoritative")
     finally:
@@ -318,33 +360,28 @@ def safe_delivery_update(
         from apps.ai_engagement.models import AITrace
         from apps.channels.models import WhatsAppMessage
 
-        trace = (
-            AITrace.objects.filter(
+        from django.db import transaction
+        with transaction.atomic():
+            trace = AITrace.objects.select_for_update().filter(
                 organization_id=organization_id,
                 source_inbound_message_id=source_message_id,
+                connection_type="instagram" if getattr(outbound_message, "conversation_id", None) is not None
+                else str(getattr(getattr(outbound_message, "account", None), "connection_type", "") or "api"),
+            ).order_by("-started_at", "-id").first()
+            if trace is None:
+                return
+            status = str(getattr(outbound_message, "status", "") or "")
+            details = deepcopy(trace.details or {})
+            delivery = details.setdefault("delivery", {})
+            delivery["status"] = status
+            delivery["outbound_message_id"] = str(getattr(outbound_message, "id", "") or "")
+            if status in {WhatsAppMessage.Status.DELIVERED, WhatsAppMessage.Status.READ}:
+                delivery["delivered_at"] = timezone.now().isoformat()
+            if status == WhatsAppMessage.Status.FAILED:
+                delivery["error"] = safe_error_message(getattr(outbound_message, "error", ""))
+            AITrace.objects.filter(pk=trace.pk, organization_id=organization_id).update(
+                outbound_message_id=getattr(outbound_message, "id", None), details=sanitize(details),
             )
-            .order_by("-started_at", "-id")
-            .first()
-        )
-        if trace is None:
-            return
-        status = str(getattr(outbound_message, "status", "") or "")
-        details = deepcopy(trace.details or {})
-        delivery = details.setdefault("delivery", {})
-        delivery["status"] = status
-        if status in {WhatsAppMessage.Status.DELIVERED, WhatsAppMessage.Status.READ}:
-            delivery["delivered_at"] = timezone.now().isoformat()
-        if status == WhatsAppMessage.Status.FAILED:
-            delivery["error"] = safe_error_message(
-                getattr(outbound_message, "error", "")
-            )
-        AITrace.objects.filter(
-            pk=trace.pk,
-            organization_id=organization_id,
-        ).update(
-            outbound_message_id=getattr(outbound_message, "id", None),
-            details=sanitize(details),
-        )
     except Exception:
         logger.exception(
             "AI Trace delivery update failed; delivery state remains unchanged"

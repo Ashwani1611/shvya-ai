@@ -223,6 +223,12 @@ class InstagramAIEngagementTests(TestCase):
 
         self.assertEqual(result["status"], "completed")
         self.assertTrue(result["engaged"])
+        from apps.ai_engagement.models import AITrace
+        trace = AITrace.objects.get(organization=self.org, source_inbound_message_id=self.inbound.pk)
+        self.assertEqual(trace.connection_type, "instagram")
+        self.assertEqual(trace.lead_id, self.lead.pk)
+        self.assertEqual(trace.status, "completed")
+        self.assertEqual(str(trace.outbound_message_id), result["message_id"])
         self.lead.refresh_from_db()
         self.assertEqual(self.lead.phone, "")
 

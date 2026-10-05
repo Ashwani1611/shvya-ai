@@ -907,6 +907,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
     """Validate evidence and project updates without allowing state to move backwards."""
     result = deepcopy(state)
     allowed = {str(item["id"]) for item in requirements}
+    by_id = {str(item["id"]): item for item in requirements}
     sources = {
         str(m.get("id")): str(m.get("body") or "")
         for m in messages
@@ -943,6 +944,12 @@ def project_answer_updates(*, state, requirements, updates, messages):
             continue
         if source_id in processed and current.get("status") == REQUIREMENT_ANSWERED:
             continue
+
+        from apps.ai_engagement.services.qualification_evidence_consistency import contradicts_option_evidence
+        if contradicts_option_evidence(
+            requirement=by_id[requirement_id], value=value, evidence=evidence, source=source_text,
+        ):
+            raise ValueError("Qualification answer contradicts its inbound evidence.")
 
         result.setdefault("requirement_states", {})[requirement_id] = {
             **current,

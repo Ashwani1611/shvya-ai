@@ -6,6 +6,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.utils import timezone
 
+from .reminder_locales import localized_time_ambiguous, normalize_localized_time
+
 
 _INSTALLED = False
 
@@ -81,7 +83,7 @@ _MONTHS = {
 
 
 def _clean(value: str) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip().casefold()
+    text = re.sub(r"\s+", " ", normalize_localized_time(value)).strip().casefold()
     numbers = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
                "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
                "ek": 1, "do": 2, "teen": 3, "char": 4, "paanch": 5}
@@ -241,6 +243,8 @@ def _unambiguous_local_time(naive, target_timezone):
 
 
 def parse_grounded_due_at(text: str, *, timezone_name: str | None = None) -> str | None:
+    if localized_time_ambiguous(str(text or "")):
+        return None
     normalized = _clean(text)
     if not normalized:
         return None
@@ -264,11 +268,19 @@ def parse_grounded_due_at(text: str, *, timezone_name: str | None = None) -> str
     now = timezone.localtime(timezone.now(), target_timezone)
     # Two offered clock times/dates are alternatives, not an agreed due time.
     clock_text = _OFFSET_RE.sub("", normalized)
-    times = _TIME_12H_RE.findall(clock_text) or _TIME_24H_RE.findall(clock_text)
+    # Remove 12h matches before counting 24h times so a mixed pair is rejected,
+    # while one "3:30 PM" is counted only once.
+    times = _TIME_12H_RE.findall(clock_text) + _TIME_24H_RE.findall(_TIME_12H_RE.sub("", clock_text))
     if len(times) > 1:
         return None
-    relative = _RELATIVE_RE.search(normalized) or _HINGLISH_RELATIVE_RE.search(normalized)
+    relatives = list(_RELATIVE_RE.finditer(normalized)) + list(_HINGLISH_RELATIVE_RE.finditer(normalized))
+    if len(relatives) > 1 or (relatives and times):
+        return None
+    relative = relatives[0] if relatives else None
     if relative:
+        if (_parse_date(normalized, now) is not None or _ISO_DATE_RE.search(normalized)
+                or _DMY_DATE_RE.search(normalized) or _MONTH_DATE_RE.search(normalized)):
+            return None  # A separate calendar date cannot be silently discarded.
         amount = int(relative.group("amount"))
         unit = relative.group("unit").casefold()
         if amount <= 0:

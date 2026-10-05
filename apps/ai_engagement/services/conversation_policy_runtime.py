@@ -410,6 +410,32 @@ def _policy_for_turn(*, organization, lead) -> ConversationPolicyDecision | None
     return decision
 
 
+def source_policy_prioritizes_customer_intent(*, source_message_id, organization_id=None, lead_id=None) -> bool:
+    """Keep fallback/final copy aligned with the policy for this exact turn.
+
+    A ContextVar from another source or tenant cannot suppress a qualification
+    plan. Completion acknowledgements retain their ordinary policy path.
+    """
+    source_id = str(source_message_id or "").strip()
+    turn, policy = _TURN.get(), _POLICY.get()
+    if (not source_id or not isinstance(turn, dict)
+            or str(turn.get("source_message_id") or "") != source_id
+            or not isinstance(policy, ConversationPolicyDecision)):
+        return False
+    if organization_id is not None and str(turn.get("organization_id") or "") != str(organization_id):
+        return False
+    if lead_id is not None and str(turn.get("lead_id") or "") != str(lead_id):
+        return False
+    return bool(policy.answer_customer_question or policy.outcome in {
+        ConversationPolicyOutcome.ANSWER,
+        ConversationPolicyOutcome.ANSWER_THEN_QUALIFY,
+        ConversationPolicyOutcome.HUMAN_HANDOFF,
+        ConversationPolicyOutcome.CALL_HANDOFF,
+        ConversationPolicyOutcome.BOOKING_FLOW,
+        ConversationPolicyOutcome.CLARIFY,
+    })
+
+
 def _patch_qualification_boundary() -> None:
     from apps.ai_engagement.services import qualification_execution_contract as contract
     from apps.ai_engagement.services import qualification_state as qs

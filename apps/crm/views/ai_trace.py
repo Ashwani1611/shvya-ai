@@ -25,6 +25,7 @@ def _org_trace(organization, trace_id):
 def _trace_detail_context(details):
     """Expose bounded Phase 1-7 trace sections to the server-rendered detail UI."""
     details = details if isinstance(details, dict) else {}
+    runtime = details.get("runtime_profile") if isinstance(details.get("runtime_profile"), dict) else {}
     return {
         "input": details.get("input", {}),
         "permission": details.get("permission", {}),
@@ -45,6 +46,11 @@ def _trace_detail_context(details):
         "provider_usage": details.get("provider_usage", {}),
         "error": details.get("error", {}),
         "delivery": details.get("delivery", {}),
+        "provider": details.get("provider", {}),
+        "brain_bundle": details.get("brain_bundle") or {
+            "schema_version": runtime.get("brain_bundle_schema_version"),
+            "revision": runtime.get("brain_bundle_revision"),
+        },
     }
 
 
@@ -87,7 +93,7 @@ def ai_trace_list_view(request):
             ).order_by("name"),
             "filters": request.GET,
             "status_choices": AITrace.Status.choices,
-            "connection_types": ["api", "hosted"],
+            "connection_types": AITrace.ConnectionType.values,
         },
     )
 

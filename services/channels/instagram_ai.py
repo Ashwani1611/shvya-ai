@@ -27,6 +27,7 @@ from apps.ai_engagement.services.crm_executor import (
     CRMActionExecutor,
 )
 from apps.ai_engagement.services.engagement import EngagementError, EngagementService
+from apps.ai_engagement.services.instagram_trace import traced_instagram_turn
 from apps.ai_engagement.services.engagement_failsoft import (
     build_deterministic_fallback_decision,
 )
@@ -471,6 +472,7 @@ def _generate_instagram_decision(*, service, organization, lead, source):
     return decision
 
 
+@traced_instagram_turn
 def execute_instagram_ai_engagement(*, task, message_id):
     """Generate, finalize, queue and dispatch one Instagram AI reply."""
     source = (

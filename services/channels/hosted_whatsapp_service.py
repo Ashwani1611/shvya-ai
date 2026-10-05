@@ -10,6 +10,7 @@ from datetime import datetime, timezone as dt_timezone
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils import timezone
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.crm.models import Lead, Pipeline, Stage
@@ -774,7 +775,14 @@ def handle_gateway_event(*, payload):
             # AI provenance or history/live markers with an ACK payload.
             raw = message.raw_payload if isinstance(message.raw_payload, dict) else {}
             message.raw_payload = {**raw, "lastAck": payload}
-            message.save(update_fields=["status", "raw_payload", "updated_at"])
+            fields = ["status", "raw_payload", "updated_at"]
+            if message.status in {"sent", "delivered", "read"}:
+                message.error = ""
+                fields.append("error")
+                if not message.sent_at:
+                    message.sent_at = timezone.now()
+                    fields.append("sent_at")
+            message.save(update_fields=fields)
         return message
 
     if event == "history_sync":

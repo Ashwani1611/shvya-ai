@@ -20,6 +20,8 @@ class AITrace(models.Model):
     class ConnectionType(models.TextChoices):
         API = "api", "API"
         HOSTED = "hosted", "Hosted"
+        INSTAGRAM = "instagram", "Instagram"
+        SANDBOX = "sandbox", "Sandbox"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     organization = models.ForeignKey(
@@ -31,6 +33,8 @@ class AITrace(models.Model):
         Lead,
         on_delete=models.CASCADE,
         related_name="ai_traces",
+        null=True,
+        blank=True,
     )
     pipeline_id = models.UUIDField(null=True, blank=True)
     stage_id = models.UUIDField(null=True, blank=True)
@@ -52,6 +56,13 @@ class AITrace(models.Model):
 
     class Meta:
         ordering = ["-started_at", "-id"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(models.Q(connection_type="sandbox", lead__isnull=True)
+                           | (~models.Q(connection_type="sandbox") & models.Q(lead__isnull=False))),
+                name="ai_trace_sandbox_lead_scope",
+            ),
+        ]
         indexes = [
             models.Index(fields=["organization", "-started_at"], name="ai_trace_org_created_idx"),
             models.Index(fields=["organization", "lead", "-started_at"], name="ai_trace_org_lead_idx"),

@@ -406,6 +406,9 @@ def install_playground_graph_recovery() -> None:
             if not _is_playground_state(state):
                 raise
 
+            from apps.ai_engagement.services.turn_diagnostics import record_failure
+            record_failure(exc)
+
             from apps.ai_engagement.services.ai_provider import AIProviderError
             from apps.ai_engagement.services.engagement import EngagementError
             if (isinstance(exc, (AIProviderError, EngagementError))
@@ -413,7 +416,10 @@ def install_playground_graph_recovery() -> None:
                 try:
                     recovered = _ai_brain_recovery(state)
                     if recovered is not None:
-                        return recovered
+                        return workflow._review_draft_decision(
+                            state, context=recovered.get("context", state["context"]),
+                            decision=recovered["decision"],
+                        )
                 except (AIProviderError, EngagementError):
                     logger.warning("ai_sandbox_brain_recovery_failed", exc_info=True)
 
@@ -432,8 +438,8 @@ def install_playground_graph_recovery() -> None:
                         len(chunks),
                         exc_info=True,
                     )
-                    return {
-                        "decision": EngagementDecision(
+                    return workflow._review_draft_decision(
+                        state, context=state["context"], decision=EngagementDecision(
                             should_engage=True,
                             message=grounded_message,
                             file_document_id=None,
@@ -442,8 +448,8 @@ def install_playground_graph_recovery() -> None:
                             reason_code="ANSWER_ORG_QUESTION",
                             next_requirement_id=None,
                             model="deterministic-knowledge-recovery",
-                        )
-                    }
+                        ),
+                    )
 
                 logger.warning(
                     "ai_sandbox_generation_intent_fallback organization=%s lead=%s",
@@ -483,8 +489,8 @@ def install_playground_graph_recovery() -> None:
                     next_id,
                     exc_info=True,
                 )
-                return {
-                    "decision": EngagementDecision(
+                return workflow._review_draft_decision(
+                    state, context=state["context"], decision=EngagementDecision(
                         should_engage=True,
                         message=f"Nice. {question}",
                         file_document_id=None,
@@ -493,8 +499,8 @@ def install_playground_graph_recovery() -> None:
                         reason_code="QUALIFICATION_NEXT",
                         next_requirement_id=next_id or None,
                         model="deterministic-recovery",
-                    )
-                }
+                    ),
+                )
             raise
 
     workflow._deterministic_extract = scoped_deterministic_extract

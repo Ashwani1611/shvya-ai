@@ -12,6 +12,7 @@ from typing import Any, Mapping
 
 from apps.ai_engagement.services.sales_intelligence import ObjectionEngine, settings_section
 from apps.ai_engagement.services.tenant_guard import TenantScopeError
+from apps.ai_engagement.services.playbook import playbook_prompt_text
 
 COMPOSER_INSTRUCTIONS = """
 CONTROLLED RESPONSE COMPOSITION
@@ -158,6 +159,17 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     from apps.ai_engagement.services.organization_profile import _languages, may_answer_from_ai_brain
     languages = communication.get("languages") or _languages(str(org.get("bot_languages") or ""))
     instructions = str(communication.get("custom_instructions") or org.get("ai_playbook") or "")
+    if (
+        len(instructions) > 50000
+        and not str(communication.get("custom_instructions") or "").strip()
+        and (payload.get("organization_operating_spec") or {}).get("playbook_in_system_instructions") is True
+    ):
+        # This flag is produced by EngagementService._build_input only after
+        # the complete, bounded raw Playbook is accepted for system instructions.
+        # Avoid repeating a second large copy in the language-only response plan.
+        prompt_instructions = "Follow the complete authored AI Playbook in ORGANIZATION OPERATING SPEC in system instructions."
+    else:
+        prompt_instructions = playbook_prompt_text(instructions)
     # Profile compaction deliberately moves these fields to organization. Never
     # interpret their absence from the compact profile as no language policy.
     from apps.ai_engagement.services.intent_rules import detect_language
@@ -178,7 +190,7 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         next_question=next_item if isinstance(next_item, dict) else None,
         tone=str(settings_section(settings, "ai_response").get("tone") or "")[:500],
         language=selected_language[:150],
-        organization_instructions=instructions[:50000],
+        organization_instructions=prompt_instructions,
         allowed_languages=tuple(str(item) for item in languages),
         resolved_request_outcomes=tuple(outcomes),
         already_greeted=any(isinstance(item, dict) and item.get("direction") == "outbound" for item in messages),

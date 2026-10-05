@@ -56,11 +56,34 @@ and an unconfirmed action. Pricing/policy uncertainty is specific without invent
 facts or claiming the business has no information. Mixed qualification/business
 questions are not replaced by an unrelated qualification acknowledgement.
 
-These deterministic templates cover English, Hindi and Hinglish; normal generation
-and existing grounding continue to enforce the full Bot Languages/Playbook policy.
+These eight deterministic template kinds cover English, Hindi, Hinglish, Punjabi,
+Marathi, German and Kannada. The terminal empty-reply guard preserves the
+organization's configured languages even when generation fails. Script hints
+choose only among configured languages; shared scripts use configured order
+(including Hindi/Marathi and English/German). This finite selection is not a
+general language classifier. Legacy conversational acknowledgements, handoff
+wording and verbatim authored business facts are separate from these templates.
+Normal generation and existing grounding continue to enforce the full Bot Languages/Playbook policy.
 Arbitrary conditional-language instructions and other languages do not acquire a
 new universal deterministic interpreter. Verify configured languages in live trials.
 Do not treat a successful CI run as proof of naturalness or semantic accuracy.
+
+## Bounded reminder language support
+
+The shared deterministic reminder path recognizes explicit callback and reminder
+requests in Punjabi (Gurmukhi), Marathi, German and Kannada. It accepts native
+decimal digits, numeric calendar dates, explicit 24-hour/AM-PM clocks, supported
+day-part clocks, today/tomorrow words and numeric elapsed intervals. Organization
+timezone, explicit offsets/IANA zones, future-date checks and DST ambiguity checks
+still apply. Authored reminder titles and conditions remain authoritative.
+
+This is a finite grammar. Ambiguous Punjabi `ਕੱਲ੍ਹ`, German `am Morgen`, bare
+twelve-hour clocks, conditional/negated requests, offered alternatives, competing
+relative/calendar times and unsupported date wording do not authorize a reminder.
+Localized month/weekday names and adjacent short confirmations are not newly
+supported. A factual dated statement still cannot create an action. These checks
+cover the shared routing boundary; they are not live transport verification, and
+a CRM reminder does not itself schedule an outgoing channel message.
 
 ## Explicit source repair
 

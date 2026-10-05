@@ -44,7 +44,8 @@ def get_production_trace(*, identity, arguments):
         "trace": {
             "id": str(trace.id),
             "organization_id": str(trace.organization_id),
-            "lead_id": str(trace.lead_id),
+            "lead_id": str(trace.lead_id) if trace.lead_id else None,
+            "connection_type": trace.connection_type,
             "source_inbound_message_id": str(trace.source_inbound_message_id),
             "outbound_message_id": str(trace.outbound_message_id) if trace.outbound_message_id else None,
             "pipeline_id": str(trace.pipeline_id) if trace.pipeline_id else None,
