@@ -53,17 +53,26 @@ def _welcome_due_for_context(*, decision, context, lead):
     if not decision.should_engage or getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION":
         return False
     from apps.crm.models import Lead
+    conversation = context.conversation or {}
+    channel = str(conversation.get("channel") or "").strip().casefold()
+    messages = [item for item in conversation.get("messages", []) if isinstance(item, dict)]
+    # Instagram has its own message table.  The generic Lead predicate reads
+    # WhatsApp history, so using it for an Instagram turn incorrectly suppresses
+    # a first-message welcome (and any file explicitly allowed with that
+    # welcome).  Sandbox already supplies an in-memory lead, so it uses the
+    # same bounded conversation predicate.
+    if channel in {"instagram", "sandbox"} or not isinstance(lead, Lead):
+        return bool(
+            conversation.get("message_count", len(messages)) == 1
+            and len(messages) == 1
+            and messages[0].get("direction") == "inbound"
+        )
     if isinstance(lead, Lead):
         from apps.ai_engagement.services.first_inbound_welcome_runtime import _is_first_inbound_turn
         # Live context can be scoped to one account or omit empty bodies. The
         # canonical welcome predicate checks all persisted lead messages.
         return _is_first_inbound_turn(lead)
-    conversation = context.conversation or {}
-    messages = [item for item in conversation.get("messages", []) if isinstance(item, dict)]
-    return bool(
-        conversation.get("message_count", len(messages)) == 1
-        and len(messages) == 1 and messages[0].get("direction") == "inbound"
-    )
+    return False
 
 
 def _min_rag_similarity() -> float:
@@ -452,10 +461,17 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
     # A draft can omit a requested file or authored welcome attachment. Review
     # only that missing choice, retaining the reply, qualification evidence and
     # CRM proposals; the authored file condition remains the sharing authority.
-    from apps.ai_engagement.services.file_sharing import FileSharingService, explicit_file_request
+    from apps.ai_engagement.services.file_sharing import (
+        FileSharingService,
+        explicit_file_request,
+        shared_document_ids,
+    )
     from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
     candidates = (context.organization or {}).get("_file_candidates") or []
-    requested = explicit_file_request(state.get("latest_text", ""))
+    requested = explicit_file_request(
+        state.get("latest_text", ""),
+        has_shared_files=bool(shared_document_ids(context.lead)),
+    )
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
     review_trigger = "explicit_request" if requested else "welcome" if welcome_due else "none"
     review_status = (

@@ -9,7 +9,10 @@ from typing import Any
 
 from django.core.cache import cache
 
-from apps.ai_engagement.services.ai_provider import OpenAIProvider
+from apps.ai_engagement.services.ai_provider import (
+    AIProviderTransientError,
+    OpenAIProvider,
+)
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.embeddings import EmbeddingError, EmbeddingService
 from apps.ai_engagement.services.engagement import (
@@ -57,6 +60,18 @@ from apps.ai_engagement.services.runtime_state import (
 from apps.ai_engagement.services.turn_diagnostics import sandbox_diagnostics
 
 logger = logging.getLogger(__name__)
+
+
+def _is_transient_provider_failure(error: BaseException) -> bool:
+    """Detect a retryable provider failure through the wrapped error chain."""
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, AIProviderTransientError):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 class _SandboxLead(SimpleNamespace):
@@ -741,6 +756,18 @@ class PlaygroundService:
                 "AI Sandbox post-effect composition failed for organization %s",
                 getattr(organization, "id", ""),
             )
+            if _is_transient_provider_failure(exc):
+                # The validated first pass already owns the preview effects.
+                # A second, language-only pass is optional; preserving that
+                # reply is safer than replacing it with a technical error when
+                # OpenAI briefly hits a token-per-minute limit. No action is
+                # re-run and the caller still applies preview honesty below.
+                from apps.ai_engagement.services import trace_service
+                trace_service.record("recovery", {
+                    "provider_transient_recovered": True,
+                    "phase": "sandbox_final_language_only",
+                })
+                return language_only_decision(decision=decision, files=files)
             # A failed language pass must not leak its mutations into either the
             # fallback context or the saved session. Fallbacks also cannot act.
             with preserve_preview_state(visitor):

@@ -59,6 +59,45 @@ OPTION_LINE = re.compile(
 )
 NUMBER = re.compile(r"(?<!\w)(\d+(?:\.\d+)?)(?!\w)")
 
+# Keep language identity in one place.  OrgInfo stores human labels (for
+# example ``English, Marathi``), while the intent model and deterministic
+# fallbacks use short codes.  Matching the two by raw string was the reason
+# configured Punjabi/Marathi/German/Kannada bots silently fell back to English.
+LANGUAGE_ALIASES = {
+    "english": "english", "en": "english", "en-us": "english", "en-gb": "english",
+    "hindi": "hindi", "hi": "hindi", "hi-in": "hindi", "हिन्दी": "hindi", "हिंदी": "hindi",
+    "hinglish": "hinglish", "hinglish (roman hindi)": "hinglish",
+    "punjabi": "punjabi", "panjabi": "punjabi", "pa": "punjabi", "pa-in": "punjabi", "ਪੰਜਾਬੀ": "punjabi",
+    "marathi": "marathi", "mr": "marathi", "mr-in": "marathi", "मराठी": "marathi",
+    "german": "german", "de": "german", "de-de": "german", "de-at": "german", "de-ch": "german", "deutsch": "german",
+    "kannada": "kannada", "kn": "kannada", "kn-in": "kannada", "ಕನ್ನಡ": "kannada",
+    "tamil": "tamil", "ta": "tamil", "ta-in": "tamil", "தமிழ்": "tamil",
+    "telugu": "telugu", "te": "telugu", "te-in": "telugu", "తెలుగు": "telugu",
+    "bengali": "bengali", "bangla": "bengali", "bn": "bengali", "বাংলা": "bengali",
+    "gujarati": "gujarati", "gu": "gujarati", "ગુજરાતી": "gujarati",
+    "malayalam": "malayalam", "ml": "malayalam", "മലയാളം": "malayalam",
+    "spanish": "spanish", "es": "spanish", "es-es": "spanish", "es-mx": "spanish",
+    "french": "french", "fr": "french", "fr-fr": "french",
+}
+
+LANGUAGE_CODES = {
+    "english": "en", "hindi": "hi", "hinglish": "hinglish", "punjabi": "pa",
+    "marathi": "mr", "german": "de", "kannada": "kn", "tamil": "ta",
+    "telugu": "te", "bengali": "bn", "gujarati": "gu", "malayalam": "ml",
+    "spanish": "es", "french": "fr",
+}
+
+
+def canonical_language(value: Any) -> str:
+    """Return a stable language name for a label, code, or model response."""
+    normalized = " ".join(str(value or "").strip().casefold().replace("_", "-").split())
+    return LANGUAGE_ALIASES.get(normalized, normalized)
+
+
+def language_code(value: Any) -> str:
+    canonical = canonical_language(value)
+    return LANGUAGE_CODES.get(canonical, canonical)
+
 
 def normalize(value: Any) -> str:
     return " ".join(str(value or "").strip().casefold().replace("’", "'").split())
@@ -69,12 +108,57 @@ def contains_any(text: str, terms: Iterable[str]) -> bool:
 
 
 def detect_language(text: str) -> str | None:
-    if re.search(r"[\u0900-\u097F]", text):
+    value = str(text or "")
+    # Script detection is deterministic and avoids spending another provider
+    # call just to choose the response language.
+    scripts = (
+        (r"[\u0a00-\u0a7f]", "pa"),
+        (r"[\u0c80-\u0cff]", "kn"),
+        (r"[\u0b80-\u0bff]", "ta"),
+        (r"[\u0c00-\u0c7f]", "te"),
+        (r"[\u0980-\u09ff]", "bn"),
+        (r"[\u0a80-\u0aff]", "gu"),
+        (r"[\u0d00-\u0d7f]", "ml"),
+    )
+    for pattern, code in scripts:
+        if re.search(pattern, value):
+            return code
+    if re.search(r"[\u0900-\u097F]", value):
+        # Marathi and Hindi share Devanagari. These high-signal words cover
+        # ordinary customer questions without pretending to solve every
+        # linguistic ambiguity; the configured-language matcher can still
+        # choose the first authored language when the script is ambiguous.
+        if re.search(r"(?:आहे|आणि|मला|तुम्ही|तुमचा|किती|किंमत|बद्दल|करायचं|पाहिजे)", value):
+            return "mr"
         return "hi"
-    value = text.casefold()
+    value = value.casefold()
+    if re.search(r"\b(?:tusi|tuhada|kive|kinna|haanji|ji|karna|chahida)\b", value):
+        return "pa"
+    if re.search(r"\b(?:kay|kaay|ahe|mala|tumhi|kiti|majha|karaycha|pahije)\b", value):
+        return "mr"
+    if re.search(r"\b(?:enu|hege|nimage|beku|ide)\b", value):
+        return "kn"
     if re.search(r"\b(?:kya|hai|mujhe|baat|haan|nahi|hum|karte|karna|karo|kitna|kitne|chala)\b", value):
         return "hinglish"
-    return "en" if re.search(r"[A-Za-z]", text) else None
+    german_hits = re.findall(
+        r"\b(?:der|die|das|ist|sind|und|oder|wie|was|wer|ich|nicht|preis|kosten|für)\b",
+        value,
+    )
+    if len(german_hits) >= 2 or re.search(r"\b(?:preis|kosten|für|nicht)\b", value):
+        return "de"
+    spanish_hits = re.findall(
+        r"\b(?:el|la|los|las|que|qué|como|cómo|precio|gracias|quiero|puede)\b",
+        value,
+    )
+    if len(spanish_hits) >= 2 or re.search(r"\b(?:precio|gracias|quiero|puede|cómo|qué)\b", value):
+        return "es"
+    french_hits = re.findall(
+        r"\b(?:le|la|les|que|quoi|comment|prix|merci|bonjour|vous)\b",
+        value,
+    )
+    if len(french_hits) >= 2 or re.search(r"\b(?:prix|merci|bonjour|quoi|comment|vous)\b", value):
+        return "fr"
+    return "en" if re.search(r"[A-Za-z]", value) else None
 
 
 def direct_question(text: str) -> str | None:

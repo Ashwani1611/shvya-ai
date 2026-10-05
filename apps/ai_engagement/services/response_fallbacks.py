@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import re
 
+from apps.ai_engagement.services.intent_rules import canonical_language, detect_language
+
 
 _MESSAGES = {
     "english": {
@@ -99,17 +101,24 @@ TECHNICAL_FAILURES = frozenset({
 
 
 def fallback_language(bot_languages="", latest_text=""):
-    configured = [item.strip().casefold() for item in re.split(r"[,;\n/|]+", str(bot_languages or "")) if item.strip()]
-    configured = [_LANGUAGE_ALIASES.get(item.replace("_", "-"), item) for item in configured]
+    configured = [
+        canonical_language(item)
+        for item in re.split(r"[,;\n/|]+", str(bot_languages or ""))
+        if item.strip()
+    ]
     if not configured:
-        return "hindi" if re.search(r"[\u0900-\u097f]", str(latest_text)) else "english"
-    # Script can narrow the configured languages, but cannot distinguish Hindi
-    # from Marathi or German from English. Preserve authored order in those
-    # cases instead of treating a shared alphabet as a language classifier.
+        observed = canonical_language(detect_language(str(latest_text or "")))
+        return observed if observed in _MESSAGES else ("hindi" if re.search(r"[\u0900-\u097f]", str(latest_text)) else "english")
+    # Script and high-signal lexical markers narrow the configured languages.
+    # When the text is genuinely ambiguous, preserve authored order instead
+    # of guessing from a shared alphabet.
     scripts = {
         "hindi": r"[\u0900-\u097f]", "marathi": r"[\u0900-\u097f]",
         "punjabi": r"[\u0a00-\u0a7f]", "kannada": r"[\u0c80-\u0cff]",
     }
+    observed = canonical_language(detect_language(str(latest_text or "")))
+    if observed in configured and observed in _MESSAGES:
+        return observed
     for language in configured:
         if language in scripts and re.search(scripts[language], str(latest_text)):
             return language
