@@ -44,6 +44,11 @@ _AVAILABILITY_RE = re.compile(
     r"\b(?:available|availability|free|slot)\b",
     re.IGNORECASE,
 )
+_CALENDAR_CONTEXT_RE = re.compile(
+    r"\b(?:demo|meeting|appointment|consultation|onboarding|call|slot|time|"
+    r"today|tomorrow|morning|afternoon|evening)\b",
+    re.IGNORECASE,
+)
 _RESCHEDULE_RE = re.compile(r"\b(?:reschedule|change|move)\b", re.IGNORECASE)
 _CONTINUE_RE = re.compile(
     r"^(?:what\s+next|next|show\s+(?:me\s+)?slots?|slots?|"
@@ -316,9 +321,12 @@ def prepare_booking_turn(*, organization, lead, source_message) -> BookingPlan:
         Intent.BOOKING_INTENT in deterministic_intents(text)
         or bool(_BOOKING_RE.search(text))
     )
-    explicit_availability = (
-        Intent.AVAILABILITY_QUESTION in deterministic_intents(text)
-        or bool(_AVAILABILITY_RE.search(text))
+    explicit_availability = bool(
+        _AVAILABILITY_RE.search(text)
+        and (
+            _CALENDAR_CONTEXT_RE.search(text)
+            or pending_status in {"awaiting_selection", "awaiting_confirmation"}
+        )
     )
     pending_continuation = bool(
         pending_status in {"awaiting_selection", "awaiting_confirmation"}
@@ -360,7 +368,16 @@ def prepare_booking_turn(*, organization, lead, source_message) -> BookingPlan:
         lead=lead,
         page=page,
     )
-    if existing is not None and not _RESCHEDULE_RE.search(text):
+    if existing is not None:
+        if _RESCHEDULE_RE.search(text):
+            return BookingPlan(
+                True,
+                mode="manual",
+                page_id=str(page.pk),
+                source_message_id=source_message_id,
+                existing_booking_id=str(existing.pk),
+                reason="reschedule_requires_staff_followup",
+            )
         return BookingPlan(
             True,
             mode="existing",
