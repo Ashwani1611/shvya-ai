@@ -47,7 +47,9 @@ attribution, event match quality or campaign optimization.
   markers. Website events require a customer page URL and customer browser.
 - `user_data.lead_id` comes exclusively from `Lead.attributes.meta_leadgen_id`.
   Shvya's UUID is separately SHA-256 hashed as `external_id`. Names, phone,
-  email, gender, birth date and location are normalized and hashed. Meta Lead
+  email, gender, birth date and location are normalized and hashed. Unicode
+  combining marks are preserved in names and locations; country and gender
+  whitespace is trimmed before normalization, including US ZIP truncation. Meta Lead
   IDs, `fbp`, `fbc`, customer IP/browser and `ctwa_clid` remain unhashed according
   to Meta's parameter specification. Optional attribute names match the UI
   keys (`city`, `state`, `zip_code`, `country`, `ip_address`, `user_agent`,

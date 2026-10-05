@@ -44,6 +44,22 @@ class MetaConversionsMatchingTests(SimpleTestCase):
             with self.subTest(name=name):
                 self.assertEqual(build_user_data(configuration, Lead(name=name))["fn"], [expected])
 
+    def test_indic_customer_fields_preserve_unicode_combining_marks(self):
+        configuration = MetaConversionsConfiguration(user_data_fields=["name", "city", "state", "external_id"])
+        lead = Lead(name="गौरव सिंह", attributes={"city": "मुंबई", "state": "महाराष्ट्र"})
+        data = build_user_data(configuration, lead)
+        for field, normalized in [("fn", "गौरव"), ("ln", "सिंह"), ("ct", "मुंबई"), ("st", "महाराष्ट्र")]:
+            with self.subTest(field=field):
+                self.assertEqual(data[field], [hashlib.sha256(normalized.encode("utf-8")).hexdigest()])
+
+    def test_customer_country_gender_and_us_zip_are_trimmed_before_hashing(self):
+        configuration = MetaConversionsConfiguration(user_data_fields=["country", "gender", "zip_code", "external_id"])
+        lead = Lead(attributes={"country": " US ", "gender": " Female ", "zip_code": "94035-1234"})
+        data = build_user_data(configuration, lead)
+        for field, normalized in [("zp", "94035"), ("country", "us"), ("ge", "f")]:
+            with self.subTest(field=field):
+                self.assertEqual(data[field], [hashlib.sha256(normalized.encode()).hexdigest()])
+
     def test_meta_baseline_matching_rejects_broad_identifier_combinations(self):
         configuration = MetaConversionsConfiguration()
         cases = [

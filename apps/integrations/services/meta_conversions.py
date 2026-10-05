@@ -4,6 +4,7 @@ import hashlib
 import ipaddress
 import logging
 import re
+import unicodedata
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -110,6 +111,11 @@ def _hashed(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _normalized_letters(value):
+    # Keep combining marks that form letters in scripts such as Devanagari.
+    return "".join(c for c in value.lower() if c.isalpha() or unicodedata.category(c).startswith("M"))
+
+
 def build_user_data(configuration, lead):
     selected = set(configuration.user_data_fields)
     attributes = lead.attributes or {}
@@ -122,7 +128,7 @@ def build_user_data(configuration, lead):
     if "name" in selected and lead.name and lead.name.lower() not in {"meta lead", "new lead", "instagram lead"}:
         parts = lead.name.strip().split(maxsplit=1)
         for key, value in zip(("fn", "ln"), parts):
-            normalized = "".join(c for c in value.lower() if c.isalpha())
+            normalized = _normalized_letters(value)
             if normalized:
                 result[key] = [_hashed(normalized)]
     if "external_id" in selected:
@@ -138,16 +144,16 @@ def build_user_data(configuration, lead):
             continue
         value = str(attributes.get(source) or "").strip().lower()
         if source in {"city", "state"}:
-            value = "".join(c for c in value if c.isalpha())
+            value = _normalized_letters(value)
         elif source == "zip_code":
             value = re.sub(r"[\s-]", "", value)
-            if str(attributes.get("country") or "").lower() == "us":
+            if str(attributes.get("country") or "").strip().lower() == "us":
                 value = value[:5]
         elif not re.fullmatch(r"[a-z]{2}", value):
             value = ""
         if value:
             result[target] = [_hashed(value)]
-    gender = {"male": "m", "female": "f", "m": "m", "f": "f"}.get(str(attributes.get("gender") or "").lower())
+    gender = {"male": "m", "female": "f", "m": "m", "f": "f"}.get(str(attributes.get("gender") or "").strip().lower())
     if "gender" in selected and gender:
         result["ge"] = [_hashed(gender)]
     if "date_of_birth" in selected and attributes.get("date_of_birth"):
