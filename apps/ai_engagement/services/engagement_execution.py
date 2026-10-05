@@ -794,6 +794,50 @@ def _execute_ai_engagement_response_impl(
         }
 
     # --------------------------------------------------------
+    # PREPARE DETERMINISTIC CALENDAR ACTION
+    # --------------------------------------------------------
+    #
+    # The LLM may recognize a booking request, but it never owns slot
+    # availability or confirmation. This read-only preparation resolves the
+    # organization's published SHVYA Calendar page and current slots. The actual
+    # booking/reminder mutation happens only inside the final transaction below.
+    # --------------------------------------------------------
+
+    booking_plan = None
+    booking_result = None
+    try:
+        from apps.ai_engagement.services.booking_runtime import (
+            prepare_booking_turn,
+        )
+
+        lead.refresh_from_db(fields=["attributes"])
+        booking_plan = prepare_booking_turn(
+            organization=organization,
+            lead=lead,
+            source_message=latest_after_generation,
+        )
+    except Exception as exc:
+        logger.exception(
+            "generate_ai_engagement_response: booking preparation failed for lead %s",
+            lead_id,
+        )
+        try:
+            from apps.ai_engagement.services.intent_rules import deterministic_intents
+            from apps.ai_engagement.services.intent_types import Intent
+
+            intents = deterministic_intents(latest_after_generation.body)
+        except Exception:
+            intents = set()
+        if intents & {Intent.BOOKING_INTENT, Intent.AVAILABILITY_QUESTION}:
+            return {
+                "status": "failed",
+                "reason": "booking_preparation_failed",
+                "lead_id": str(lead_id),
+                "source_message_id": str(source_inbound_message_id),
+                "error": str(exc),
+            }
+
+    # --------------------------------------------------------
     # FINAL ATOMIC CHECK + CRM + QUEUE
     # --------------------------------------------------------
 
@@ -945,6 +989,34 @@ def _execute_ai_engagement_response_impl(
             )
 
             # ------------------------------------------------
+            # CALENDAR BOOKING + PANEL REMINDER
+            # ------------------------------------------------
+            #
+            # Execute after qualification/CRM persistence but before the outbound
+            # queue. A booking confirmation is therefore sent only after
+            # CalendarBooking and the lead reminder have committed successfully.
+            # book_slot() re-checks live capacity, buffers and Google busy time.
+            # ------------------------------------------------
+
+            if booking_plan is not None and booking_plan.handled:
+                from apps.ai_engagement.services.booking_runtime import (
+                    apply_booking_plan,
+                )
+
+                booking_result = apply_booking_plan(
+                    organization=organization,
+                    lead=lead,
+                    source_message=latest_final,
+                    plan=booking_plan,
+                )
+                if booking_result.handled:
+                    body = str(booking_result.message or "").strip()
+                    if not body:
+                        raise ValueError(
+                            "Booking execution returned an empty customer message."
+                        )
+
+            # ------------------------------------------------
             # QUEUE OUTBOUND WHATSAPP MESSAGE
             # ------------------------------------------------
             #
@@ -1030,6 +1102,10 @@ def _execute_ai_engagement_response_impl(
                     "next_requirement_id": decision.next_requirement_id,
                 }
             }
+            if booking_result is not None and booking_result.handled:
+                outbound_message.raw_payload["shvya_ai"]["booking"] = (
+                    booking_result.as_dict()
+                )
 
             outbound_message.save(
                 update_fields=[
@@ -1101,4 +1177,9 @@ def _execute_ai_engagement_response_impl(
             source_inbound_message_id
         ),
         "model": decision.model,
+        "booking": (
+            booking_result.as_dict()
+            if booking_result is not None and booking_result.handled
+            else None
+        ),
     }
