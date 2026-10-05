@@ -274,11 +274,16 @@ def _assess(state: dict, sources: list[dict]) -> Coverage:
     payload = {"question": str(state.get("latest_text") or "")[:2000],
                "recent_conversation": recent, "evidence": sources,
                "retrieval_status": state.get("retrieval_status", "not_run")}
+    from apps.ai_engagement.services.turn_controller import build_turn_policy
+    turn_policy = state.get("turn_policy") or build_turn_policy(
+        context=context, qualification_state=state.get("qualification_state") or {},
+    )
     try:
         result = OpenAIProvider(timeout_seconds=CALL_SECONDS).generate_text(
             instructions=COVERAGE_INSTRUCTIONS, input_text=json.dumps(payload, ensure_ascii=False),
             metadata={"organization_id": str(state["organization"].id), "lead_id": str(state["lead"].id),
-                      "purpose": "engagement", "phase": "evidence_coverage"},
+                      "purpose": "engagement", "phase": "evidence_coverage",
+                      "prompt_mode": turn_policy.prompt_mode, "model_override": turn_policy.model_override},
             response_schema=COVERAGE_SCHEMA,
         )
     except AIProviderConfigurationError:

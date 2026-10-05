@@ -4,6 +4,13 @@ from datetime import datetime
 
 from django.utils import timezone
 
+from .reminder_locales import (
+    localized_request_blocked,
+    localized_request_conditional,
+    localized_request_kind,
+    localized_time_ambiguous,
+)
+
 
 _REQUEST_NOUNS = r"(?:call|callback|phone|remind|reminder|follow[ -]?up|contact|connect)"
 _NEGATED_REQUEST_RE = re.compile(
@@ -30,23 +37,26 @@ _FOLLOWUP_REQUEST_RE = re.compile(
 
 
 def _clause_request_kind(clause):
-    if _NEGATED_REQUEST_RE.search(clause):
+    if _NEGATED_REQUEST_RE.search(clause) or localized_request_blocked(clause):
         return None
     if _CALLBACK_REQUEST_RE.search(clause):
         return "callback"
     if _FOLLOWUP_REQUEST_RE.search(clause):
         return "later follow-up"
-    return None
+    return localized_request_kind(clause)
 
 
 def reminder_request_evidence(text):
     """Keep the one positive request clause, excluding unrelated dated facts."""
     text = str(text or "")
-    if _OPT_OUT_RE.search(text):
+    if _OPT_OUT_RE.search(text) or localized_request_conditional(text):
         return ""
     # Only explicit sentence/clause boundaries are used. Preserve dotted AM/PM
     # notation and append fragments containing only a supplied date/time.
-    clauses = re.split(r"(?<=[.!?])\s+|[;,]+|\b(?:and|aur|but|lekin)\b", text, flags=re.I)
+    clauses = re.split(
+        r"(?<=[.!?।])\s+|[;,]+|\b(?:and|aur|but|lekin|und|aber)\b|"
+        r"(?<!\S)(?:आणि|पण|ਅਤੇ|ਪਰ|ಮತ್ತು|ಆದರೆ)(?!\S)", text, flags=re.I,
+    )
     requests = []
     temporal_fragment = re.compile(
         r"^(?:(?:at|on|in|after|am|pm|a\.?m\.?|p\.?m\.?|utc|gmt|ist|india(?:n)?|time|"
@@ -64,7 +74,7 @@ def reminder_request_evidence(text):
         evidence = clause.strip()
         for fragment in clauses[index + 1:]:
             fragment = fragment.strip()
-            if re.match(r"^or\b", fragment, re.I):
+            if re.match(r"^or\b", fragment, re.I) or localized_time_ambiguous(fragment):
                 return ""  # An offered alternative is not an agreed callback.
             if not fragment or not temporal_fragment.fullmatch(fragment):
                 break

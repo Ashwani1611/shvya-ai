@@ -349,6 +349,7 @@ class PlaygroundResult:
     lead_source: str = "system"
     diagnostics: str = ""
     brain_bundle: dict = field(default_factory=dict)
+    trace_id: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -363,6 +364,7 @@ class PlaygroundResult:
             "channel": self.channel, "lead_source": self.lead_source,
             "execution_mode": "sandbox_preview",
             "brain_bundle": self.brain_bundle,
+            "trace_id": self.trace_id,
         }
 
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from apps.ai_engagement.services.playbook import MAX_PLAYBOOK_CHARS, playbook_prompt_text
 from apps.ai_engagement.services.qualification_state import (
     MODE_QUALIFICATION,
     next_requirement,
@@ -12,7 +13,7 @@ from apps.ai_engagement.services.qualification_state import (
 
 QUALIFICATION_MODE = "qualification"
 SALES_SUPPORT_MODE = "sales_support"
-MAX_OPERATING_SPEC_CHARS = 50000
+MAX_OPERATING_SPEC_CHARS = MAX_PLAYBOOK_CHARS
 DEFAULT_KNOWLEDGE_LIMIT = 5
 
 
@@ -56,9 +57,7 @@ def build_turn_policy(*, context, qualification_state: dict | None = None) -> Tu
     return TurnPolicy(
         prompt_mode=prompt_mode,
         model_override=str(organization.get(model_key) or "").strip()[:100],
-        operating_spec=str(organization.get("ai_playbook") or "").strip()[
-            :MAX_OPERATING_SPEC_CHARS
-        ],
+        operating_spec=playbook_prompt_text(organization.get("ai_playbook") or ""),
         knowledge_limit=DEFAULT_KNOWLEDGE_LIMIT,
     )
 

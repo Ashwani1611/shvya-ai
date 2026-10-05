@@ -119,6 +119,27 @@ class QualificationEvidenceConsistencyTests(SimpleTestCase):
         self.assertEqual(self.project([update])["qualification_answers"],
                          {update["requirement_id"]: "More than 30"})
 
+    def test_multi_tool_alias_keeps_the_transactional_final_answer(self):
+        requirements = compile_qualification_requirements(
+            "[id: lead_system] Where do you currently manage leads?\n"
+            "A. WhatsApp chats\nB. Excel / Sheets\nC. CRM\nD. Multiple places"
+        )["requirements"]
+        state = state_for_lead(SimpleNamespace(attributes={}, stage=SimpleNamespace(name="New leads")),
+                               requirements=requirements)
+        source = "I use WhatsApp and Excel, and call me tomorrow at 5 PM."
+        update = {"requirement_id": requirements[0]["id"], "value": "Multiple places",
+                  "source_message_id": "final-inbound", "evidence": "WhatsApp and Excel"}
+        result = project_answer_updates(state=state, requirements=requirements, updates=[update],
+            messages=[{"id": "final-inbound", "direction": "inbound", "body": source}])
+        self.assertTrue(result["qualification_completed"])
+        self.assertEqual(result["qualification_answers"], {requirements[0]["id"]: "Multiple places"})
+
+    def test_unrelated_callback_does_not_make_one_tool_multiple_tools(self):
+        self.messages[0]["body"] = "I use Excel, and call me tomorrow at 5 PM."
+        update = {**self.updates[1], "evidence": "Excel", "value": "Multiple places"}
+        with self.assertRaisesRegex(ValueError, "contradicts.*evidence"):
+            self.project([update])
+
     def test_ambiguous_or_translated_evidence_keeps_semantic_validation(self):
         self.messages[0]["body"] = "Meine größte Schwierigkeit sind langsame Antworten."
         update = {**self.updates[0], "evidence": "langsame Antworten"}

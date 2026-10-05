@@ -90,6 +90,17 @@ def contradicts_option_evidence(*, requirement, value, evidence, source):
             match = re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", normalized)
             if match is not None:
                 matched.add(_normalized(label))
+    if len(matched) == 1 and re.search(r"\b(?:and|or)\b|[&,/]", normalized):
+        # A conjunction can name a second option by a shortened label, e.g.
+        # "WhatsApp and Excel" for "WhatsApp chats" / "Excel / Sheets".
+        # Partial words establish ambiguity only, never an accepted answer.
+        known_tokens = _tokens(next(iter(matched))) | _tokens(question)
+        source_tokens = _tokens(clause)
+        if any(
+            (_tokens(option["value"]) - known_tokens) & source_tokens
+            for option in options if _normalized(option["value"]) not in matched
+        ):
+            return False
     # Negation, corrections and multiple mentioned options require semantic
     # review. A plain unique authored meaning cannot become another option.
     if _NEGATIVE.search(normalized) or re.search(r"\b(?:but|however|actually|correction)\b", normalized):

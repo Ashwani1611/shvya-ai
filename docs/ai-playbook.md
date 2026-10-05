@@ -14,6 +14,17 @@ definitions and knowledge/file metadata. Save edits in the existing screens befo
 downloading. Live channels and Sandbox use a bounded projection of the same
 configuration; the complete export is not placed in every model prompt.
 
+The existing Playbook authoring limit is **100,000 characters**. Supported saved
+Playbooks reach the shared response runtime in full, including content after
+character 50,000. The runtime rejects an oversized source rather than silently
+using only its prefix. For large Playbooks, a compiled system copy is omitted
+only when it is exactly the projection of that same raw source; the response
+plan references the complete system specification instead of duplicating it.
+Standalone composition without that backend-owned reference includes the bounded
+instructions itself. This does not increase the authoring limit or remove model
+context, latency, credit or provider limits. Use knowledge files/FAQs for large
+reference material and keep the Playbook focused on operating rules.
+
 ## Authoring format
 
 Use the following headings, with the organization's own content under each:

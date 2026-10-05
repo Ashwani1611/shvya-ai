@@ -200,7 +200,7 @@ def _patch_failsoft() -> None:
     original_grounded = failsoft._grounded_conversation_reply
     original_builder = failsoft.build_deterministic_fallback_decision
 
-    def grounded_conversation_reply(*, about: str, inbound: str, organization_name: str):
+    def grounded_conversation_reply(*, about: str, inbound: str, organization_name: str, bot_languages=""):
         normalized = _normalized(inbound)
         if normalized in _SIMPLE_ACKS:
             if normalized in {"thanks", "thank you"}:
@@ -214,6 +214,7 @@ def _patch_failsoft() -> None:
             about=about,
             inbound=inbound,
             organization_name=organization_name,
+            bot_languages=bot_languages,
         )
 
     failsoft._grounded_conversation_reply = grounded_conversation_reply

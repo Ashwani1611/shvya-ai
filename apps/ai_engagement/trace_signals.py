@@ -5,6 +5,7 @@ from django.db.models.signals import post_save
 from django.dispatch import receiver
 
 from apps.channels.models import WhatsAppMessage
+from apps.channels.instagram_models import InstagramMessage
 from apps.ai_engagement.services.intent_runtime import install_intent_runtime
 
 
@@ -26,6 +27,7 @@ install_phase7_completion_runtime()
 
 
 @receiver(post_save, sender=WhatsAppMessage, dispatch_uid="ai_trace_delivery_status")
+@receiver(post_save, sender=InstagramMessage, dispatch_uid="ai_trace_instagram_delivery_status")
 def update_ai_trace_delivery(sender, instance, **kwargs):
     if instance.direction != WhatsAppMessage.Direction.OUTBOUND:
         return

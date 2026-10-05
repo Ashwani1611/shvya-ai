@@ -53,3 +53,19 @@ Current deployments include AI migrations `0015` through `0018`, including the
 canonical `OrgInfo.ai_playbook` migration. Use the repository's existing CI,
 migration and staging→main release workflow; web and workers must run compatible code
 around schema changes.
+
+## Organization model routing (October 2026)
+
+Superadmin configures qualification, sales-support, and post-turn summary models
+for each organization. New Lead/New Leads uses the qualification model; another
+concrete stage uses the sales-support model. The turn's model selection also
+applies to its grounding check, malformed-verdict retry, grounding reply repair
+and recheck, and optional evidence-coverage assessment. A blank selection keeps
+platform defaults. Existing unavailable-model fallback remains in the shared
+provider; the configured organization choice is not rewritten.
+
+This routing does not add provider calls or remove validation. A reply-generation
+job plus a post-delivery summary job is not an exact two-call guarantee: an
+independent grounding call, bounded repair, optional evidence review, or final
+language composition may add calls. Summary generation retains its separate
+configured model.

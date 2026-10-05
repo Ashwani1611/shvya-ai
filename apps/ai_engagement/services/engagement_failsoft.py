@@ -167,7 +167,7 @@ def _best_authored_facts(*, about: str, inbound: str, organization_name: str = "
     return [item[2] for item in scored[:2]]
 
 
-def _grounded_conversation_reply(*, about: str, inbound: str, organization_name: str) -> tuple[str, str]:
+def _grounded_conversation_reply(*, about: str, inbound: str, organization_name: str, bot_languages="") -> tuple[str, str]:
     """Return a provider-free reply containing only authored facts or safe process language."""
     text = _clean(inbound)
     normalized = text.casefold()
@@ -225,12 +225,12 @@ def _grounded_conversation_reply(*, about: str, inbound: str, organization_name:
 
     if any(term in normalized for term in _PLAN_TERMS):
         return (
-            fallback_message(kind="pricing", bot_languages="", latest_text=text),
+            fallback_message(kind="pricing", bot_languages=bot_languages, latest_text=text),
             "UNKNOWN_INFORMATION",
         )
 
     return (
-        fallback_message(kind="technical", bot_languages="", latest_text=text),
+        fallback_message(kind="technical", bot_languages=bot_languages, latest_text=text),
         "UNKNOWN_INFORMATION",
     )
 
@@ -444,6 +444,7 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
             about=about,
             inbound=latest_text,
             organization_name=organization_name,
+            bot_languages=org_info.bot_languages if org_info else "",
         )
         if reason == "UNKNOWN_INFORMATION":
             from apps.ai_engagement.services.response_fallbacks import fallback_message
@@ -483,6 +484,7 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         about=about,
         inbound=latest_text,
         organization_name=organization_name,
+        bot_languages=org_info.bot_languages if org_info else "",
     )
     if reason == "UNKNOWN_INFORMATION":
         from apps.ai_engagement.services.response_fallbacks import fallback_message
@@ -542,6 +544,7 @@ def _ensure_customer_reply(decision, *, lead):
 
     organization = getattr(lead, "organization", None)
     latest_inbound = None
+    bot_languages = ""
     if organization is not None:
         latest_inbound = _latest_inbound_for_lead(
             organization=organization,
@@ -565,13 +568,21 @@ def _ensure_customer_reply(decision, *, lead):
                 file_document_id=None,
                 model=qualification_reply["model"],
             )
+        try:
+            from apps.ai_engagement.models import OrgInfo
+            info = OrgInfo.objects.filter(organization_id=organization.pk).only("bot_languages").first()
+            bot_languages = str(getattr(info, "bot_languages", "") or "")
+        except Exception:
+            # The final reply guard must remain available if configuration
+            # storage is itself unavailable during a failed generation turn.
+            pass
 
     return replace(
         decision,
         should_engage=True,
         message=fallback_message(
             kind="technical",
-            bot_languages="",
+            bot_languages=bot_languages,
             latest_text=str(getattr(latest_inbound, "body", "") or ""),
         ),
         reason="UNKNOWN_INFORMATION",

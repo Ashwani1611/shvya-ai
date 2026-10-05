@@ -204,6 +204,10 @@ class TenantGuard:
         trace = self._require(trace, object_type="ai_trace")
         if getattr(trace, "organization_id", None) != self.organization_id:
             self._reject(object_type="ai_trace")
+        if getattr(trace, "connection_type", "") == "sandbox":
+            if getattr(trace, "lead_id", None) is not None or lead is not None:
+                self._reject(object_type="ai_trace")
+            return trace
         owning_lead = self._require(getattr(trace, "lead", None), object_type="lead")
         self.validate_lead(owning_lead)
         if lead is not None:

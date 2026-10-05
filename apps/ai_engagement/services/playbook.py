@@ -9,6 +9,17 @@ from __future__ import annotations
 import re
 
 
+MAX_PLAYBOOK_CHARS = 100000
+
+
+def playbook_prompt_text(raw: str) -> str:
+    """Preserve the saved specification within the existing authoring ceiling."""
+    text = str(raw or "")
+    if len(text) > MAX_PLAYBOOK_CHARS:
+        raise ValueError("AI Playbook must be 100,000 characters or fewer.")
+    return text.strip()
+
+
 REQUIRED_SECTION_TITLES = {
     "rules": "Rules",
     "welcome_message": "Welcome Message",
@@ -183,13 +194,12 @@ def qualification_questions(raw: str) -> str:
 def validate_playbook(raw: str) -> str:
     if not isinstance(raw, str):
         raise ValueError("AI Playbook must be text.")
-    if len(raw) > 100000:
-        raise ValueError("AI Playbook must be 100,000 characters or fewer.")
+    text = playbook_prompt_text(raw)
     # Compile at save time to surface malformed branching rather than making a
     # customer encounter a broken question later.
     from apps.ai_engagement.services.organization_profile import compile_qualification_requirements
     compile_qualification_requirements(qualification_questions(raw))
-    return raw.strip()
+    return text
 
 
 def evaluate_playbook_criteria(raw: str, *, requirements: list[dict], state: dict, values: dict | None = None) -> dict:
