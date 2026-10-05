@@ -8,12 +8,16 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(name="ai.flush_background_enrichment")
-def flush_background_enrichment(lead_id):
+def flush_background_enrichment(lead_id, include_qualification=True):
     from apps.ai_engagement.services.background_enrichment import (
         queue_background_enrichment,
     )
 
-    return queue_background_enrichment(lead_id=lead_id, force=True)
+    return queue_background_enrichment(
+        lead_id=lead_id,
+        force=True,
+        include_qualification=include_qualification,
+    )
 
 
 @shared_task(name="ai.reconcile_credit_settlements")
