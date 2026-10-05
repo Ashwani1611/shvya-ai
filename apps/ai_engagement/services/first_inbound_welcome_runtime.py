@@ -121,7 +121,7 @@ def apply_first_inbound_welcome(*, decision, organization, lead, first_turn=None
     if authored:
         if authored in message:
             return decision
-        if _GREETING_RE.match(message):
+        if _GREETING_RE.match(message) and "?" not in message.split("\n\n", 1)[0]:
             parts = message.split("\n\n", 1)
             message = parts[1] if len(parts) > 1 else message
         return replace(decision, message=f"{authored}\n\n{message}")

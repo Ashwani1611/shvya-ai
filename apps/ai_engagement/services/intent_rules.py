@@ -144,7 +144,7 @@ def detect_language(text: str) -> str | None:
         r"\b(?:der|die|das|ist|sind|und|oder|wie|was|wer|ich|nicht|preis|kosten|für)\b",
         value,
     )
-    if len(german_hits) >= 2 or re.search(r"\b(?:preis|kosten|für|nicht)\b", value):
+    if len(german_hits) >= 2 or re.search(r"\b(?:hallo|danke|bitte|preis|kosten|kostet|für|nicht)\b", value):
         return "de"
     spanish_hits = re.findall(
         r"\b(?:el|la|los|las|que|qué|como|cómo|precio|gracias|quiero|puede)\b",

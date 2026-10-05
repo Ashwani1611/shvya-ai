@@ -50,12 +50,17 @@ def _file_trace(**fields):
 
 def _welcome_due_for_context(*, decision, context, lead):
     """Match the first-reply welcome boundary without inferring file permission."""
-    if not decision.should_engage or getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION":
+    if not decision.should_engage:
         return False
     from apps.crm.models import Lead
     conversation = context.conversation or {}
     channel = str(conversation.get("channel") or "").strip().casefold()
     messages = [item for item in conversation.get("messages", []) if isinstance(item, dict)]
+    latest = next((str(item.get("body") or "") for item in reversed(messages)
+                   if item.get("direction") == "inbound"), "")
+    if (getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION"
+            and (not getattr(decision, "qualification_updates", None) or "?" in latest or "？" in latest)):
+        return False
     # Instagram has its own message table.  The generic Lead predicate reads
     # WhatsApp history, so using it for an Instagram turn incorrectly suppresses
     # a first-message welcome (and any file explicitly allowed with that
@@ -451,6 +456,15 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
     the graph's existing validation and grounding nodes still authorize them.
     """
     context = _with_file_candidates(state, context)
+    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+    if not _FINAL_LANGUAGE_ONLY.get():
+        from apps.ai_engagement.services.trace_service import record
+        chunks = [item for item in context.knowledge or [] if isinstance(item, dict)]
+        record("knowledge_retrieval", {
+            "retained_count": min(len(chunks), 30),
+            "website_count": min(sum(bool(item.get("source_url")) for item in chunks), 30),
+            "uploaded_count": min(sum(item.get("source_type") == "uploaded_file" for item in chunks), 30),
+        })
     from apps.ai_engagement.services.qualification_capture_recovery import recover_omitted_answers
     decision = recover_omitted_answers(
         service=state["service"], organization=state["organization"], lead=state["lead"],
@@ -466,7 +480,6 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         explicit_file_request,
         shared_document_ids,
     )
-    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
     candidates = (context.organization or {}).get("_file_candidates") or []
     requested = explicit_file_request(
         state.get("latest_text", ""),

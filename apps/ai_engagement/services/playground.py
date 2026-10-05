@@ -10,6 +10,7 @@ from typing import Any
 from django.core.cache import cache
 
 from apps.ai_engagement.services.ai_provider import (
+    AIProviderError,
     AIProviderTransientError,
     OpenAIProvider,
 )
@@ -261,9 +262,13 @@ class _SandboxContextBuilder:
                 "document_id": str(result.chunk.document_id),
                 "document_name": result.chunk.document.name,
                 "document_version": result.chunk.document.version,
+                "source_type": "website" if getattr(result.chunk.document, "source_url", "") else "uploaded_file",
+                "source_url": getattr(result.chunk.document, "source_url", ""),
                 "content": result.chunk.content,
                 "similarity": result.similarity,
                 "distance": result.distance,
+                "keyword_score": getattr(result, "keyword_score", 0.0),
+                "retrieval_methods": list(getattr(result, "retrieval_methods", ())),
             }
             for result in results
         ]
@@ -621,6 +626,18 @@ class PlaygroundService:
                 "The AI response could not be validated in the configured language. "
                 "No test reply was saved."
             )
+        from apps.ai_engagement.services.final_reply_language import finalize_reply_language
+        try:
+            decision = finalize_reply_language(
+                service=service.service() if hasattr(service, "service") else service,
+                decision=decision, context=context_builder.build(organization=organization, lead=visitor),
+                organization=organization, lead=visitor,
+            )
+        except (AIProviderError, EngagementError) as exc:
+            raise PlaygroundError(
+                "The reply could not be generated in the selected language. "
+                "Please retry this test message. No test reply was saved."
+            ) from exc
         # Record only the question selected for the displayed final response,
         # not an earlier draft which post-effect composition may have replaced.
         if decision.should_engage and decision.next_requirement_id:

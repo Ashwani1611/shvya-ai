@@ -182,6 +182,8 @@ class RuntimeCleanupContractTests(SimpleTestCase):
                 # Reviewed read-only continuity hooks; keep the allow-list exact.
                 "install_conversation_continuity_runtime",
                 "install_ai_trace_runtime",
+                # Reviewed final text translation; no action or state ownership.
+                "install_final_reply_language",
             },
         )
 
