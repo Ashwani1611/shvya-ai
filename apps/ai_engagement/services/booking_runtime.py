@@ -46,7 +46,9 @@ _AVAILABILITY_RE = re.compile(
 )
 _CALENDAR_CONTEXT_RE = re.compile(
     r"\b(?:demo|meeting|appointment|consultation|onboarding|call|slot|time|"
-    r"today|tomorrow|morning|afternoon|evening)\b",
+    r"today|tomorrow|morning|afternoon|evening|mon|tue|wed|thu|fri|sat|sun|"
+    r"jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|"
+    r"\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b",
     re.IGNORECASE,
 )
 _RESCHEDULE_RE = re.compile(r"\b(?:reschedule|change|move)\b", re.IGNORECASE)
