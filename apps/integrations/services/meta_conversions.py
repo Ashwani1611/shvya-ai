@@ -4,6 +4,7 @@ import hashlib
 import ipaddress
 import logging
 import re
+import unicodedata
 import uuid
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
@@ -11,7 +12,7 @@ from urllib.parse import urlsplit
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.crm.models import Lead, Pipeline, Stage
@@ -25,6 +26,22 @@ from apps.integrations.models import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Meta's baseline matching rules reject each set below and its subsets.
+# Validate the identifiers available on this lead, not just selected fields.
+INVALID_USER_DATA_COMBINATIONS = (
+    frozenset({"ct", "country", "st", "zp", "ge", "client_user_agent"}),
+    frozenset({"db", "client_user_agent"}),
+    frozenset({"fn", "ge"}),
+    frozenset({"ln", "ge"}),
+)
+META_LEAD_ID_PATTERN = r"[0-9]{15,20}"
+
+
+def _is_meta_lead(lead):
+    # The upsert service preserves a returning contact's original lead source.
+    meta_id = str((lead.attributes or {}).get("meta_leadgen_id") or "").strip()
+    return lead.lead_source == "meta_ads" or bool(re.fullmatch(META_LEAD_ID_PATTERN, meta_id))
 
 
 def ensure_default_mappings(configuration):
@@ -101,6 +118,11 @@ def _hashed(value):
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _normalized_letters(value):
+    # Keep combining marks that form letters in scripts such as Devanagari.
+    return "".join(c for c in value.lower() if c.isalpha() or unicodedata.category(c).startswith("M"))
+
+
 def build_user_data(configuration, lead):
     selected = set(configuration.user_data_fields)
     attributes = lead.attributes or {}
@@ -113,7 +135,7 @@ def build_user_data(configuration, lead):
     if "name" in selected and lead.name and lead.name.lower() not in {"meta lead", "new lead", "instagram lead"}:
         parts = lead.name.strip().split(maxsplit=1)
         for key, value in zip(("fn", "ln"), parts):
-            normalized = "".join(c for c in value.lower() if c.isalpha())
+            normalized = _normalized_letters(value)
             if normalized:
                 result[key] = [_hashed(normalized)]
     if "external_id" in selected:
@@ -121,7 +143,7 @@ def build_user_data(configuration, lead):
     if "lead_id" in selected:
         meta_id = str(attributes.get("meta_leadgen_id") or "").strip()
         if meta_id:
-            if not re.fullmatch(r"[0-9]{15,20}", meta_id):
+            if not re.fullmatch(META_LEAD_ID_PATTERN, meta_id):
                 raise ValidationError("The stored Meta Lead ID is invalid. Check the Lead Ads import.")
             result["lead_id"] = meta_id
     for source, target in (("city", "ct"), ("state", "st"), ("zip_code", "zp"), ("country", "country")):
@@ -129,16 +151,16 @@ def build_user_data(configuration, lead):
             continue
         value = str(attributes.get(source) or "").strip().lower()
         if source in {"city", "state"}:
-            value = "".join(c for c in value if c.isalpha())
+            value = _normalized_letters(value)
         elif source == "zip_code":
             value = re.sub(r"[\s-]", "", value)
-            if str(attributes.get("country") or "").lower() == "us":
+            if str(attributes.get("country") or "").strip().lower() == "us":
                 value = value[:5]
         elif not re.fullmatch(r"[a-z]{2}", value):
             value = ""
         if value:
             result[target] = [_hashed(value)]
-    gender = {"male": "m", "female": "f", "m": "m", "f": "f"}.get(str(attributes.get("gender") or "").lower())
+    gender = {"male": "m", "female": "f", "m": "m", "f": "f"}.get(str(attributes.get("gender") or "").strip().lower())
     if "gender" in selected and gender:
         result["ge"] = [_hashed(gender)]
     if "date_of_birth" in selected and attributes.get("date_of_birth"):
@@ -163,6 +185,11 @@ def build_user_data(configuration, lead):
             result[key] = value
     if not result:
         raise ValidationError("No selected customer identifiers are available on this lead.")
+    if any(result.keys() <= combination for combination in INVALID_USER_DATA_COMBINATIONS):
+        raise ValidationError(
+            "The available customer fields do not meet Meta's matching requirements. "
+            "Select an available phone, email, Meta Lead ID, Shvya lead ID or ad/browser identifier."
+        )
     return result
 
 
@@ -177,7 +204,7 @@ def build_event(configuration, mapping, lead, *, event_id, occurred_at):
         "user_data": build_user_data(configuration, lead),
     }
     custom_data = {}
-    if lead.lead_source == "meta_ads":
+    if _is_meta_lead(lead):
         event["action_source"] = "system_generated"
         custom_data.update(event_source="crm", lead_event_source="SHVYA AI")
     if event["action_source"] == "website":
@@ -227,7 +254,7 @@ def enqueue_delivery(delivery):
 
 
 def queue_event(configuration, mapping, lead, *, occurred_at, is_test=False, is_probe=False, event_id=None):
-    if configuration.event_scope == "meta_leads" and lead.lead_source != "meta_ads":
+    if configuration.event_scope == "meta_leads" and not _is_meta_lead(lead):
         raise ValidationError("Choose a lead imported from Meta Lead Ads for this connection.")
     if not configuration.dataset_id or not configuration.has_access_token:
         raise ValidationError("Save the dataset ID and access token first.")
@@ -259,7 +286,7 @@ def queue_event(configuration, mapping, lead, *, occurred_at, is_test=False, is_
 def capture_stage_event(configuration, lead, *, occurred_at=None):
     if not configuration.is_enabled:
         return
-    if configuration.event_scope == "meta_leads" and lead.lead_source != "meta_ads":
+    if configuration.event_scope == "meta_leads" and not _is_meta_lead(lead):
         return
     if lead.pipeline.organization_id != configuration.organization_id or lead.stage.pipeline_id != lead.pipeline_id:
         return
@@ -332,7 +359,8 @@ def perform_action(configuration, data):
             raise ValidationError("This event mapping was removed. Create a mapping and record a new stage change.")
         if not delivery.is_probe and not delivery.mapping.is_enabled:
             raise ValidationError("Enable this event mapping before retrying its delivery.")
-        if delivery.created_at < timezone.now() - timedelta(days=7):
+        event_time = delivery.payload.get("event_time")
+        if type(event_time) is not int or event_time < int((timezone.now() - timedelta(days=7)).timestamp()):
             raise ValidationError("This event is outside Meta's seven-day delivery window.")
         delivery.status, delivery.attempt_count = Delivery.Status.QUEUED, 0
         delivery.next_attempt_at, delivery.lease_until, delivery.lease_token = timezone.now(), None, None
@@ -348,7 +376,10 @@ def eligible_test_leads(configuration, mapping_id):
     leads = Lead.objects.filter(organization_id=configuration.organization_id,
                                 pipeline_id=mapping.pipeline_id, stage_id=mapping.stage_id)
     if configuration.event_scope == "meta_leads":
-        leads = leads.filter(lead_source="meta_ads")
+        leads = leads.filter(
+            Q(lead_source="meta_ads") |
+            Q(attributes__meta_leadgen_id__regex=rf"^\s*{META_LEAD_ID_PATTERN}\s*$"),
+        )
     return [{"id": str(lead.pk), "name": lead.name} for lead in leads[:100]]
 
 
