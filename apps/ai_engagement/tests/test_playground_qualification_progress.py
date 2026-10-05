@@ -1,4 +1,5 @@
 from tests.playbook_fixtures import build_ai_playbook
+from tests.brain_fixtures import mocked_brain_profile_loader
 
 import json
 from types import SimpleNamespace
@@ -57,6 +58,7 @@ class PlaygroundQualificationProgressRegressionTests(SimpleTestCase):
             org_info_service=self.org_info,
             embedding_service=Mock(),
             retrieval_service=retrieval,
+            runtime_profile_loader=mocked_brain_profile_loader(self.org_info, requirements=self.requirements),
         )
         self.organization = SimpleNamespace(
             id="sandbox-q4-regression",
