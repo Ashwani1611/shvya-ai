@@ -246,6 +246,9 @@ def execute_hosted_ai_engagement(*, task, job):
     try:
         decision = service.engage(organization=organization, lead=lead)
     except EngagementError as exc:
+        from apps.ai_engagement.services.trace_service import mark_error
+        mark_error(step="hosted_generation", exc=exc, code="HOSTED_GENERATION_FAILED",
+                   retryable=isinstance(exc.__cause__, AIProviderTransientError))
         provider_error = exc.__cause__
         if isinstance(provider_error, AIProviderTransientError):
             raise task.retry(

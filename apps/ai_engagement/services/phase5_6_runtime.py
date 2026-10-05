@@ -662,7 +662,13 @@ def _canonical_backend_facts(*, organization, lead):
         if isinstance(item, Mapping) and str(item.get("key") or "").strip()
     }
 
-    lead_attributes = getattr(fresh, "attributes", None) or {}
+    # An empty CRM field is missing information, not a verified fact that
+    # contradicts the customer's current statement. Filter only this memory
+    # projection; zero/False and every nonblank CRM value retain authority.
+    lead_attributes = {
+        key: value for key, value in (getattr(fresh, "attributes", None) or {}).items()
+        if value is not None and not (isinstance(value, str) and not value.strip())
+    }
     canonical: dict[str, dict[str, Any]] = {}
     now = timezone.now().isoformat()
     for key in definition_keys:

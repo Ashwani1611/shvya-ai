@@ -293,6 +293,32 @@ def _qualification_plan_message(latest_inbound) -> dict:
     }
 
 
+def _qualification_interrupted(*, organization, lead, latest_inbound) -> bool:
+    from apps.ai_engagement.services.conversation_policy_runtime import source_policy_prioritizes_customer_intent
+    from apps.ai_engagement.services.file_sharing import explicit_file_request
+
+    if source_policy_prioritizes_customer_intent(
+        source_message_id=getattr(latest_inbound, "id", None),
+        organization_id=organization.id, lead_id=lead.id,
+    ):
+        return True
+    text = str(getattr(latest_inbound, "body", "") or "")
+    normalized = _normalized(text)
+    return bool(
+        "?" in text
+        or explicit_file_request(text)
+        or any(term in normalized for term in _HUMAN_TERMS)
+        or any(term in normalized for term in _PLAN_TERMS)
+        or any(term in normalized for term in _CAPABILITY_TERMS)
+        or normalized.startswith("what is ")
+        or "lead generation" in normalized
+        or "generate leads" in normalized
+        or "booked" in normalized
+        or "scheduled" in normalized
+        or "no one called" in normalized
+    )
+
+
 def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=None):
     """Build a provider-free, RAG-free response from persisted backend state.
 
@@ -390,7 +416,10 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
         if exact_evidence_reply(candidate, resolution):
             return candidate
 
-    qualification_reply = _qualification_plan_message(latest_inbound)
+    interrupt = _qualification_interrupted(
+        organization=organization, lead=lead, latest_inbound=latest_inbound,
+    )
+    qualification_reply = {} if interrupt else _qualification_plan_message(latest_inbound)
     if qualification_reply:
         reason_code = qualification_reply["reason_code"]
         return EngagementDecision(
@@ -410,19 +439,6 @@ def build_deterministic_fallback_decision(*, organization, lead, latest_inbound=
     # An information question, booking statement or human request interrupts
     # qualification for this turn. Answer that intent safely and leave the
     # backend qualification state untouched so it can resume on re-engagement.
-    normalized = _normalized(latest_text)
-    interrupt = (
-        "?" in latest_text
-        or any(term in normalized for term in _HUMAN_TERMS)
-        or any(term in normalized for term in _PLAN_TERMS)
-        or any(term in normalized for term in _CAPABILITY_TERMS)
-        or normalized.startswith("what is ")
-        or "lead generation" in normalized
-        or "generate leads" in normalized
-        or "booked" in normalized
-        or "scheduled" in normalized
-        or "no one called" in normalized
-    )
     if interrupt:
         message, reason = _grounded_conversation_reply(
             about=about,
@@ -531,7 +547,9 @@ def _ensure_customer_reply(decision, *, lead):
             organization=organization,
             lead=lead,
         )
-        qualification_reply = _qualification_plan_message(latest_inbound)
+        qualification_reply = {} if _qualification_interrupted(
+            organization=organization, lead=lead, latest_inbound=latest_inbound,
+        ) else _qualification_plan_message(latest_inbound)
         if qualification_reply:
             reason_code = qualification_reply["reason_code"]
             return replace(
@@ -612,7 +630,10 @@ def install_engagement_failsoft() -> None:
             return _ensure_customer_reply(decision, lead=lead)
         except engagement_module.EngagementError as exc:
             from apps.ai_engagement.services.turn_diagnostics import record_failure
+            from apps.ai_engagement.services.trace_service import mark_error
             record_failure(exc)
+            mark_error(step="engagement_generation", exc=exc, code="ENGAGEMENT_GENERATION_FAILED",
+                       retryable=isinstance(exc.__cause__, AIProviderTransientError))
             # Explicit/injected providers are used by callers that need strict
             # validation semantics. Do not convert their failures into replies.
             if self.provider is not None:

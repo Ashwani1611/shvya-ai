@@ -89,6 +89,12 @@ def _finalize(decision, state):
     }:
         return decision
 
+    from apps.ai_engagement.services.conversation_policy_runtime import source_policy_prioritizes_customer_intent
+    if source_policy_prioritizes_customer_intent(source_message_id=state.get("source_message_id")):
+        # Persisted qualification progress describes accepted backend facts,
+        # not permission to replace this turn's validated answer or handoff.
+        return decision
+
     rendered = str(
         ((plan.get("next_requirement") or {}).get("rendered") or "")
     ).strip()

@@ -2,7 +2,7 @@
 
 Post-deployment checks found that successful reply text alone does not establish
 correct qualification, file sharing or transport state. This repair addresses
-three independently reproduced gaps:
+five independently reproduced gaps:
 
 - Sandbox Brain recovery returned before the normal missing-answer and file
   reviewers. Recovered drafts now use those same bounded reviewers and retain
@@ -17,6 +17,12 @@ three independently reproduced gaps:
   match the queued row. Pending IDs are now retained for correlation; they do
   not establish delivery. Confirmed acknowledgement state must survive timeout
   and retry races.
+- Blank CRM fields were projected into memory as authoritative facts, rejecting
+  current customer evidence. Missing values no longer create a conflict; zero,
+  false and nonblank backend values retain their existing authority.
+- A persisted qualification plan could replace a direct price answer during
+  fallback and finalization. The policy for the same inbound turn now preserves
+  the answer or handoff. Generation failures also retain safe trace diagnostics.
 
 ## Acceptance cases
 
@@ -33,7 +39,7 @@ assistant-to-assistant loops. Keep account and stage controls intact.
    Verify the answer, file selection, recipient delivery and actual download.
 4. During Hosted acknowledgement delay, verify the same message remains queued
    until an authenticated provider acknowledgement confirms it, then clears its
-   temporary error. Retry identity and send pacing must remain unchanged.
+  temporary error. Retry identity and send pacing must remain unchanged.
 5. Repeat through WhatsApp API, Hosted, Instagram and an identified official
    Coexistence connection. Browser UI presence is not proof of recipient delivery.
 
