@@ -218,7 +218,7 @@ class CallIntelligenceApiTests(TestCase):
         other = Organization.objects.create(package="enterprise", name="Other disposition org")
         self.assertFalse(CallDisposition.objects.filter(organization=other, code=row.code).exists())
 
-    @patch("apps.telephony.views.api.analyze_call_intelligence.delay")
+    @patch("apps.telephony.tasks.analyze_call_intelligence.delay")
     def test_provider_media_update_stores_transcript_and_queues_analysis(self, analyze):
         pipeline = self.org.pipelines.first()
         stage = pipeline.stages.filter(is_active=True).order_by("display_order").first()
@@ -254,7 +254,7 @@ class CallIntelligenceApiTests(TestCase):
         self.assertEqual(call.recording_status, "ready")
         self.assertEqual(call.transcript_status, "completed")
         self.assertIn("want a demo", call.transcript)
-        analyze.assert_called_once_with(str(call.id))
+        analyze.assert_called_once_with(str(call.id), call.analysis_input_hash)
 
     def test_call_follow_up_replaces_existing_lead_reminder(self):
         pipeline = self.org.pipelines.first()

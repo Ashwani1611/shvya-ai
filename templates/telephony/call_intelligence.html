@@ -204,7 +204,7 @@
         </div>
         <div class="ci-call-list">
           {% for call in recent_calls %}
-          <details class="ci-call-item">
+          <details class="ci-call-item" data-status-url="{% url 'call-intelligence-call-status' call.id %}" data-analysis-status="{{ call.analysis_status }}">
             <summary class="ci-call-row">
               <div class="ci-call-direction {{ call.direction }} {{ call.status }}">
                 {% if call.status == "missed" %}
@@ -216,7 +216,7 @@
                 {% endif %}
               </div>
               <div class="ci-call-person">
-                <strong>{% if call.contact_name %}{{ call.contact_name }}{% elif call.lead %}{{ call.lead.name }}{% else %}{{ call.phone_number }}{% endif %}</strong>
+                <strong>{% if call.lead %}{{ call.lead.name }}{% elif call.contact_name %}{{ call.contact_name }}{% else %}{{ call.phone_number }}{% endif %}</strong>
                 <span>{{ call.phone_number }} · {{ call.get_status_display }} · {{ call.get_source_display }}</span>
               </div>
               <div class="ci-call-crm">
@@ -227,15 +227,8 @@
                   <span class="ci-badge muted">Not in CRM</span>
                 {% endif %}
               </div>
-              <div class="ci-call-intel">
-                {% if call.intelligence %}
-                  <span class="ci-intent {{ call.intelligence.intent }}">{{ call.intelligence.get_intent_display }} · {{ call.intelligence.ai_score|default:"0" }}/10</span>
-                  <small>{{ call.intelligence.outcome|default:"Analyzed" }}</small>
-                {% elif call.notes or call.transcript %}
-                  <span class="ci-intent pending">AI queued</span>
-                {% else %}
-                  <span class="ci-intent neutral">Add notes</span>
-                {% endif %}
+              <div class="ci-call-intel" data-ci-intel-badge>
+                {% include "telephony/partials/intelligence_badge.html" %}
               </div>
               <div class="ci-call-time">
                 <strong>{{ call.talk_duration_seconds|call_duration }} talk</strong>
@@ -256,32 +249,8 @@
                     {% if call.provider %}<div><dt>Provider</dt><dd>{{ call.provider }}</dd></div>{% endif %}
                   </dl>
                 </section>
-                <section>
-                  <div class="ci-detail-label">Intelligence</div>
-                  {% if call.intelligence %}
-                    <p class="ci-ai-summary">{{ call.intelligence.summary|default:"Analysis completed." }}</p>
-                    <div class="ci-intel-pills">
-                      <span>Intent · {{ call.intelligence.get_intent_display }}</span>
-                      <span>Sentiment · {{ call.intelligence.get_sentiment_display }}</span>
-                      <span>AI score · {{ call.intelligence.ai_score|default:"0" }}/10</span>
-                      <span>Qualification · {{ call.intelligence.qualification_score|default:"0" }}/10</span>
-                    </div>
-                    {% if call.intelligence.next_action %}<p class="ci-next-action"><strong>Next action</strong>{{ call.intelligence.next_action }}</p>{% endif %}
-                    {% if call.intelligence.objections %}<p class="ci-evidence"><strong>Objections</strong>{{ call.intelligence.objections|join:", " }}</p>{% endif %}
-                    {% if call.intelligence.buying_signals %}<p class="ci-evidence"><strong>Buying signals</strong>{{ call.intelligence.buying_signals|join:", " }}</p>{% endif %}
-                    {% if call.intelligence.agent_metrics %}
-                    <div class="ci-coaching">
-                      <strong>Agent coaching</strong>
-                      <span>Discovery {{ call.intelligence.agent_metrics.discovery_quality|default:"0" }}/10</span>
-                      <span>Objection handling {{ call.intelligence.agent_metrics.objection_handling|default:"0" }}/10</span>
-                      <span>Next-step clarity {{ call.intelligence.agent_metrics.next_step_clarity|default:"0" }}/10</span>
-                      <span>Questions {{ call.intelligence.agent_metrics.questions_asked|default:"0" }}</span>
-                    </div>
-                    {% endif %}
-                    {% if call.intelligence.compliance_flags %}<p class="ci-evidence ci-compliance"><strong>Compliance flags</strong>{{ call.intelligence.compliance_flags|join:", " }}</p>{% endif %}
-                  {% else %}
-                    <p class="ci-ai-summary muted">Add grounded notes or a provider transcript to run Call Intelligence.</p>
-                  {% endif %}
+                <section data-ci-intelligence aria-live="polite">
+                  {% include "telephony/partials/intelligence_detail.html" %}
                 </section>
               </div>
 
@@ -506,6 +475,47 @@
   }
   if(pipeline){pipeline.addEventListener('change',filterStages);filterStages();}
 
+  const pollVersions=new WeakMap();
+  function refreshIntelligence(item){
+    const version=(pollVersions.get(item)||0)+1;
+    pollVersions.set(item,version);
+    const result=item.querySelector('.ci-call-action-result');
+    let attempts=0;
+    async function poll(){
+      if(pollVersions.get(item)!==version||!item.isConnected)return;
+      try{
+        const response=await fetch(item.dataset.statusUrl,{headers:{'X-Requested-With':'XMLHttpRequest'},cache:'no-store'});
+        const data=await response.json();
+        if(pollVersions.get(item)!==version)return;
+        if(!response.ok||!data.ok)throw new Error('Could not refresh Intelligence. Reload this page to check it.');
+        item.querySelector('[data-ci-intel-badge]').innerHTML=data.badge_html;
+        item.querySelector('[data-ci-intelligence]').innerHTML=data.intelligence_html;
+        item.dataset.analysisStatus=data.analysis_status;
+        if(data.analysis_status==='completed'){
+          result.textContent='Intelligence updated.';
+          result.className='ci-call-action-result success';
+        }else if(data.analysis_status==='failed'){
+          result.textContent=data.analysis_error||'Analysis failed. Save & analyze to retry.';
+          result.className='ci-call-action-result error';
+        }else if(data.analysis_status==='not_requested'){
+          result.textContent='Saved. Add notes or a transcript to generate Intelligence.';
+          result.className='ci-call-action-result success';
+        }else if(++attempts<60){
+          result.textContent=data.analysis_error||'Notes saved. Intelligence is being prepared…';
+          result.className='ci-call-action-result success';
+          setTimeout(poll,2000);
+        }else{
+          result.textContent='Notes saved. Analysis is taking longer; reload this page to check its status.';
+        }
+      }catch(error){
+        if(pollVersions.get(item)!==version)return;
+        result.textContent=error.message;
+        result.className='ci-call-action-result error';
+      }
+    }
+    poll();
+  }
+
   document.querySelectorAll('.ci-post-call-form').forEach((callForm)=>{
     callForm.addEventListener('submit',async(event)=>{
       event.preventDefault();
@@ -516,8 +526,9 @@
         const response=await fetch(callForm.action,{method:'POST',body:new FormData(callForm),headers:{'X-Requested-With':'XMLHttpRequest'}});
         const data=await response.json();
         if(!response.ok||!data.ok)throw new Error(data.error||'Could not save this call.');
-        result.textContent='Saved. Intelligence refresh queued.';
+        result.textContent='Notes saved. Preparing Intelligence…';
         result.className='ci-call-action-result success';
+        refreshIntelligence(callForm.closest('.ci-call-item'));
       }catch(error){
         result.textContent=error.message;
         result.className='ci-call-action-result error';
@@ -525,6 +536,9 @@
         button.disabled=false;
       }
     });
+  });
+  document.querySelectorAll('.ci-call-item').forEach(item=>{
+    if(['queued','processing'].includes(item.dataset.analysisStatus))refreshIntelligence(item);
   });
 
   const dispositionForm=document.getElementById('ci-disposition-form');

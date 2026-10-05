@@ -158,6 +158,7 @@ class OpenAIProvider:
         "internal_summary": 300,
         "lead_briefing": 350,
         "bump_up": 200,
+        "call_intelligence": 2000,
     }
 
     def __init__(

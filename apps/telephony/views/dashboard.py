@@ -5,11 +5,12 @@ from django.db.models import Count, Q
 from django.core.paginator import Paginator
 from django.http import Http404, HttpResponseRedirect, JsonResponse
 from django.shortcuts import redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.text import slugify
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
@@ -24,9 +25,8 @@ from ..models import (
     CallIntelligenceSettings,
     CallRecord,
 )
-from ..services import get_call_dispositions
+from ..services import get_call_dispositions, reconcile_call_tracking, request_call_analysis
 from ..analytics import call_metrics, team_metrics
-from ..tasks import analyze_call_intelligence
 
 
 def _scoped_calls(user):
@@ -87,6 +87,7 @@ def _filtered_calls(request, user):
 @crm_login_required
 def call_intelligence_dashboard(request):
     user = request.crm_user
+    reconcile_call_tracking(user)
     settings_obj, _ = CallIntelligenceSettings.objects.get_or_create(
         organization=user.organization
     )
@@ -213,6 +214,11 @@ def post_call_action(request, call_id):
         due_at = timezone.make_aware(due_at, timezone.get_current_timezone())
 
     with transaction.atomic():
+        call = _scoped_calls(user).select_for_update().get(pk=call_id)
+        if due_at and not call.lead_id:
+            return JsonResponse(
+                {"ok": False, "error": "A CRM lead is required for a reminder."}, status=400,
+            )
         call.notes = notes
         call.disposition = disposition
         call.save(update_fields=["notes", "disposition", "updated_at"])
@@ -221,11 +227,6 @@ def post_call_action(request, call_id):
             call.crm_call.save(update_fields=["notes"])
 
         if due_at:
-            if not call.lead_id:
-                return JsonResponse(
-                    {"ok": False, "error": "A CRM lead is required for a reminder."},
-                    status=400,
-                )
             reminder = LeadReminder.objects.create(
                 lead=call.lead,
                 assigned_to=user,
@@ -238,13 +239,31 @@ def post_call_action(request, call_id):
             call.follow_up_required = True
             call.follow_up_at = due_at
             call.save(update_fields=["follow_up_required", "follow_up_at", "updated_at"])
-
-    if notes or call.transcript:
-        transaction.on_commit(lambda: analyze_call_intelligence.delay(str(call.id)))
+        request_call_analysis(call.id, retry_failed=True)
 
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
-        return JsonResponse({"ok": True})
+        return JsonResponse({"ok": True, "status_url": reverse(
+            "call-intelligence-call-status", args=[call.id],
+        )})
     return HttpResponseRedirect(reverse("call-intelligence-dashboard") + "?section=analytics#calls")
+
+
+@crm_login_required
+@require_GET
+def call_analysis_status(request, call_id):
+    call = _scoped_calls(request.crm_user).select_related("intelligence").filter(pk=call_id).first()
+    if call is None:
+        raise Http404("Call not found.")
+    intelligence = getattr(call, "intelligence", None)
+    response = JsonResponse({
+        "ok": True,
+        "analysis_status": "completed" if intelligence else call.analysis_status,
+        "analysis_error": call.analysis_error,
+        "badge_html": render_to_string("telephony/partials/intelligence_badge.html", {"call": call}),
+        "intelligence_html": render_to_string("telephony/partials/intelligence_detail.html", {"call": call}),
+    })
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @crm_login_required
