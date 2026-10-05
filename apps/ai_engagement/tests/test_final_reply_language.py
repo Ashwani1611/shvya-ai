@@ -10,6 +10,18 @@ from apps.ai_engagement.services.qualification_state import _non_answer_evidence
 
 
 class FinalReplyLanguageTests(SimpleTestCase):
+    def test_sandbox_does_not_promise_real_team_contact(self):
+        from apps.ai_engagement.services.playground_finalization import enforce_preview_action_honesty
+        decision = EngagementDecision(should_engage=True,
+            message="Thank you. I will pass your request to our team and they will contact you soon.",
+            file_document_id=None, crm_actions=[], qualification_updates=[],
+            reason="NORMAL_CONVERSATION", reason_code="NORMAL_CONVERSATION", model="test")
+        result = enforce_preview_action_honesty(decision=decision, events=[{"type": "stage_transition", "status": "preview"}],
+                                               files=[], requested_text="Please call me.", allowed_languages=["English"])
+        self.assertNotIn("will contact", result.message)
+        self.assertNotIn("will pass", result.message)
+        self.assertIn("no live call", result.message)
+
     def test_first_turn_volunteered_answers_keep_welcome_file_review(self):
         from apps.ai_engagement.graph.workflow import _welcome_due_for_context
         context = SimpleNamespace(conversation={"channel": "sandbox", "message_count": 1,
