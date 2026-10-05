@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import httpx
 from django.test import SimpleTestCase, override_settings
@@ -43,3 +43,39 @@ class ProviderQuotaTests(SimpleTestCase):
         self.rejected({"error": {"code": "insufficient_quota"}})
         with self.assertRaises(AIProviderQuotaError):
             self.provider.generate_text(instructions="Answer.", input_text="Hi")
+
+    def test_token_rate_limit_message_exposes_retry_after(self):
+        self.rejected({
+            "error": {
+                "code": "rate_limit_exceeded",
+                "type": "tokens",
+                "message": "Please try again in 3.675s.",
+            }
+        })
+        with self.assertRaises(AIProviderTransientError) as raised:
+            self.provider.generate_text(instructions="Answer.", input_text="Hi")
+        self.assertEqual(raised.exception.retry_after, 3)
+
+    @patch.dict("os.environ", {"OPENAI_MAX_PROMPT_TOKENS": "4000"})
+    def test_oversized_prompt_is_compacted_before_provider_call(self):
+        self.client.responses.create.return_value = SimpleNamespace(
+            output_text="ok",
+            model="gpt-4.1-nano",
+            usage=None,
+            status="completed",
+        )
+        result = self.provider.generate_text(
+            instructions="RULES " + ("x" * 30000),
+            input_text="TURN " + ("y" * 30000),
+            metadata={"task": "engagement"},
+        )
+        self.assertEqual(result.text, "ok")
+        kwargs = self.client.responses.create.call_args.kwargs
+        self.assertLessEqual(
+            len(kwargs["instructions"]) + len(kwargs["input"]),
+            4000 * 4,
+        )
+        self.assertIn(
+            "compacted",
+            kwargs["instructions"] + kwargs["input"],
+        )
