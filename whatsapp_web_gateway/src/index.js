@@ -34,6 +34,8 @@ const CONTACT_LOOKUP_TIMEOUT_MS = 5000;
 const LID_RESOLVE_BATCH_SIZE = 20;
 const LID_RESOLVE_TIMEOUT_MS = 10000;
 const LOCAL_SEND_MATCH_MS = 20000;
+const LIVE_MESSAGE_CREATE_FALLBACK_MAX_AGE_MS = 5 * 60 * 1000;
+const LIVE_MESSAGE_CREATE_FUTURE_SKEW_MS = 60 * 1000;
 
 // FIX 2: retry backoff constants
 const BASE_RETRY_MS = 30000;
@@ -875,6 +877,15 @@ async function cleanSessionChromiumLocks(sessionId) {
   }
 }
 
+function shouldForwardMessageCreateFallback(message, now = Date.now()) {
+  if (!message || message.fromMe) return false;
+  const seconds = Number(message.timestamp || 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) return false;
+  const age = Number(now) - (seconds * 1000);
+  return age >= -LIVE_MESSAGE_CREATE_FUTURE_SKEW_MS
+    && age <= LIVE_MESSAGE_CREATE_FALLBACK_MAX_AGE_MS;
+}
+
 function wireClientEvents(sessionId, state) {
   const client = state.client;
 
@@ -927,7 +938,15 @@ function wireClientEvents(sessionId, state) {
   });
 
   client.on('message_create', async (message) => {
-    if (!message.fromMe || isGatewayOriginatedOwnMessage(state, message)) return;
+    // message is the primary inbound event. message_create is a recent-only
+    // redundant path because whatsapp-web.js can occasionally delay/drop the
+    // primary event while its browser bridge is reconnecting. Both paths use
+    // the same durable messageId outbox record, so duplicates collapse safely.
+    if (message.fromMe) {
+      if (isGatewayOriginatedOwnMessage(state, message)) return;
+    } else if (!shouldForwardMessageCreateFallback(message)) {
+      return;
+    }
     try {
       await callback(
         sessionId,
@@ -935,7 +954,7 @@ function wireClientEvents(sessionId, state) {
         await serializeMessage(message, null, null, client),
       );
     } catch (error) {
-      console.warn(`Could not forward linked-device outbound for ${sessionId}:`, error.message);
+      console.warn(`Could not forward message_create fallback for ${sessionId}:`, error.message);
     }
   });
 
