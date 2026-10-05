@@ -1,0 +1,93 @@
+{% load call_metrics %}
+<section id="calls" class="ci-panel ci-activity-workspace">
+  <div class="ci-activity-header">
+    <div><small>RECENT ACTIVITY</small><h3>Latest calls</h3>{% if contact_history_name %}<p>Call history for <strong>{{ contact_history_name }}</strong> · <a href="{{ contact_history_clear_url }}" class="ci-lead-link">View all contacts</a></p>{% else %}<p>Browse by outcome. Open a call to see its notes, Intelligence and CRM details.</p>{% endif %}</div>
+    <span class="ci-activity-total">{{ call_page.paginator.count }} call{{ call_page.paginator.count|pluralize }}</span>
+  </div>
+  <div class="ci-stage-navigation">
+    <div class="ci-stage-navigation-head"><span>Call outcomes</span><div><button type="button" data-ci-scroll="-1" aria-label="Scroll outcomes left"><i class="ti ti-chevron-left" aria-hidden="true"></i></button><button type="button" data-ci-scroll="1" aria-label="Scroll outcomes right"><i class="ti ti-chevron-right" aria-hidden="true"></i></button></div></div>
+    <nav class="ci-outcome-stages" aria-label="Call outcomes">
+      {% for group in outcome_groups %}
+      <a class="ci-outcome-stage {{ group.category }}" href="{{ group.url }}" {% if group.selected %}aria-current="page"{% endif %}>
+        <span><i aria-hidden="true"></i>{{ group.name }}</span><small>{{ group.total }} call{{ group.total|pluralize }}</small>
+      </a>
+      {% endfor %}
+    </nav>
+  </div>
+  <div class="ci-activity-toolbar">
+    <div><h4>{{ active_outcome|default:"All calls" }}</h4><span>{{ call_page.start_index }}–{{ call_page.end_index }} of {{ call_page.paginator.count }} results</span></div>
+    <nav class="ci-crm-segments" aria-label="CRM lead status">
+      {% for group in crm_groups %}<a href="{{ group.url }}" {% if group.selected %}aria-current="page"{% endif %}>{{ group.name }} <span>{{ group.total }}</span></a>{% endfor %}
+    </nav>
+  </div>
+  <div class="ci-activity-columns" aria-hidden="true"><span></span><span>Contact & call</span><span>CRM pipeline & stage</span><span>Logged by</span><span>Outcome & Intelligence</span><span>Time</span><span></span></div>
+  <div class="ci-call-list">
+    {% for call in recent_calls %}
+    <article class="ci-activity-card">
+      <details id="call-{{ call.id }}" class="ci-call-item" data-status-url="{% url 'call-intelligence-call-status' call.id %}" data-analysis-status="{{ call.analysis_status }}">
+        <summary class="ci-call-row">
+          <div class="ci-call-direction {{ call.direction }} {{ call.status }}"><i class="ti {% if call.status == 'missed' %}ti-phone-x{% elif call.direction == 'incoming' %}ti-phone-incoming{% else %}ti-phone-outgoing{% endif %}" aria-hidden="true"></i></div>
+          <div class="ci-call-person"><strong title="{{ call.lead.name|default:call.contact_name|default:call.phone_number }}">{% if call.lead %}{{ call.lead.name }}{% elif call.contact_name %}{{ call.contact_name }}{% else %}Unknown contact{% endif %}</strong><span>{{ call.phone_number }}</span><small>{{ call.get_direction_display }} · {{ call.get_status_display }}</small></div>
+          <div class="ci-call-crm">
+            <small class="ci-field-label">CRM</small>
+            {% if call.lead %}<span class="ci-crm-state linked"><i class="ti ti-user-check" aria-hidden="true"></i> CRM lead</span><strong>{{ call.lead.pipeline.name }}</strong><span class="ci-badge">{{ call.lead.stage.name }}</span>
+            {% else %}<span class="ci-crm-state unlinked"><i class="ti ti-user-plus" aria-hidden="true"></i> Lead not created</span><small>Add this contact to your CRM</small>{% endif %}
+          </div>
+          <div class="ci-call-agent"><small class="ci-field-label">Logged by</small><strong>{{ call.user.name|default:call.user.email|default:"System" }}</strong><span>{{ call.get_source_display }}</span></div>
+          <div class="ci-call-result"><small class="ci-field-label">Outcome</small><span class="ci-outcome-badge {{ call.outcome_category }}">{{ call.outcome_label|default:"Not classified" }}</span><div class="ci-call-intel" data-ci-intel-badge>{% include "telephony/partials/intelligence_badge.html" %}</div></div>
+          <div class="ci-call-time"><strong>{{ call.talk_duration_seconds|call_duration }}</strong><small>talk time</small><small>Rang: {% if call.ring_duration_seconds %}{{ call.ring_duration_seconds|call_duration }}{% else %}Not available{% endif %}</small><small>{{ call.ended_at|date:"d M, H:i"|default:"Syncing…" }}</small></div>
+          <span class="ci-call-chevron"><i class="ti ti-chevron-down" aria-hidden="true"></i><span class="sr-only">Open call details</span></span>
+        </summary>
+        <div class="ci-call-detail">
+          <div class="ci-call-detail-grid">
+            <section><div class="ci-detail-label">CRM & call</div><dl class="ci-detail-list">
+              <div><dt>Logged by</dt><dd>{{ call.user.name|default:call.user.email|default:"System" }}</dd></div>
+              <div><dt>Source</dt><dd>{{ call.get_source_display }}</dd></div>
+              {% if call.lead %}<div><dt>CRM lead</dt><dd>{{ call.lead.name }}</dd></div><div><dt>Pipeline</dt><dd>{{ call.lead.pipeline.name }}</dd></div><div><dt>Stage</dt><dd>{{ call.lead.stage.name }}</dd></div>{% endif %}
+              <div><dt>Direction</dt><dd>{{ call.get_direction_display }}</dd></div><div><dt>Status</dt><dd>{{ call.get_status_display }}</dd></div>
+              <div><dt>Ringing time</dt><dd>{% if call.ring_duration_seconds %}{{ call.ring_duration_seconds|call_duration }}{% else %}Not available{% endif %}</dd></div>
+              <div><dt>Talk time</dt><dd>{{ call.talk_duration_seconds|call_duration }}</dd></div>
+              {% if call.provider %}<div><dt>Provider</dt><dd>{{ call.provider }}</dd></div>{% endif %}
+            </dl></section>
+            <section data-ci-intelligence aria-live="polite">{% include "telephony/partials/intelligence_detail.html" %}</section>
+          </div>
+          {% if call.recording_url or call.transcript %}<div class="ci-media-card"><div><div class="ci-detail-label">Conversation evidence</div>{% if call.recording_url %}<a href="{{ call.recording_url }}" target="_blank" rel="noopener" class="ci-media-link"><i class="ti ti-player-play"></i> Open recording</a>{% endif %}</div>
+            {% if call.transcript %}<details class="ci-transcript"><summary><i class="ti ti-file-text"></i> View transcript</summary><pre>{{ call.transcript }}</pre></details>{% endif %}
+          </div>{% endif %}
+          <form class="ci-post-call-form" method="post" action="{% url 'call-intelligence-call-action' call.id %}">
+            {% csrf_token %}
+            <div><label for="ci-notes-{{ call.id }}">Post-call notes</label><textarea id="ci-notes-{{ call.id }}" name="notes" maxlength="20000" placeholder="What happened? What should happen next?">{{ call.notes }}</textarea></div>
+            <div class="ci-post-call-controls">
+              <label>Call outcome<select name="disposition"><option value="">Not classified — choose outcome</option>{% if call.disposition and not call.outcome_is_active %}<option value="{{ call.disposition }}" selected>{{ call.outcome_label }} (inactive)</option>{% endif %}{% regroup dispositions by category as post_call_outcomes %}{% for group in post_call_outcomes %}<optgroup label="{% if group.grouper == 'connected' %}Connected conversation{% else %}Could not connect{% endif %}">{% for disposition in group.list %}<option value="{{ disposition.code }}" {% if call.disposition == disposition.code %}selected{% endif %}>{{ disposition.name }}</option>{% endfor %}</optgroup>{% endfor %}</select></label>
+              <label>Follow-up<input type="datetime-local" name="follow_up_at" {% if call.follow_up_at %}value="{{ call.follow_up_at|date:'Y-m-d\TH:i' }}"{% endif %}></label>
+              <button type="submit" class="ci-primary-btn"><i class="ti ti-sparkles"></i> Save & analyze</button>
+            </div><span class="ci-call-action-result" aria-live="polite"></span>
+          </form>
+        </div>
+      </details>
+      <div class="ci-activity-actions">
+        {% if call.lead %}{% if call.crm_url %}<a href="{{ call.crm_url }}" class="ci-lead-link"><i class="ti ti-user-check" aria-hidden="true"></i> View lead in CRM <i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>{% else %}<span class="ci-linked-caption">Linked to an existing CRM lead</span>{% endif %}
+        {% else %}<button type="button" class="ci-create-call-lead" data-ci-create-lead data-url="{% url 'call-intelligence-call-lead' call.id %}" data-name="{{ call.contact_name }}" data-phone="{{ call.phone_number }}" {% if not can_create_call_lead %}disabled{% endif %}><i class="ti ti-user-plus" aria-hidden="true"></i> Create lead</button>{% if not can_create_call_lead %}<span class="ci-linked-caption">Ask your administrator to assign an active pipeline.</span>{% endif %}{% endif %}
+        <a class="ci-contact-history" href="{% url 'call-intelligence-dashboard' %}?section=analytics&{% if call.lead %}lead={{ call.lead_id }}{% else %}q={{ call.phone_number|urlencode }}{% endif %}#calls">All calls for this contact <i class="ti ti-arrow-right" aria-hidden="true"></i></a>
+      </div>
+    </article>
+    {% empty %}<div class="ci-empty"><i class="ti ti-phone"></i><strong>No calls in this group.</strong><span>Choose another outcome or adjust your filters.</span><a href="{% url 'call-intelligence-dashboard' %}?section=analytics#calls" class="ci-lead-link">View all calls</a></div>{% endfor %}
+  </div>
+  <nav class="ci-pagination" aria-label="Call history pages">{% if call_page.has_previous %}<a href="?{{ page_query }}&page={{ call_page.previous_page_number }}#calls">Previous</a>{% endif %}<span>Page {{ call_page.number }} of {{ call_page.paginator.num_pages }}</span>{% if call_page.has_next %}<a href="?{{ page_query }}&page={{ call_page.next_page_number }}#calls">Next</a>{% endif %}</nav>
+</section>
+{% if can_create_call_lead %}
+{{ lead_destinations|json_script:"ci-lead-destinations" }}
+<dialog id="ci-create-lead-dialog" class="ci-lead-dialog" aria-labelledby="ci-lead-dialog-title">
+  <div class="ci-lead-dialog-head"><div><small>ADD TO CRM</small><h3 id="ci-lead-dialog-title">Create lead from this call</h3></div><button type="button" data-ci-close-lead aria-label="Close create lead"><i class="ti ti-x" aria-hidden="true"></i></button></div>
+  <p class="ci-lead-dialog-copy">Choose where this lead belongs. Its calls will stay linked to the users who logged them.</p>
+  <form id="ci-create-lead-form" method="post">
+    {% csrf_token %}
+    <label>Lead name<input name="name" maxlength="150" required autocomplete="name" placeholder="Enter contact name"></label>
+    <label>Phone number<input name="phone" readonly><small>Captured from the call</small></label>
+    <label>Email <span>(optional)</span><input type="email" name="email" maxlength="254" autocomplete="email" placeholder="name@example.com"></label>
+    <div class="ci-lead-destination-fields"><label>Pipeline<select name="pipeline" required aria-label="Lead pipeline"><option value="">Select pipeline</option></select></label><label>Stage<select name="stage" required disabled aria-label="Lead stage"><option value="">Select pipeline first</option></select></label></div>
+    <p class="ci-lead-error" role="alert" aria-live="assertive"></p>
+    <div class="ci-lead-dialog-actions"><button type="button" data-ci-close-lead class="ci-secondary-btn">Cancel</button><button type="submit" class="ci-primary-btn"><i class="ti ti-user-plus" aria-hidden="true"></i> Create lead & link call</button></div>
+  </form>
+</dialog>
+{% endif %}

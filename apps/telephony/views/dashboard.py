@@ -1,5 +1,6 @@
 
 from django.conf import settings as django_settings
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.db.models import Count, Q
 from django.core.paginator import Paginator
@@ -10,11 +11,14 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date, parse_datetime
 from django.utils.text import slugify
+from urllib.parse import urlencode
+from uuid import UUID
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.accounts.models import User
 from apps.crm.decorators import crm_login_required
 from apps.crm.models import LeadReminder, Pipeline, Stage
+from apps.crm.views.api import get_user_pipelines
 from services.crm_activity_service import record_reminder_created
 
 from ..models import (
@@ -25,8 +29,8 @@ from ..models import (
     CallIntelligenceSettings,
     CallRecord,
 )
-from ..services import get_call_dispositions, reconcile_call_tracking, request_call_analysis
-from ..analytics import call_metrics, team_metrics
+from ..services import create_crm_lead_from_call, get_call_dispositions, reconcile_call_tracking, request_call_analysis
+from ..analytics import call_metrics, call_outcome_groups, team_metrics
 
 
 def _scoped_calls(user):
@@ -36,18 +40,21 @@ def _scoped_calls(user):
     return qs
 
 
-def _filtered_calls(request, user):
+def _filtered_calls(request, user, *, ignore=()):
     qs = _scoped_calls(user)
-    status = str(request.GET.get("status") or "").strip()
-    disposition = str(request.GET.get("disposition") or "").strip()
-    direction = str(request.GET.get("direction") or "").strip()
-    source = str(request.GET.get("source") or "").strip()
-    intent = str(request.GET.get("intent") or "").strip()
-    pipeline = str(request.GET.get("pipeline") or "").strip()
-    agent = str(request.GET.get("agent") or "").strip()
-    query = str(request.GET.get("q") or "").strip()
-    date_from = parse_date(str(request.GET.get("date_from") or ""))
-    date_to = parse_date(str(request.GET.get("date_to") or ""))
+    params = request.GET.copy()
+    for key in ignore:
+        params.pop(key, None)
+    status = str(params.get("status") or "").strip()
+    disposition = str(params.get("disposition") or "").strip()
+    direction = str(params.get("direction") or "").strip()
+    source = str(params.get("source") or "").strip()
+    intent = str(params.get("intent") or "").strip()
+    pipeline = str(params.get("pipeline") or "").strip()
+    agent = str(params.get("agent") or "").strip()
+    query = str(params.get("q") or "").strip()
+    date_from = parse_date(str(params.get("date_from") or ""))
+    date_to = parse_date(str(params.get("date_to") or ""))
 
     if status in CallRecord.Status.values:
         qs = qs.filter(status=status)
@@ -77,11 +84,33 @@ def _filtered_calls(request, user):
             | Q(contact_name__icontains=query)
             | Q(lead__name__icontains=query)
         )
+    if params.get("crm") == "linked":
+        qs = qs.filter(lead__isnull=False)
+    elif params.get("crm") == "unlinked":
+        qs = qs.filter(lead__isnull=True)
+    if params.get("lead"):
+        try:
+            qs = qs.filter(lead_id=UUID(str(params["lead"])))
+        except (ValueError, TypeError):
+            qs = qs.none()
     if date_from:
         qs = qs.filter(ended_at__date__gte=date_from)
     if date_to:
         qs = qs.filter(ended_at__date__lte=date_to)
     return qs
+
+
+def _activity_url(request, **changes):
+    params = request.GET.copy()
+    params["section"] = "analytics"
+    params.pop("page", None)
+    params.pop("open", None)
+    for key, value in changes.items():
+        if value:
+            params[key] = value
+        else:
+            params.pop(key, None)
+    return reverse("call-intelligence-dashboard") + "?" + params.urlencode() + "#calls"
 
 
 @crm_login_required
@@ -99,6 +128,51 @@ def call_intelligence_dashboard(request):
         "lead", "lead__pipeline", "lead__stage", "user", "intelligence"
     ).order_by("-ended_at", "-created_at"), 50).get_page(request.GET.get("page"))
     recent_calls = list(page.object_list)
+    accessible_pipeline_ids = set(get_user_pipelines(user).values_list("id", flat=True))
+    dispositions = list(get_call_dispositions(user.organization))
+    all_dispositions = list(CallDisposition.objects.filter(organization=user.organization))
+    disposition_by_code = {row.code: row for row in all_dispositions}
+    for call in recent_calls:
+        outcome = disposition_by_code.get(call.disposition)
+        call.outcome_label = outcome.name if outcome else (call.disposition.replace("_", " ").title() or "Not classified")
+        call.outcome_category = outcome.category if outcome else "unclassified"
+        call.outcome_is_active = bool(outcome and outcome.is_active)
+        call.crm_url = ""
+        if call.lead_id and call.lead.pipeline_id in accessible_pipeline_ids:
+            call.crm_url = reverse("crm-dashboard") + "?" + urlencode({
+                "pipeline": call.lead.pipeline_id, "stage": call.lead.stage_id, "lead": call.lead_id,
+            })
+    outcome_groups = call_outcome_groups(_filtered_calls(request, user, ignore=("disposition",)), all_dispositions)
+    selected_outcome = str(request.GET.get("disposition") or "").strip()
+    for group in outcome_groups:
+        group["url"] = _activity_url(request, disposition=group["code"])
+        group["selected"] = group["code"] == selected_outcome
+    active_outcome = next((group["name"] for group in outcome_groups if group["selected"]), "All calls")
+    crm_counts = _filtered_calls(request, user, ignore=("crm",)).aggregate(
+        total=Count("id"), linked=Count("id", filter=Q(lead__isnull=False)),
+        unlinked=Count("id", filter=Q(lead__isnull=True)),
+    )
+    crm_groups = [
+        {"code": "", "name": "All contacts", "total": crm_counts["total"]},
+        {"code": "linked", "name": "CRM leads", "total": crm_counts["linked"]},
+        {"code": "unlinked", "name": "Needs a lead", "total": crm_counts["unlinked"]},
+    ]
+    for group in crm_groups:
+        group["url"] = _activity_url(request, crm=group["code"])
+        group["selected"] = group["code"] == str(request.GET.get("crm") or "")
+    lead_destinations = [
+        {"id": str(p.id), "name": p.name, "owned": p.owner_id == user.id,
+         "stages": [{"id": str(s.id), "name": s.name} for s in p.stages.all() if s.is_active]}
+        for p in get_user_pipelines(user).prefetch_related("stages")
+    ]
+    contact_history_name = ""
+    if request.GET.get("lead"):
+        try:
+            contact_history_name = _scoped_calls(user).filter(
+                lead_id=UUID(str(request.GET["lead"])),
+            ).values_list("lead__name", flat=True).first() or ""
+        except (ValueError, TypeError):
+            pass
     page_query = request.GET.copy()
     page_query["section"] = "analytics"
     page_query.pop("page", None)
@@ -127,17 +201,22 @@ def call_intelligence_dashboard(request):
         organization=user.organization, is_active=True
     ).order_by("name", "email")
 
-    dispositions = list(get_call_dispositions(user.organization))
-    disposition_names = {row.code: row.name for row in dispositions}
     return render(request, "telephony/call_intelligence.html", {
         "crm_user": user,
         "active_section": "analytics" if request.GET.get("section") == "analytics" or any(
-            request.GET.get(k) for k in ("q", "status", "disposition", "direction", "source", "intent", "pipeline", "agent", "date_from", "date_to")
+            request.GET.get(k) for k in ("q", "status", "disposition", "direction", "source", "intent", "pipeline", "agent", "date_from", "date_to", "crm", "lead")
         ) else "overview",
         "call_page": page,
         "page_query": page_query.urlencode(),
         "call_settings": settings_obj,
         "recent_calls": recent_calls,
+        "contact_history_name": contact_history_name,
+        "contact_history_clear_url": _activity_url(request, lead=""),
+        "outcome_groups": outcome_groups,
+        "active_outcome": active_outcome,
+        "crm_groups": crm_groups,
+        "lead_destinations": lead_destinations,
+        "can_create_call_lead": any(p["stages"] for p in lead_destinations),
         "missed_calls": missed_calls,
         "devices": devices,
         "agent_stats": agent_stats,
@@ -154,7 +233,7 @@ def call_intelligence_dashboard(request):
             key: str(request.GET.get(key) or "")
             for key in (
                 "q", "status", "disposition", "direction", "source", "intent",
-                "pipeline", "agent", "date_from", "date_to",
+                "pipeline", "agent", "date_from", "date_to", "crm", "lead",
             )
         },
         "release": release,
@@ -164,12 +243,39 @@ def call_intelligence_dashboard(request):
         "call_directions": CallRecord.Direction.choices,
         "call_sources": [("android_sim", "Android APK · SIM"), ("manual", "CRM · Manual call"), ("cloud", "Cloud · API events")],
         "source_counts": list(calls.values("source").annotate(total=Count("id")).order_by("source")),
-        "disposition_counts": [
-            {"name": disposition_names.get(row["disposition"], row["disposition"] or "Not classified"), "total": row["total"]}
-            for row in calls.values("disposition").annotate(total=Count("id")).order_by("-total")
-        ],
         "call_intents": CallIntelligenceResult.Intent.choices,
     })
+
+
+@crm_login_required
+@require_POST
+def create_call_lead(request, call_id):
+    user = request.crm_user
+    if not _scoped_calls(user).filter(pk=call_id).exists():
+        raise Http404("Call not found.")
+    try:
+        call, created = create_crm_lead_from_call(
+            user=user, call_id=call_id, name=request.POST.get("name"),
+            pipeline_id=request.POST.get("pipeline"), stage_id=request.POST.get("stage"),
+            email=request.POST.get("email", ""),
+        )
+    except ValidationError as exc:
+        return JsonResponse({"ok": False, "error": " ".join(exc.messages)}, status=400)
+    # Show this contact's complete call history after creation, focused on the
+    # original call even when its history spans several pages.
+    history = _scoped_calls(user).filter(lead_id=call.lead_id)
+    if call.ended_at:
+        ahead = history.filter(Q(ended_at__isnull=True) | Q(ended_at__gt=call.ended_at)
+                               | Q(ended_at=call.ended_at, created_at__gt=call.created_at))
+    else:
+        ahead = history.filter(ended_at__isnull=True, created_at__gt=call.created_at)
+    redirect_url = reverse("call-intelligence-dashboard") + "?" + urlencode({
+        "section": "analytics", "lead": call.lead_id,
+        "page": ahead.count() // 50 + 1, "open": call.id,
+    }) + f"#call-{call.id}"
+    if request.headers.get("X-Requested-With") == "XMLHttpRequest":
+        return JsonResponse({"ok": True, "created": created, "lead_id": str(call.lead_id), "redirect_url": redirect_url})
+    return redirect(redirect_url)
 
 
 @crm_login_required
@@ -198,7 +304,7 @@ def post_call_action(request, call_id):
 
     notes = str(request.POST.get("notes") or "").strip()[:20000]
     disposition = str(request.POST.get("disposition") or "").strip()[:80]
-    if disposition and not get_call_dispositions(user.organization).filter(
+    if disposition and disposition != call.disposition and not get_call_dispositions(user.organization).filter(
         code=disposition
     ).exists():
         return JsonResponse({"ok": False, "error": "Invalid disposition."}, status=400)
@@ -215,6 +321,7 @@ def post_call_action(request, call_id):
 
     with transaction.atomic():
         call = _scoped_calls(user).select_for_update().get(pk=call_id)
+        outcome_changed = call.disposition != disposition
         if due_at and not call.lead_id:
             return JsonResponse(
                 {"ok": False, "error": "A CRM lead is required for a reminder."}, status=400,
@@ -244,6 +351,8 @@ def post_call_action(request, call_id):
     if request.headers.get("X-Requested-With") == "XMLHttpRequest":
         return JsonResponse({"ok": True, "status_url": reverse(
             "call-intelligence-call-status", args=[call.id],
+        ), "outcome_changed": outcome_changed, "activity_url": _activity_url(
+            request, disposition=disposition, open=str(call.id),
         )})
     return HttpResponseRedirect(reverse("call-intelligence-dashboard") + "?section=analytics#calls")
 
