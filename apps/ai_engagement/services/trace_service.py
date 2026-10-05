@@ -296,6 +296,15 @@ def flush(*, reset_token: Token | None = None) -> None:
             int((time.perf_counter() - buffer.started_perf) * 1000),
             0,
         )
+        from apps.ai_engagement.services.turn_health import evaluate_turn_health
+        from apps.core.observability import increment
+
+        quality = evaluate_turn_health(buffer.data, total_ms=elapsed_ms)
+        buffer.data["quality"] = quality
+        increment(
+            "ai.turn_health",
+            labels={"band": quality["band"]},
+        )
         generation = buffer.data.get("generation") or {}
         details = sanitize(
             {
@@ -379,6 +388,17 @@ def safe_delivery_update(
                 delivery["delivered_at"] = timezone.now().isoformat()
             if status == WhatsAppMessage.Status.FAILED:
                 delivery["error"] = safe_error_message(getattr(outbound_message, "error", ""))
+
+            from apps.ai_engagement.services.turn_health import evaluate_turn_health
+
+            details["quality"] = evaluate_turn_health(
+                {
+                    **details,
+                    "status": trace.status,
+                    "delivery": delivery,
+                },
+                total_ms=trace.total_ms,
+            )
             AITrace.objects.filter(pk=trace.pk, organization_id=organization_id).update(
                 outbound_message_id=getattr(outbound_message, "id", None), details=sanitize(details),
             )

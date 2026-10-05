@@ -1,6 +1,9 @@
 <section id="ai-model-routing" class="bg-white rounded-xl border border-slate-200 p-6 my-6">
     <h2 class="text-lg font-semibold">Advanced model routing</h2>
-    <p class="text-sm text-slate-600 mt-2">Models for {{ organization.name }}. Only superadmin can change these settings. Leave blank to use platform defaults.</p>
+    <p class="text-sm text-slate-600 mt-2">Models for {{ organization.name }}. Only superadmin can change these settings. Leave blank to use platform defaults and adaptive routing.</p>
+    <div class="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        SHVYA's dual-pass AI flow remains platform-controlled: the first pass understands the turn and prepares permitted actions, then the final pass composes from confirmed backend state. Organization users cannot change or disable this execution contract.
+    </div>
     <form method="post" action="{% url 'superadmin-organization-model-routing-update' organization.id %}" class="grid gap-4 mt-4">
         {% csrf_token %}
         <div><label for="qualification-model">Qualification model (New Lead)</label><input id="qualification-model" name="qualification_model" maxlength="100" value="{{ model_routing_info.qualification_model|default:'' }}" placeholder="Platform default" class="block w-full border rounded-lg p-2"></div>
