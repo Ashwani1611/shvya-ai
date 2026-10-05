@@ -13,6 +13,7 @@ from apps.integrations.views.meta_leads import (
     meta_lead_page_delete,
     meta_lead_page_save,
 )
+from apps.integrations.views.meta_conversions import meta_conversions_view
 from apps.integrations.views.web import (
     connect_hub_view,
     integration_detail_view,
@@ -54,8 +55,7 @@ urlpatterns = [
     ),
     path(
         "connect-hub/meta-conversions-api/",
-        integration_detail_view,
-        {"integration_slug": "meta-conversions-api"},
+        meta_conversions_view,
         name="crm-connect-hub-meta-conversions-api",
     ),
     path(

@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Meta Conversions API | Connect Hub | SHVYA AI{% endblock %}
+{% block header %}Connect Hub{% endblock %}
+{% block extra_head %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/meta_conversions.css' %}">
+<script src="{% static 'js/meta_conversions.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<main class="capi" id="capi-app" data-endpoint="{% url 'crm-connect-hub-meta-conversions-api' %}">
+  <nav class="capi-breadcrumb" aria-label="Breadcrumb"><a href="{% url 'crm-connect-hub' %}"><i class="ti ti-chevron-left" aria-hidden="true"></i> Connect Hub</a><span>Ads &amp; conversions</span></nav>
+  <header class="capi-header">
+    <div class="capi-heading"><div class="capi-mark"><i class="ti ti-brand-meta" aria-hidden="true"></i></div><div><p class="capi-eyebrow">META</p><h1>Conversions API</h1><p class="capi-subtitle">Send your lead milestones back to Meta.</p></div></div>
+    <a class="capi-link" href="https://www.facebook.com/events_manager2/list" target="_blank" rel="noopener noreferrer">Open Events Manager <i class="ti ti-external-link" aria-hidden="true"></i></a>
+  </header>
+  <div id="capi-notice" class="capi-notice" role="status" aria-live="polite" hidden></div>
+  <noscript><p class="capi-notice">Enable JavaScript to configure your connection and event mappings.</p></noscript>
+
+  <div class="capi-connection-grid">
+    <section class="capi-panel">
+      <div class="capi-panel-head"><div><p class="capi-step">01 · CONNECTION</p><h2>Connect your dataset.</h2></div><span id="capi-credential-status" class="capi-chip">Not connected</span></div>
+      <form id="capi-settings" class="capi-settings" autocomplete="off">
+        {% csrf_token %}
+        <div class="capi-fields-two">
+          <label class="capi-field">Dataset / Pixel ID<input id="capi-dataset" name="dataset_id" inputmode="numeric" maxlength="30" placeholder="Your Meta dataset ID" required><small>Events Manager · Data sources · Settings</small></label>
+          <label class="capi-field">Lead sources<select id="capi-scope" name="event_scope"><option value="meta_leads">Meta Lead Ads only</option><option value="all_leads">All lead sources</option></select><small>Choose which new leads and stage changes to send.</small></label>
+        </div>
+        <label class="capi-field">Access token<div class="capi-token"><input id="capi-token" name="access_token" type="password" maxlength="8000" autocomplete="new-password" placeholder="Paste your Conversions API token"><button id="capi-token-visibility" type="button" aria-label="Show access token" aria-pressed="false"><i class="ti ti-eye" aria-hidden="true"></i></button></div><small id="capi-token-help">Generate a token in Events Manager · Settings · Conversions API.</small></label>
+        <div class="capi-fields-two">
+          <label class="capi-field">Delivery mode<select id="capi-mode"><option value="test">Test Events</option><option value="live">Live events</option></select></label>
+          <label class="capi-field">Test Event Code<input id="capi-test-code" name="test_event_code" maxlength="100" placeholder="e.g. TEST12345"><small>Copy from your dataset’s Test Events tab.</small></label>
+        </div>
+        <div class="capi-settings-footer"><span id="capi-mode-help" class="capi-muted">Use a real lead to verify the connection.</span><button class="capi-button" type="submit">Save connection</button></div>
+      </form>
+    </section>
+    <aside class="capi-panel capi-tracking">
+      <div class="capi-tracking-head"><p class="capi-step">EVENT TRACKING</p><label class="capi-switch"><input id="capi-enabled" type="checkbox" form="capi-settings" name="is_enabled" aria-label="Enable event tracking"><span></span></label></div>
+      <h2 id="capi-tracking-title">Tracking paused.</h2><p id="capi-tracking-description" class="capi-muted">Save your credentials, map stages, and send a test event.</p>
+      <div class="capi-metrics"><div><strong id="capi-count-sent">0</strong><span>Accepted</span></div><div><strong id="capi-count-pending">0</strong><span>Pending</span></div><div><strong id="capi-count-failed">0</strong><span>Failed</span></div></div>
+      <p class="capi-metric-note">Recorded deliveries, including test events.</p>
+      <button id="capi-open-test" type="button" class="capi-button capi-button-light"><i class="ti ti-player-play" aria-hidden="true"></i> Send a test event</button>
+      <p id="capi-test-help" class="capi-muted">Save a dataset, token and Test Events code to enable testing.</p>
+      <button id="capi-disconnect" type="button" class="capi-text-button capi-danger" hidden>Disconnect</button>
+    </aside>
+  </div>
+
+  <section class="capi-panel capi-mappings">
+    <div class="capi-panel-head"><div><p class="capi-step">02 · EVENT MAPPINGS</p><h2>Your stages. Meta’s signals.</h2><p class="capi-muted">An event is queued when a new lead is created or enters a mapped stage.</p></div><button id="capi-add-mapping" type="button" class="capi-button capi-button-light"><i class="ti ti-plus" aria-hidden="true"></i> Add mapping</button></div>
+    <div class="capi-table-scroll"><table class="capi-table"><thead><tr><th>Status</th><th>Pipeline &amp; stage</th><th>Meta event</th><th>Event value</th><th class="capi-actions-heading">Actions</th></tr></thead><tbody id="capi-mapping-rows"></tbody></table></div>
+    <p class="capi-footnote">New Lead defaults to <span class="capi-inline-code">Lead</span>. Meta Lead Ads events use Meta’s CRM funnel format. Other lead sources use standard server events.</p>
+  </section>
+
+  <div class="capi-data-grid">
+    <section class="capi-panel"><div class="capi-panel-head"><div><p class="capi-step">03 · CUSTOMER MATCHING</p><h2>Choose the lead data.</h2><p class="capi-muted">Contact fields are normalised and hashed before they leave Shvya.</p></div><i class="ti ti-shield-lock capi-panel-symbol" aria-hidden="true"></i></div><div id="capi-user-fields" class="capi-checkbox-grid"></div><p class="capi-footnote">Meta Lead ID is the ID from the original Lead Ads submission. Browser and location fields use data already stored in the lead’s attributes.</p></section>
+    <section class="capi-panel"><div class="capi-panel-head"><div><p class="capi-step">CUSTOM ATTRIBUTES</p><h2>Add useful context.</h2><p class="capi-muted">Select the CRM attributes to include with your events.</p></div><i class="ti ti-adjustments capi-panel-symbol" aria-hidden="true"></i></div><div id="capi-custom-fields" class="capi-checkbox-grid"></div><p class="capi-footnote">Select only data you have permission to share. Credentials, private context, contact fields and sensitive attributes are excluded here.</p></section>
+  </div>
+  <div class="capi-data-footer"><span class="capi-muted">Field selections and tracking changes take effect when saved.</span><button type="submit" form="capi-settings" class="capi-button">Save connection</button></div>
+
+  <section class="capi-panel"><div class="capi-panel-head"><div><p class="capi-step">DELIVERY ACTIVITY</p><h2>Follow every event.</h2></div><button id="capi-refresh" type="button" class="capi-text-button"><i class="ti ti-refresh" aria-hidden="true"></i> Refresh</button></div><div id="capi-deliveries" class="capi-deliveries"></div><p class="capi-footnote">Most recent 50 deliveries. “Accepted” confirms Meta received the event; review matching and diagnostics in Events Manager.</p></section>
+
+  <details class="capi-guide"><summary>Setup guide <i class="ti ti-plus" aria-hidden="true"></i></summary><div class="capi-guide-grid"><div><span>1</span><h3>Get your credentials</h3><p>Open your dataset in Events Manager. Copy its ID and generate a Conversions API access token under Settings. Save both here.</p></div><div><span>2</span><h3>Map and test</h3><p>Map your funnel stages to events. Copy the Test Events code, then send an event using a real lead from the mapped pipeline. Check the event in Meta.</p></div><div><span>3</span><h3>Start live delivery</h3><p>Choose Live events, enable tracking and save. New leads and mapped stage changes are sent automatically. Existing leads are not backfilled.</p></div></div><div class="capi-guide-links"><a href="https://developers.facebook.com/documentation/ads-commerce/conversions-api/get-started" target="_blank" rel="noopener noreferrer">Meta setup guide</a><a href="https://developers.facebook.com/documentation/ads-commerce/conversions-api/conversion-leads-integration/crm-integration/3-implementing-the-crm-integration" target="_blank" rel="noopener noreferrer">CRM implementation guide</a><a href="https://developers.facebook.com/documentation/ads-commerce/conversions-api/parameters/customer-information-parameters" target="_blank" rel="noopener noreferrer">Customer data requirements</a></div></details>
+
+  <dialog id="capi-mapping-dialog" class="capi-dialog" aria-labelledby="capi-mapping-title"><form id="capi-mapping-form" class="capi-dialog-body"><div class="capi-dialog-head"><div><p class="capi-step">EVENT MAPPING</p><h2 id="capi-mapping-title">Add an event mapping.</h2></div><button type="button" class="capi-icon-button" data-close-dialog aria-label="Close mapping editor"><i class="ti ti-x" aria-hidden="true"></i></button></div><input type="hidden" name="id"><div class="capi-fields-two"><label class="capi-field">Pipeline<select name="pipeline" required></select></label><label class="capi-field">Stage<select name="stage" required></select></label></div><div class="capi-fields-two"><label class="capi-field">Meta event<select id="capi-event-type"><option>Lead</option><option>QualifiedLead</option><option>Contact</option><option>Schedule</option><option>Purchase</option><option>CompleteRegistration</option><option value="custom">Custom event</option></select></label><label class="capi-field" id="capi-custom-event-field" hidden>Custom event name<input name="event_name" maxlength="100" placeholder="e.g. VisitBooked"></label><label class="capi-field" id="capi-source-field">Conversion source<select name="action_source"></select><small>Meta Lead Ads always use the CRM update source.</small></label></div><div class="capi-fields-two"><label class="capi-field">Value source<select name="value_source"><option value="none">No value</option><option value="static">Static value</option><option value="attribute">Lead attribute</option></select></label><label class="capi-field" id="capi-static-field" hidden>Value<input name="static_value" type="number" min="0" step="0.0001" placeholder="0.00"></label><label class="capi-field" id="capi-attribute-field" hidden>Numeric attribute<select name="value_attribute"></select></label><label class="capi-field" id="capi-currency-field" hidden>Currency<select name="currency"></select></label></div><label class="capi-check"><input name="is_enabled" type="checkbox" checked> Send events for this stage</label><p id="capi-mapping-error" class="capi-dialog-error" role="alert" hidden></p><div class="capi-dialog-footer"><button type="button" class="capi-button capi-button-light" data-close-dialog>Cancel</button><button type="submit" class="capi-button">Save mapping</button></div></form></dialog>
+
+  <dialog id="capi-test-dialog" class="capi-dialog" aria-labelledby="capi-test-title"><form id="capi-test-form" class="capi-dialog-body"><div class="capi-dialog-head"><div><p class="capi-step">TEST EVENTS</p><h2 id="capi-test-title">Verify with a real lead.</h2></div><button type="button" class="capi-icon-button" data-close-dialog aria-label="Close test event"><i class="ti ti-x" aria-hidden="true"></i></button></div><p class="capi-muted">The event uses your saved field selections and the selected mapping’s value. Find it in Meta using your saved Test Events code.</p><label class="capi-field">Event mapping<select name="mapping_id" required></select></label><label class="capi-field">Lead currently in this stage<select name="lead_id" required></select><small>Showing the 100 most recent eligible leads in this stage.</small></label><p id="capi-test-error" class="capi-dialog-error" role="alert" hidden></p><div class="capi-dialog-footer"><button type="button" class="capi-button capi-button-light" data-close-dialog>Cancel</button><button type="submit" class="capi-button">Send test event</button></div></form></dialog>
+</main>
+{{ capi_state|json_script:"capi-initial-state" }}
+{% endblock %}
