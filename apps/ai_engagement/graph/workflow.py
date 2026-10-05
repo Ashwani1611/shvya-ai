@@ -50,12 +50,17 @@ def _file_trace(**fields):
 
 def _welcome_due_for_context(*, decision, context, lead):
     """Match the first-reply welcome boundary without inferring file permission."""
-    if not decision.should_engage or getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION":
+    if not decision.should_engage:
         return False
     from apps.crm.models import Lead
     conversation = context.conversation or {}
     channel = str(conversation.get("channel") or "").strip().casefold()
     messages = [item for item in conversation.get("messages", []) if isinstance(item, dict)]
+    latest = next((str(item.get("body") or "") for item in reversed(messages)
+                   if item.get("direction") == "inbound"), "")
+    if (getattr(decision, "reason_code", "") == "ANSWER_ORG_QUESTION"
+            and (not getattr(decision, "qualification_updates", None) or "?" in latest or "？" in latest)):
+        return False
     # Instagram has its own message table.  The generic Lead predicate reads
     # WhatsApp history, so using it for an Instagram turn incorrectly suppresses
     # a first-message welcome (and any file explicitly allowed with that

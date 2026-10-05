@@ -10,6 +10,16 @@ from apps.ai_engagement.services.qualification_state import _non_answer_evidence
 
 
 class FinalReplyLanguageTests(SimpleTestCase):
+    def test_first_turn_volunteered_answers_keep_welcome_file_review(self):
+        from apps.ai_engagement.graph.workflow import _welcome_due_for_context
+        context = SimpleNamespace(conversation={"channel": "sandbox", "message_count": 1,
+            "messages": [{"direction": "inbound", "body": "My problem is slow replies. I receive 20 leads daily."}]})
+        decision = SimpleNamespace(should_engage=True, reason_code="ANSWER_ORG_QUESTION",
+                                   qualification_updates=[{"requirement_id": "problem"}])
+        self.assertTrue(_welcome_due_for_context(decision=decision, context=context, lead=SimpleNamespace()))
+        context.conversation["messages"][0]["body"] += " What is the price?"
+        self.assertFalse(_welcome_due_for_context(decision=decision, context=context, lead=SimpleNamespace()))
+
     def test_explicit_request_and_short_answers_preserve_language(self):
         messages = [{"direction": "inbound", "body": "Please reply in German. What does DIY cost?"},
                     {"direction": "inbound", "body": "Slow replies"}]
