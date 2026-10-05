@@ -1,0 +1,181 @@
+From d9edc126f19703e9e7d0235ca65ad4e0793865ab Mon Sep 17 00:00:00 2001
+From: Codex <codex@openai.com>
+Date: Mon, 5 Oct 2026 12:17:43 +0530
+Subject: [PATCH] Bound OpenAI prompts and honor token retry hints
+
+---
+ apps/ai_engagement/services/ai_provider.py    | 84 +++++++++++++++++++
+ .../tests/test_provider_quota.py              | 32 ++++++-
+ 2 files changed, 115 insertions(+), 1 deletion(-)
+
+diff --git a/apps/ai_engagement/services/ai_provider.py b/apps/ai_engagement/services/ai_provider.py
+index 81893cb3..fc18601a 100644
+--- a/apps/ai_engagement/services/ai_provider.py
++++ b/apps/ai_engagement/services/ai_provider.py
+@@ -3,6 +3,7 @@ from __future__ import annotations
+ import copy
+ import logging
+ import os
++import re
+ import time
+ from dataclasses import dataclass
+ from typing import Any
+@@ -82,6 +83,19 @@ def _provider_retry_after(error):
+     response = getattr(error, "response", None)
+     headers = getattr(response, "headers", {}) or {}
+     raw = str(headers.get("Retry-After") or "").strip()
++    if not raw:
++        # OpenAI token-per-minute responses often include the wait time only
++        # in the error message (for example, "try again in 3.675s") rather
++        # than in Retry-After.  Preserve that signal for the Celery retry
++        # owner instead of falling back to an unnecessarily long delay.
++        body = getattr(error, "body", None)
++        error_text = f"{error} {body!r}"
++        raw_match = re.search(
++            r"(?:try again in|retry after)\s+([0-9]+(?:\.[0-9]+)?)\s*s",
++            error_text,
++            flags=re.IGNORECASE,
++        )
++        raw = raw_match.group(1) if raw_match else ""
+     if not raw:
+         return None
+     try:
+@@ -141,6 +155,7 @@ class OpenAIProvider:
+ 
+     DEFAULT_MODEL = "gpt-4.1-nano"
+     DEFAULT_TIMEOUT_SECONDS = 20.0
++    DEFAULT_MAX_PROMPT_TOKENS = 24000
+ 
+     TASK_MODEL_ENV = {
+         "engagement": "OPENAI_ENGAGEMENT_MODEL",
+@@ -260,6 +275,69 @@ class OpenAIProvider:
+             configured = default
+         return min(max(configured, 100), 2000)
+ 
++    @classmethod
++    def _max_prompt_tokens(cls) -> int:
++        """Keep one request below the provider TPM burst ceiling.
++
++        A 100k-character authored Playbook is valid to save, but sending the
++        complete Playbook plus the structured context and response schema can
++        make one request consume tens of thousands of tokens.  That request is
++        then rejected even when the account has enough monthly quota.  The
++        provider boundary is the last safe place to apply a bounded prompt
++        budget; the authored source remains intact in storage and traces mark
++        when a runtime compaction was used.
++        """
++        try:
++            configured = int(
++                os.getenv("OPENAI_MAX_PROMPT_TOKENS", cls.DEFAULT_MAX_PROMPT_TOKENS)
++            )
++        except (TypeError, ValueError):
++            configured = cls.DEFAULT_MAX_PROMPT_TOKENS
++        return min(max(configured, 4000), 48000)
++
++    @staticmethod
++    def _clip_text(text: str, limit: int) -> str:
++        if len(text) <= limit:
++            return text
++        if limit <= 80:
++            return text[:limit]
++        head = max(40, int(limit * 0.62))
++        tail = max(40, limit - head)
++        return (
++            text[:head]
++            + "\n\n[SHVYA runtime prompt compacted for provider token safety]\n\n"
++            + text[-tail:]
++        )
++
++    def _bound_prompt(self, *, instructions: str, input_text: str, metadata=None):
++        """Bound provider input without changing the saved organization data."""
++        budget_chars = self._max_prompt_tokens() * 4
++        total = len(instructions) + len(input_text)
++        if total <= budget_chars:
++            return instructions, input_text, False
++
++        # Keep the current turn payload preferentially; it contains the latest
++        # inbound message, state and retrieved evidence.  Compact the authored
++        # instructions first, then the payload only if necessary.
++        input_budget = min(len(input_text), max(12000, int(budget_chars * 0.42)))
++        bounded_input = self._clip_text(input_text, input_budget)
++        instruction_budget = max(4000, budget_chars - len(bounded_input))
++        bounded_instructions = self._clip_text(instructions, instruction_budget)
++        # A very large input can still push the combined estimate over budget
++        # after the compaction marker is added; make the final bound explicit.
++        remaining = max(4000, budget_chars - len(bounded_instructions))
++        bounded_input = self._clip_text(bounded_input, remaining)
++        emit_event(
++            "ai.provider.prompt_compacted",
++            organization_id=(metadata or {}).get("organization_id"),
++            feature=self._feature(metadata),
++            original_chars=total,
++            compacted_chars=len(bounded_instructions) + len(bounded_input),
++            max_prompt_tokens=self._max_prompt_tokens(),
++        )
++        increment("ai.provider_prompt_compactions", labels={"feature": self._feature(metadata)})
++        return bounded_instructions, bounded_input, True
++
+     def _release_credit_reservation(self, reservation) -> None:
+         if reservation is None:
+             return
+@@ -458,6 +536,12 @@ class OpenAIProvider:
+         if not input_text:
+             raise AIProviderConfigurationError("AI input cannot be empty.")
+ 
++        instructions, input_text, _prompt_compacted = self._bound_prompt(
++            instructions=instructions,
++            input_text=input_text,
++            metadata=metadata,
++        )
++
+         request_model = self._model_for_metadata(metadata)
+         request_kwargs: dict[str, Any] = {
+             "model": request_model,
+diff --git a/apps/ai_engagement/tests/test_provider_quota.py b/apps/ai_engagement/tests/test_provider_quota.py
+index 5baf4073..fd189eee 100644
+--- a/apps/ai_engagement/tests/test_provider_quota.py
++++ b/apps/ai_engagement/tests/test_provider_quota.py
+@@ -1,5 +1,5 @@
+ from types import SimpleNamespace
+-from unittest.mock import Mock
++from unittest.mock import Mock, patch
+ 
+ import httpx
+ from django.test import SimpleTestCase, override_settings
+@@ -43,3 +43,33 @@ class ProviderQuotaTests(SimpleTestCase):
+         self.rejected({"error": {"code": "insufficient_quota"}})
+         with self.assertRaises(AIProviderQuotaError):
+             self.provider.generate_text(instructions="Answer.", input_text="Hi")
++
++    def test_token_rate_limit_message_exposes_retry_after(self):
++        self.rejected({
++            "error": {
++                "code": "rate_limit_exceeded",
++                "type": "tokens",
++                "message": "Please try again in 3.675s.",
++            }
++        })
++        with self.assertRaises(AIProviderTransientError) as raised:
++            self.provider.generate_text(instructions="Answer.", input_text="Hi")
++        self.assertEqual(raised.exception.retry_after, 3)
++
++    @patch.dict("os.environ", {"OPENAI_MAX_PROMPT_TOKENS": "4000"})
++    def test_oversized_prompt_is_compacted_before_provider_call(self):
++        self.client.responses.create.return_value = SimpleNamespace(
++            output_text="ok", model="gpt-4.1-nano", usage=None, status="completed"
++        )
++        result = self.provider.generate_text(
++            instructions="RULES " + ("x" * 30000),
++            input_text="TURN " + ("y" * 30000),
++            metadata={"task": "engagement", "organization_id": "org"},
++        )
++        self.assertEqual(result.text, "ok")
++        kwargs = self.client.responses.create.call_args.kwargs
++        self.assertLess(
++            len(kwargs["instructions"]) + len(kwargs["input"]),
++            4000 * 4 + 200,
++        )
++        self.assertIn("compacted", kwargs["instructions"] + kwargs["input"])
+-- 
+2.51.1
+
