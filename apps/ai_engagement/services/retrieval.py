@@ -20,7 +20,7 @@ _QUERY_STOP_WORDS = frozenset(
     "a an the is are was were be been do does did can could would should you your "
     "me my i we our us it its this that these those what how when where which who "
     "about please tell explain and or of to in for on at with from have has "
-    "more know want need some information details".split()
+    "more know want need some information details many each".split()
 )
 
 
@@ -43,6 +43,20 @@ def _tokens(value) -> list[str]:
 def _query_tokens(value) -> list[str]:
     """Keep meaningful query terms so conversational filler cannot be evidence."""
     return [token for token in _tokens(value) if token not in _QUERY_STOP_WORDS][:16]
+
+
+def _keyword_queries(value: str) -> list[str]:
+    """Search individual asks as well as the compound semantic query.
+
+    Requiring half of the combined question's tokens in every chunk discards
+    evidence split across sections (for example AI Coins and DIY support).
+    Earlier assistant context is useful for embeddings, not extra customer asks.
+    """
+    current = str(value or "")
+    if current.startswith("Lead: "):
+        current = current[6:].split("\nPrevious ", 1)[0]
+    parts = [part.strip() for part in re.split(r"[?？]+", current) if _query_tokens(part)]
+    return list(dict.fromkeys([value, *parts[:3]])) if len(parts) > 1 else [value]
 
 
 def _term_count(term: str, text: str) -> int:
@@ -178,7 +192,10 @@ class KnowledgeRetrievalService:
         """
 
         limit = self._validate_limit(limit)
-        query = _normalized_text(query_text)
+        current = str(query_text or "")
+        if current.startswith("Lead: "):
+            current = current[6:].split("\nPrevious ", 1)[0]
+        query = _normalized_text(current)
         query_tokens = _query_tokens(query)
         if not query or not query_tokens:
             return []
@@ -290,11 +307,11 @@ class KnowledgeRetrievalService:
                 query_vector=query_vector,
                 limit=candidate_limit,
             )
-        keyword = self.retrieve_by_keyword(
-            organization=organization,
-            query_text=query_text,
-            limit=candidate_limit,
-        )
+        keyword = []
+        for query in _keyword_queries(query_text):
+            keyword.extend(self.retrieve_by_keyword(
+                organization=organization, query_text=query, limit=candidate_limit,
+            ))
 
         merged: dict[int, dict] = {}
         for item in semantic:

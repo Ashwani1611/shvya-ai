@@ -75,6 +75,11 @@ def _count(value):
 def _decision_details(trace, result):
     """Useful successful Sandbox counters without prompts, IDs or provider prose."""
     parts = []
+    knowledge = trace.data.get("knowledge_retrieval")
+    if isinstance(knowledge, dict):
+        parts.append("knowledge/chunks=" + str(_count(knowledge.get("retained_count")))
+                     + "/websites=" + str(_count(knowledge.get("website_count")))
+                     + "/uploads=" + str(_count(knowledge.get("uploaded_count"))))
     files = trace.data.get("file_decision") or {}
     files = files if isinstance(files, dict) else {}
     phases = [(phase, files.get(phase) if isinstance(files.get(phase), dict) else {}) for phase in ("draft", "final")]
@@ -122,7 +127,8 @@ def _decision_details(trace, result):
                      + "/graph=" + str(_count(draft.get("graph_capture_count"))))
         counts = {}
         allowed_phases = {"primary", "intent_classification", "file_selection_review", "qualification_capture_recovery",
-                          "grounding", "grounding_contract_retry", "grounding_reply_repair", "schema_repair"}
+                          "grounding", "grounding_contract_retry", "grounding_reply_repair", "schema_repair",
+                          "final_reply_language", "final_reply_language_validation"}
         for call in (trace.data.get("provider") or {}).get("calls", []):
             phase, status = call.get("phase"), call.get("status")
             if isinstance(phase, str) and isinstance(status, str) and phase in allowed_phases and status in {"ok", "failed"}:

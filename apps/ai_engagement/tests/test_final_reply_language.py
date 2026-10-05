@@ -1,6 +1,6 @@
 import json
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from django.test import SimpleTestCase
 
@@ -10,6 +10,25 @@ from apps.ai_engagement.services.qualification_state import _non_answer_evidence
 
 
 class FinalReplyLanguageTests(SimpleTestCase):
+    def test_runtime_reuses_generated_context_without_second_build(self):
+        from apps.ai_engagement.services import final_reply_language as runtime
+        from apps.ai_engagement.services.engagement import EngagementService
+        context = SimpleNamespace(organization={"id": "org", "bot_languages": "English"},
+            lead={"id": "lead"}, conversation={"messages": [{"direction": "inbound", "body": "Hello"}]})
+        decision = EngagementDecision(should_engage=True, message="Hello!", file_document_id=None,
+            crm_actions=[], qualification_updates=[], reason="NORMAL_CONVERSATION", model="test")
+        def generate(self, **kwargs):
+            self._build_input(context=context)
+            return decision
+        with patch.object(runtime, "_INSTALLED", False), \
+             patch.object(EngagementService, "engage", generate), \
+             patch.object(EngagementService, "_build_input", return_value="{}"):
+            runtime.install_final_reply_language()
+            service = EngagementService(provider=Mock(), context_builder=Mock())
+            self.assertIs(service.engage(organization=SimpleNamespace(id="org"), lead=SimpleNamespace(id="lead")), decision)
+            service.context_builder.build.assert_not_called()
+        self.assertIsNone(runtime._TURN_CONTEXT.get())
+
     def test_sandbox_does_not_promise_real_team_contact(self):
         from apps.ai_engagement.services.playground_finalization import enforce_preview_action_honesty
         decision = EngagementDecision(should_engage=True,
@@ -44,6 +63,8 @@ class FinalReplyLanguageTests(SimpleTestCase):
             reason="NORMAL_CONVERSATION", reason_code="NORMAL_CONVERSATION", model="test")
         service = SimpleNamespace(provider=Mock(), _generate_provider_text=Mock(return_value=SimpleNamespace(
             text=json.dumps({"message": "Der DIY-Plan kostet ₹2,999 pro Monat und Benutzer."}))))
+        service._generate_provider_text.side_effect = [service._generate_provider_text.return_value,
+                                                      SimpleNamespace(text='{"faithful":true}')]
         context = SimpleNamespace(organization={"bot_languages": "English, German"},
             conversation={"messages": [{"direction": "inbound", "body": "Bitte antworten Sie auf Deutsch. Was kostet der DIY-Plan pro Monat?"}]})
         result = finalize_reply_language(service=service, decision=decision, context=context,
@@ -51,6 +72,12 @@ class FinalReplyLanguageTests(SimpleTestCase):
         self.assertIn("kostet", result.message)
         self.assertEqual(result.crm_actions, decision.crm_actions)
         self.assertEqual(result.file_document_id, 18)
+        service._generate_provider_text.side_effect = [SimpleNamespace(text='{"message":"Der Preis ist ₹2,999."}'),
+                                                      SimpleNamespace(text='{"faithful":false}')]
+        with self.assertRaises(EngagementError):
+            finalize_reply_language(service=service, decision=decision, context=context,
+                                    organization=SimpleNamespace(id=1), lead=SimpleNamespace(id=2))
+        service._generate_provider_text.side_effect = None
         service._generate_provider_text.return_value.text = '{"message":"Der Preis ist ₹9,999."}'
         with self.assertRaises(EngagementError):
             finalize_reply_language(service=service, decision=decision, context=context,

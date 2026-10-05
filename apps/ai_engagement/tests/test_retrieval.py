@@ -99,6 +99,20 @@ class KnowledgeRetrievalServiceTests(TestCase):
     # BASIC RETRIEVAL
     # ========================================================
 
+    def test_compound_question_retains_separate_coin_and_support_sections(self):
+        from apps.ai_engagement.graph.evidence import select_chunks
+        document = self.create_document(name="Info", source_key="info")
+        coins = self.create_chunk(document=document, content="Each plan includes 5,000 AI Coins.")
+        support = self.create_chunk(document=document, chunk_index=1, content="DIY support is ticket-based.")
+        results = KnowledgeRetrievalService().retrieve_hybrid(
+            organization=self.organization,
+            query_text="Lead: How many AI Coins are included in each plan? What support is included with DIY?",
+            query_vector=None,
+        )
+        retained = select_chunks([{ "chunk_id": item.chunk.id, "content": item.chunk.content,
+                                    "similarity": item.similarity} for item in results], threshold=0.38, limit=5)
+        self.assertEqual({item["chunk_id"] for item in retained}, {coins.id, support.id})
+
     def test_retrieves_matching_active_completed_chunk(
         self,
     ):

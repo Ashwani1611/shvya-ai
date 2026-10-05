@@ -456,6 +456,15 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
     the graph's existing validation and grounding nodes still authorize them.
     """
     context = _with_file_candidates(state, context)
+    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
+    if not _FINAL_LANGUAGE_ONLY.get():
+        from apps.ai_engagement.services.trace_service import record
+        chunks = [item for item in context.knowledge or [] if isinstance(item, dict)]
+        record("knowledge_retrieval", {
+            "retained_count": min(len(chunks), 30),
+            "website_count": min(sum(bool(item.get("source_url")) for item in chunks), 30),
+            "uploaded_count": min(sum(item.get("source_type") == "uploaded_file" for item in chunks), 30),
+        })
     from apps.ai_engagement.services.qualification_capture_recovery import recover_omitted_answers
     decision = recover_omitted_answers(
         service=state["service"], organization=state["organization"], lead=state["lead"],
@@ -471,7 +480,6 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         explicit_file_request,
         shared_document_ids,
     )
-    from apps.ai_engagement.services.post_state_finalization_guard import _FINAL_LANGUAGE_ONLY
     candidates = (context.organization or {}).get("_file_candidates") or []
     requested = explicit_file_request(
         state.get("latest_text", ""),

@@ -261,9 +261,13 @@ class _SandboxContextBuilder:
                 "document_id": str(result.chunk.document_id),
                 "document_name": result.chunk.document.name,
                 "document_version": result.chunk.document.version,
+                "source_type": "website" if getattr(result.chunk.document, "source_url", "") else "uploaded_file",
+                "source_url": getattr(result.chunk.document, "source_url", ""),
                 "content": result.chunk.content,
                 "similarity": result.similarity,
                 "distance": result.distance,
+                "keyword_score": getattr(result, "keyword_score", 0.0),
+                "retrieval_methods": list(getattr(result, "retrieval_methods", ())),
             }
             for result in results
         ]

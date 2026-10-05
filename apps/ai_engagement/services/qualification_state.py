@@ -996,7 +996,8 @@ def _non_answer_evidence(evidence: str, source: str) -> bool:
     language_request = re.compile(
         r"^(?:please\s+)?(?:reply|respond|answer)\s+(?:to me\s+)?in\b|"
         r"^bitte\s+(?:antworten|antworte)\b|"
-        r"(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ)", re.I,
+        r"(?:ਕਿਰਪਾ|कृपया|ದಯವಿಟ್ಟು).*(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ)|"
+        r"(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ).*(?:ਦਿਓ|दो|दें|द्या|ಕೊಡಿ)", re.I,
     )
     return bool(containing) and all(
         part.endswith(("?", "？")) or language_request.search(part)
