@@ -196,6 +196,16 @@ class OpenAIProvider:
     def _model_for_metadata(self, metadata: dict[str, str] | None) -> str:
         if self._explicit_model:
             return self.model
+
+        # Internal routing metadata is produced only inside this provider. It is
+        # removed before metadata is sent to OpenAI and is never accepted from
+        # organization-facing configuration surfaces.
+        routed = str((metadata or {}).get("__routing_model") or "").strip()
+        if routed:
+            if len(routed) > 100 or any(ch.isspace() for ch in routed):
+                raise AIProviderConfigurationError("Invalid internally routed model.")
+            return routed
+
         override = str((metadata or {}).get("model_override") or "").strip()
         if override:
             if len(override) > 100 or any(ch.isspace() for ch in override):
@@ -211,6 +221,150 @@ class OpenAIProvider:
             or ""
         ).strip()
         return configured or self.model
+
+    def _model_for_request(
+        self,
+        *,
+        metadata: dict[str, str] | None,
+        input_text: str,
+    ) -> tuple[str, str, str]:
+        metadata = metadata or {}
+
+        # Explicit client construction and Superadmin-controlled organization
+        # overrides remain authoritative. Adaptive routing is a platform
+        # optimization only when no fixed override has been selected.
+        if self._explicit_model:
+            return self.model, "fixed", "explicit_provider_model"
+        if str(metadata.get("__routing_model") or "").strip():
+            return (
+                self._model_for_metadata(metadata),
+                str(metadata.get("__routing_tier") or "fallback"),
+                str(metadata.get("__routing_reason") or "provider_fallback"),
+            )
+        if str(metadata.get("model_override") or "").strip():
+            return self._model_for_metadata(metadata), "fixed", "superadmin_override"
+
+        base_model = self._model_for_metadata(metadata)
+        from apps.ai_engagement.services.model_router import route_model
+
+        route = route_model(
+            base_model=base_model,
+            input_text=input_text,
+            metadata=metadata,
+        )
+        return route.model, route.tier, route.reason
+
+    @staticmethod
+    def _provider_metadata(metadata: dict[str, str] | None) -> dict[str, str]:
+        return {
+            str(key): str(value)
+            for key, value in (metadata or {}).items()
+            if not str(key).startswith("__") and value is not None
+        }
+
+    def _fallback_model(
+        self,
+        *,
+        request_model: str,
+        routing_tier: str,
+        metadata: dict[str, str] | None,
+    ) -> str:
+        attempted = {
+            item.strip()
+            for item in str((metadata or {}).get("__attempted_models") or "").split(",")
+            if item.strip()
+        }
+        attempted.add(str(request_model or "").strip())
+
+        fallback_metadata = self._metadata_without_model_override(metadata)
+        fallback_metadata.pop("__routing_model", None)
+        fallback_metadata.pop("__routing_tier", None)
+        fallback_metadata.pop("__routing_reason", None)
+        platform_base = self._model_for_metadata(fallback_metadata)
+
+        from apps.ai_engagement.services.model_router import fallback_models
+        from apps.ai_engagement.services.provider_resilience import is_open
+
+        for candidate in fallback_models(
+            primary_model=request_model,
+            base_model=platform_base,
+            tier=routing_tier,
+        ):
+            if candidate not in attempted and not is_open(candidate):
+                return candidate
+        return ""
+
+    def _retry_on_fallback_model(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+        metadata: dict[str, str] | None,
+        response_schema: dict[str, Any] | None,
+        request_model: str,
+        routing_tier: str,
+        reason: str,
+    ) -> AITextResult | None:
+        if str((metadata or {}).get("__fallback_attempted") or "") == "1":
+            return None
+
+        fallback_model = self._fallback_model(
+            request_model=request_model,
+            routing_tier=routing_tier,
+            metadata=metadata,
+        )
+        if not fallback_model:
+            return None
+
+        organization_id = (metadata or {}).get("organization_id")
+        attempted = [
+            item.strip()
+            for item in str((metadata or {}).get("__attempted_models") or "").split(",")
+            if item.strip()
+        ]
+        attempted.append(request_model)
+
+        increment(
+            "ai.provider_model_fallbacks",
+            labels={"provider": "openai", "reason": reason},
+        )
+        emit_event(
+            "ai.provider.model_fallback",
+            provider="openai",
+            organization_id=organization_id,
+            requested_model=request_model,
+            fallback_model=fallback_model,
+            reason=reason,
+        )
+        try:
+            from apps.ai_engagement.services.trace_service import record
+
+            record(
+                "provider",
+                {
+                    "fallback_used": True,
+                    "fallback_reason": reason,
+                    "primary_model": request_model,
+                    "fallback_model": fallback_model,
+                },
+            )
+        except Exception:
+            pass
+
+        fallback_metadata = {
+            **(metadata or {}),
+            "__routing_model": fallback_model,
+            "__routing_tier": "fallback",
+            "__routing_reason": reason,
+            "__fallback_attempted": "1",
+            "__attempted_models": ",".join(dict.fromkeys(attempted)),
+        }
+        return self.generate_text(
+            instructions=instructions,
+            input_text=input_text,
+            metadata=fallback_metadata,
+            response_schema=response_schema,
+        )
 
     @staticmethod
     def _model_override_unavailable(
@@ -458,7 +612,54 @@ class OpenAIProvider:
         if not input_text:
             raise AIProviderConfigurationError("AI input cannot be empty.")
 
-        request_model = self._model_for_metadata(metadata)
+        request_model, routing_tier, routing_reason = self._model_for_request(
+            metadata=metadata,
+            input_text=input_text,
+        )
+        try:
+            from apps.ai_engagement.services.trace_service import record
+
+            record(
+                "provider",
+                {
+                    "routing_tier": routing_tier,
+                    "routing_reason": routing_reason,
+                    "requested_model": request_model,
+                },
+            )
+        except Exception:
+            pass
+
+        from apps.ai_engagement.services.provider_resilience import is_open
+
+        if is_open(request_model):
+            try:
+                from apps.ai_engagement.services.trace_service import record
+
+                record(
+                    "provider",
+                    {
+                        "circuit_breaker_bypassed_primary": True,
+                        "primary_model": request_model,
+                    },
+                )
+            except Exception:
+                pass
+            fallback = self._retry_on_fallback_model(
+                instructions=instructions,
+                input_text=input_text,
+                metadata=metadata,
+                response_schema=response_schema,
+                request_model=request_model,
+                routing_tier=routing_tier,
+                reason="circuit_open",
+            )
+            if fallback is not None:
+                return fallback
+            raise AIProviderTransientError(
+                "OpenAI model circuit breaker is temporarily open."
+            )
+
         request_kwargs: dict[str, Any] = {
             "model": request_model,
             "instructions": instructions,
@@ -471,8 +672,9 @@ class OpenAIProvider:
         if reasoning_model:
             request_kwargs["reasoning"] = {"effort": "minimal"}
             request_kwargs["max_output_tokens"] = max(request_kwargs["max_output_tokens"], 2000)
-        if metadata:
-            request_kwargs["metadata"] = metadata
+        provider_metadata = self._provider_metadata(metadata)
+        if provider_metadata:
+            request_kwargs["metadata"] = provider_metadata
         text_config = self._structured_text_config(response_schema)
         if text_config is not None:
             request_kwargs["text"] = text_config
@@ -517,10 +719,25 @@ class OpenAIProvider:
             self._release_credit_reservation(reservation)
             if exhausted:
                 raise AIProviderQuotaError("OpenAI API billing quota is exhausted.") from exc
+
+            from apps.ai_engagement.services.provider_resilience import record_transient_failure
+
+            record_transient_failure(request_model)
             increment(
                 "ai.provider_throttled",
                 labels={"provider": "openai"},
             )
+            fallback = self._retry_on_fallback_model(
+                instructions=instructions,
+                input_text=input_text,
+                metadata=metadata,
+                response_schema=response_schema,
+                request_model=request_model,
+                routing_tier=routing_tier,
+                reason="rate_limit",
+            )
+            if fallback is not None:
+                return fallback
             raise AIProviderTransientError(
                 f"OpenAI rate limit: {exc}",
                 retry_after=_provider_retry_after(exc),
@@ -528,6 +745,20 @@ class OpenAIProvider:
         except APIConnectionError as exc:
             provider_error = "connection"
             self._release_credit_reservation(reservation)
+            from apps.ai_engagement.services.provider_resilience import record_transient_failure
+
+            record_transient_failure(request_model)
+            fallback = self._retry_on_fallback_model(
+                instructions=instructions,
+                input_text=input_text,
+                metadata=metadata,
+                response_schema=response_schema,
+                request_model=request_model,
+                routing_tier=routing_tier,
+                reason="connection",
+            )
+            if fallback is not None:
+                return fallback
             raise AIProviderTransientError(
                 f"OpenAI connection failure: {exc}"
             ) from exc
@@ -631,6 +862,20 @@ class OpenAIProvider:
                         response_schema=response_schema,
                     )
             if status_code is not None and status_code >= 500:
+                from apps.ai_engagement.services.provider_resilience import record_transient_failure
+
+                record_transient_failure(request_model)
+                fallback = self._retry_on_fallback_model(
+                    instructions=instructions,
+                    input_text=input_text,
+                    metadata=metadata,
+                    response_schema=response_schema,
+                    request_model=request_model,
+                    routing_tier=routing_tier,
+                    reason="server_error",
+                )
+                if fallback is not None:
+                    return fallback
                 raise AIProviderTransientError(
                     f"OpenAI server error: {exc}",
                     retry_after=_provider_retry_after(exc),
@@ -639,6 +884,20 @@ class OpenAIProvider:
         except Exception as exc:
             provider_error = "unexpected"
             self._release_credit_reservation(reservation)
+            from apps.ai_engagement.services.provider_resilience import record_transient_failure
+
+            record_transient_failure(request_model)
+            fallback = self._retry_on_fallback_model(
+                instructions=instructions,
+                input_text=input_text,
+                metadata=metadata,
+                response_schema=response_schema,
+                request_model=request_model,
+                routing_tier=routing_tier,
+                reason="unexpected",
+            )
+            if fallback is not None:
+                return fallback
             raise AIProviderTransientError(f"Unexpected OpenAI failure: {exc}") from exc
         finally:
             observe_latency(
@@ -662,6 +921,24 @@ class OpenAIProvider:
                     "ai.provider_calls",
                     labels={"provider": "openai", "feature": self._feature(metadata)},
                 )
+
+        from apps.ai_engagement.services.provider_resilience import record_success
+
+        record_success(request_model)
+        try:
+            from apps.ai_engagement.services.trace_service import record
+
+            record(
+                "provider",
+                {
+                    "completed_model": str(
+                        getattr(response, "model", None) or request_model
+                    ),
+                    "provider_success": True,
+                },
+            )
+        except Exception:
+            pass
 
         if reservation is not None:
             input_tokens, output_tokens = AICreditService.extract_usage(response)
