@@ -582,6 +582,7 @@ def _manual_result(*, organization, lead, source_message_id: str, reason: str):
     )
 
 
+@transaction.atomic
 def apply_booking_plan(*, organization, lead, source_message, plan: BookingPlan) -> BookingResult:
     if not plan.handled:
         return BookingResult(False, "", "not_handled")
