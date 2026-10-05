@@ -633,6 +633,20 @@ def execute_instagram_ai_engagement(*, task, message_id):
         )
 
     try:
+        from apps.ai_engagement.services.booking_runtime import prepare_booking_turn
+
+        lead.refresh_from_db(fields=["attributes"])
+        booking_plan = prepare_booking_turn(
+            organization=source.organization,
+            lead=lead,
+            source_message=source,
+        )
+    except Exception as exc:
+        logger.exception("Instagram AI booking preparation failed for lead %s", lead.pk)
+        raise task.retry(exc=exc, countdown=30)
+    booking_result = None
+
+    try:
         with transaction.atomic():
             locked_conversation = (
                 InstagramConversation.objects.select_for_update(of=("self",))
@@ -730,6 +744,26 @@ def execute_instagram_ai_engagement(*, task, message_id):
                 source=locked_source,
                 decision=decision,
             )
+
+            if booking_plan.handled:
+                from apps.ai_engagement.services.booking_runtime import apply_booking_plan
+
+                locked_lead.refresh_from_db(
+                    fields=["attributes", "pipeline", "stage", "updated_at"]
+                )
+                booking_result = apply_booking_plan(
+                    organization=source.organization,
+                    lead=locked_lead,
+                    source_message=locked_source,
+                    plan=booking_plan,
+                )
+                if booking_result.handled:
+                    body = str(booking_result.message or "").strip()
+                    if not body:
+                        raise ValueError(
+                            "Instagram booking execution returned an empty customer message."
+                        )
+
             _mark_source_processed(source=locked_source, decision=decision)
 
             if not decision.should_engage:
@@ -759,6 +793,8 @@ def execute_instagram_ai_engagement(*, task, message_id):
                     "provider": "instagram",
                 },
             }
+            if booking_result is not None and booking_result.handled:
+                outbound.raw_payload["shvya_ai"]["booking"] = booking_result.as_dict()
             outbound.save(update_fields=["raw_payload", "updated_at"])
 
             # Queue the file with the reply; retries republish the same rows.
@@ -800,6 +836,11 @@ def execute_instagram_ai_engagement(*, task, message_id):
         "message_ids": outbound_ids,
         "source_message_id": str(source.pk),
         "model": decision.model,
+        "booking": (
+            booking_result.as_dict()
+            if booking_result is not None and booking_result.handled
+            else None
+        ),
     }
 
 
