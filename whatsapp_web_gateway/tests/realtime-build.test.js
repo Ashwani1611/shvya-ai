@@ -25,6 +25,10 @@ test('complete Docker source-patch chain assembles the realtime gateway', t => {
   assert.match(source, /Hosted live chat lookup/);
   assert.match(source, /return callbackOutbox.enqueue/);
   assert.match(source, /return confirmSendOutcome/);
+  assert.match(source, /async function checkHostedSessionLiveness/);
+  assert.match(source, /HOSTED_SESSION_LIVENESS_POLL_MS/);
+  assert.match(source, /HOSTED_SESSION_RECOVERY_POLL_MS/);
+  assert.match(source, /Hosted liveness probe/);
 });
 
 test('unknown gateway source fails closed instead of silently shipping a partial patch', () => {
