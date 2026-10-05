@@ -39,6 +39,8 @@ attribution, event match quality or campaign optimization.
   snapshot in `MetaConversionDelivery`. A new Meta Lead Ads acquisition ID on
   an existing lead is also captured. Ordinary name/attribute edits and repeated
   saves with an unchanged stage/acquisition ID do not emit conversions.
+  Partial saves, including `stage_id`/`pipeline_id` updates, compare the
+  persisted CRM state and snapshot only the customer data actually saved.
 - Meta Lead Ads events use `action_source: system_generated` and
   `custom_data: {event_source: crm, lead_event_source: SHVYA AI}`. Other sources
   use the mapping's actual conversion source and omit the CRM optimization
@@ -51,6 +53,9 @@ attribution, event match quality or campaign optimization.
   keys (`city`, `state`, `zip_code`, `country`, `ip_address`, `user_agent`,
   `date_of_birth`, `gender`, `fbp`, `fbc`, `wa_ref_ctwa_clid`). This change does
   not create ad click/browser identifiers or collect website traffic.
+  Events containing only one of Meta's invalid baseline matching combinations
+  (or its subsets) fail locally with an actionable message rather than being
+  sent to Meta. Matching uses the identifiers actually available on each lead.
 - Queue publication happens after commit. Broker interruptions retain the
   outbox row; Beat recovers due work every 30 seconds in batches of 100.
   Publication is throttled to avoid repeatedly filling the broker.
@@ -68,6 +73,8 @@ attribution, event match quality or campaign optimization.
   following the existing Lead-owned data deletion policy.
 - Event timestamps are never rewritten to overcome Meta's seven-day limit.
   Failed deliveries may be retried after correction within that window.
+  Manual retries validate the original payload's event time, not the outbox
+  row's creation date.
   Existing CRM rows and historical spreadsheet imports are not backfilled:
   the existing bulk-import path intentionally does not emit Lead save signals.
 - No events are sent until an administrator saves credentials and enables
@@ -98,6 +105,7 @@ Reviewed on 2026-10-05 (IST):
 - [CRM developer implementation guide](https://developers.facebook.com/documentation/ads-commerce/conversions-api/conversion-leads-integration/crm-integration/3-implementing-the-crm-integration)
 - [Server event parameters](https://developers.facebook.com/documentation/ads-commerce/conversions-api/parameters/server-event)
 - [Customer information and normalization](https://developers.facebook.com/documentation/ads-commerce/conversions-api/parameters/customer-information-parameters)
+- [Baseline matching requirements](https://developers.facebook.com/documentation/ads-commerce/conversions-api/best-practices#baseline-requirements-for-matching)
 - [Verify setup](https://developers.facebook.com/documentation/ads-commerce/conversions-api/verifying-setup)
 - [Meta Business SDK](https://github.com/facebook/facebook-python-business-sdk)
 

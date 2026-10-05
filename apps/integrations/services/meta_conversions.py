@@ -26,6 +26,15 @@ from apps.integrations.models import (
 
 logger = logging.getLogger(__name__)
 
+# Meta's baseline matching rules reject each set below and its subsets.
+# Validate the identifiers available on this lead, not just selected fields.
+INVALID_USER_DATA_COMBINATIONS = (
+    frozenset({"ct", "country", "st", "zp", "ge", "client_user_agent"}),
+    frozenset({"db", "client_user_agent"}),
+    frozenset({"fn", "ge"}),
+    frozenset({"ln", "ge"}),
+)
+
 
 def ensure_default_mappings(configuration):
     for stage in Stage.objects.filter(
@@ -163,6 +172,11 @@ def build_user_data(configuration, lead):
             result[key] = value
     if not result:
         raise ValidationError("No selected customer identifiers are available on this lead.")
+    if any(result.keys() <= combination for combination in INVALID_USER_DATA_COMBINATIONS):
+        raise ValidationError(
+            "The available customer fields do not meet Meta's matching requirements. "
+            "Select an available phone, email, Meta Lead ID, Shvya lead ID or ad/browser identifier."
+        )
     return result
 
 
@@ -332,7 +346,8 @@ def perform_action(configuration, data):
             raise ValidationError("This event mapping was removed. Create a mapping and record a new stage change.")
         if not delivery.is_probe and not delivery.mapping.is_enabled:
             raise ValidationError("Enable this event mapping before retrying its delivery.")
-        if delivery.created_at < timezone.now() - timedelta(days=7):
+        event_time = delivery.payload.get("event_time")
+        if type(event_time) is not int or event_time < int((timezone.now() - timedelta(days=7)).timestamp()):
             raise ValidationError("This event is outside Meta's seven-day delivery window.")
         delivery.status, delivery.attempt_count = Delivery.Status.QUEUED, 0
         delivery.next_attempt_at, delivery.lease_until, delivery.lease_token = timezone.now(), None, None

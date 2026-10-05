@@ -8,7 +8,7 @@ import requests
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.test import Client, TestCase, override_settings
+from django.test import Client, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,13 +17,51 @@ from apps.accounts.session_utils import get_session_cookie_name, set_authenticat
 from apps.crm.models import AttributeDefinition, Lead, Pipeline
 from apps.integrations.models import MetaConversionDelivery as Delivery
 from apps.integrations.models import MetaConversionMapping as Mapping
+from apps.integrations.models import MetaConversionsConfiguration
 from apps.integrations.services.meta_conversions import (
-    build_event, capture_stage_event, dashboard_state, get_configuration,
+    build_event, build_user_data, capture_stage_event, dashboard_state, get_configuration,
     perform_action, queue_event, save_mapping, save_settings,
 )
 from apps.integrations.services.meta_conversions_delivery import deliver_event, recover_due_events
 from apps.organizations.models import Organization
 from services.crm.lead_transition import move_lead_to_stage
+
+
+class MetaConversionsMatchingTests(SimpleTestCase):
+    def test_meta_documented_email_and_phone_hash_examples(self):
+        configuration = MetaConversionsConfiguration(user_data_fields=["email", "phone"])
+        lead = Lead(email="  John_Smith@gmail.com  ", phone="+1 (650) 555-1212")
+        data = build_user_data(configuration, lead)
+        self.assertEqual(data["em"], ["62a14e44f765419d10fea99367361a727c12365e2520f32218d505ed9aa0f62f"])
+        self.assertEqual(data["ph"], ["e323ec626319ca94ee8bff2e4c87cf613be6ea19919ed1364124e16807ab3176"])
+
+    def test_meta_documented_utf8_name_hash_examples(self):
+        configuration = MetaConversionsConfiguration(user_data_fields=["name", "external_id"])
+        for name, expected in [
+            ("Valéry", "08e1996b5dd49e62a4b4c010d44e4345592a863bb9f8e3976219bac29417149c"),
+            ("정", "8fa8cd9c440be61d0151429310034083132b35975c4bea67fdd74158eb51db14"),
+        ]:
+            with self.subTest(name=name):
+                self.assertEqual(build_user_data(configuration, Lead(name=name))["fn"], [expected])
+
+    def test_meta_baseline_matching_rejects_broad_identifier_combinations(self):
+        configuration = MetaConversionsConfiguration()
+        cases = [
+            (["city", "country", "state", "zip_code", "gender", "user_agent"], "Gaurav Singh",
+             {"city": "Mumbai", "country": "in", "state": "Maharashtra", "zip_code": "400001", "gender": "male", "user_agent": "Mozilla/5.0"}),
+            (["date_of_birth", "user_agent"], "Gaurav Singh",
+             {"date_of_birth": "1997-02-16", "user_agent": "Mozilla/5.0"}),
+            (["name", "gender"], "Gaurav", {"gender": "male"}),
+            (["name", "gender"], ". Singh", {"gender": "male"}),
+        ]
+        for fields, name, attributes in cases:
+            with self.subTest(fields=fields, name=name):
+                lead = Lead(name=name, attributes=attributes)
+                configuration.user_data_fields = fields
+                with self.assertRaisesMessage(ValidationError, "matching requirements"):
+                    build_user_data(configuration, lead)
+                configuration.user_data_fields = [*fields, "external_id"]
+                self.assertIn("external_id", build_user_data(configuration, lead))
 
 
 @override_settings(
@@ -186,6 +224,45 @@ class MetaConversionsTests(TestCase):
             except RuntimeError:
                 pass
         self.assertFalse(Delivery.objects.exists())
+        self.publisher.assert_not_called()
+
+    def test_stage_saved_by_foreign_key_attname_is_captured(self):
+        self.enable()
+        save_mapping(self.configuration, self.mapping_data())
+        self.lead.stage_id = self.qualified.pk
+        self.lead.save(update_fields=["stage_id", "updated_at"])
+        self.assertEqual(Delivery.objects.get().payload["event_name"], "QualifiedLead")
+
+    def test_partial_attribute_save_does_not_capture_an_unsaved_stage(self):
+        self.enable()
+        save_mapping(self.configuration, self.mapping_data())
+        self.lead.stage = self.qualified
+        self.lead.attributes["product"] = "Membership"
+        self.lead.save(update_fields=["attributes", "updated_at"])
+        self.lead.refresh_from_db()
+        self.assertEqual(self.lead.stage_id, self.stage.pk)
+        self.assertFalse(Delivery.objects.exists())
+
+    def test_stage_event_uses_persisted_customer_data_after_partial_save(self):
+        self.enable()
+        save_mapping(self.configuration, self.mapping_data())
+        original_meta_id = self.lead.attributes["meta_leadgen_id"]
+        original_email = self.lead.email
+        self.lead.attributes["meta_leadgen_id"] = "1234567890123499"
+        self.lead.email = "unsaved@example.com"
+        self.lead.stage = self.qualified
+        self.lead.save(update_fields=["stage", "updated_at"])
+        user_data = Delivery.objects.get().payload["user_data"]
+        self.assertEqual(user_data["lead_id"], original_meta_id)
+        self.assertEqual(user_data["em"], [hashlib.sha256(original_email.lower().encode()).hexdigest()])
+
+    def test_invalid_matching_records_an_actionable_failure_without_publication(self):
+        self.configuration.user_data_fields = ["country"]
+        self.lead.attributes["country"] = "in"
+        with self.captureOnCommitCallbacks(execute=True):
+            delivery = self.delivery()
+        self.assertEqual(delivery.status, Delivery.Status.FAILED)
+        self.assertIn("matching requirements", delivery.error_message)
         self.publisher.assert_not_called()
 
     def test_disabled_tracking_mapping_and_non_meta_scope_do_not_emit(self):
@@ -364,6 +441,18 @@ class MetaConversionsTests(TestCase):
         self.assertEqual(delivery.event_id, "original-identity")
         self.assertEqual(delivery.payload, original_payload)
         self.assertEqual(delivery.attempt_count, 0)
+
+    def test_manual_retry_checks_the_original_event_timestamp(self):
+        self.enable()
+        delivery = self.delivery()
+        payload = delivery.payload.copy()
+        payload["event_time"] = int((timezone.now() - timedelta(days=8)).timestamp())
+        Delivery.objects.filter(pk=delivery.pk).update(payload=payload, status="failed")
+        with self.assertRaisesMessage(ValidationError, "seven-day delivery window"):
+            perform_action(self.configuration, {"action": "retry_delivery", "id": str(delivery.pk)})
+        delivery.refresh_from_db()
+        self.assertEqual(delivery.status, Delivery.Status.FAILED)
+        self.assertEqual(delivery.payload, payload)
 
     @patch("apps.integrations.services.meta_conversions_delivery.requests.post")
     def test_lead_deletion_removes_conversion_payload_and_pending_delivery(self, post):
