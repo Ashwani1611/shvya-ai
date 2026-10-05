@@ -190,6 +190,33 @@ def send_hosted_whatsapp_message_task(self, message_id, *, immediate=False):
             code = (json.loads(exc.response_body or "{}") or {}).get("code")
         except (ValueError, TypeError, AttributeError):
             code = None
+            error_payload = {}
+        error_detail = str(
+            error_payload.get("error") or error_payload.get("detail") or exc or ""
+        ).lower()
+        session_unavailable = code == "session_reconnecting" or any(
+            phrase in error_detail
+            for phrase in (
+                "session is reconnecting",
+                "session is not running",
+                "session not found",
+                "session is unavailable",
+            )
+        )
+        if immediate and session_unavailable:
+            error = (
+                "Hosted WhatsApp session is reconnecting. "
+                "This manual message was not queued; retry once the session is connected."
+            )
+            _set_message_state(
+                message.id, status=WhatsAppMessage.Status.FAILED, error=error
+            )
+            _cleanup_upload(message)
+            return {
+                "status": "failed",
+                "reason": "session_reconnecting",
+                "error": error,
+            }
         if code in {"provider_outcome_uncertain", "request_payload_conflict"}:
             _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
             _cleanup_upload(message)
