@@ -24,6 +24,8 @@ test('complete Docker source-patch chain assembles the realtime gateway', t => {
   assert.match(source, /\['failed', 'disconnected'\]\.includes\(existing.status\)/);
   assert.match(source, /Hosted live chat lookup/);
   assert.match(source, /return callbackOutbox.enqueue/);
+  assert.match(source, /shouldForwardMessageCreateFallback/);
+  assert.match(source, /callbackOutbox: callbackOutbox\.stats\(\)/);
   assert.match(source, /return confirmSendOutcome/);
 });
 
