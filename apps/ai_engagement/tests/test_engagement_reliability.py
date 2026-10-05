@@ -116,7 +116,122 @@ class ContextAndEnrichmentTests(TestCase):
         with patch("apps.ai_engagement.services.background_enrichment.enrichment_due", return_value=False):
             queue_background_enrichment(lead_id=self.lead.id)
             queue_background_enrichment(lead_id=self.lead.id)
-        flush.assert_called_once_with(args=[str(self.lead.id)], countdown=300)
+        flush.assert_called_once_with(
+            args=[str(self.lead.id)],
+            kwargs={"include_qualification": True},
+            countdown=300,
+        )
+
+    @patch("apps.ai_engagement.tasks.generate_lead_qualification.apply_async")
+    @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
+    @patch("apps.ai_engagement.tasks.flush_background_enrichment.apply_async")
+    def test_rapid_post_turn_summaries_skip_qualification_across_retries(
+        self, flush, summary, qualification,
+    ):
+        from apps.ai_engagement.background_signals import _schedule_post_turn_summary
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.tasks import flush_background_enrichment
+
+        OrgInfo.objects.update_or_create(
+            organization=self.org,
+            defaults={"ai_playbook": build_ai_playbook(questions="Which city?")},
+        )
+        with patch(
+            "apps.ai_engagement.services.background_enrichment._new_message_stats",
+            return_value=(1, 20),
+        ):
+            with self.captureOnCommitCallbacks(execute=True):
+                _schedule_post_turn_summary(lead_id=self.lead.id, source_id="turn-1")
+                _schedule_post_turn_summary(lead_id=self.lead.id, source_id="turn-2")
+
+            summary.assert_called_once_with(str(self.lead.id))
+            self.assertEqual(flush.call_count, 1)
+
+            # A still-held lock can defer the flush again without changing the
+            # post-turn summary into a qualification-note request.
+            retry = flush.call_args.kwargs
+            result = flush_background_enrichment(*retry["args"], **retry.get("kwargs", {}))
+            self.assertEqual(result["reason"], "already_scheduled")
+            self.assertEqual(flush.call_count, 2)
+
+            cache.delete(f"shvya:ai:enrichment:schedule:{self.lead.id}")
+            retry = flush.call_args.kwargs
+            result = flush_background_enrichment(*retry["args"], **retry.get("kwargs", {}))
+
+        self.assertTrue(result["summary"])
+        self.assertFalse(result["qualification"])
+        self.assertEqual(summary.call_count, 2)
+        qualification.assert_not_called()
+
+    @patch("apps.ai_engagement.tasks.generate_lead_qualification.apply_async")
+    @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
+    @patch("apps.ai_engagement.tasks.flush_background_enrichment.apply_async")
+    def test_idle_flush_preserves_requested_qualification_mode(
+        self, flush, summary, qualification,
+    ):
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.services.background_enrichment import queue_background_enrichment
+        from apps.ai_engagement.tasks import flush_background_enrichment
+
+        OrgInfo.objects.update_or_create(
+            organization=self.org,
+            defaults={"ai_playbook": build_ai_playbook(questions="Which city?")},
+        )
+        for include_qualification in (False, True):
+            with self.subTest(include_qualification=include_qualification):
+                cache.clear()
+                flush.reset_mock()
+                summary.reset_mock()
+                qualification.reset_mock()
+                with (
+                    patch(
+                        "apps.ai_engagement.services.background_enrichment.enrichment_due",
+                        return_value=False,
+                    ),
+                    patch(
+                        "apps.ai_engagement.services.background_enrichment._new_message_stats",
+                        return_value=(1, 20),
+                    ),
+                ):
+                    result = queue_background_enrichment(
+                        lead_id=self.lead.id,
+                        include_qualification=include_qualification,
+                    )
+                    self.assertEqual(result["reason"], "deferred_flush")
+                    retry = flush.call_args.kwargs
+                    result = flush_background_enrichment(*retry["args"], **retry.get("kwargs", {}))
+
+                summary.assert_called_once_with(str(self.lead.id))
+                self.assertEqual(result["qualification"], include_qualification)
+                self.assertEqual(qualification.call_count, int(include_qualification))
+
+    @patch("apps.ai_engagement.tasks.generate_lead_qualification.apply_async")
+    @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
+    @patch("apps.ai_engagement.tasks.flush_background_enrichment.apply_async")
+    def test_legacy_flush_retry_keeps_qualification_note(self, flush, summary, qualification):
+        from apps.ai_engagement.models import OrgInfo
+        from apps.ai_engagement.tasks import flush_background_enrichment
+
+        OrgInfo.objects.update_or_create(
+            organization=self.org,
+            defaults={"ai_playbook": build_ai_playbook(questions="Which city?")},
+        )
+        lock_key = f"shvya:ai:enrichment:schedule:{self.lead.id}"
+        cache.add(lock_key, "1", timeout=20)
+        with patch(
+            "apps.ai_engagement.services.background_enrichment._new_message_stats",
+            return_value=(1, 20),
+        ):
+            result = flush_background_enrichment(str(self.lead.id))
+            self.assertEqual(result["reason"], "already_scheduled")
+            summary.assert_not_called()
+            cache.delete(lock_key)
+            retry = flush.call_args.kwargs
+            result = flush_background_enrichment(*retry["args"], **retry.get("kwargs", {}))
+
+        self.assertTrue(result["qualification"])
+        summary.assert_called_once_with(str(self.lead.id))
+        qualification.assert_called_once_with(args=[str(self.lead.id)], countdown=10)
 
     @patch("apps.ai_engagement.tasks.generate_lead_qualification.apply_async")
     @patch("apps.ai_engagement.tasks.generate_internal_conversation_summary.delay")
