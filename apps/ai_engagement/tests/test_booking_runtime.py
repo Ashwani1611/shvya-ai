@@ -1,3 +1,4 @@
+from datetime import datetime
 from types import SimpleNamespace
 import uuid
 
@@ -59,6 +60,7 @@ class AICalendarBookingRuntimeTests(TestCase):
             organization=self.organization,
             created_by=self.user,
             updated_by=self.user,
+            host=self.user,
             pipeline=self.pipeline,
             stage=self.stage,
             name="Product Demo",
@@ -182,7 +184,7 @@ class AICalendarBookingRuntimeTests(TestCase):
         )
         self.assertTrue(offer_plan.offered_slots)
 
-        slot = timezone.datetime.fromisoformat(offer_plan.offered_slots[0])
+        slot = datetime.fromisoformat(offer_plan.offered_slots[0])
         local = slot.astimezone(timezone.get_fixed_timezone(330))
         question = self.message(
             f"Is {local.strftime('%d %b %Y at %I:%M %p')} available?"
