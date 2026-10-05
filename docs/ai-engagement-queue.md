@@ -41,6 +41,33 @@ A normal successful turn schedules a second, non-blocking internal summary model
 job after the AI outbound is accepted as sent by the provider path. That summary compresses conversation
 context; it does not own qualification truth or CRM fields.
 
+### Adaptive model routing and provider resilience
+
+The customer-facing dual-pass contract is platform-owned and cannot be disabled
+or rewritten by an organization user. The first pass understands the turn and
+proposes only permitted actions; state-changing actions are validated and
+committed by backend code; the final composition pass is language-only and uses
+the reconciled backend state and action receipts.
+
+Per-organization qualification, sales-support and summary model overrides remain
+Superadmin-only. When no fixed override is configured, SHVYA can use the
+platform-controlled adaptive router without an extra classifier model call:
+simple acknowledgements/background extraction use the fast tier, ordinary
+customer turns use the standard tier, and complex objections, comparisons,
+multi-question turns and structured repair use the reasoning tier. Tier model
+IDs are operator environment settings, not tenant-editable AI Brain fields.
+
+Transient provider failures such as rate limits, connection failures and 5xx
+responses can use one operator-configured model fallback. Repeated transient
+failures open a short per-model circuit breaker so live customer turns avoid a
+known-bad route until its cooldown expires. Billing quota, authentication and
+other permanent failures do not loop through fallback models.
+
+AI traces record the selected routing tier, model, fallback/circuit-breaker
+events, action outcomes and a deterministic per-turn health score. The health
+score uses observable runtime facts rather than a second LLM judge, so production
+quality monitoring does not add another customer-turn model call.
+
 ## Durable work and delivery
 
 Hosted replies and new-lead welcomes use `HostedAutomationJob`. Welcomes are
