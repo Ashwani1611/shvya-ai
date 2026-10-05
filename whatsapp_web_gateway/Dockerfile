@@ -5,7 +5,7 @@ ENV NODE_ENV=production \
     PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends chromium ffmpeg ca-certificates fonts-liberation \
+    && apt-get install -y --no-install-recommends chromium ffmpeg ca-certificates fonts-liberation perl-base \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
