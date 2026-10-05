@@ -239,6 +239,93 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
         self.assertIsNone(result.next_requirement_id)
         self.assertEqual(calls, ["primary", "qualification_capture_recovery", "qualification_capture_reply_repair", "grounding"])
 
+    def test_failed_sandbox_draft_still_reviews_facts_and_file_before_grounding(self):
+        from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+        from apps.ai_engagement.services.file_sharing import FileSharingDecision
+        from apps.ai_engagement.services import trace_service
+        from apps.ai_engagement.services.turn_diagnostics import summary
+
+        body = _SOURCE + " Please share the product brochure and tell me the DIY price."
+        context = replace(self.context,
+            organization={**self.context.organization,
+                "_authored_faq_candidates": [{"source_id": "faq:1", "content": "DIY costs ₹2999 monthly."}],
+                "_file_candidates": [{"document_id": 7, "name": "Product brochure",
+                                      "share_instruction": "Share when the customer requests the product brochure."}]},
+            lead={**self.context.lead, "id": "playground:recovered-actions"},
+            conversation={"channel": "sandbox", "execution_mode": "sandbox_preview", "message_count": 1,
+                "messages": [{"id": "source-current", "direction": "inbound", "body": body}]},
+            knowledge=[{"content": "DIY costs ₹2999 monthly.", "similarity": 0.9}])
+
+        for fail_brain_recovery in (False, True):
+            with self.subTest(deterministic_recovery=fail_brain_recovery):
+                cache.clear()
+                lead = _SandboxLead(id="playground:recovered-actions", pk="playground:recovered-actions",
+                    organization_id="org-1", attributes={}, stage=SimpleNamespace(name="New leads"),
+                    stage_id=None, pipeline_id=None)
+                calls = []
+
+                def generate(**kwargs):
+                    phase = kwargs.get("metadata", {}).get("phase")
+                    calls.append(phase)
+                    if phase == "ai_brain_reply_recovery":
+                        if fail_brain_recovery:
+                            raise AIProviderTransientError("temporary provider limit")
+                        return AITextResult('{"message":"DIY costs ₹2999 monthly."}', "recovery")
+                    if phase == "qualification_capture_recovery":
+                        return AITextResult(json.dumps({"qualification_updates": self.updates}), "review")
+                    if phase == "file_selection_review":
+                        return AITextResult('{"should_share":true,"document_id":7,"reason":"Authored condition met."}', "review")
+                    if phase == "grounding":
+                        payload = json.loads(kwargs["input_text"])
+                        self.assertEqual(len(payload["proposed_answer_updates"]), 4)
+                        self.assertTrue(payload["backend_state"]["qualification_completed"])
+                        return AITextResult('{"approved":true,"reason":"approved"}', "grounding")
+                    raise AIProviderTransientError("temporary provider limit")
+
+                token = trace_service.begin_trace(organization=self.org)
+                try:
+                    with patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=generate), \
+                         patch("apps.ai_engagement.graph.evidence.OpenAIProvider", OpenAIProvider), \
+                         patch("apps.ai_engagement.services.file_sharing.FileSharingService.parse_decision",
+                               return_value=FileSharingDecision(True, 7, "Authored condition met.", "review")):
+                        result = EngagementService().engage(organization=self.org, lead=lead, context=context)
+                    diagnostic = summary()
+                finally:
+                    trace_service.flush(reset_token=token)
+                self.assertEqual(result.qualification_updates, self.updates)
+                self.assertEqual(result.file_document_id, 7)
+                self.assertEqual(calls.count("qualification_capture_recovery"), 1)
+                self.assertEqual(calls.count("file_selection_review"), 1)
+                self.assertIn("grounding", calls)
+                self.assertIn("runtime/", diagnostic)
+
+    def test_final_language_recovery_cannot_capture_or_select_new_file(self):
+        from apps.ai_engagement.graph.workflow import _review_draft_decision
+        context = replace(self.context, organization={**self.context.organization,
+            "_file_candidates": [{"document_id": 7, "share_instruction": "Share on request."}]})
+        token = _FINAL_LANGUAGE_ONLY.set(True)
+        try:
+            result = _review_draft_decision({"service": self.service, "organization": self.org,
+                "lead": self.lead, "latest_text": _SOURCE + " Share the brochure.",
+                "requirements": self.requirements, "qualification_state": self.state},
+                context=context, decision=_draft())
+        finally:
+            _FINAL_LANGUAGE_ONLY.reset(token)
+        self.assertEqual(result["decision"].qualification_updates, [])
+        self.assertIsNone(result["decision"].file_document_id)
+        self.provider.generate_text.assert_not_called()
+
+    def test_live_generation_failure_does_not_enter_sandbox_action_recovery(self):
+        from apps.ai_engagement.graph.workflow import _generate
+        from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+        state = {"service": self.service, "organization": self.org, "lead": self.lead,
+                 "context": self.context,
+                 "legacy_engage": Mock(side_effect=AIProviderTransientError("temporary provider limit"))}
+        with patch("apps.ai_engagement.graph.workflow._review_draft_decision") as review:
+            with self.assertRaises(AIProviderTransientError):
+                _generate(state)
+        review.assert_not_called()
+
 
 @override_settings(OPENAI_API_KEY="unit-test-unused-key", AI_BRAIN_RECOVERY_ENABLED=False,
                    CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
