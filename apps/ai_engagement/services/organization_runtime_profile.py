@@ -379,15 +379,14 @@ class OrganizationAIRuntimeProfileBuilder:
         qualification = _bounded_safe_copy(compiled.get("qualification") or {})
         business_facts = _selected_settings(raw_settings, _BUSINESS_FACT_KEYS)
         allowed_actions = configured_action_types(raw_settings)
-        from apps.ai_engagement.services.booking_runtime import (
-            booking_capability_available,
-        )
-
         booking_handoff = {
             "configured": _selected_settings(raw_settings, _BOOKING_HANDOFF_KEYS),
             "capabilities": {
                 "call_handoff": "create_reminder" in allowed_actions,
-                "booking_executor": booking_capability_available(organization),
+                # Keep this bounded runtime adapter query-stable. Live booking
+                # availability is evaluated by conversation_policy_runtime and
+                # booking_runtime against the canonical Calendar tables.
+                "booking_executor": False,
             },
         }
         crm_capabilities = {
