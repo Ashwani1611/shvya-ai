@@ -24,6 +24,7 @@ from apps.integrations.services.meta_conversions import (
 )
 from apps.integrations.services.meta_conversions_delivery import deliver_event, recover_due_events
 from apps.organizations.models import Organization
+from services.crm.lead_service import upsert_lead
 from services.crm.lead_transition import move_lead_to_stage
 
 
@@ -272,6 +273,30 @@ class MetaConversionsTests(TestCase):
         self.assertEqual(user_data["lead_id"], original_meta_id)
         self.assertEqual(user_data["em"], [hashlib.sha256(original_email.lower().encode()).hexdigest()])
 
+    def test_meta_form_reacquisition_of_an_existing_contact_is_captured(self):
+        existing = Lead.objects.create(
+            organization=self.org, pipeline=self.pipeline, stage=self.stage,
+            name="Existing contact", phone="+919876543212", lead_source="manual",
+        )
+        self.enable()
+        lead, created = upsert_lead(
+            organization=self.org, pipeline=self.pipeline, stage=self.stage,
+            name="Returning Meta contact", phone=existing.phone, lead_source="meta_ads",
+            attributes={"meta_leadgen_id": "1234567890123498"},
+        )
+        self.assertFalse(created)
+        self.assertEqual(lead.pk, existing.pk)
+        self.assertEqual(lead.lead_source, "manual")
+        event = Delivery.objects.get(lead=lead).payload
+        self.assertEqual(event["user_data"]["lead_id"], "1234567890123498")
+        self.assertEqual(event["action_source"], "system_generated")
+        self.assertEqual(event["custom_data"]["event_source"], "crm")
+        self.authenticate()
+        response = self.client.get(self.url, {"lookup": "leads", "mapping_id": str(self.mapping.pk)})
+        self.assertIn(str(lead.pk), {item["id"] for item in response.json()["leads"]})
+        lead.save()
+        self.assertEqual(Delivery.objects.filter(lead=lead).count(), 1)
+
     def test_invalid_matching_records_an_actionable_failure_without_publication(self):
         self.configuration.user_data_fields = ["country"]
         self.lead.attributes["country"] = "in"
@@ -292,6 +317,7 @@ class MetaConversionsTests(TestCase):
         self.mapping.is_enabled = True
         self.mapping.save()
         self.lead.lead_source = "whatsapp"
+        self.lead.attributes = {}
         capture_stage_event(self.configuration, self.lead)
         self.assertFalse(Delivery.objects.exists())
         self.configuration.event_scope = "all_leads"
@@ -316,6 +342,7 @@ class MetaConversionsTests(TestCase):
 
     def test_website_events_need_real_url_and_browser(self):
         self.lead.lead_source = "external_api"
+        self.lead.attributes = {}
         self.mapping.action_source = "website"
         with self.assertRaises(ValidationError):
             build_event(self.configuration, self.mapping, self.lead, event_id="web", occurred_at=timezone.now())

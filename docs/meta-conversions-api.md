@@ -16,6 +16,8 @@ change WhatsApp/Instagram messaging or introduce a second frontend.
    receive a protected `Lead` mapping; additional stages can use standard or
    custom event names. Configure no value, a static value, or an active numeric
    CRM attribute. Values require currency; `Purchase` requires both.
+   Returning contacts with a real Meta Lead ID are included even when the CRM
+   retains their original WhatsApp, manual or other acquisition source.
 4. Select the customer fields and optional shareable custom attributes.
    Missing optional fields are omitted. The customer IP/browser must already
    be stored in lead attributes; the administrator's browser is never used.

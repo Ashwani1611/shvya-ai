@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 
 from apps.crm.models import Lead, Pipeline, Stage
@@ -35,6 +35,13 @@ INVALID_USER_DATA_COMBINATIONS = (
     frozenset({"fn", "ge"}),
     frozenset({"ln", "ge"}),
 )
+META_LEAD_ID_PATTERN = r"[0-9]{15,20}"
+
+
+def _is_meta_lead(lead):
+    # The upsert service preserves a returning contact's original lead source.
+    meta_id = str((lead.attributes or {}).get("meta_leadgen_id") or "").strip()
+    return lead.lead_source == "meta_ads" or bool(re.fullmatch(META_LEAD_ID_PATTERN, meta_id))
 
 
 def ensure_default_mappings(configuration):
@@ -136,7 +143,7 @@ def build_user_data(configuration, lead):
     if "lead_id" in selected:
         meta_id = str(attributes.get("meta_leadgen_id") or "").strip()
         if meta_id:
-            if not re.fullmatch(r"[0-9]{15,20}", meta_id):
+            if not re.fullmatch(META_LEAD_ID_PATTERN, meta_id):
                 raise ValidationError("The stored Meta Lead ID is invalid. Check the Lead Ads import.")
             result["lead_id"] = meta_id
     for source, target in (("city", "ct"), ("state", "st"), ("zip_code", "zp"), ("country", "country")):
@@ -197,7 +204,7 @@ def build_event(configuration, mapping, lead, *, event_id, occurred_at):
         "user_data": build_user_data(configuration, lead),
     }
     custom_data = {}
-    if lead.lead_source == "meta_ads":
+    if _is_meta_lead(lead):
         event["action_source"] = "system_generated"
         custom_data.update(event_source="crm", lead_event_source="SHVYA AI")
     if event["action_source"] == "website":
@@ -247,7 +254,7 @@ def enqueue_delivery(delivery):
 
 
 def queue_event(configuration, mapping, lead, *, occurred_at, is_test=False, is_probe=False, event_id=None):
-    if configuration.event_scope == "meta_leads" and lead.lead_source != "meta_ads":
+    if configuration.event_scope == "meta_leads" and not _is_meta_lead(lead):
         raise ValidationError("Choose a lead imported from Meta Lead Ads for this connection.")
     if not configuration.dataset_id or not configuration.has_access_token:
         raise ValidationError("Save the dataset ID and access token first.")
@@ -279,7 +286,7 @@ def queue_event(configuration, mapping, lead, *, occurred_at, is_test=False, is_
 def capture_stage_event(configuration, lead, *, occurred_at=None):
     if not configuration.is_enabled:
         return
-    if configuration.event_scope == "meta_leads" and lead.lead_source != "meta_ads":
+    if configuration.event_scope == "meta_leads" and not _is_meta_lead(lead):
         return
     if lead.pipeline.organization_id != configuration.organization_id or lead.stage.pipeline_id != lead.pipeline_id:
         return
@@ -369,7 +376,10 @@ def eligible_test_leads(configuration, mapping_id):
     leads = Lead.objects.filter(organization_id=configuration.organization_id,
                                 pipeline_id=mapping.pipeline_id, stage_id=mapping.stage_id)
     if configuration.event_scope == "meta_leads":
-        leads = leads.filter(lead_source="meta_ads")
+        leads = leads.filter(
+            Q(lead_source="meta_ads") |
+            Q(attributes__meta_leadgen_id__regex=rf"^\s*{META_LEAD_ID_PATTERN}\s*$"),
+        )
     return [{"id": str(lead.pk), "name": lead.name} for lead in leads[:100]]
 
 
