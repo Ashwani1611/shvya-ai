@@ -348,10 +348,12 @@ class Phase4TenantRuntimeTests(TestCase):
         self.assertIn(WhatsAppAccount.ConnectionType.coexisted, account_types)
 
     def test_profile_loader_has_bounded_configuration_query_count(self):
+        # Load the complete lead ownership graph before measuring configuration
+        # queries. TenantGuard independently validates the stage's own pipeline.
         lead = Lead.objects.select_related(
             "organization",
             "pipeline",
-            "stage",
+            "stage__pipeline",
         ).get(pk=self.lead_a.pk)
         with CaptureQueriesContext(connection) as captured:
             OrganizationAIRuntimeProfileBuilder().build(
