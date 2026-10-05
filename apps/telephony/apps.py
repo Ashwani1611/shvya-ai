@@ -6,3 +6,6 @@ class TelephonyConfig(AppConfig):
     name = "apps.telephony"
     label = "telephony"
     verbose_name = "Call Intelligence"
+
+    def ready(self):
+        from . import signals  # noqa: F401

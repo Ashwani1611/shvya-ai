@@ -1,0 +1,15 @@
+{% if call.intelligence %}
+  <span class="ci-intent {{ call.intelligence.intent }}">{{ call.intelligence.get_intent_display }} · {{ call.intelligence.ai_score|default:"0" }}/10</span>
+  <small>{{ call.intelligence.outcome|default:"Analyzed" }}</small>
+{% elif call.analysis_status == 'failed' %}
+  <span class="ci-intent pending">Analysis failed</span>
+  <small>Save & analyze to retry</small>
+{% elif call.analysis_status == 'processing' %}
+  <span class="ci-intent pending">Analyzing…</span>
+{% elif call.analysis_status == 'queued' %}
+  <span class="ci-intent pending">AI queued</span>
+{% elif call.notes or call.transcript %}
+  <span class="ci-intent pending">Waiting for analysis</span>
+{% else %}
+  <span class="ci-intent neutral">Add notes</span>
+{% endif %}

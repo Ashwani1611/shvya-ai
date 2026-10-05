@@ -1,9 +1,13 @@
+import hashlib
+import json
+import logging
 import re
 import uuid
 from datetime import datetime, timedelta
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 
@@ -18,8 +22,11 @@ from .models import (
     CallDisposition,
     CallEvent,
     CallIntelligenceSettings,
+    CallIntelligenceResult,
     CallRecord,
 )
+
+logger = logging.getLogger(__name__)
 
 
 DEFAULT_DISPOSITIONS = (
@@ -117,7 +124,11 @@ def normalize_call_phone(raw_phone, *, pipeline=None):
     digits = re.sub(r"\D", "", value)
     if not digits:
         raise ValidationError("Phone number is required.")
-    if value.startswith("+"):
+    if digits.startswith("00"):
+        candidate = f"+{digits[2:]}"
+    elif len(digits) == 11 and digits.startswith("0"):
+        return normalize_call_phone(digits[1:], pipeline=pipeline)
+    elif value.startswith("+"):
         candidate = f"+{digits}"
     elif len(digits) == 10:
         country = re.sub(
@@ -413,12 +424,16 @@ def _ingest_call_event_atomic(*, user, payload):
         record.raw_phone_number = _clean_text(payload.get("raw_phone_number") or record.raw_phone_number, limit=64)
         record.contact_name = _clean_text(payload.get("contact_name")) or record.contact_name
         record.direction = direction
-        record.status = call_status
+        # Mobile outboxes can deliver ringing/started events after completion.
+        # Keep the final outcome and CRM call authoritative in that case.
+        if record.ended_at is None or event_type in TERMINAL_EVENTS:
+            record.status = call_status
         record.sub_status = _clean_text(payload.get("sub_status"), limit=40) or record.sub_status
         record.started_at = started_at or record.started_at
         record.ringing_at = ringing_at or record.ringing_at
         record.answered_at = answered_at or record.answered_at
-        record.ended_at = ended_at or record.ended_at
+        if event_type in TERMINAL_EVENTS or record.ended_at is None:
+            record.ended_at = ended_at or record.ended_at
         record.ring_duration_seconds = max(record.ring_duration_seconds, _positive_int(payload.get("ring_duration_seconds")))
         record.talk_duration_seconds = max(record.talk_duration_seconds, _positive_int(payload.get("talk_duration_seconds")))
         record.total_duration_seconds = max(record.total_duration_seconds, _positive_int(payload.get("total_duration_seconds")))
@@ -434,7 +449,7 @@ def _ingest_call_event_atomic(*, user, payload):
         if incoming_notes:
             record.notes = incoming_notes
 
-    lead = (
+    lead = record.lead or (
         Lead.objects.select_related("pipeline", "stage")
         .filter(organization=user.organization, phone=phone)
         .first()
@@ -457,33 +472,15 @@ def _ingest_call_event_atomic(*, user, payload):
         lead_created = True
 
     if lead is not None:
-        record.lead = lead
-
-    if terminal and lead is not None:
-        if record.crm_call_id is None:
-            crm_call = LeadCall.objects.create(
-                lead=lead,
-                user=user,
-                status=crm_status_for_call(call_status),
-                call_name=record.call_name or "Phone Call",
-                duration_seconds=record.talk_duration_seconds,
-                notes=record.notes,
-                called_at=record.started_at or record.ended_at or occurred_at,
-            )
-            record.crm_call = crm_call
-            record_call_logged(lead=lead, actor=user, call=crm_call)
-        else:
-            crm_call = record.crm_call
-            crm_call.status = crm_status_for_call(call_status)
-            crm_call.duration_seconds = record.talk_duration_seconds
-            if record.notes:
-                crm_call.notes = record.notes
-            crm_call.save(update_fields=["status", "duration_seconds", "notes"])
+        attach_call_to_lead(record, lead, terminal=terminal, occurred_at=occurred_at)
 
     record.sync_status = "synced"
     record.last_sync_attempt_at = timezone.now()
     record.sync_error_message = ""
     record.save()
+
+    if terminal or record.ended_at:
+        request_call_analysis(record.id)
 
     event = CallEvent.objects.create(
         event_uuid=event_uuid,
@@ -510,7 +507,7 @@ def _ingest_call_event_atomic(*, user, payload):
 
 def capture_manual_crm_call(call):
     """Mirror a CRM manual call once, retaining its original lead and employee."""
-    return CallRecord.objects.get_or_create(
+    record = CallRecord.objects.get_or_create(
         crm_call=call,
         defaults={
             "organization": call.lead.organization,
@@ -530,3 +527,143 @@ def capture_manual_crm_call(call):
             "notes": call.notes,
         },
     )[0]
+    request_call_analysis(record.id)
+    return record
+
+
+def attach_call_to_lead(record, lead, *, terminal, occurred_at=None):
+    """The caller holds the CallRecord lock; never move historical calls to a peer."""
+    if record.organization_id != lead.organization_id:
+        raise ValidationError("Call and lead must belong to the same organization.")
+    if record.lead_id and record.lead_id != lead.id:
+        raise ValidationError("Call already belongs to another CRM lead.")
+    record.lead = lead
+    if not terminal:
+        return
+    if record.crm_call_id is None:
+        record.crm_call = LeadCall.objects.create(
+            lead=lead,
+            user=record.user,
+            status=crm_status_for_call(record.status),
+            call_name=record.call_name or "Phone Call",
+            duration_seconds=record.talk_duration_seconds,
+            notes=record.notes,
+            called_at=record.started_at or record.ended_at or occurred_at or record.created_at,
+        )
+        record_call_logged(lead=lead, actor=record.user, call=record.crm_call)
+    else:
+        crm_call = record.crm_call
+        if crm_call.lead_id != lead.id:
+            raise ValidationError("CRM call does not belong to the matched lead.")
+        crm_call.status = crm_status_for_call(record.status)
+        crm_call.duration_seconds = record.talk_duration_seconds
+        crm_call.notes = record.notes
+        crm_call.save(update_fields=["status", "duration_seconds", "notes"])
+
+
+def reconcile_lead_calls(lead_id):
+    """Link earlier calls after CRM creation/phone editing, including dialer prefixes."""
+    lead = Lead.objects.select_related("pipeline", "stage").filter(pk=lead_id).first()
+    if lead is None or not lead.phone:
+        return
+    digits = re.sub(r"\D", "", lead.phone)
+    phones = {lead.phone, digits, f"+00{digits}", f"00{digits}"}
+    country = re.sub(r"\D", "", lead.pipeline.country_code or "91")
+    if country and digits.startswith(country) and len(digits[len(country):]) == 10:
+        local = digits[len(country):]
+        phones.update({local, f"+{local}", f"0{local}", f"+0{local}"})
+    ids = list(CallRecord.objects.filter(
+        organization_id=lead.organization_id, phone_number__in=phones, lead__isnull=True,
+    ).values_list("id", flat=True))
+    for call_id in ids:
+        reconcile_call(call_id, lead=lead)
+
+
+@transaction.atomic
+def reconcile_call(call_id, *, lead=None):
+    record = CallRecord.objects.select_for_update().filter(pk=call_id).first()
+    if record is None:
+        return
+    lead = lead or record.lead or Lead.objects.filter(
+        organization_id=record.organization_id, phone=record.phone_number,
+    ).first()
+    if lead is None:
+        return
+    attach_call_to_lead(record, lead, terminal=record.ended_at is not None)
+    record.save(update_fields=["lead", "crm_call", "updated_at"])
+    if record.ended_at:
+        request_call_analysis(record.id)
+
+
+def reconcile_call_tracking(user, *, limit=100):
+    """Repair legacy matching before filtering analytics; skip genuine unknown callers."""
+    matches = Lead.objects.filter(
+        organization_id=OuterRef("organization_id"), phone=OuterRef("phone_number"),
+    )
+    qs = CallRecord.objects.filter(organization=user.organization).annotate(
+        has_lead=Exists(matches),
+    ).filter(
+        Q(lead__isnull=True, has_lead=True)
+        | Q(lead__isnull=False, crm_call__isnull=True, ended_at__isnull=False),
+    )
+    if user.role == "agent":
+        qs = qs.filter(user=user)
+    for call_id in list(qs.values_list("id", flat=True)[:limit]):
+        reconcile_call(call_id)
+
+
+def call_analysis_hash(call):
+    """Tie results to the evidence version, so late workers cannot overwrite new notes."""
+    evidence = {
+        "notes": call.notes, "transcript": call.transcript,
+        "speaker_segments": call.transcript_speakers, "disposition": call.disposition,
+        "status": call.status, "direction": call.direction,
+        "talk_duration_seconds": call.talk_duration_seconds,
+        "ring_duration_seconds": call.ring_duration_seconds,
+        "lead_id": str(call.lead_id or ""),
+    }
+    return hashlib.sha256(json.dumps(evidence, sort_keys=True).encode()).hexdigest()
+
+
+def publish_call_analysis(call_id, input_hash):
+    from .tasks import analyze_call_intelligence
+
+    try:
+        analyze_call_intelligence.delay(str(call_id), input_hash)
+    except Exception:
+        # Keep the durable queued row for Beat to recover; notes are already saved.
+        logger.warning("Call Intelligence queue publication failed for %s", call_id)
+        CallRecord.objects.filter(pk=call_id, analysis_input_hash=input_hash).update(
+            analysis_error="Notes saved. Analysis is waiting for the worker to reconnect.",
+        )
+
+
+@transaction.atomic
+def request_call_analysis(call_id, *, retry_failed=False):
+    call = CallRecord.objects.select_for_update().get(pk=call_id)
+    if not call.notes.strip() and not call.transcript.strip():
+        CallIntelligenceResult.objects.filter(call=call).delete()
+        call.analysis_status = CallRecord.AnalysisStatus.NOT_REQUESTED
+        call.analysis_input_hash = ""
+        call.analysis_error = ""
+        call.analysis_attempts = 0
+    else:
+        input_hash = call_analysis_hash(call)
+        if call.analysis_input_hash == input_hash and (
+            call.analysis_status != CallRecord.AnalysisStatus.FAILED or not retry_failed
+        ):
+            return call
+        call.analysis_status = CallRecord.AnalysisStatus.QUEUED
+        call.analysis_input_hash = input_hash
+        call.analysis_error = ""
+        call.analysis_attempts = 0
+        CallIntelligenceResult.objects.filter(call=call).delete()
+        transaction.on_commit(
+            lambda: publish_call_analysis(call.id, input_hash)
+        )
+    call.analysis_updated_at = timezone.now()
+    call.save(update_fields=[
+        "analysis_status", "analysis_input_hash", "analysis_error",
+        "analysis_attempts", "analysis_updated_at",
+    ])
+    return call

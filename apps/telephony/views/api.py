@@ -28,15 +28,15 @@ from ..models import (
     CallRecord,
 )
 from ..services import (
-    TERMINAL_EVENTS,
     get_call_dispositions,
     get_call_settings,
     ingest_call_event,
     register_device,
     normalize_call_phone,
     resolve_user_pipeline_stage,
+    reconcile_call_tracking,
+    request_call_analysis,
 )
-from ..tasks import analyze_call_intelligence
 from ..analytics import call_metrics, team_metrics, format_duration
 
 
@@ -100,6 +100,8 @@ def serialize_call(call):
         "transcript": call.transcript,
         "transcript_speakers": call.transcript_speakers,
         "notes": call.notes,
+        "analysis_status": ("completed" if intelligence else call.analysis_status),
+        "analysis_error": call.analysis_error,
         "disposition": call.disposition,
         "follow_up_required": call.follow_up_required,
         "follow_up_at": call.follow_up_at.isoformat() if call.follow_up_at else None,
@@ -194,14 +196,7 @@ class CallEventView(APIView):
         except DjangoValidationError as exc:
             return _error(exc)
         call = result["call"]
-        if (
-            result["event_created"]
-            and result["event"].event_type in TERMINAL_EVENTS
-            and ((call.notes or "").strip() or (call.transcript or "").strip())
-        ):
-            transaction.on_commit(
-                lambda: analyze_call_intelligence.delay(str(call.id))
-            )
+        call.refresh_from_db()
         return Response(
             {
                 "ok": True,
@@ -216,6 +211,7 @@ class CallEventView(APIView):
 class CallCollectionView(APIView):
     def get(self, request):
         user = _user(request)
+        reconcile_call_tracking(user)
         qs = _call_queryset(user)
 
         call_status = str(request.query_params.get("status") or "").strip()
@@ -327,10 +323,8 @@ class CallMediaView(APIView):
                 occurred_at=timezone.now(),
                 payload={"source": "provider_media_update"},
             )
-        if (call.notes or "").strip() or (call.transcript or "").strip():
-            transaction.on_commit(
-                lambda: analyze_call_intelligence.delay(str(call.id))
-            )
+        request_call_analysis(call.id, retry_failed=True)
+        call.refresh_from_db()
         return Response({"ok": True, "call": serialize_call(call)})
 
 
@@ -341,23 +335,23 @@ class CallNotesView(APIView):
         if call is None:
             return Response({"detail": "Call not found."}, status=404)
 
-        notes = str(request.data.get("notes") or "").strip()[:20000]
+        notes = str(request.data.get("notes", call.notes) or "").strip()[:20000]
         disposition = str(request.data.get("disposition", call.disposition) or "").strip()[:80]
         if disposition and not get_call_dispositions(user.organization).filter(
             code=disposition
         ).exists():
             return Response({"detail": "Choose a valid call disposition."}, status=400)
 
-        call.notes = notes
-        call.disposition = disposition
-        call.save(update_fields=["notes", "disposition", "updated_at"])
-        if call.crm_call_id:
-            call.crm_call.notes = notes
-            call.crm_call.save(update_fields=["notes"])
-        if notes or call.transcript:
-            transaction.on_commit(
-                lambda: analyze_call_intelligence.delay(str(call.id))
-            )
+        with transaction.atomic():
+            call = _call_queryset(user).select_for_update(of=("self",)).get(pk=call_id)
+            call.notes = notes
+            call.disposition = disposition
+            call.save(update_fields=["notes", "disposition", "updated_at"])
+            if call.crm_call_id:
+                call.crm_call.notes = notes
+                call.crm_call.save(update_fields=["notes"])
+            request_call_analysis(call.id, retry_failed=True)
+        call.refresh_from_db()
         return Response({"ok": True, "call": serialize_call(call)})
 
 
@@ -469,6 +463,7 @@ class CallDispositionCollectionView(APIView):
 class CallAnalyticsView(APIView):
     def get(self, request):
         user = _user(request)
+        reconcile_call_tracking(user)
         from .dashboard import _filtered_calls
         # Accept the existing mobile ID parameter names as well as web filters.
         params = request.GET.copy()

@@ -151,6 +151,13 @@ class CallDevice(models.Model):
 
 
 class CallRecord(models.Model):
+    class AnalysisStatus(models.TextChoices):
+        NOT_REQUESTED = "not_requested", "Add notes"
+        QUEUED = "queued", "AI queued"
+        PROCESSING = "processing", "Analyzing"
+        COMPLETED = "completed", "Analyzed"
+        FAILED = "failed", "Analysis failed"
+
     class Source(models.TextChoices):
         ANDROID_SIM = "android_sim", "Android SIM"
         CLOUD = "cloud", "Cloud telephony"
@@ -229,6 +236,13 @@ class CallRecord(models.Model):
     transcript_speakers = models.JSONField(default=list, blank=True)
     notes = models.TextField(blank=True)
     disposition = models.CharField(max_length=80, blank=True)
+    analysis_status = models.CharField(
+        max_length=16, choices=AnalysisStatus.choices, default=AnalysisStatus.NOT_REQUESTED,
+    )
+    analysis_error = models.CharField(max_length=255, blank=True)
+    analysis_input_hash = models.CharField(max_length=64, blank=True)
+    analysis_attempts = models.PositiveSmallIntegerField(default=0)
+    analysis_updated_at = models.DateTimeField(null=True, blank=True)
     follow_up_required = models.BooleanField(default=False)
     follow_up_at = models.DateTimeField(null=True, blank=True)
     sync_status = models.CharField(
@@ -260,6 +274,8 @@ class CallRecord(models.Model):
             models.Index(fields=["lead", "-ended_at"], name="telephony_lead_call_idx"),
             models.Index(fields=["user", "-ended_at"], name="telephony_user_call_idx"),
             models.Index(fields=["organization", "status"], name="telephony_org_status_idx"),
+            models.Index(fields=["organization", "phone_number"], name="telephony_org_phone_idx"),
+            models.Index(fields=["analysis_status", "analysis_updated_at"], name="telephony_analysis_due_idx"),
         ]
 
     def __str__(self):
