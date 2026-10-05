@@ -77,7 +77,9 @@ turn creates one fresh snapshot and retains it across draft/final composition;
 its response exposes only the bundle schema version and revision as diagnostics.
 Runtime profile construction uses nine fixed configuration queries, including
 the existing WhatsApp account metadata query, with no per-record queries or
-knowledge chunk scans. Prompt and candidate limits remain unchanged.
+knowledge chunk scans. Validating a supplied lead can additionally load its
+pipeline, stage and stage-owning pipeline if those relationships were not
+already fetched. Prompt and candidate limits remain unchanged.
 
 The revision covers configuration and source/document version metadata. It does
 not fingerprint binary bytes, extracted chunk text or embedding vectors; those
