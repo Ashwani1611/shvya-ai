@@ -196,6 +196,24 @@ class HostedManualImmediateTests(TransactionTestCase):
         self.gateway.send_message.assert_not_called()
         self.publish.assert_not_called()
 
+    def test_stale_gateway_session_fails_fast_without_background_queue(self):
+        self.gateway.send_message.side_effect = WhatsAppWebGatewayError(
+            "Hosted session is reconnecting; no message was sent.",
+            status_code=502,
+            response_body=json.dumps({
+                "error": "Hosted session is reconnecting; no message was sent."
+            }),
+        )
+        response = self._post()
+        self.assertEqual(response.status_code, 409)
+        data = response.json()
+        self.assertFalse(data["ok"])
+        self.assertFalse(data["retry_scheduled"])
+        self.assertEqual(data["message"]["status"], "failed")
+        self.assertIn("not queued", data["message"]["error"])
+        self.publish.assert_not_called()
+        self.retry.assert_not_called()
+
     def test_api_account_cannot_cross_route_to_hosted_transport(self):
         self.account.connection_type = WhatsAppAccount.ConnectionType.API
         self.account.save(update_fields=["connection_type"])
