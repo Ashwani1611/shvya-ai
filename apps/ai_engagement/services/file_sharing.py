@@ -82,6 +82,38 @@ class FileSharingError(Exception):
     """
 
 
+def unconditional_welcome_document(candidates, *, welcome_due):
+    """Compile only an exact, unrestricted welcome instruction.
+
+    Complex conditions remain model-reviewed. Full matching and exact document
+    names prevent a welcome mention from erasing a stage/source restriction.
+    Multiple matching documents also require review rather than arbitrary choice.
+    """
+    if not welcome_due:
+        return None
+    pattern = re.compile(
+        r"(?:send|share)\s+(?:this\s+|the\s+)?(?P<name>[\w -]{1,80}?)\s+"
+        r"(?:along\s+with|with)\s+(?:the\s+)?welcome(?:\s+message)?"
+        r"(?:\s+or\s+(?:whenever|when\s+ever|when)\s+(?:the\s+)?lead\s+asks?\s+"
+        r"(?P<requested>[\w -]{1,80}?))?\s*[.]?", re.I,
+    )
+    matches = []
+    for item in candidates:
+        if not isinstance(item, dict) or item.get("already_shared"):
+            continue
+        document_id = item.get("document_id")
+        if type(document_id) is not int or document_id <= 0:
+            continue
+        rule = pattern.fullmatch(" ".join(str(item.get("share_instruction") or "").split()))
+        name = " ".join(str(item.get("name") or "").split()).casefold()
+        if not rule or rule["name"].casefold() != name:
+            continue
+        if rule["requested"] and rule["requested"].casefold() != name:
+            continue
+        matches.append(document_id)
+    return matches[0] if len(matches) == 1 else None
+
+
 @dataclass(frozen=True)
 class FileSharingDecision:
     """
@@ -170,6 +202,16 @@ Rules for the fields:
         }
         if not allowed:
             return None
+        welcome_document = unconditional_welcome_document(candidates, welcome_due=welcome_due)
+        if welcome_document is not None:
+            # Retain the same tenant ownership/readiness validation as AI choices.
+            decision = self.parse_decision(
+                organization=organization, lead=lead,
+                raw_text=json.dumps({"should_share": True, "document_id": welcome_document,
+                                     "reason": "Unrestricted authored welcome instruction applies."}),
+                model="authored_welcome_instruction",
+            )
+            return decision.document_id
         data = context.as_dict()
         result = generate(
             provider=provider,
