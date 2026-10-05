@@ -431,7 +431,6 @@ def install_playground_graph_recovery() -> None:
                 raise
 
             from apps.ai_engagement.services.turn_diagnostics import record_failure
-            record_failure(exc)
             transient_provider_failure = _is_transient_provider_failure(exc)
 
             def record_recovery(phase: str) -> None:
@@ -488,6 +487,7 @@ def install_playground_graph_recovery() -> None:
                     getattr(state.get("lead"), "id", ""),
                     exc_info=True,
                 )
+                record_failure(exc)
                 raise
 
             qualification_state = state.get("qualification_state") or {}
@@ -533,6 +533,7 @@ def install_playground_graph_recovery() -> None:
                         model="deterministic-recovery",
                     ),
                 )
+            record_failure(exc)
             raise
 
     workflow._deterministic_extract = scoped_deterministic_extract
