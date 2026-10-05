@@ -117,6 +117,30 @@ def _is_playground_state(state) -> bool:
     return str(getattr(lead, "id", "") or "").startswith("playground:")
 
 
+def _is_transient_provider_failure(error: BaseException) -> bool:
+    """Detect a retryable provider error wrapped by the graph/runtime."""
+    from apps.ai_engagement.services.ai_provider import AIProviderTransientError
+
+    seen: set[int] = set()
+    current: BaseException | None = error
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, AIProviderTransientError):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
+
+
+def _record_sandbox_recovery(*, phase: str) -> None:
+    """Record bounded recovery state without exposing provider error text."""
+    from apps.ai_engagement.services.trace_service import record
+
+    record("recovery", {
+        "provider_transient_recovered": True,
+        "phase": str(phase or "sandbox_graph_recovery")[:80],
+    })
+
+
 def _has_interrupting_customer_intent(text: str) -> bool:
     """Return True when qualification must not replace the latest customer intent."""
     raw = str(text or "").strip()
@@ -407,7 +431,11 @@ def install_playground_graph_recovery() -> None:
                 raise
 
             from apps.ai_engagement.services.turn_diagnostics import record_failure
-            record_failure(exc)
+            transient_provider_failure = _is_transient_provider_failure(exc)
+
+            def record_recovery(phase: str) -> None:
+                if transient_provider_failure:
+                    _record_sandbox_recovery(phase=phase)
 
             from apps.ai_engagement.services.ai_provider import AIProviderError
             from apps.ai_engagement.services.engagement import EngagementError
@@ -416,6 +444,7 @@ def install_playground_graph_recovery() -> None:
                 try:
                     recovered = _ai_brain_recovery(state)
                     if recovered is not None:
+                        record_recovery("sandbox_brain_recovery")
                         return workflow._review_draft_decision(
                             state, context=recovered.get("context", state["context"]),
                             decision=recovered["decision"],
@@ -431,6 +460,7 @@ def install_playground_graph_recovery() -> None:
                     chunks=chunks,
                 )
                 if grounded_message:
+                    record_recovery("sandbox_knowledge_recovery")
                     logger.warning(
                         "ai_sandbox_generation_knowledge_recovered organization=%s lead=%s chunks=%s",
                         getattr(state.get("organization"), "id", ""),
@@ -457,6 +487,7 @@ def install_playground_graph_recovery() -> None:
                     getattr(state.get("lead"), "id", ""),
                     exc_info=True,
                 )
+                record_failure(exc)
                 raise
 
             qualification_state = state.get("qualification_state") or {}
@@ -481,6 +512,7 @@ def install_playground_graph_recovery() -> None:
                 and isinstance(next_requirement, dict)
                 and str(next_requirement.get("question") or "").strip()
             ):
+                record_recovery("sandbox_qualification_recovery")
                 question = str(next_requirement["question"]).strip()
                 logger.warning(
                     "ai_sandbox_generation_recovered organization=%s lead=%s next_requirement=%s",
@@ -501,6 +533,7 @@ def install_playground_graph_recovery() -> None:
                         model="deterministic-recovery",
                     ),
                 )
+            record_failure(exc)
             raise
 
     workflow._deterministic_extract = scoped_deterministic_extract

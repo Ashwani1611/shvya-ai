@@ -8,7 +8,7 @@ from django.core.cache import cache
 from django.test import SimpleTestCase, TestCase, override_settings
 
 from apps.ai_engagement.models import Document, OrgInfo
-from apps.ai_engagement.services.ai_provider import AITextResult, OpenAIProvider
+from apps.ai_engagement.services.ai_provider import AIProviderTransientError, AITextResult, OpenAIProvider
 from apps.ai_engagement.services.context import AIContext
 from apps.ai_engagement.services.engagement import EngagementDecision
 from apps.ai_engagement.services.embeddings import EmbeddingError
@@ -126,6 +126,20 @@ class SandboxFinalLanguageBoundaryTests(SimpleTestCase):
         self.assertEqual(self.visitor.preview_reminder["title"], "Call")
         self.assertFalse(_FINAL_LANGUAGE_ONLY.get())
         self.assertIs(self.engine.context_builder, self.old_builder)
+
+    def test_transient_final_pass_preserves_validated_draft(self):
+        def rate_limited(**kwargs):
+            self.generate(**kwargs)
+            raise AIProviderTransientError("try again in 1s", retry_after=1)
+
+        self.engine.engage = rate_limited
+        with patch.object(self.service, "_fallback_decision", side_effect=AssertionError("fallback must not replace a valid draft")):
+            final = self.compose()
+        self.assertEqual(final.message, "A supported answer.")
+        self.assertEqual(final.crm_actions, [])
+        self.assertEqual(final.qualification_updates, [])
+        self.assertIsNone(final.file_document_id)
+        self.assertEqual(self.visitor.attributes["industry"], "Retail")
 
     def test_nested_language_flag_restores_prior_value(self):
         token = _FINAL_LANGUAGE_ONLY.set(True)

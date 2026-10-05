@@ -172,13 +172,36 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         prompt_instructions = playbook_prompt_text(instructions)
     # Profile compaction deliberately moves these fields to organization. Never
     # interpret their absence from the compact profile as no language policy.
-    from apps.ai_engagement.services.intent_rules import detect_language
-    observed_language = getattr(intent_decision, "language", None) or detect_language(latest)
-    allowed = {str(item).casefold(): str(item) for item in languages}
-    for code, name in (("en", "english"), ("hi", "hindi")):
-        if name in allowed:
-            allowed[code] = allowed[name]
-    selected_language = allowed.get(str(observed_language or "").casefold())
+    from apps.ai_engagement.services.intent_rules import (
+        canonical_language,
+        detect_language,
+    )
+    model_language = getattr(intent_decision, "language", None)
+    detected_language = detect_language(latest)
+    # Deterministic script/high-signal detection wins when it identifies a
+    # non-English customer message. This prevents an intent model that returns
+    # its default ``English`` label from overriding Punjabi/Marathi/German/
+    # Kannada messages, while leaving genuinely ambiguous English text to the
+    # model/configured order.
+    observed_language = (
+        detected_language
+        if detected_language and detected_language != "en"
+        else model_language or detected_language
+    )
+    # OrgInfo stores labels while deterministic/model classifiers may return
+    # ISO codes or a different case. Normalize both sides before selecting the
+    # authored language so Punjabi, Marathi, German and Kannada do not silently
+    # become the first (usually English) language.
+    allowed = {
+        canonical_language(item): str(item)
+        for item in languages
+        if str(item).strip()
+    }
+    observed = canonical_language(observed_language)
+    selected_language = allowed.get(observed)
+    if not selected_language and observed_language:
+        # A classifier may return an ISO code for a configured human label.
+        selected_language = allowed.get(canonical_language(str(observed_language)))
     if not selected_language:
         selected_language = str(languages[0]) if languages else str(observed_language or "follow_customer_language")
     return ResponsePlan(

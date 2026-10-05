@@ -13,6 +13,7 @@ from apps.ai_engagement.services.embeddings import (
 )
 from apps.ai_engagement.services.retrieval import (
     KnowledgeRetrievalService,
+    RetrievalError,
 )
 from apps.channels.models import WhatsAppMessage
 from apps.crm.models import Lead
@@ -779,47 +780,43 @@ class AIContextBuilder:
 
         Resolution order:
 
-            1. query_vector, if the caller already computed one.
+            1. Use a caller-supplied vector when one is available.
 
-            2. knowledge_query, embedded here via EmbeddingService.
+            2. Otherwise try the organization-scoped embedding provider.
 
-            3. Neither supplied, or embedding fails: return no
-               knowledge rather than fabricate a vector.
+            3. Always pass the text through hybrid retrieval. If embeddings
+               are unavailable, deterministic keyword/source matching remains
+               a valid path for URL and uploaded-file chunks.
         """
 
+        normalized_query = str(knowledge_query or "").strip()
+        if query_vector is None and not normalized_query:
+            return []
+
         if query_vector is None:
-
-            normalized_query = (
-                knowledge_query or ""
-            ).strip()
-
-            if not normalized_query:
-                return []
-
             try:
-                query_vector = (
-                    EmbeddingService().embed_text(
-                        normalized_query,
-                        organization_id=organization.id,
-                        feature="knowledge_query",
-                        reference_id=str(organization.id),
-                    )
+                query_vector = EmbeddingService().embed_text(
+                    normalized_query,
+                    organization_id=organization.id,
+                    feature="knowledge_query",
+                    reference_id=str(organization.id),
                 )
             except EmbeddingError:
-                # No provider key, no available AI credits, or the provider
-                # call failed: degrade to no knowledge rather than fabricate
-                # a vector. The generative provider independently enforces the
-                # same organization wallet before any response is generated.
-                return []
+                # Keep query_vector=None deliberately. Hybrid retrieval will
+                # use the verified, tenant-scoped keyword/source fallback.
+                query_vector = None
 
-        results = (
-            KnowledgeRetrievalService()
-            .retrieve_by_vector(
+        try:
+            results = KnowledgeRetrievalService().retrieve_hybrid(
                 organization=organization,
+                query_text=normalized_query,
                 query_vector=query_vector,
                 limit=limit,
             )
-        )
+        except RetrievalError:
+            # Retrieval errors are fail-soft for the response path. They must
+            # never cause a cross-tenant query or fabricated evidence.
+            return []
 
         return [
             {
@@ -835,9 +832,15 @@ class AIContextBuilder:
                 "document_version": (
                     result.chunk.document.version
                 ),
+                "source_type": (
+                    "website" if result.chunk.document.source_url else "uploaded_file"
+                ),
+                "source_url": result.chunk.document.source_url,
                 "content": result.chunk.content,
                 "similarity": result.similarity,
                 "distance": result.distance,
+                "keyword_score": result.keyword_score,
+                "retrieval_methods": list(result.retrieval_methods),
             }
             for result in results
         ]

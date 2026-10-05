@@ -68,13 +68,12 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
     # Plain factual answers and qualification questions remain untouched.
     if not removed:
         return decision
-    from apps.ai_engagement.services.intent_rules import detect_language
-    language = detect_language(text or message or requested_text)
-    aliases = {"english": "en", "en": "en", "hindi": "hi", "hi": "hi", "hinglish": "hinglish"}
-    configured = [aliases.get(str(item).casefold(), str(item).casefold()) for item in allowed_languages or ()]
+    from apps.ai_engagement.services.intent_rules import canonical_language, detect_language
+    language = canonical_language(detect_language(text or message or requested_text))
+    configured = [canonical_language(item) for item in allowed_languages or ()]
     if configured and language not in configured:
         language = configured[0]
-    if language == "hi":
+    if language in {"hi", "hindi"}:
         clauses = []
         if file_id is not None:
             clauses.append("दस्तावेज़ इस प्रीव्यू में उपलब्ध है; किसी ग्राहक को भेजा नहीं गया है।")
@@ -94,7 +93,7 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
             clauses.append("Follow-up reminder sirf preview mein hai; live call confirm nahi hui hai.")
         elif call_requested and ("stage_transition" in preview_types or removed):
             clauses.append("Yeh Sandbox preview hai; live call ya handoff confirm nahi hua hai.")
-    elif language == "en":
+    elif language in {"en", "english"}:
         clauses = []
         if file_id is not None:
             clauses.append("The document is available in this preview; it has not been sent to a customer.")

@@ -297,7 +297,8 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
                 self.assertEqual(calls.count("qualification_capture_recovery"), 1)
                 self.assertEqual(calls.count("file_selection_review"), 1)
                 self.assertIn("grounding", calls)
-                self.assertIn("runtime/", diagnostic)
+                self.assertIn("recovery/provider_rate_limit_recovered", diagnostic)
+                self.assertNotIn("runtime/", diagnostic)
 
     def test_final_language_recovery_cannot_capture_or_select_new_file(self):
         from apps.ai_engagement.graph.workflow import _review_draft_decision

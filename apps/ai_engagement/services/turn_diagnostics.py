@@ -139,16 +139,28 @@ def summary(result=None):
     if trace is None:
         return ""
     parts = []
+    recovery = trace.data.get("recovery") or {}
+    transient_recovered = bool(
+        isinstance(recovery, dict)
+        and recovery.get("provider_transient_recovered") is True
+    )
     for call in (trace.data.get("provider") or {}).get("calls", []):
         if call.get("status") == "failed":
+            if transient_recovered and call.get("error_type") == "AIProviderTransientError":
+                continue
             parts.append("/".join(str(call[key]) for key in
                 ("phase", "error_type", "http_status", "code", "type", "param")
                 if call.get(key)))
+    if transient_recovered:
+        parts.append("recovery/provider_rate_limit_recovered")
     grounding = trace.data.get("grounding") or {}
     if grounding.get("approved") is False:
         parts.append("validation/" + identifier(grounding.get("validation_reason")))
     error = trace.data.get("error") or {}
-    if error.get("error_type"):
+    if error.get("error_type") and not (
+        transient_recovered
+        and error.get("error_type") in {"AIProviderTransientError", "EngagementError"}
+    ):
         parts.append("runtime/" + identifier(error.get("error_type")))
     failure = trace.data.get("sandbox_failure") or {}
     if failure:
