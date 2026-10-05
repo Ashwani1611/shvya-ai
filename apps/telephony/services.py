@@ -479,7 +479,7 @@ def _ingest_call_event_atomic(*, user, payload):
     record.sync_error_message = ""
     record.save()
 
-    if terminal:
+    if terminal or record.ended_at:
         request_call_analysis(record.id)
 
     event = CallEvent.objects.create(
@@ -600,9 +600,12 @@ def reconcile_call_tracking(user, *, limit=100):
     matches = Lead.objects.filter(
         organization_id=OuterRef("organization_id"), phone=OuterRef("phone_number"),
     )
-    qs = CallRecord.objects.filter(organization=user.organization).filter(
-        Q(lead__isnull=True) | Q(crm_call__isnull=True, ended_at__isnull=False),
-    ).annotate(has_lead=Exists(matches)).filter(has_lead=True)
+    qs = CallRecord.objects.filter(organization=user.organization).annotate(
+        has_lead=Exists(matches),
+    ).filter(
+        Q(lead__isnull=True, has_lead=True)
+        | Q(lead__isnull=False, crm_call__isnull=True, ended_at__isnull=False),
+    )
     if user.role == "agent":
         qs = qs.filter(user=user)
     for call_id in list(qs.values_list("id", flat=True)[:limit]):

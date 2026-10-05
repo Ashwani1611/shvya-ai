@@ -239,27 +239,27 @@ def analyze_call_intelligence(self, call_id, input_hash=None):
         follow_up_at = timezone.make_aware(follow_up_at, timezone.get_current_timezone())
 
     defaults = {
-            "summary": str(data.get("summary") or "")[:20000],
-            "intent": data.get("intent") or "unknown",
-            "sentiment": data.get("sentiment") or "unknown",
-            "outcome": str(data.get("outcome") or "")[:255],
-            "objections": data.get("objections") or [],
-            "buying_signals": data.get("buying_signals") or [],
-            "competitor": str(data.get("competitor") or "")[:255],
-            "budget": str(data.get("budget") or "")[:255],
-            "timeline": str(data.get("timeline") or "")[:255],
-            "product_interest": str(data.get("product_interest") or "")[:255],
-            "decision_maker": str(data.get("decision_maker") or "unknown")[:16],
-            "follow_up_at": follow_up_at,
-            "next_action": str(data.get("next_action") or "")[:255],
-            "ai_score": _score(data.get("ai_score")),
-            "qualification_score": _score(data.get("qualification_score")),
-            "agent_metrics": data.get("agent_metrics") or {},
-            "compliance_flags": data.get("compliance_flags") or [],
-            "extracted_attributes": data.get("attributes") or [],
-            "raw_analysis": data,
-            "model": str(result.model or "")[:100],
-            "analyzed_at": timezone.now(),
+        "summary": str(data.get("summary") or "")[:20000],
+        "intent": data.get("intent") or "unknown",
+        "sentiment": data.get("sentiment") or "unknown",
+        "outcome": str(data.get("outcome") or "")[:255],
+        "objections": data.get("objections") or [],
+        "buying_signals": data.get("buying_signals") or [],
+        "competitor": str(data.get("competitor") or "")[:255],
+        "budget": str(data.get("budget") or "")[:255],
+        "timeline": str(data.get("timeline") or "")[:255],
+        "product_interest": str(data.get("product_interest") or "")[:255],
+        "decision_maker": str(data.get("decision_maker") or "unknown")[:16],
+        "follow_up_at": follow_up_at,
+        "next_action": str(data.get("next_action") or "")[:255],
+        "ai_score": _score(data.get("ai_score")),
+        "qualification_score": _score(data.get("qualification_score")),
+        "agent_metrics": data.get("agent_metrics") or {},
+        "compliance_flags": data.get("compliance_flags") or [],
+        "extracted_attributes": data.get("attributes") or [],
+        "raw_analysis": data,
+        "model": str(result.model or "")[:100],
+        "analyzed_at": timezone.now(),
     }
     with transaction.atomic():
         current = CallRecord.objects.select_for_update().filter(
@@ -292,9 +292,10 @@ def recover_call_intelligence():
     matches = Lead.objects.filter(
         organization_id=OuterRef("organization_id"), phone=OuterRef("phone_number"),
     )
-    unlinked = CallRecord.objects.filter(
-        Q(lead__isnull=True) | Q(crm_call__isnull=True, ended_at__isnull=False),
-    ).annotate(has_lead=Exists(matches)).filter(has_lead=True)
+    unlinked = CallRecord.objects.annotate(has_lead=Exists(matches)).filter(
+        Q(lead__isnull=True, has_lead=True)
+        | Q(lead__isnull=False, crm_call__isnull=True, ended_at__isnull=False),
+    )
     for call_id in list(unlinked.values_list("id", flat=True)[:limit]):
         reconcile_call(call_id)
     historical = LeadCall.objects.filter(
@@ -317,6 +318,9 @@ def recover_call_intelligence():
             if call is None or call.analysis_status not in {"queued", "processing"}:
                 continue
             if call.analysis_updated_at and call.analysis_updated_at >= timezone.now() - timedelta(minutes=5):
+                continue
+            if call.analysis_input_hash != call_analysis_hash(call):
+                request_call_analysis(call.id)
                 continue
             if call.analysis_attempts >= 3:
                 call.analysis_status = CallRecord.AnalysisStatus.FAILED

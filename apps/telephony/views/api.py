@@ -335,7 +335,7 @@ class CallNotesView(APIView):
         if call is None:
             return Response({"detail": "Call not found."}, status=404)
 
-        notes = str(request.data.get("notes") or "").strip()[:20000]
+        notes = str(request.data.get("notes", call.notes) or "").strip()[:20000]
         disposition = str(request.data.get("disposition", call.disposition) or "").strip()[:80]
         if disposition and not get_call_dispositions(user.organization).filter(
             code=disposition

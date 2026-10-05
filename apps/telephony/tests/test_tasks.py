@@ -189,6 +189,29 @@ class CallAnalysisTests(TestCase):
         call.refresh_from_db()
         self.assertEqual(call.notes, "")
 
+    def test_disposition_only_patch_preserves_saved_notes_and_crm_history(self):
+        call = self.call(notes="Customer requested a demo.")
+        response = self.api().patch(
+            f"/api/v1/call-intelligence/calls/{call.id}/notes/",
+            {"disposition": "interested"}, format="json",
+        )
+        self.assertEqual(response.status_code, 200)
+        call.refresh_from_db()
+        self.assertEqual(call.notes, "Customer requested a demo.")
+        self.assertEqual(call.crm_call.notes, call.notes)
+
+    @patch("apps.telephony.tasks.analyze_call_intelligence.delay")
+    def test_recovery_replaces_stale_evidence_hash_before_publishing(self, publish):
+        call = self.call(notes="Old notes.")
+        CallRecord.objects.filter(pk=call.id).update(
+            notes="Updated notes.", analysis_updated_at=timezone.now()-timedelta(minutes=6),
+        )
+        with self.captureOnCommitCallbacks(execute=True):
+            recover_call_intelligence.run()
+        call.refresh_from_db()
+        self.assertEqual(call.analysis_input_hash, call_analysis_hash(call))
+        publish.assert_called_once_with(str(call.id), call.analysis_input_hash)
+
 
 class CallAnalysisTokenBudgetTests(SimpleTestCase):
     @override_settings(OPENAI_API_KEY="local-test-only")

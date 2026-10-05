@@ -1,32 +1,32 @@
 <div class="ci-detail-label">Intelligence</div>
-                  {% if call.intelligence %}
-                    <p class="ci-ai-summary">{{ call.intelligence.summary|default:"Analysis completed." }}</p>
-                    <div class="ci-intel-pills">
-                      <span>Intent · {{ call.intelligence.get_intent_display }}</span>
-                      <span>Sentiment · {{ call.intelligence.get_sentiment_display }}</span>
-                      <span>AI score · {{ call.intelligence.ai_score|default:"0" }}/10</span>
-                      <span>Qualification · {{ call.intelligence.qualification_score|default:"0" }}/10</span>
-                    </div>
-                    {% if call.intelligence.next_action %}<p class="ci-next-action"><strong>Next action</strong>{{ call.intelligence.next_action }}</p>{% endif %}
-                    {% if call.intelligence.objections %}<p class="ci-evidence"><strong>Objections</strong>{{ call.intelligence.objections|join:", " }}</p>{% endif %}
-                    {% if call.intelligence.buying_signals %}<p class="ci-evidence"><strong>Buying signals</strong>{{ call.intelligence.buying_signals|join:", " }}</p>{% endif %}
-                    {% if call.intelligence.agent_metrics %}
-                    <div class="ci-coaching">
-                      <strong>Agent coaching</strong>
-                      <span>Discovery {{ call.intelligence.agent_metrics.discovery_quality|default:"0" }}/10</span>
-                      <span>Objection handling {{ call.intelligence.agent_metrics.objection_handling|default:"0" }}/10</span>
-                      <span>Next-step clarity {{ call.intelligence.agent_metrics.next_step_clarity|default:"0" }}/10</span>
-                      <span>Questions {{ call.intelligence.agent_metrics.questions_asked|default:"0" }}</span>
-                    </div>
-                    {% endif %}
-                    {% if call.intelligence.compliance_flags %}<p class="ci-evidence ci-compliance"><strong>Compliance flags</strong>{{ call.intelligence.compliance_flags|join:", " }}</p>{% endif %}
-                  {% elif call.analysis_status == 'failed' %}
-                    <p class="ci-ai-summary ci-compliance">{{ call.analysis_error|default:"Analysis could not finish. Save & analyze to retry." }}</p>
-                  {% elif call.analysis_status == 'queued' or call.analysis_status == 'processing' %}
-                    <p class="ci-ai-summary muted">{{ call.get_analysis_status_display }}. This section updates automatically when Intelligence is ready.</p>
-                    {% if call.analysis_error %}<p class="ci-evidence">{{ call.analysis_error }}</p>{% endif %}
-                  {% elif call.notes or call.transcript %}
-                    <p class="ci-ai-summary muted">Notes saved. Waiting for analysis to start.</p>
-                  {% else %}
-                    <p class="ci-ai-summary muted">Add grounded notes or a provider transcript to run Call Intelligence.</p>
-                  {% endif %}
+{% if call.intelligence %}
+  <p class="ci-ai-summary">{{ call.intelligence.summary|default:"Analysis completed." }}</p>
+  <div class="ci-intel-pills">
+    <span>Intent · {{ call.intelligence.get_intent_display }}</span>
+    <span>Sentiment · {{ call.intelligence.get_sentiment_display }}</span>
+    <span>AI score · {{ call.intelligence.ai_score|default:"0" }}/10</span>
+    <span>Qualification · {{ call.intelligence.qualification_score|default:"0" }}/10</span>
+  </div>
+  {% if call.intelligence.next_action %}<p class="ci-next-action"><strong>Next action</strong>{{ call.intelligence.next_action }}</p>{% endif %}
+  {% if call.intelligence.objections %}<p class="ci-evidence"><strong>Objections</strong>{{ call.intelligence.objections|join:", " }}</p>{% endif %}
+  {% if call.intelligence.buying_signals %}<p class="ci-evidence"><strong>Buying signals</strong>{{ call.intelligence.buying_signals|join:", " }}</p>{% endif %}
+  {% if call.intelligence.agent_metrics %}
+  <div class="ci-coaching">
+    <strong>Agent coaching</strong>
+    <span>Discovery {{ call.intelligence.agent_metrics.discovery_quality|default:"0" }}/10</span>
+    <span>Objection handling {{ call.intelligence.agent_metrics.objection_handling|default:"0" }}/10</span>
+    <span>Next-step clarity {{ call.intelligence.agent_metrics.next_step_clarity|default:"0" }}/10</span>
+    <span>Questions {{ call.intelligence.agent_metrics.questions_asked|default:"0" }}</span>
+  </div>
+  {% endif %}
+  {% if call.intelligence.compliance_flags %}<p class="ci-evidence ci-compliance"><strong>Compliance flags</strong>{{ call.intelligence.compliance_flags|join:", " }}</p>{% endif %}
+{% elif call.analysis_status == 'failed' %}
+  <p class="ci-ai-summary ci-compliance">{{ call.analysis_error|default:"Analysis could not finish. Save & analyze to retry." }}</p>
+{% elif call.analysis_status == 'queued' or call.analysis_status == 'processing' %}
+  <p class="ci-ai-summary muted">{{ call.get_analysis_status_display }}. This section updates automatically when Intelligence is ready.</p>
+  {% if call.analysis_error %}<p class="ci-evidence">{{ call.analysis_error }}</p>{% endif %}
+{% elif call.notes or call.transcript %}
+  <p class="ci-ai-summary muted">Notes saved. Waiting for analysis to start.</p>
+{% else %}
+  <p class="ci-ai-summary muted">Add grounded notes or a provider transcript to run Call Intelligence.</p>
+{% endif %}
