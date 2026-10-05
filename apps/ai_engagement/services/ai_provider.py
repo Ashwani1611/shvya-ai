@@ -3,6 +3,7 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -83,6 +84,19 @@ def _provider_retry_after(error):
     headers = getattr(response, "headers", {}) or {}
     raw = str(headers.get("Retry-After") or "").strip()
     if not raw:
+        # Token-per-minute responses may put the retry hint only in the
+        # provider error body/message rather than in a Retry-After header.
+        body = getattr(error, "body", None)
+        error_text = f"{error} {body!r}"
+        match = re.search(
+            r"(?:try again in|retry after)\s+([0-9]+(?:\.[0-9]+)?)\s*(ms|s)\b",
+            error_text,
+            flags=re.IGNORECASE,
+        )
+        if match:
+            value = float(match.group(1))
+            raw = str(value / 1000.0 if match.group(2).lower() == "ms" else value)
+    if not raw:
         return None
     try:
         return max(1, min(int(float(raw)), 900))
@@ -141,6 +155,7 @@ class OpenAIProvider:
 
     DEFAULT_MODEL = "gpt-4.1-nano"
     DEFAULT_TIMEOUT_SECONDS = 20.0
+    DEFAULT_MAX_PROMPT_TOKENS = 24000
 
     TASK_MODEL_ENV = {
         "engagement": "OPENAI_ENGAGEMENT_MODEL",
@@ -414,6 +429,104 @@ class OpenAIProvider:
             configured = default
         return min(max(configured, 100), 2000)
 
+    @classmethod
+    def _max_prompt_tokens(cls) -> int:
+        """Bound one request so a large authored AI Brain cannot exhaust TPM."""
+        try:
+            configured = int(
+                os.getenv("OPENAI_MAX_PROMPT_TOKENS", cls.DEFAULT_MAX_PROMPT_TOKENS)
+            )
+        except (TypeError, ValueError):
+            configured = cls.DEFAULT_MAX_PROMPT_TOKENS
+        return min(max(configured, 4000), 48000)
+
+    @staticmethod
+    def _clip_text(text: str, limit: int) -> str:
+        """Keep the beginning and recent tail while respecting a char budget."""
+        if len(text) <= limit:
+            return text
+
+        marker = "\n\n[SHVYA runtime prompt compacted for provider token safety]\n\n"
+        if limit <= len(marker) + 80:
+            return text[:limit]
+
+        content_budget = limit - len(marker)
+        head = max(40, int(content_budget * 0.62))
+        tail = max(40, content_budget - head)
+        return text[:head] + marker + text[-tail:]
+
+    def _bound_prompt(
+        self,
+        *,
+        instructions: str,
+        input_text: str,
+        metadata: dict[str, str] | None = None,
+    ) -> tuple[str, str, bool]:
+        """Bound provider input without changing saved organization content."""
+        budget_chars = self._max_prompt_tokens() * 4
+        total = len(instructions) + len(input_text)
+        if total <= budget_chars:
+            return instructions, input_text, False
+
+        # Prefer the current-turn payload because it carries the latest inbound
+        # message, state, and retrieved evidence. Compact authored instructions
+        # first, then trim the turn payload only if the combined request still
+        # exceeds the provider budget.
+        input_budget = min(
+            len(input_text),
+            max(12000, int(budget_chars * 0.42)),
+        )
+        bounded_input = self._clip_text(input_text, input_budget)
+
+        instruction_budget = max(4000, budget_chars - len(bounded_input))
+        bounded_instructions = self._clip_text(instructions, instruction_budget)
+
+        remaining = max(4000, budget_chars - len(bounded_instructions))
+        bounded_input = self._clip_text(bounded_input, remaining)
+
+        # Make the final bound exact even if minimum allocations above compete
+        # with a very small configured budget.
+        overflow = (
+            len(bounded_instructions) + len(bounded_input) - budget_chars
+        )
+        if overflow > 0:
+            target = max(1, len(bounded_instructions) - overflow)
+            bounded_instructions = self._clip_text(
+                bounded_instructions,
+                target,
+            )
+
+        emit_event(
+            "ai.provider.prompt_compacted",
+            organization_id=(metadata or {}).get("organization_id"),
+            feature=self._feature(metadata),
+            original_chars=total,
+            compacted_chars=len(bounded_instructions) + len(bounded_input),
+            max_prompt_tokens=self._max_prompt_tokens(),
+        )
+        increment(
+            "ai.provider_prompt_compactions",
+            labels={"feature": self._feature(metadata)},
+        )
+        try:
+            from apps.ai_engagement.services.trace_service import record
+
+            record(
+                "provider",
+                {
+                    "prompt_compacted": True,
+                    "prompt_original_chars": total,
+                    "prompt_compacted_chars": (
+                        len(bounded_instructions) + len(bounded_input)
+                    ),
+                    "max_prompt_tokens": self._max_prompt_tokens(),
+                },
+            )
+        except Exception:
+            pass
+
+        return bounded_instructions, bounded_input, True
+
     def _release_credit_reservation(self, reservation) -> None:
         if reservation is None:
             return
@@ -659,6 +772,12 @@ class OpenAIProvider:
             raise AIProviderTransientError(
                 "OpenAI model circuit breaker is temporarily open."
             )
+
+        instructions, input_text, _prompt_compacted = self._bound_prompt(
+            instructions=instructions,
+            input_text=input_text,
+            metadata=metadata,
+        )
 
         request_kwargs: dict[str, Any] = {
             "model": request_model,
