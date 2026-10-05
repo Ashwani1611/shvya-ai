@@ -81,6 +81,27 @@ def call_metrics(qs):
     return normalize_metrics(qs.aggregate(**metric_expressions()))
 
 
+def call_outcome_groups(qs, dispositions):
+    """Stage-style counts include all matching calls, independently of pagination."""
+    counts = dict(qs.values("disposition").annotate(total=Count("id")).values_list("disposition", "total"))
+    groups = [
+        {"code": "", "name": "All calls", "category": "all", "total": sum(counts.values())},
+        {"code": "unclassified", "name": "Not classified", "category": "unclassified", "total": counts.get("", 0)},
+    ]
+    known = set()
+    for disposition in dispositions:
+        known.add(disposition.code)
+        if disposition.is_active or counts.get(disposition.code):
+            groups.append({
+                "code": disposition.code, "name": disposition.name,
+                "category": disposition.category, "total": counts.get(disposition.code, 0),
+            })
+    for code, total in counts.items():
+        if code and code not in known:
+            groups.append({"code": code, "name": code.replace("_", " ").title(), "category": "unclassified", "total": total})
+    return groups
+
+
 def team_metrics(qs):
     rows = (
         qs.exclude(user_id__isnull=True)

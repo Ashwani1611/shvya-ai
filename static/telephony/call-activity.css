@@ -1,0 +1,77 @@
+.ci-activity-workspace{margin-top:24px;border-radius:24px;overflow:hidden}
+.ci-activity-header{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:26px 26px 20px}
+.ci-activity-header small,.ci-lead-dialog-head small{font-size:10px;font-weight:700;letter-spacing:.12em;color:#6e6e73}
+.ci-activity-header h3,.ci-lead-dialog-head h3{margin:5px 0 0;font-size:25px;letter-spacing:-.7px;color:#1d1d1f}
+.ci-activity-header p{margin:8px 0 0;font-size:13px;line-height:1.5;color:#6e6e73}
+.ci-activity-total{flex-shrink:0;padding:8px 12px;border-radius:12px;background:#f5f5f7;font-size:13px;font-weight:600}
+.ci-stage-navigation{padding:0 26px;background:#fbfbfd;border-block:1px solid #e8e8ed}
+.ci-stage-navigation-head{display:flex;align-items:center;justify-content:space-between;padding:15px 0 9px;color:#6e6e73;font-size:11px;font-weight:600}
+.ci-stage-navigation-head>div{display:flex;gap:6px}
+.ci-stage-navigation-head button,.ci-lead-dialog-head button{display:grid;place-items:center;width:30px;height:30px;border:1px solid #e1e1e6;border-radius:9px;background:white;cursor:pointer;color:#555}
+.ci-stage-navigation-head button:disabled{opacity:.3;cursor:default}
+.ci-outcome-stages{position:relative;display:flex;gap:6px;overflow-x:auto;padding:0 0 12px;scrollbar-width:thin;scrollbar-color:#d1d1d6 transparent}
+.ci-outcome-stage{--outcome-color:#68778c;flex:0 0 auto;min-width:142px;padding:13px 16px;border:1px solid transparent;border-radius:13px;color:#515158;text-decoration:none;transition:background .15s}
+.ci-outcome-stage>span{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:650;white-space:nowrap}
+.ci-outcome-stage i{width:7px;height:7px;border-radius:50%;background:var(--outcome-color)}
+.ci-outcome-stage small{display:block;margin:7px 0 0 15px;color:#73737b;font-size:12px}
+.ci-outcome-stage.connected{--outcome-color:#268158}.ci-outcome-stage.not_connected{--outcome-color:#b97821}.ci-outcome-stage.unclassified{--outcome-color:#9b76ca}.ci-outcome-stage.all{--outcome-color:#0071e3}
+.ci-outcome-stage:hover{background:#ededf2}
+.ci-outcome-stage[aria-current=page]{background:white;border-color:#dedee5;box-shadow:0 2px 5px #00000004;color:#1d1d1f}
+.ci-outcome-stage[aria-current=page]:after{content:"";display:block;height:3px;border-radius:4px;background:var(--outcome-color);margin:10px 0 -8px}
+.ci-activity-toolbar{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:22px 26px 16px}
+.ci-activity-toolbar h4{margin:0;font-size:17px;letter-spacing:-.3px}.ci-activity-toolbar>div>span{display:block;margin-top:5px;font-size:12px;color:#6e6e73}
+.ci-crm-segments{display:flex;flex-wrap:wrap;gap:4px;padding:4px;border:1px solid #e8e8ed;border-radius:13px;background:#f5f5f7}
+.ci-crm-segments a{display:flex;align-items:center;gap:7px;padding:8px 11px;border-radius:9px;text-decoration:none;color:#6e6e73;font-size:12px;white-space:nowrap}
+.ci-crm-segments a>span{font-size:11px;color:#8b8b93}
+.ci-crm-segments a[aria-current=page]{color:#1d1d1f;background:white;box-shadow:0 1px 4px #0000000d}
+.ci-activity-columns,.ci-activity-workspace .ci-call-row{display:grid;grid-template-columns:40px minmax(0,1.7fr) minmax(0,1.35fr) minmax(0,1fr) minmax(0,1.25fr) 100px 18px;align-items:center;gap:16px}
+.ci-activity-columns{padding:11px 24px;margin:0 14px;color:#777780;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+.ci-activity-workspace .ci-call-list{padding:0 14px;display:grid;gap:10px}
+.ci-activity-card{min-width:0;border:1px solid #e5e5eb;border-radius:17px;background:white;overflow:hidden}
+.ci-activity-workspace .ci-call-row{padding:19px 24px;transition:background .15s}
+.ci-activity-workspace .ci-call-row:hover{background:#fbfbfd}
+.ci-activity-workspace .ci-call-item{border:0}
+.ci-activity-workspace .ci-call-person,.ci-activity-workspace .ci-call-crm,.ci-call-agent,.ci-call-result{min-width:0}
+.ci-activity-workspace .ci-call-person strong{font-size:14px;font-weight:650}
+.ci-activity-workspace .ci-call-person span{font-size:12px;color:#62626b;margin-top:5px;overflow-wrap:anywhere}
+.ci-activity-workspace .ci-call-person>small{display:block;font-size:11px;color:#85858c;margin-top:6px}
+.ci-activity-workspace .ci-call-crm{display:block}
+.ci-activity-workspace .ci-call-crm>strong,.ci-call-agent>strong{display:block;font-size:13px;font-weight:600;margin-top:6px;overflow-wrap:anywhere}
+.ci-activity-workspace .ci-call-crm>small,.ci-call-agent>span{display:block;font-size:11px;color:#777780;margin-top:5px;line-height:1.4}
+.ci-activity-workspace .ci-call-crm .ci-badge{max-width:100%;overflow-wrap:anywhere;margin-top:6px;font-size:10px;padding:4px 7px}
+.ci-activity-workspace .ci-field-label{display:none!important}
+.ci-crm-state{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:600}
+.ci-crm-state.linked{color:#268158}.ci-crm-state.unlinked{color:#a66b1d}
+.ci-outcome-badge{display:inline-flex;max-width:100%;overflow-wrap:anywhere;padding:5px 8px;border-radius:7px;font-size:11px;font-weight:600;color:#575763;background:#f0edf6;line-height:1.4}
+.ci-outcome-badge.connected{background:#edf7f1;color:#257d53}.ci-outcome-badge.not_connected{background:#fff5e7;color:#a76c20}
+.ci-activity-workspace .ci-call-intel{display:block;margin-top:6px}.ci-activity-workspace .ci-call-intel small{display:none}
+.ci-activity-workspace .ci-intent{font-size:10px;font-weight:550;background:transparent;padding:0;color:#73737d}
+.ci-activity-workspace .ci-call-time strong{font-size:13px;font-weight:650}.ci-activity-workspace .ci-call-time small{font-size:11px;color:#777780;line-height:1.4}
+.ci-call-chevron{color:#8e8e93;transition:transform .15s}.ci-call-item[open] .ci-call-chevron{transform:rotate(180deg)}
+.ci-activity-workspace .ci-call-detail{padding:0 20px 20px;border-top:1px solid #e8e8ed}
+.ci-activity-workspace .ci-detail-list dt,.ci-activity-workspace .ci-detail-list dd,.ci-activity-workspace .ci-evidence,.ci-activity-workspace .ci-next-action{font-size:12px}
+.ci-activity-workspace .ci-ai-summary{font-size:13px}.ci-activity-workspace .ci-post-call-form label{font-size:12px}
+.ci-activity-workspace .ci-post-call-form textarea{font-family:inherit;font-size:13px;line-height:1.5}
+.ci-activity-actions{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 24px;border-top:1px solid #f0f0f4;background:#fcfcfd}
+.ci-lead-link,.ci-create-call-lead,.ci-contact-history{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;text-decoration:none;color:#0071e3;font-family:inherit;font-size:12px;line-height:1.5;font-weight:600;cursor:pointer}
+.ci-contact-history{color:#72727b;font-weight:400}.ci-linked-caption{color:#73737d;font-size:11px}
+.ci-create-call-lead:disabled{color:#93939c;cursor:default}
+.ci-lead-dialog{width:min(520px,calc(100vw - 28px));max-height:calc(100dvh - 32px);padding:26px;border:1px solid #e5e5eb;border-radius:24px;box-shadow:0 30px 100px #00000020;overflow:auto;color:#1d1d1f;font-family:inherit}
+.ci-lead-dialog::backdrop{background:#12121c55;backdrop-filter:blur(4px)}
+.ci-lead-dialog-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px}.ci-lead-dialog-head h3{font-size:22px;line-height:1.3}.ci-lead-dialog-head button{flex-shrink:0}
+.ci-lead-dialog-copy{margin:14px 0 20px;color:#6e6e73;font-size:13px;line-height:1.6}
+.ci-lead-dialog form>label,.ci-lead-destination-fields label{display:block;font-size:12px;font-weight:600;margin-bottom:14px}
+.ci-lead-dialog label>span,.ci-lead-dialog label>small{font-weight:400;color:#85858d;font-size:11px}.ci-lead-dialog label>small{display:block;margin-top:5px}
+.ci-lead-dialog input,.ci-lead-dialog select{display:block;width:100%;min-width:0;height:44px;margin-top:7px;padding:0 12px;border:1px solid #dddde5;border-radius:11px;background:#fff;color:#1d1d1f;font-family:inherit;font-size:13px}
+.ci-lead-dialog input[readonly],.ci-lead-dialog select:disabled{background:#f7f7f9;color:#777780}
+.ci-lead-destination-fields{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.ci-lead-error{margin:4px 0 16px;color:#b42318;font-size:12px;line-height:1.5}.ci-lead-error:empty{display:none}
+.ci-lead-dialog-actions{display:flex;align-items:center;justify-content:flex-end;gap:10px;padding-top:6px}
+.ci-activity-workspace a:focus-visible,.ci-activity-workspace button:focus-visible,.ci-activity-workspace summary:focus-visible,.ci-lead-dialog button:focus-visible{outline:3px solid #0071e3;outline-offset:-3px}
+.ci-lead-dialog input:focus,.ci-lead-dialog select:focus{outline:3px solid #0071e322;border-color:#0071e3}
+@media(max-width:1000px){.ci-activity-columns{display:none}.ci-activity-workspace .ci-call-row{grid-template-columns:40px minmax(0,1fr) minmax(0,1fr) 100px 18px;grid-template-areas:"icon person crm time arrow" ". agent result time .";gap:12px 14px}.ci-call-direction{grid-area:icon}.ci-call-person{grid-area:person}.ci-call-crm{grid-area:crm}.ci-call-agent{grid-area:agent}.ci-call-result{grid-area:result}.ci-call-time{grid-area:time}.ci-call-chevron{grid-area:arrow}.ci-activity-workspace .ci-field-label{display:block!important;font-size:9px;color:#8b8b93;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin:0 0 5px}}
+@media(max-width:700px){.ci-activity-header{padding:22px 18px;align-items:flex-start}.ci-activity-header h3{font-size:23px}.ci-activity-total{font-size:11px;padding:7px 9px}.ci-stage-navigation{padding:0 18px}.ci-activity-toolbar{padding:18px;flex-direction:column;align-items:flex-start}.ci-crm-segments{max-width:100%;gap:0}.ci-crm-segments a{font-size:11px;padding:8px 9px}.ci-activity-workspace .ci-call-list{padding:0 10px}.ci-activity-workspace .ci-call-row{padding:16px;grid-template-columns:34px minmax(0,1fr) minmax(0,1fr) 16px;grid-template-areas:"icon person person arrow" ". crm crm ." ". agent result ." ". time time .";gap:15px 10px}.ci-activity-workspace .ci-call-person strong{white-space:normal;overflow-wrap:anywhere}.ci-activity-workspace .ci-call-time{display:flex;align-items:center;justify-content:flex-start;gap:6px;flex-wrap:wrap;text-align:left}.ci-activity-workspace .ci-call-time strong{white-space:nowrap}.ci-activity-workspace .ci-call-time small{margin:0}.ci-activity-workspace .ci-call-time small:last-child{margin-left:auto}.ci-activity-workspace .ci-call-crm{padding:11px 0;border-block:1px solid #eeeeF3}.ci-activity-workspace .ci-call-crm>strong{display:inline-block;margin:0 8px;font-size:12px}.ci-activity-workspace .ci-call-crm .ci-field-label{display:none!important}.ci-activity-workspace .ci-call-crm .ci-badge{margin-top:0}.ci-activity-actions{padding:12px 16px;flex-wrap:wrap}.ci-activity-workspace .ci-call-detail{padding:0 12px 16px}.ci-activity-workspace .ci-call-detail-grid,.ci-activity-workspace .ci-post-call-form{grid-template-columns:minmax(0,1fr)}.ci-lead-dialog{padding:22px}.ci-lead-dialog-actions{flex-wrap:wrap}.ci-lead-dialog-actions .ci-primary-btn{font-size:12px}}
+@media(max-width:380px){.ci-lead-destination-fields{grid-template-columns:1fr;gap:0}.ci-crm-segments a{padding:7px;font-size:10px}}
+@media(prefers-reduced-motion:reduce){.ci-activity-workspace *{transition:none!important;scroll-behavior:auto!important}}
+
+.ci-call-chevron .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}

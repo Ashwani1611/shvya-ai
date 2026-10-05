@@ -96,6 +96,14 @@ Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
 - Dashboard outcome, source, pipeline, employee, status, intent, search and date filters apply to all cards and team rows. Answer rate is answered/all calls; conversion rate is converted dispositions/answered calls. Conversion is a call outcome, not a unique lead or revenue metric. Follow-ups due next 24 hours exclude overdue calls, which have a separate count.
 - Missing standard dispositions are seeded for existing organizations without overwriting custom or disabled choices. Connected and not-connected outcomes are grouped in the call form. AI scores show only analyzed calls; absent analysis is not treated as a zero score.
 
+## Latest calls workspace
+
+- Recent Activity uses clickable outcome tabs with counts across the complete matching history, including Not classified and historical inactive outcomes. Selecting an outcome resets pagination and preserves search, employee, source, date and CRM filters. The separate All contacts, CRM leads and Needs a lead segments narrow the same history.
+- Each call shows its logging user, source, outcome, Intelligence state and current CRM pipeline/stage before opening details. Expand a call for notes, analysis and follow-ups. View lead in CRM opens the matching pipeline, stage and lead only when the viewer has CRM access. All calls for this contact uses the linked lead ID, so historical phone-format changes do not split its history.
+- Unknown contacts have a Create lead action with name, read-only call phone, optional email, pipeline and stage. Admins may choose an active organization pipeline; agents may choose only active pipelines they own. Stage choices belong to the selected pipeline, and the backend validates both permissions and stage membership.
+- Creation uses the canonical CRM service without sending a welcome message. An existing organization/phone lead is reused without changing its name, pipeline or stage. The original call is linked once with its original user, duration and notes; earlier matching calls reconnect through the normal CRM reconciliation path. The workspace then opens the original call within that contact's complete history.
+- Saving a changed outcome refreshes the selected group and its counts. Saving notes with the same outcome retains the editor and continues the existing asynchronous Intelligence refresh.
+
 ## Post-call analysis lifecycle
 
 - Notes, provider transcripts and manual CRM calls use one analysis request service. Requests publish after commit, and a persisted evidence hash prevents duplicate analysis and results from overwriting newer notes. Saving new evidence invalidates the earlier result; clearing all evidence removes it.

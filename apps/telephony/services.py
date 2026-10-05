@@ -531,6 +531,61 @@ def capture_manual_crm_call(call):
     return record
 
 
+def create_crm_lead_from_call(*, user, call_id, name, pipeline_id, stage_id, email=""):
+    """Create in an authorized CRM destination and attach the original call once."""
+    from apps.crm.views.api import get_user_pipelines
+
+    require_call_user(user)
+    try:
+        pipeline_id = uuid.UUID(str(pipeline_id))
+        stage_id = uuid.UUID(str(stage_id))
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValidationError("Choose an available pipeline and stage.") from exc
+    pipeline = get_user_pipelines(user).filter(pk=pipeline_id).first()
+    if pipeline is None:
+        raise ValidationError("Pipeline is not available to you.")
+    stage = Stage.objects.filter(pk=stage_id, pipeline=pipeline, is_active=True).first()
+    if stage is None:
+        raise ValidationError("Choose an active stage from the selected pipeline.")
+    name = str(name or "").strip()
+    if not name:
+        raise ValidationError("Lead name is required.")
+
+    with transaction.atomic():
+        calls = CallRecord.objects.select_for_update().filter(
+            organization=user.organization, pk=call_id,
+        )
+        if user.role == "agent":
+            calls = calls.filter(user=user)
+        call = calls.first()
+        if call is None:
+            raise ValidationError("Call is not available.", code="call_not_found")
+        created = False
+        lead = call.lead
+        if lead is None:
+            phone = normalize_call_phone(call.phone_number, pipeline=pipeline)
+            lead = Lead.objects.filter(organization=user.organization, phone=phone).first()
+            if lead is None:
+                try:
+                    with transaction.atomic():
+                        lead = create_lead(
+                            organization=user.organization, pipeline=pipeline, stage=stage,
+                            name=name, phone=phone, email=str(email or "").strip(),
+                            lead_source="phone_call", send_welcome=False,
+                        )
+                        created = True
+                except (ValidationError, IntegrityError):
+                    # A CRM save or another call may win the organization/phone race.
+                    lead = Lead.objects.filter(organization=user.organization, phone=phone).first()
+                    if lead is None:
+                        raise
+            call.phone_number = phone
+        attach_call_to_lead(call, lead, terminal=call.ended_at is not None)
+        call.save(update_fields=["lead", "crm_call", "phone_number", "updated_at"])
+        request_call_analysis(call.id)
+        return call, created
+
+
 def attach_call_to_lead(record, lead, *, terminal, occurred_at=None):
     """The caller holds the CallRecord lock; never move historical calls to a peer."""
     if record.organization_id != lead.organization_id:
