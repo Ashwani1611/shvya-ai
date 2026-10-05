@@ -116,7 +116,8 @@ def enrichment_due(*, lead) -> bool:
 def queue_background_enrichment(*, lead_id, force=False, include_qualification=True) -> dict:
     """Queue post-turn enrichment without blocking the customer reply.
 
-    The normal customer turn uses one response model call plus one summary call.
+    The normal customer turn schedules a reply job and a summary job; reply
+    generation may also need grounding or repair model calls.
     Qualification state/CRM fields are already committed synchronously; the
     optional qualification-note job remains a slower secondary enrichment.
     """
@@ -144,6 +145,7 @@ def queue_background_enrichment(*, lead_id, force=False, include_qualification=T
             try:
                 flush_background_enrichment.apply_async(
                     args=[str(lead.id)],
+                    kwargs={"include_qualification": include_qualification},
                     countdown=delay,
                 )
             except Exception:
@@ -155,7 +157,11 @@ def queue_background_enrichment(*, lead_id, force=False, include_qualification=T
     if not cache.add(lock_key, "1", timeout=SCHEDULE_LOCK_SECONDS):
         if force:
             from apps.ai_engagement.tasks import flush_background_enrichment
-            flush_background_enrichment.apply_async(args=[str(lead.id)], countdown=20)
+            flush_background_enrichment.apply_async(
+                args=[str(lead.id)],
+                kwargs={"include_qualification": include_qualification},
+                countdown=20,
+            )
         return {"status": "skipped", "reason": "already_scheduled"}
 
     from apps.ai_engagement.tasks import (
