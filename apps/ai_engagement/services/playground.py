@@ -27,6 +27,9 @@ from apps.ai_engagement.services.org_info import OrgInfoService
 from apps.ai_engagement.services.organization_profile import (
     compile_org_ai_profile_from_context,
 )
+from apps.ai_engagement.services.organization_runtime_profile import (
+    get_organization_ai_runtime_profile,
+)
 from apps.ai_engagement.services.qualification_state import (
     attributes_with_state,
     project_answer_updates,
@@ -81,6 +84,7 @@ class _SandboxContextBuilder:
         org_info_service: OrgInfoService,
         embedding_service: EmbeddingService,
         retrieval_service: KnowledgeRetrievalService,
+        runtime_profile_loader=None,
         pipeline=None,
         stage=None,
         channel: str = "sandbox",
@@ -91,26 +95,32 @@ class _SandboxContextBuilder:
         self.org_info_service = org_info_service
         self.embedding_service = embedding_service
         self.retrieval_service = retrieval_service
+        self.runtime_profile_loader = runtime_profile_loader or get_organization_ai_runtime_profile
+        self.runtime_profile = None
         self.pipeline = pipeline
         self.stage = stage
         self.channel = channel
         self.last_knowledge: list[dict[str, Any]] = []
 
     def organization_context(self) -> dict[str, Any]:
-        org_info = self.org_info_service.get_or_create(organization=self.organization)
-        return {
-            "id": str(self.organization.id),
-            "name": self.organization.name,
-            "ai_enabled": org_info.ai_enabled,
-            "about": org_info.about,
-            "bot_languages": org_info.bot_languages,
-            "ai_playbook": org_info.ai_playbook,
-            "qualification_model": str(getattr(org_info, "qualification_model", "") or ""),
-            "sales_support_model": str(getattr(org_info, "sales_support_model", "") or ""),
-            "summary_model": str(getattr(org_info, "summary_model", "") or ""),
-            "bump_up_enabled": org_info.bump_up_enabled,
-            "bump_up_count": org_info.bump_up_count,
-        }
+        # One builder is created for each Sandbox turn. Keep the same immutable
+        # configuration through its draft/final passes; the next turn reads a
+        # fresh bundle, just like the live context builder.
+        if self.runtime_profile is None:
+            self.org_info_service.get_or_create(organization=self.organization)
+            self.runtime_profile = self.runtime_profile_loader(organization=self.organization)
+            if self.visitor is not None:
+                self.visitor._shvya_ai_runtime_profile = self.runtime_profile
+            from apps.ai_engagement.services.phase4_runtime import _record_profile_trace
+            _record_profile_trace(self.runtime_profile)
+        return self.runtime_profile.legacy_organization_context()
+
+    def brain_bundle_metadata(self) -> dict:
+        profile = self.runtime_profile
+        if profile is None:
+            return {}
+        return {"schema_version": profile.brain_bundle_schema_version,
+                "revision": profile.brain_bundle_revision}
 
     def _pipeline_context(self) -> dict[str, Any]:
         pipeline = self.pipeline
@@ -338,6 +348,7 @@ class PlaygroundResult:
     channel: str = "sandbox"
     lead_source: str = "system"
     diagnostics: str = ""
+    brain_bundle: dict = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -351,6 +362,7 @@ class PlaygroundResult:
             "stage": self.stage, "events": self.events, "files": self.files,
             "channel": self.channel, "lead_source": self.lead_source,
             "execution_mode": "sandbox_preview",
+            "brain_bundle": self.brain_bundle,
         }
 
 
@@ -370,12 +382,14 @@ class PlaygroundService:
         org_info_service: OrgInfoService | None = None,
         embedding_service: EmbeddingService | None = None,
         retrieval_service: KnowledgeRetrievalService | None = None,
+        runtime_profile_loader=None,
     ) -> None:
         self.provider = provider
         self.engagement_service = engagement_service
         self.org_info_service = org_info_service or OrgInfoService()
         self.embedding_service = embedding_service or EmbeddingService()
         self.retrieval_service = retrieval_service or KnowledgeRetrievalService()
+        self.runtime_profile_loader = runtime_profile_loader or get_organization_ai_runtime_profile
 
     @sandbox_diagnostics
     def run(
@@ -459,6 +473,7 @@ class PlaygroundService:
             org_info_service=self.org_info_service,
             embedding_service=self.embedding_service,
             retrieval_service=self.retrieval_service,
+            runtime_profile_loader=self.runtime_profile_loader,
             pipeline=pipeline,
             stage=stage,
             channel=channel,
@@ -636,6 +651,7 @@ class PlaygroundService:
                    "pipeline": getattr(visitor.pipeline, "name", "")},
             events=events, files=files,
             channel=channel, lead_source=lead_source,
+            brain_bundle=context_builder.brain_bundle_metadata(),
         )
 
     def _session_context(self, *, saved, channel, lead_source):
