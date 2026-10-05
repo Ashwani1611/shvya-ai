@@ -263,20 +263,24 @@ class MetaConversionsTests(TestCase):
     def test_stage_event_uses_persisted_customer_data_after_partial_save(self):
         self.enable()
         save_mapping(self.configuration, self.mapping_data())
-        original_meta_id = self.lead.attributes["meta_leadgen_id"]
         original_email = self.lead.email
         self.lead.attributes["meta_leadgen_id"] = "1234567890123499"
         self.lead.email = "unsaved@example.com"
         self.lead.stage = self.qualified
         self.lead.save(update_fields=["stage", "updated_at"])
+        persisted = Lead.objects.get(pk=self.lead.pk, organization=self.org)
         user_data = Delivery.objects.get().payload["user_data"]
-        self.assertEqual(user_data["lead_id"], original_meta_id)
+        # Qualification state deliberately persists attributes on stage moves.
+        # The contact email is excluded from that update and must stay unsaved.
+        self.assertEqual(persisted.attributes["meta_leadgen_id"], "1234567890123499")
+        self.assertEqual(user_data["lead_id"], persisted.attributes["meta_leadgen_id"])
+        self.assertEqual(persisted.email, original_email)
         self.assertEqual(user_data["em"], [hashlib.sha256(original_email.lower().encode()).hexdigest()])
 
     def test_meta_form_reacquisition_of_an_existing_contact_is_captured(self):
         existing = Lead.objects.create(
             organization=self.org, pipeline=self.pipeline, stage=self.stage,
-            name="Existing contact", phone="+919876543212", lead_source="manual",
+            name="Existing contact", phone="+919876543212", lead_source="system",
         )
         self.enable()
         lead, created = upsert_lead(
@@ -286,7 +290,7 @@ class MetaConversionsTests(TestCase):
         )
         self.assertFalse(created)
         self.assertEqual(lead.pk, existing.pk)
-        self.assertEqual(lead.lead_source, "manual")
+        self.assertEqual(lead.lead_source, "system")
         event = Delivery.objects.get(lead=lead).payload
         self.assertEqual(event["user_data"]["lead_id"], "1234567890123498")
         self.assertEqual(event["action_source"], "system_generated")
