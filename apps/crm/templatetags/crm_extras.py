@@ -61,7 +61,7 @@ def lead_note_count(lead):
 def lead_creation_source(activity, lead):
     labels = {"system": "System", "whatsapp_api": "WhatsApp API", "whatsapp": "WhatsApp",
               "instagram": "Instagram", "csv_import": "CSV Import", "meta_ads": "Meta Ads",
-              "google_sheets": "Google Sheet", "external_api": "External API"}
+              "indiamart": "IndiaMART", "google_sheets": "Google Sheet", "external_api": "External API"}
     details = activity.details if isinstance(activity.details, dict) else {}
     source = details.get("lead_source") or lead.lead_source
     return labels.get(source, "Unknown")

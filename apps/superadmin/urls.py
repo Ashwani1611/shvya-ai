@@ -44,7 +44,10 @@ from .views import (
 
 from .plan_controls import organization_modules_view, organization_delete_view, organization_tag_manage_view
 
+from apps.integrations.views.indiamart import indiamart_setup_view
+
 urlpatterns = [
+    path("organization/<uuid:organization_id>/indiamart/", indiamart_setup_view, name="superadmin-indiamart"),
     path("organization/<uuid:organization_id>/ai-model-routing/", organization_model_routing_update_view, name="superadmin-organization-model-routing-update"),
     path("email/", platform_email_view, name="superadmin-platform-email"),
     path("tags/", organization_tag_manage_view, name="superadmin-tags"),

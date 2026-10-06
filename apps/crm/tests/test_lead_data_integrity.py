@@ -184,9 +184,11 @@ class LeadDataIntegrityTests(TestCase):
         recipient and attempt history. SalesDocument is legal/commercial
         evidence with a frozen recipient snapshot, so deleting the CRM Lead
         clears only its optional CRM pointer. JustDialLeadEvent is provider
-        ingestion/audit evidence with its own payload snapshot; deleting the CRM
-        Lead clears only its optional CRM pointer. Every other Lead-owned
-        relation must CASCADE.
+        ingestion/audit evidence whose optional CRM pointer is cleared.
+        IndiaMART receipts retain only their query ID after buyer payload
+        erasure to prevent retries from recreating deleted leads. Every other
+        Lead-owned relation must CASCADE.
+
         """
         exceptions = []
 
@@ -213,6 +215,8 @@ class LeadDataIntegrityTests(TestCase):
                 ("integrations.justdialleadevent", "lead"),
                 # Commercial/legal documents survive CRM lead deletion.
                 ("sales.salesdocument", "lead"),
+                # Enquiry tombstones survive; pre_delete erases buyer payloads.
+                ("integrations.indiamartreceipt", "lead"),
             },
         )
         self.assertTrue(

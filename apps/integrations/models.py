@@ -560,6 +560,7 @@ from .meta_conversions_models import (  # noqa: E402,F401
     MetaConversionDelivery,
 )
 
+from .indiamart_models import IndiaMartConnection, IndiaMartReceipt  # noqa: E402,F401
 
 from .justdial_models import (  # noqa: E402,F401
     JustDialIntegration,

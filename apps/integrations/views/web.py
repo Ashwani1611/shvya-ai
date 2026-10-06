@@ -88,7 +88,7 @@ CONNECT_HUB_GROUPS = [
                 "name": "IndiaMART",
                 "icon": "ti-building-store",
                 "url_name": "crm-connect-hub-indiamart",
-                "description": "Import IndiaMART inquiries into Shvya and follow up instantly.",
+                "description": "Receive IndiaMART leads directly in your Shvya CRM.",
             },
         ],
     },

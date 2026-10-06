@@ -265,6 +265,7 @@ def org_list_view(request):
                 distinct=True,
             ),
         )
+        .select_related("indiamart_connection")
         .prefetch_related("tags")
     )
 

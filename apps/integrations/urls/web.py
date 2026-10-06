@@ -1,3 +1,4 @@
+from apps.integrations.views.indiamart import indiamart_view, indiamart_ingest_view
 from django.urls import path
 from django.views.generic import RedirectView
 
@@ -24,6 +25,7 @@ from apps.integrations.views.webhook import webhook_view
 
 
 urlpatterns = [
+    path("connect-hub/indiamart/webhook/<uuid:token>/", indiamart_ingest_view, name="indiamart-ingest"),
     path(
         "connect-hub/",
         connect_hub_view,
@@ -97,8 +99,7 @@ urlpatterns = [
     ),
     path(
         "connect-hub/indiamart/",
-        integration_detail_view,
-        {"integration_slug": "indiamart"},
+        indiamart_view,
         name="crm-connect-hub-indiamart",
     ),
     path(

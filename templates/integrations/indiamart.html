@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}IndiaMART | Connect Hub{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/indiamart.css' %}">{% endblock %}
+{% block content %}
+<main class="im-wrap"><a class="im-back" href="{% url 'crm-connect-hub' %}">‹ Connect Hub</a>
+<section class="im-card"><div class="im-mark" aria-hidden="true">M</div><p class="im-eyebrow">INDIAMART + SHVYA</p><h1>Your next enquiry.<br>Already in your CRM.</h1><p class="im-subtitle">Receive IndiaMART leads directly in your Shvya CRM.</p>
+{% if connection.is_enabled %}<span class="im-chip">{% if connection.last_received_at %}Receiving leads{% else %}Ready for IndiaMART activation{% endif %}</span><p>Destination: {{ connection.pipeline.name }} · {{ connection.stage.name }}</p>{% if connection.last_received_at %}<p>Last received {{ connection.last_received_at }}</p>{% endif %}
+{% elif connection.requested_at %}<span class="im-chip">Setup requested</span><p>Our team will help connect your IndiaMART seller account.</p>
+{% else %}<p>Our team will handle the setup for your organization.</p><form method="post">{% csrf_token %}<button class="im-button">Request IndiaMART Setup</button></form>{% endif %}
+<div class="im-features"><div><h2>Arrives directly</h2><p>New buyer enquiries flow into your CRM.</p></div><div><h2>Ready to follow up</h2><p>Buyer details and requirements stay together.</p></div><div><h2>Set up for you</h2><p>Your team chooses where leads should arrive.</p></div></div></section></main>
+{% endblock %}

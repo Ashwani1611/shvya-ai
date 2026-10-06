@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models.signals import post_save, pre_save
+from django.db.models.signals import post_save, pre_save, pre_delete
 from django.dispatch import receiver
 
 from apps.crm.models import Lead
@@ -100,3 +100,11 @@ def queue_lead_webhook(sender, instance, created, raw=False, **kwargs):
         deliver_webhook_task.delay(delivery_id)
 
     transaction.on_commit(enqueue)
+
+
+@receiver(pre_delete, sender=Lead, dispatch_uid="integrations.erase_indiamart_buyer_payload")
+def erase_indiamart_buyer_payload(sender, instance, using, **kwargs):
+    """Keep only query tombstones so retries cannot recreate deleted buyers."""
+    from apps.integrations.models import IndiaMartReceipt
+
+    IndiaMartReceipt.objects.using(using).filter(lead_id=instance.pk).update(payload={})

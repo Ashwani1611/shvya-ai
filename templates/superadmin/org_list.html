@@ -173,7 +173,7 @@
                                 <div class="sa-org-avatar" aria-hidden="true">{{ org.name|slice:":1"|upper }}</div>
                                 <div class="min-w-0">
                                     <a href="{% url 'superadmin-organization-detail' organization_id=org.id %}" class="sa-org-link">
-                                        {{ org.name }}
+                                        {{ org.name }}{% if org.indiamart_connection.requested_at and not org.indiamart_connection.is_enabled %}<span class="text-xs text-blue-600"> · IndiaMART setup requested</span>{% endif %}
                                     </a>
                                     <div class="sa-org-meta">{{ org.pipeline_count }} pipeline{{ org.pipeline_count|pluralize }}</div>
                                     <div class="mt-1.5 flex max-w-[230px] flex-wrap gap-1">
