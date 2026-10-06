@@ -11,7 +11,7 @@ from apps.integrations.tests.operations_mcp_test_base import *
 
 class TestOperationsMCPOAuth(OperationsMCPBase):
     @override_settings(
-        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com:invalid"
+        OPERATIONS_PUBLIC_ORIGIN="https://shvya-ai.com:invalid"
     )
     def test_operations_public_origin_rejects_malformed_port(self):
         with self.assertRaises(ImproperlyConfigured):
@@ -23,16 +23,16 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
             "staging.shvya-ai.com",
             "attacker.example",
         ],
-        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com",
+        OPERATIONS_PUBLIC_ORIGIN="https://shvya-ai.com",
     )
     def test_production_metadata_ignores_host_and_forwarded_header_spoofing(self):
         expected = {
-            "resource": "https://dashboard.shvya-ai.com/operations/mcp/",
-            "issuer": "https://dashboard.shvya-ai.com/operations",
-            "authorization_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/authorize",
-            "token_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/token",
-            "registration_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/register",
-            "revocation_endpoint": "https://dashboard.shvya-ai.com/operations/oauth/revoke",
+            "resource": "https://shvya-ai.com/operations/mcp/",
+            "issuer": "https://shvya-ai.com/operations",
+            "authorization_endpoint": "https://shvya-ai.com/operations/oauth/authorize",
+            "token_endpoint": "https://shvya-ai.com/operations/oauth/token",
+            "registration_endpoint": "https://shvya-ai.com/operations/oauth/register",
+            "revocation_endpoint": "https://shvya-ai.com/operations/oauth/revoke",
         }
         for hostile_host in (
             "staging.shvya-ai.com",
@@ -296,7 +296,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
             )
 
     @override_settings(
-        OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com",
+        OPERATIONS_PUBLIC_ORIGIN="https://shvya-ai.com",
         ALLOWED_HOSTS=["testserver", "staging.shvya-ai.com"],
     )
     def test_oauth_discovery_and_challenge_ignore_request_host(self):
@@ -313,11 +313,11 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         resource = resource_response.json()
         self.assertEqual(
             resource["resource"],
-            "https://dashboard.shvya-ai.com/operations/mcp/",
+            "https://shvya-ai.com/operations/mcp/",
         )
         self.assertEqual(
             resource["authorization_servers"],
-            ["https://dashboard.shvya-ai.com/operations"],
+            ["https://shvya-ai.com/operations"],
         )
 
         server_response = self.client.get(
@@ -328,7 +328,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         server = server_response.json()
         self.assertEqual(
             server["issuer"],
-            "https://dashboard.shvya-ai.com/operations",
+            "https://shvya-ai.com/operations",
         )
         for key, path in (
             ("authorization_endpoint", "/operations/oauth/authorize"),
@@ -338,7 +338,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         ):
             self.assertEqual(
                 server[key],
-                "https://dashboard.shvya-ai.com" + path,
+                "https://shvya-ai.com" + path,
             )
 
         challenge_response = self.client.post(
@@ -360,7 +360,7 @@ class TestOperationsMCPOAuth(OperationsMCPBase):
         self.assertEqual(challenge_response.status_code, 401)
         challenge = challenge_response["WWW-Authenticate"]
         self.assertIn(
-            'resource_metadata="https://dashboard.shvya-ai.com'
+            'resource_metadata="https://shvya-ai.com'
             '/.well-known/oauth-protected-resource/operations/mcp/"',
             challenge,
         )
