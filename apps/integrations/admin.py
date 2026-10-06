@@ -2,6 +2,8 @@ from django.contrib import admin
 
 from apps.integrations.models import (
     EmailConfiguration,
+    JustDialIntegration,
+    JustDialLeadEvent,
     MetaLeadForm,
     MetaLeadPage,
     WebhookConfiguration,
@@ -97,3 +99,62 @@ class MetaLeadFormAdmin(admin.ModelAdmin):
     list_display = ("form_name", "form_id", "page", "pipeline", "stage", "is_active")
     list_filter = ("is_active",)
     search_fields = ("form_name", "form_id", "page__page_name")
+
+
+@admin.register(JustDialIntegration)
+class JustDialIntegrationAdmin(admin.ModelAdmin):
+    list_display = (
+        "organization",
+        "pipeline",
+        "stage",
+        "is_enabled",
+        "last_received_at",
+        "received_count",
+        "updated_at",
+    )
+    list_filter = ("is_enabled",)
+    search_fields = ("organization__name",)
+    readonly_fields = (
+        "webhook_token",
+        "requested_at",
+        "provisioned_at",
+        "last_received_at",
+        "last_error",
+        "received_count",
+        "created_count",
+        "updated_count",
+        "ignored_count",
+        "error_count",
+        "created_at",
+        "updated_at",
+    )
+
+
+@admin.register(JustDialLeadEvent)
+class JustDialLeadEventAdmin(admin.ModelAdmin):
+    list_display = (
+        "created_at",
+        "organization",
+        "external_lead_id",
+        "status",
+        "method",
+        "lead",
+    )
+    list_filter = ("status", "method")
+    search_fields = (
+        "organization__name",
+        "external_lead_id",
+        "lead__name",
+        "lead__phone",
+    )
+    readonly_fields = (
+        "integration",
+        "organization",
+        "lead",
+        "external_lead_id",
+        "method",
+        "status",
+        "payload",
+        "error_message",
+        "created_at",
+    )
