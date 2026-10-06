@@ -274,5 +274,40 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
         self.assertIn("no live call is confirmed", result)
 
 
+    def test_long_personal_trial_confirmation_is_only_preview_language(self):
+        result = self.honest(
+            "Thank you, Alex. Your trial for the Strength & Conditioning / General Training "
+            "program on Friday, 9 October 2026 at 6 PM has been successfully scheduled.",
+            request="Please help with that trial.", languages=["English"],
+        )
+        self.assertIn("Thank you, Alex.", result)
+        self.assertNotIn("successfully scheduled", result)
+        self.assertIn("no live trial, visit or booking is confirmed", result)
+
+    def test_trial_visit_and_session_assurances_cannot_claim_live_booking(self):
+        for text in (
+            "I have scheduled your trial.",
+            "We will book your visit.",
+            "Your session at 6 PM is confirmed.",
+            "Your appointment for Friday has been successfully booked.",
+            "Your trial has been booked.",
+        ):
+            with self.subTest(text=text):
+                result = self.honest(text, request="Please book a trial.", languages=["English"])
+                self.assertNotEqual(result, text)
+                self.assertIn("no live trial, visit or booking is confirmed", result)
+
+    def test_timetable_facts_and_negated_booking_are_preserved(self):
+        for text in (
+            "Group classes are scheduled Monday to Saturday.",
+            "Trials are scheduled after checking availability.",
+            "Your trial has not been booked.",
+            "Your visit is not confirmed.",
+            "We have a booking platform for trial sessions.",
+        ):
+            with self.subTest(text=text):
+                self.assertEqual(self.honest(text, request="Please help with a trial."), text)
+
+
 if __name__ == "__main__":
     unittest.main()
