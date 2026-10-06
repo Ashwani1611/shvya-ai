@@ -128,13 +128,19 @@ def test_file_candidates_filter_prior_refusal_before_selection():
     from unittest.mock import patch
     from apps.ai_engagement.services.file_sharing import FileSharingService
 
-    context = SimpleNamespace(as_dict=lambda: {
-        "lead": {"shared_document_ids": []}, "knowledge": [],
-        "conversation": {"messages": [
+    from dataclasses import replace
+    from apps.ai_engagement.tests.test_organization_information_alignment import build_context
+
+    base_context = build_context()
+    context = replace(
+        base_context,
+        lead={**base_context.lead, "shared_document_ids": []},
+        knowledge=[],
+        conversation={"message_count": 2, "messages": [
             {"direction": "inbound", "body": "Do not send product brochure."},
             {"direction": "inbound", "body": "What does that brochure offer mean?"},
         ]},
-    })
+    )
     documents = [
         SimpleNamespace(id=18, name="product brochure", version=1, source_url="",
                         share_instruction="send product brochure with welcome message"),
