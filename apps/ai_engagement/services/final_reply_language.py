@@ -36,6 +36,15 @@ def requested_language(*, configured, messages):
         if not isinstance(item, dict) or item.get("direction") != "inbound":
             continue
         text = str(item.get("body") or "")
+        # A lead can name the reply language without a verb: "English please:
+        # ...". Limit this form to an explicit opening request, not a language
+        # mentioned in a product question or quoted business facts.
+        for code, aliases in _ALIASES.items():
+            if canonical_language(code) not in allowed:
+                continue
+            if any(re.match(r"^\s*" + re.escape(alias) + r"\s+please\b", text, re.I)
+                   for alias in aliases):
+                return allowed[canonical_language(code)]
         # Honour explicit requests even when written in another language.
         if re.search(r"\b(?:reply|respond|answer|speak|antworten|antworte)\b", text, re.I):
             for code, aliases in _ALIASES.items():

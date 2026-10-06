@@ -97,6 +97,13 @@ def unconditional_welcome_document(candidates, *, welcome_due):
         r"(?:\s+or\s+(?:whenever|when\s+ever|when)\s+(?:the\s+)?lead\s+asks?\s+"
         r"(?P<requested>[\w -]{1,80}?))?\s*[.]?", re.I,
     )
+    pronoun_pattern = re.compile(
+        r"(?:send|share)\s+this\s+(?:along\s+with|with)\s+(?:the\s+)?"
+        r"welcome(?:\s+mess(?:age|gae))?"
+        r"(?:\s*[,;.]\s*(?:also\s+)?(?:whenever|when\s+ever|when)\s+"
+        r"(?:the\s+)?(?:user|lead)\s+asks?\s+for\s+(?P<requested>[\w -]{1,80}?)\s+"
+        r"(?:send|share)\s+this)?\s*[.]?", re.I,
+    )
     matches = []
     for item in candidates:
         if not isinstance(item, dict) or item.get("already_shared"):
@@ -104,12 +111,18 @@ def unconditional_welcome_document(candidates, *, welcome_due):
         document_id = item.get("document_id")
         if type(document_id) is not int or document_id <= 0:
             continue
-        rule = pattern.fullmatch(" ".join(str(item.get("share_instruction") or "").split()))
+        instruction = " ".join(str(item.get("share_instruction") or "").split())
+        rule = pattern.fullmatch(instruction)
+        pronoun_rule = pronoun_pattern.fullmatch(instruction)
         name = " ".join(str(item.get("name") or "").split()).casefold()
-        if not rule or rule["name"].casefold() != name:
-            continue
-        if rule["requested"] and rule["requested"].casefold() != name:
-            continue
+        if pronoun_rule:
+            if pronoun_rule["requested"] and pronoun_rule["requested"].casefold() != name:
+                continue
+        else:
+            if not rule or rule["name"].casefold() != name:
+                continue
+            if rule["requested"] and rule["requested"].casefold() != name:
+                continue
         matches.append(document_id)
     return matches[0] if len(matches) == 1 else None
 

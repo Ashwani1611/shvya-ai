@@ -37,3 +37,25 @@ def test_final_pricing_reply_cannot_keep_draft_welcome_only_attachment():
     assert reconcile_welcome_document(18, files, welcome_due=False, explicit_request=True) == 18
     conditional = [candidate("send product brochure when lead has completed qualification")]
     assert reconcile_welcome_document(18, conditional, welcome_due=False, explicit_request=False) == 18
+
+
+def test_this_refers_to_the_attached_file_without_losing_welcome():
+    files = [candidate("send this with welcome messgae, also when ever user ask for brochure send this.", name="brochure")]
+    assert unconditional_welcome_document(files, welcome_due=True) == 18
+    assert unconditional_welcome_document(files, welcome_due=False) is None
+    assert unconditional_welcome_document([candidate("send this with welcome message")], welcome_due=True) == 18
+    assert reconcile_welcome_document(18, files, welcome_due=False, explicit_request=False) is None
+    assert reconcile_welcome_document(18, files, welcome_due=False, explicit_request=True) == 18
+
+
+def test_pronoun_welcome_does_not_ignore_restrictions_or_wrong_file_names():
+    for instruction in (
+        "send this with welcome message only if qualified",
+        "send this with welcome message, also when user asks for another guide send this.",
+        "send this with welcome message unless Instagram",
+        "Do not send this with welcome message",
+    ):
+        assert unconditional_welcome_document([candidate(instruction)], welcome_due=True) is None
+    file = candidate("send this with welcome message")
+    assert unconditional_welcome_document([file, {**file, "document_id": 19}], welcome_due=True) is None
+    assert unconditional_welcome_document([{**file, "already_shared": True}], welcome_due=True) is None
