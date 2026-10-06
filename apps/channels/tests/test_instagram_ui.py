@@ -76,6 +76,21 @@ class InstagramUITests(TestCase):
         self.assertContains(response, "Continue with Instagram")
         self.assertContains(response, "Your DMs")
 
+    def test_connected_page_displays_meta_account_metadata_for_review(self):
+        self.connect_instagram(account_type="BUSINESS")
+        response = self.client.get(reverse("crm-instagram-connect"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Connected Instagram account")
+        self.assertContains(response, "@shvya_test")
+        self.assertContains(response, "SHVYA Test")
+        self.assertContains(response, "Instagram Account ID")
+        self.assertContains(response, "17841400000000000")
+        self.assertContains(response, "Account type")
+        self.assertContains(response, "BUSINESS")
+        self.assertContains(response, "Instagram API with Instagram Login")
+        self.assertContains(response, "Meta authorized")
+
     def test_oauth_start_uses_current_instagram_business_scopes(self):
         response = self.client.get(reverse("crm-instagram-oauth-start"))
         self.assertEqual(response.status_code, 302)
