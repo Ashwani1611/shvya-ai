@@ -1,6 +1,5 @@
 from __future__ import annotations
 from tests.playbook_fixtures import build_ai_playbook, qualification_questions
-from apps.ai_engagement.services.playbook import playbook_for_engagement
 
 
 import json
