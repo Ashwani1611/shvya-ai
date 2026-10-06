@@ -14,6 +14,7 @@ from apps.integrations.views.meta_leads import (
     meta_lead_page_save,
 )
 from apps.integrations.views.meta_conversions import meta_conversions_view
+from apps.integrations.views.justdial import justdial_connect_view
 from apps.integrations.views.web import (
     connect_hub_view,
     integration_detail_view,
@@ -91,8 +92,7 @@ urlpatterns = [
     ),
     path(
         "connect-hub/justdial/",
-        integration_detail_view,
-        {"integration_slug": "justdial"},
+        justdial_connect_view,
         name="crm-connect-hub-justdial",
     ),
     path(
