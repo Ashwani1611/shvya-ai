@@ -1150,6 +1150,7 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None,
     from apps.ai_engagement.services.sandbox_conversation_policy import sandbox_policy
     policy_token = None
     turn_token = None
+    scope_token = None
     try:
         policy = sandbox_policy(
             organization=organization, lead=lead, intent=intent,
@@ -1158,8 +1159,13 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None,
         )
         turn_token = policy_runtime._TURN.set(None)
         policy_token = policy_runtime._POLICY.set(policy)
+        scope_token = policy_runtime._SANDBOX_POLICY_SCOPE.set({
+            "organization": organization, "lead": lead, "policy": policy,
+        })
         yield
     finally:
+        if scope_token is not None:
+            policy_runtime._SANDBOX_POLICY_SCOPE.reset(scope_token)
         if policy_token is not None:
             policy_runtime._POLICY.reset(policy_token)
         if turn_token is not None:

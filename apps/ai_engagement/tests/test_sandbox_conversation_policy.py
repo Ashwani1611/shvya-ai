@@ -46,6 +46,25 @@ class SandboxConversationPolicyTests(SimpleTestCase):
         self.assertEqual(policy.next_requirement_id, "date")
         self.assertFalse(state_for_lead(self.lead, requirements=self.requirements)["qualification_completed"])
 
+    def test_unclassified_volunteered_facts_leave_capture_review_authoritative(self):
+        self.assertIsNone(self.policy(
+            "I need faster replies. I use spreadsheets for 20 leads daily.",
+            primary=Intent.UNKNOWN,
+        ))
+        self.assertEqual(
+            state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"],
+            [],
+        )
+
+    def test_uncaptured_multi_answer_turn_leaves_graph_review_authoritative(self):
+        self.assertIsNone(self.policy(
+            "My name is Alex QA and I am 28 years old.",
+        ))
+        self.assertEqual(
+            state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"],
+            [],
+        )
+
     def test_human_request_does_not_become_an_answer_or_next_question(self):
         policy = self.policy("I want a real human", primary=Intent.HUMAN_REQUEST)
         self.assertEqual(policy.outcome, ConversationPolicyOutcome.HUMAN_HANDOFF)
@@ -74,10 +93,14 @@ class SandboxConversationPolicyTests(SimpleTestCase):
         self.assertEqual(state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"], [])
 
     def test_evidence_scope_restores_parent_policy_after_exception(self):
-        from apps.ai_engagement.services.conversation_policy_runtime import _POLICY, _TURN
+        from apps.ai_engagement.services.conversation_policy_runtime import (
+            _POLICY, _SANDBOX_POLICY_SCOPE, _TURN,
+        )
         from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
         parent = object()
         policy_token = _POLICY.set(parent)
+        parent_scope = {"parent": True}
+        scope_token = _SANDBOX_POLICY_SCOPE.set(parent_scope)
         parent_turn = {"parent": True}
         turn_token = _TURN.set(parent_turn)
         try:
@@ -102,9 +125,15 @@ class SandboxConversationPolicyTests(SimpleTestCase):
                     ):
                         self.assertEqual(_POLICY.get().next_requirement_id, "age")
                         self.assertIsNone(_TURN.get())
+                        scope = _SANDBOX_POLICY_SCOPE.get()
+                        self.assertIs(scope["organization"], self.organization)
+                        self.assertIs(scope["lead"], self.lead)
+                        self.assertIs(scope["policy"], _POLICY.get())
                         raise RuntimeError("scope test")
             self.assertIs(_POLICY.get(), parent)
             self.assertIs(_TURN.get(), parent_turn)
+            self.assertIs(_SANDBOX_POLICY_SCOPE.get(), parent_scope)
         finally:
+            _SANDBOX_POLICY_SCOPE.reset(scope_token)
             _POLICY.reset(policy_token)
             _TURN.reset(turn_token)

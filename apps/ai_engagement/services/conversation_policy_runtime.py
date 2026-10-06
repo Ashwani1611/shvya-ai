@@ -28,6 +28,10 @@ _POLICY: ContextVar[ConversationPolicyDecision | None] = ContextVar(
     default=None,
 )
 
+_SANDBOX_POLICY_SCOPE: ContextVar[dict[str, Any] | None] = ContextVar(
+    "shvya_sandbox_policy_scope", default=None,
+)
+
 _POLICY_INSTRUCTIONS = """
 BACKEND CONVERSATION POLICY CONTRACT
 - conversation_policy is backend-authoritative for the conversational strategy on this turn.
@@ -594,8 +598,17 @@ def _patch_engagement() -> None:
 
     @wraps(current_engage)
     def engage(self, *, organization, lead, **kwargs):
-        _POLICY.set(None)
-        _policy_for_turn(organization=organization, lead=lead)
+        scope = _SANDBOX_POLICY_SCOPE.get()
+        scoped_policy = (
+            isinstance(scope, dict)
+            and scope.get("organization") is organization
+            and scope.get("lead") is lead
+            and scope.get("policy") is _POLICY.get()
+            and isinstance(_POLICY.get(), ConversationPolicyDecision)
+        )
+        if not scoped_policy:
+            _POLICY.set(None)
+            _policy_for_turn(organization=organization, lead=lead)
         return current_engage(self, organization=organization, lead=lead, **kwargs)
 
     @wraps(current_should_retrieve)

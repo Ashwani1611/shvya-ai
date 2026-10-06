@@ -1,6 +1,6 @@
 """Bind shared conversation strategy to an in-memory Sandbox answer turn."""
 from apps.ai_engagement.services.conversation_policy import (
-    ConversationPolicyContext, ConversationPolicyEngine,
+    ConversationPolicyContext, ConversationPolicyEngine, ConversationPolicyOutcome,
 )
 from apps.ai_engagement.services.conversation_policy_runtime import (
     _accepted_result, _capabilities, short_qualification_answer,
@@ -34,6 +34,10 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
             lead=lead, requirements=requirements, text=message,
             source_message_id=source_id,
         )["state"]
+    # Production accepts source-backed answers before policy selection. Sandbox
+    # multi-answer drafts are reviewed later by the graph. Do not prohibit that
+    # capture path with a pre-review policy when no answer was accepted yet.
+    accepted = _accepted_result(state=state, source_message_id=source_id)
     settings = organization.settings if isinstance(organization.settings, dict) else {}
     qualification_settings = settings.get("ai_qualification") or {}
     continue_now = (
@@ -41,14 +45,27 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
         and qualification_settings.get("continue_after_answer") is True
     ) or short_qualification_answer(intent=intent, text=message)
     active = state.get("engagement_mode") == MODE_QUALIFICATION
-    return ConversationPolicyEngine().decide(ConversationPolicyContext(
+    decision = ConversationPolicyEngine().decide(ConversationPolicyContext(
         intent_decision=intent, organization_id=str(organization.pk),
         lead_id=lead_id, pipeline_id=str(lead.pipeline_id) if lead.pipeline_id else None,
         stage_id=str(lead.stage_id) if lead.stage_id else None,
         qualification_state=state,
-        qualification_result=_accepted_result(state=state, source_message_id=source_id),
+        qualification_result=accepted,
         next_requirement_id=state.get("next_requirement_id") if active else None,
         extracted_facts=tuple(intent.facts), ai_allowed=True,
         capabilities=_capabilities(organization), continue_after_answer=continue_now,
         channel=channel,
     ))
+
+    # An unclassified turn may still contain volunteered, source-backed facts.
+    # Let the graph's bounded capture review resolve those before choosing a
+    # question; a CLARIFY policy bound before that review would reject its draft.
+    if decision.outcome == ConversationPolicyOutcome.CLARIFY:
+        return None
+    if (
+        decision.outcome == ConversationPolicyOutcome.NORMAL_CONVERSATION
+        and active and not accepted["accepted"]
+        and Intent.QUALIFICATION_ANSWER in intents
+    ):
+        return None
+    return decision
