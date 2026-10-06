@@ -100,7 +100,8 @@ def test_engagement_system_prompt_prioritizes_backend_state_before_org_sequence_
     task_marker = "SHVYA AI ENGAGEMENT TASK"
 
     assert alignment_marker in instructions
-    assert playbook_for_engagement(context.organization["ai_playbook"]) in instructions
+    assert context.organization["ai_playbook"] in instructions
+    assert instructions.count("Be concise and always end with one clear next step.") == 1
     assert instructions.index(alignment_marker) < instructions.index(task_marker)
     assert "MUST use a configured language" in normalized
     assert "conversation is primary evidence" in normalized
