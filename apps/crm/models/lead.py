@@ -117,6 +117,7 @@ class Lead(models.Model):
             ("whatsapp_api", "WhatsApp API"),
             ("whatsapp", "WhatsApp"),
             ("google_sheets", "Google Sheet"),
+            ("indiamart", "IndiaMART"),
             ("csv_import", "CSV Import"),
             ("meta_ads", "Meta Ads"),
             ("instagram", "Instagram"),

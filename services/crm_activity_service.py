@@ -125,6 +125,7 @@ def record_lead_created(
 
     source_labels = {
         "google_sheets": "Google Sheet",
+        "indiamart": "IndiaMART",
         "meta_ads": "Meta ads",
     }
     actor_name_override = (
