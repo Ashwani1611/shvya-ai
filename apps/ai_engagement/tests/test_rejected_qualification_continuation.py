@@ -45,7 +45,7 @@ class RejectedQualificationContinuationTests(SimpleTestCase):
             decision = EngagementDecision(
                 should_engage=True, message="Your booking is confirmed.",
                 file_document_id=7, crm_actions=[{"type": "pipeline_transition"}],
-                reason="QUALIFICATION_NEXT", next_requirement_id="age",
+                reason="QUALIFICATION_NEXT", next_requirement_id="age", model="test",
                 qualification_updates=[{"requirement_id": "untrusted"}],
             )
             return _safe_unknown_decision(
