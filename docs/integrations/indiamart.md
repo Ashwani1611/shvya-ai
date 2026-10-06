@@ -38,7 +38,7 @@ Maps SENDER_NAME/MOBILE/PHONE/EMAIL to the contact. QUERY_TIME/TYPE, SENDER_COMP
 
 Returns HTTP 200 with `{"CODE":200,"STATUS":"SUCCESS"}` after database commit, including for duplicate query IDs. Invalid payloads return 400; unknown/disabled/rotated URLs return 404; oversized requests return 413; invalid configured routing returns 503. Database failures remain retriable errors. A batch is atomic: malformed rows cause rollback rather than silent lead loss. There is no dependency on a webhook worker/broker for durable intake; new lead automation continues through the existing CRM welcome service.
 
-Connection-row locking and `(connection, query_id)` uniqueness prevent retry duplicates. Existing organization/phone leads receive a new enquiry note without changing their stage, pipeline, name or existing notes. Receipts remain even if a lead is deleted, so replays do not recreate deleted leads. Replacing a URL invalidates the previous URL immediately; disabling stops intake. The last received timestamp updates on valid deliveries, including retry acknowledgments.
+Connection-row locking and `(connection, query_id)` uniqueness prevent retry duplicates. Existing organization/phone leads receive a new enquiry note without changing their stage, pipeline, name or existing notes. Deleting a lead clears the receipt’s lead pointer and erases its buyer payload; only query tombstones remain, so replays do not recreate deleted leads. Replacing a URL invalidates the previous URL immediately; disabling stops intake. The last received timestamp updates on valid deliveries, including retry acknowledgments.
 
 ## Acceptance checks
 

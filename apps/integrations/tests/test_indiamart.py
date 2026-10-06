@@ -218,3 +218,13 @@ class IndiaMartTests(TestCase):
         self.assertEqual(IndiaMartReceipt.objects.count(), 1)
         self.assertEqual(self.post().status_code, 200)
         self.assertEqual(IndiaMartReceipt.objects.count(), 1)
+
+    def test_lead_deletion_erases_buyer_data_but_blocks_replay(self):
+        self.assertEqual(self.post().status_code, 200)
+        lead = Lead.objects.get(organization=self.org, phone='+919876543210')
+        lead.delete()
+        receipt = IndiaMartReceipt.objects.get(connection=self.connection, query_id='123')
+        self.assertIsNone(receipt.lead_id)
+        self.assertEqual(receipt.payload, {})
+        self.assertEqual(self.post().status_code, 200)
+        self.assertFalse(Lead.objects.filter(organization=self.org).exists())

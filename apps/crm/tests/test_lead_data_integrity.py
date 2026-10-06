@@ -184,7 +184,8 @@ class LeadDataIntegrityTests(TestCase):
         recipient and attempt history. SalesDocument is legal/commercial
         evidence with a frozen recipient snapshot, so deleting the CRM Lead
         clears only its optional CRM pointer. Every other Lead-owned relation
-        must CASCADE.
+        must CASCADE. IndiaMART receipts retain only their query ID after buyer
+        payload erasure to prevent retries from recreating deleted leads.
         """
         exceptions = []
 
@@ -209,6 +210,8 @@ class LeadDataIntegrityTests(TestCase):
                 ("followups.followupsenderstate", "last_lead"),
                 # Commercial/legal documents survive CRM lead deletion.
                 ("sales.salesdocument", "lead"),
+                # Enquiry tombstones survive; pre_delete erases buyer payloads.
+                ("integrations.indiamartreceipt", "lead"),
             },
         )
         self.assertTrue(
