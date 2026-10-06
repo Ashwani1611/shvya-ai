@@ -214,6 +214,8 @@ class EvidenceResolver:
                 organization=organization,
                 lead=lead,
                 keys=keys,
+                question=question,
+                question_type=question_type,
             )
             knowledge = self._knowledge_evidence(organization=organization, question=question, guard=guard)
             if structured or knowledge:
@@ -310,11 +312,16 @@ class EvidenceResolver:
                     source_area = "business_information.configured"
             if not self._meaningful(value):
                 continue
+            content = (self._about_excerpt(value, question=question, question_type=question_type)
+                       if key == "about" and question_type == "product_or_service"
+                       else self._serialize(value))
+            if not content:
+                continue
             items.append(
                 EvidenceItem(
                     source_id=f"organization_profile:{source_area}:{key}",
                     source_type="organization_runtime_profile",
-                    content=self._serialize(value),
+                    content=content,
                     score=1.0,
                     metadata={"field": key, "area": source_area},
                 )
@@ -345,6 +352,7 @@ class EvidenceResolver:
             "pricing": r"\b(?:pric\w*|costs?|fees?|plans?|packages?|discounts?|free|inr|usd|rupees?|dollars?)\b|[₹$€£]\s*\d",
             "policy": r"\b(?:polic\w*|refund\w*|cancell?\w*|warrant\w*|returns?|privacy|terms)\b",
             "location": r"\b(?:locat\w*|address|offices?|branches?|based|headquarters)\b",
+            "product_or_service": r"\S",
             "availability": r"\b(?:availab\w*|offer\w*|hours?|timings?|opening|closing|open|closed|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
         }
         pattern = patterns.get(question_type)
@@ -377,6 +385,8 @@ class EvidenceResolver:
             if not part or not re.search(pattern, part, re.I):
                 continue
             overlap = len(query & set(_query_tokens(part)))
+            if question_type == "product_or_service" and not overlap:
+                continue
             ranked.append((overlap, index, part))
         remaining = cls.MAX_CONTENT_CHARS
         selected = []
