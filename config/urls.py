@@ -35,7 +35,7 @@ urlpatterns = [
     path(
         "favicon.ico",
         RedirectView.as_view(
-            url=static("images/shvya-brand-2026.png"),
+            url=f'{static("images/shvya-brand-2026.png")}?v=20261006-1',
             permanent=False,
         ),
         name="favicon",
