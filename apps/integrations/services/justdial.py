@@ -24,6 +24,14 @@ JUSTDIAL_ATTRIBUTE_DEFINITIONS = (
     ("JustDial Enquiry Date", "justdial_inquiry_date"),
     ("JustDial Enquiry Time", "justdial_inquiry_time"),
     ("JustDial Parent ID", "justdial_parent_id"),
+    ("JustDial Product Code", "justdial_product_code"),
+    ("JustDial Channel Code", "justdial_channel_code"),
+    ("JustDial Agency Code", "justdial_agency_code"),
+    ("JustDial State Code", "justdial_state_code"),
+    ("JustDial City Code", "justdial_city_code"),
+    ("JustDial Branch Pin", "justdial_branch_pin"),
+    ("JustDial DNC Mobile", "justdial_dnc_mobile"),
+    ("JustDial DNC Phone", "justdial_dnc_phone"),
 )
 
 FIELD_ALIASES = {
@@ -51,6 +59,14 @@ FIELD_ALIASES = {
     "date": ("date", "enquirydate", "enquiry_date", "lead_date"),
     "time": ("time", "enquirytime", "enquiry_time", "lead_time"),
     "parent_id": ("parentid", "parent_id"),
+    "product_code": ("productcode", "product_code"),
+    "channel_code": ("channelcode", "channel_code"),
+    "agency_code": ("agencycode", "agency_code"),
+    "state_code": ("statecode", "state_code"),
+    "city_code": ("citycode", "city_code"),
+    "branch_pin": ("branchpin", "branch_pin"),
+    "dnc_mobile": ("dncmobile", "dnc_mobile"),
+    "dnc_phone": ("dncphone", "dnc_phone"),
 }
 
 
@@ -145,7 +161,6 @@ def _ensure_justdial_attribute_definitions(organization) -> None:
             description="Automatically filled from a JustDial lead-push event.",
             display_order=index,
         )
-        definition.full_clean()
         pending.append(definition)
     if pending:
         AttributeDefinition.objects.bulk_create(pending, ignore_conflicts=True)
@@ -164,6 +179,14 @@ def _lead_attributes(payload: dict[str, Any]) -> dict[str, str]:
         "justdial_inquiry_date": _lookup(payload, "date"),
         "justdial_inquiry_time": _lookup(payload, "time"),
         "justdial_parent_id": _lookup(payload, "parent_id"),
+        "justdial_product_code": _lookup(payload, "product_code"),
+        "justdial_channel_code": _lookup(payload, "channel_code"),
+        "justdial_agency_code": _lookup(payload, "agency_code"),
+        "justdial_state_code": _lookup(payload, "state_code"),
+        "justdial_city_code": _lookup(payload, "city_code"),
+        "justdial_branch_pin": _lookup(payload, "branch_pin"),
+        "justdial_dnc_mobile": _lookup(payload, "dnc_mobile"),
+        "justdial_dnc_phone": _lookup(payload, "dnc_phone"),
     }
     return {key: value for key, value in mapping.items() if value}
 
