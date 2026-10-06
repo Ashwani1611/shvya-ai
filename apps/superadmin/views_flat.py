@@ -293,6 +293,13 @@ def org_list_view(request):
             payment_mode=Organization.PaymentMode.PARTIAL,
         )
 
+    if request.GET.get("justdial_setup") == "pending":
+
+        orgs = orgs.filter(
+            justdial_integration__isnull=False,
+            justdial_integration__webhook_token__isnull=True,
+        )
+
     plan = request.GET.get(
         "plan",
         "",
@@ -327,6 +334,9 @@ def org_list_view(request):
             "all_tags": OrganizationTag.objects.all(),
             "packages": Organization.Package.choices,
             "search": search,
+            "justdial_pending_count": JustDialIntegration.objects.filter(
+                webhook_token__isnull=True,
+            ).count(),
         },
     )
 
