@@ -15,6 +15,16 @@ function patchSource(input) {
   replace("const { idempotentSend } = require('./send-idempotency');", `const { idempotentSend: rawIdempotentSend } = require('./send-idempotency');
 const { deadline, confirmSendOutcome, createCallbackOutbox } = require('./realtime-delivery');
 ${marker}`);
+  replace(
+    "const MAX_HOSTED_SESSIONS = Math.max(1, Number(process.env.WHATSAPP_WEB_MAX_SESSIONS || 50));",
+    `const MAX_HOSTED_SESSIONS = Math.max(1, Number(process.env.WHATSAPP_WEB_MAX_SESSIONS || 50));
+const HOSTED_SESSION_RECOVERY_POLL_MS = Math.max(
+  5000, Number(process.env.WHATSAPP_WEB_SESSION_RECOVERY_POLL_MS || 10000) || 10000,
+);
+const HOSTED_SESSION_LIVENESS_POLL_MS = Math.max(
+  10000, Number(process.env.WHATSAPP_WEB_SESSION_LIVENESS_POLL_MS || 15000) || 15000,
+);`,
+  );
   replace('async function callback(sessionId, event, payload = {}) {',
     'async function directCallback(sessionId, event, payload = {}) {');
   replace('function lockKey(sessionId) {', `const callbackOutbox = createCallbackOutbox({
@@ -68,6 +78,53 @@ async function ensureHostedSendReady(sessionId, state) {
     await promoteRunningSession(sessionId, state, 'send_probe');
   }
   if (state.status !== 'running') throw new Error('Hosted session is not running.');
+}
+
+async function markHostedSessionDisconnected(sessionId, state, reason, source = 'liveness_probe') {
+  if (shuttingDown || sessions.get(sessionId) !== state || state.status === 'expired') return;
+  state.status = 'disconnected';
+  state.lastError = String(reason || 'Hosted session disconnected.');
+  state.restoreRetryAt = Date.now() + 5000;
+  const tracker = sessionFailureTrackers.get(sessionId) || { attempts: 0 };
+  tracker.attempts += 1;
+  sessionFailureTrackers.set(sessionId, tracker);
+  await callback(sessionId, 'disconnected', { reason: state.lastError, source });
+}
+
+async function checkHostedSessionLiveness() {
+  if (shuttingDown) return;
+  const entries = Array.from(sessions.entries()).filter(
+    ([, state]) => state && state.client && state.status === 'running',
+  );
+  let cursor = 0;
+  async function probeNext() {
+    while (cursor < entries.length) {
+      const index = cursor++;
+      const [sessionId, state] = entries[index];
+      if (shuttingDown || sessions.get(sessionId) !== state || state.status !== 'running') continue;
+      try {
+        const current = String(
+          await deadline(() => state.client.getState(), 5000, 'Hosted liveness probe') || '',
+        ).toUpperCase();
+        state.livenessFailures = 0;
+        if (current === 'CONNECTED') continue;
+        await markHostedSessionDisconnected(
+          sessionId, state,
+          'Hosted liveness probe returned ' + (current || 'UNKNOWN') + '.',
+        );
+      } catch (error) {
+        state.livenessFailures = Number(state.livenessFailures || 0) + 1;
+        if (state.livenessFailures < 2) continue;
+        await markHostedSessionDisconnected(
+          sessionId, state,
+          'Hosted liveness probe failed: ' + (error.message || String(error)),
+        );
+      }
+    }
+  }
+  await Promise.all(
+    Array.from({ length: Math.min(4, entries.length) }, () => probeNext()),
+  );
 }
 
 function lockKey(sessionId) {`);
@@ -125,6 +182,28 @@ ${disconnected}`);
   replace('    metrics: gatewayMetrics,',
     '    metrics: gatewayMetrics,\n    callbackOutbox: callbackOutbox.stats(),');
   replace('    await startRedis();', '    await startRedis();\n    callbackOutbox.start();');
+  replace(`    // FIX 2: poll every 30s to retry failed sessions with backoff respected
+    setInterval(() => {
+      if (shuttingDown) return;
+      restoreSessions().catch((error) => {
+        console.warn('Could not retry persisted Hosted sessions:', error.message);
+      });
+    }, 30000).unref();`, `    // Retry disconnected/failed sessions promptly while preserving per-session backoff.
+    setInterval(() => {
+      if (shuttingDown) return;
+      restoreSessions().catch((error) => {
+        console.warn('Could not retry persisted Hosted sessions:', error.message);
+      });
+    }, HOSTED_SESSION_RECOVERY_POLL_MS).unref();
+    // A browser can miss the whatsapp-web.js disconnected event while its local
+    // state still says running. Probe the real WhatsApp state so inbound delivery
+    // cannot remain silently stale until somebody manually sends a message.
+    setInterval(() => {
+      if (shuttingDown) return;
+      checkHostedSessionLiveness().catch((error) => {
+        console.warn('Could not probe Hosted session liveness:', error.message);
+      });
+    }, HOSTED_SESSION_LIVENESS_POLL_MS).unref();`);
   replace('  shuttingDown = true;', '  shuttingDown = true;\n  callbackOutbox.stop();');
   return source;
 }

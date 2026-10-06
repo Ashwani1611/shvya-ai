@@ -113,7 +113,7 @@ def _send_manual_response(*, message, chat_key):
     if not payload["ok"]:
         payload["error"] = error
     status = 201 if sent else 202 if pending else 502
-    if result.get("reason") == "session_not_connected":
+    if result.get("reason") in {"session_not_connected", "session_reconnecting"}:
         status = 409
     return JsonResponse(payload, status=status)
 
