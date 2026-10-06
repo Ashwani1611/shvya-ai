@@ -38,8 +38,6 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
     # multi-answer drafts are reviewed later by the graph. Do not prohibit that
     # capture path with a pre-review policy when no answer was accepted yet.
     accepted = _accepted_result(state=state, source_message_id=source_id)
-    if Intent.QUALIFICATION_ANSWER in intents and not accepted["accepted"]:
-        return None
     settings = organization.settings if isinstance(organization.settings, dict) else {}
     qualification_settings = settings.get("ai_qualification") or {}
     continue_now = (
@@ -63,5 +61,11 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
     # Let the graph's bounded capture review resolve those before choosing a
     # question; a CLARIFY policy bound before that review would reject its draft.
     if decision.outcome == ConversationPolicyOutcome.CLARIFY:
+        return None
+    if (
+        decision.outcome == ConversationPolicyOutcome.NORMAL_CONVERSATION
+        and active and not accepted["accepted"]
+        and Intent.QUALIFICATION_ANSWER in intents
+    ):
         return None
     return decision
