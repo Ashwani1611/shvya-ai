@@ -3,10 +3,10 @@
 This repository exposes one universal, production Operations MCP resource:
 
 - App name: **SHVYA AI Superadmin**
-- Remote MCP URL: `https://dashboard.shvya-ai.com/operations/mcp/`
-- OAuth issuer: `https://dashboard.shvya-ai.com/operations`
+- Remote MCP URL: `https://shvya-ai.com/operations/mcp/`
+- OAuth issuer: `https://shvya-ai.com/operations`
 - Authentication: OAuth 2.1 public client with PKCE S256
-- Protected-resource metadata: `https://dashboard.shvya-ai.com/.well-known/oauth-protected-resource/operations/mcp/`
+- Protected-resource metadata: `https://shvya-ai.com/.well-known/oauth-protected-resource/operations/mcp/`
 
 The stopped staging host is not an app endpoint, review endpoint, or runtime
 dependency. No client secret, bearer token, refresh token, session cookie, or
