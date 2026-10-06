@@ -230,7 +230,7 @@ class InstagramServiceTests(TestCase):
             organization=other,
             created_by=user,
             authorization_code="temporary-code",
-            redirect_uri="https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/",
+            redirect_uri="https://shvya-ai.com/dashboard/instagram/connect/return/",
             expires_at=timezone.now() + timedelta(minutes=5),
         )
         request.side_effect = [
