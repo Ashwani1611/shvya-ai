@@ -49,7 +49,7 @@ For operational compatibility SHVYA also accepts form-encoded POST and JSON POST
 
 ## Field handling
 
-Because no public official JustDial schema was found, SHVYA uses conservative aliases seen across integration examples and common CRM payloads. The first live event is the final validation point.
+Because no public official JustDial schema was found, SHVYA uses conservative aliases backed by multiple CRM integrations and an independently published JustDial receiver endpoint. That receiver documents the common GET fields name, mobile, leadid, leadtype, prefix, phone, email, date, category, city, area, brancharea, dncmobile, dncphone, company, pincode, time, branchpin and parentid. The first live event is still the final validation point.
 
 | SHVYA field | Accepted source aliases |
 | --- | --- |
@@ -59,7 +59,8 @@ Because no public official JustDial schema was found, SHVYA uses conservative al
 | Email | email, emailid, email_id, email_address |
 | Category | category, categoryname, product, service |
 | Lead type | leadtype, lead_type, enquirytype |
-| Location | city, area, locality, brancharea, pincode |
+| Prefix | prefix |
+| Location | city, area, locality, brancharea, pincode, branchpin |
 | Company | company, companyname |
 | Date/time | date, enquirydate, time, enquirytime |
 | Parent ID | parentid, parent_id |
@@ -74,7 +75,7 @@ SHVYA's existing organization + phone uniqueness rule is used for deduplication:
 
 ## CRM attributes
 
-SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_category, justdial_city, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, justdial_parent_id, justdial_product_code, justdial_channel_code, justdial_agency_code, justdial_state_code, justdial_city_code, justdial_branch_pin, justdial_dnc_mobile, and justdial_dnc_phone.
+SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_prefix, justdial_category, justdial_city, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, justdial_parent_id, justdial_branch_pin, justdial_dnc_mobile, and justdial_dnc_phone.
 
 ## Messaging safety
 
