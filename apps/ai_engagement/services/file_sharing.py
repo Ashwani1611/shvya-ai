@@ -87,6 +87,18 @@ def declined_file_request(text, candidate=None):
     """Respect an explicit attachment refusal for this candidate and turn."""
     name = " ".join(str((candidate or {}).get("name") or "").split())
     for clause in re.split(r"[.!?;\n]", str(text or "")):
+        # In Hinglish the object commonly precedes "mat bhejna", so looking
+        # only after an English send/share verb misses explicit refusals.
+        objects = r"(?:files?|documents?|pdfs?|attachments?)"
+        if name:
+            objects = "(?:" + objects + "|" + re.escape(name) + ")"
+        negative_send = (
+            r"(?:mat\s+(?:bhej(?:na|o|iye)?|send|share|attach)"
+            r"|(?:nahi|nahin)\s+(?:bhej(?:na|o|iye)?|send|share|attach)"
+            r"|(?:bhej(?:na|o|iye)?|send|share|attach)\s+(?:mat|nahi|nahin))"
+        )
+        if re.search(r"\b" + objects + r"\s+" + negative_send + r"\b", clause, re.I):
+            return True
         refusal = re.search(
             r"\b(?:do\s+not|don['’]t|never|no\s+need\s+to)\s+(?:send|share|attach)\b"
             r"|\b(?:send|share)\s+(?:mat|nahi)\b", clause, re.I)

@@ -77,3 +77,24 @@ def test_explicit_resend_respects_exact_authored_request_permission():
     assert unrestricted_requested_document(files, text="Don't send the product brochure.") is None
     assert unrestricted_requested_document([candidate("send product brochure with welcome message", already_shared=True)], text="Please resend it.") is None
     assert unrestricted_requested_document([candidate("send product brochure with welcome message or when lead ask product brochure after qualification", already_shared=True)], text="Please resend it.") is None
+
+
+def test_hinglish_attachment_refusals_override_welcome_selection():
+    from apps.ai_engagement.services.file_sharing import declined_file_request
+
+    file = candidate("")
+    for body in (
+        "Hinglish mein reply karo. Brochure ya koi file mat bhejna. Gym kitne baje khulta hai?",
+        "Product brochure mat bhejna.",
+        "Koi PDF nahi bhejna.",
+        "Documents bhejna mat.",
+        "Koi file nahin share.",
+    ):
+        assert declined_file_request(body, file), body
+    for body in (
+        "Product brochure bhejo.",
+        "Price list mat bhejna. Product brochure bhejo.",
+        "Trial book mat karo. Product brochure bhejo.",
+        "Mat bolo ki file bhejna possible nahi hai.",
+    ):
+        assert not declined_file_request(body, file), body
