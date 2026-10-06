@@ -45,7 +45,7 @@ class ConnectHubURLTests(SimpleTestCase):
                 "Call Scheduler",
                 "Call Tracker",
                 "RazorPay",
-                "Justdial",
+                "JustDial",
                 "IndiaMART",
             },
         )
