@@ -101,7 +101,7 @@ def parse_playbook(raw: str) -> dict[str, str]:
                 if current == "qualification_questions":
                     content = re.sub(r"^(?:question|q)\s*\d+\s*(?:[:.)-]\s*)?", "", content, flags=re.I).strip()
                 if content:
-                    buckets[current].append(content)
+                    buckets[current].append(line if current in {"stage_shifting", "attribute_mapped", "reminders"} else content)
                 continue
             # Unknown headings belong to general rules, never to the previous
             # question or CRM authority section.
@@ -181,10 +181,20 @@ def _message_content(text: str, tag: str) -> tuple[str, str]:
 
 
 def policy_blocks(text: str) -> list[str]:
-    """Keep a numbered Rule/Mapping/Reminder and its children together."""
+    """Keep a declared numbered policy and its conditions together."""
     blocks, current = [], []
+    structured_depth = 0
     for line in text.splitlines():
-        if (re.match(r"^\s*(?:#{1,6}\s*)?(?:Rule|Mapping|Reminder)\s+\d+\b", line, re.I) or re.match(r"^\s*(?:when|if|once|after|move|shift|route)\b.*:\s*$", line, re.I)):
+        heading = re.match(r"^\s*(#{1,6})\s*\d+[.)]\s+\S", line)
+        if heading and (not structured_depth or len(heading.group(1)) <= structured_depth):
+            if current:
+                blocks.append("\n".join(current).strip())
+            current = [line]
+            structured_depth = len(heading.group(1))
+        elif structured_depth:
+            current.append(line)
+        elif (re.match(r"^\s*(?:#{1,6}\s*)?(?:Rule|Mapping|Reminder)\s+\d+\b", line, re.I)
+              or re.match(r"^\s*(?:when|if|once|after|move|shift|route)\b.*:\s*$", line, re.I)):
             if current:
                 blocks.append("\n".join(current).strip())
             current = [line]
