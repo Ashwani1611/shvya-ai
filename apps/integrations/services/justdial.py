@@ -206,6 +206,23 @@ def _record_event(
     return event
 
 
+def record_justdial_failure(
+    *,
+    integration: JustDialIntegration,
+    payload: Any,
+    method: str,
+    error_message: str,
+) -> JustDialLeadEvent:
+    """Persist an unexpected webhook failure without exposing internals."""
+    return _record_event(
+        integration=integration,
+        payload=clean_payload(payload),
+        method=method,
+        status=JustDialLeadEvent.Status.FAILED,
+        error_message=error_message,
+    )
+
+
 def process_justdial_lead(
     *,
     integration: JustDialIntegration,
