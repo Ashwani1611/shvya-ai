@@ -379,7 +379,6 @@ class PlaygroundResult:
             "should_engage": self.should_engage,
             "knowledge": self.knowledge,
             "model": self.model,
-            "diagnostics": self.diagnostics,
             "stage": self.stage, "events": self.events, "files": self.files,
             "channel": self.channel, "lead_source": self.lead_source,
             "execution_mode": "sandbox_preview",
