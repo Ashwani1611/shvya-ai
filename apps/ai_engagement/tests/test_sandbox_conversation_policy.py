@@ -46,6 +46,16 @@ class SandboxConversationPolicyTests(SimpleTestCase):
         self.assertEqual(policy.next_requirement_id, "date")
         self.assertFalse(state_for_lead(self.lead, requirements=self.requirements)["qualification_completed"])
 
+    def test_unclassified_volunteered_facts_leave_capture_review_authoritative(self):
+        self.assertIsNone(self.policy(
+            "I need faster replies. I use spreadsheets for 20 leads daily.",
+            primary=Intent.UNKNOWN,
+        ))
+        self.assertEqual(
+            state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"],
+            [],
+        )
+
     def test_human_request_does_not_become_an_answer_or_next_question(self):
         policy = self.policy("I want a real human", primary=Intent.HUMAN_REQUEST)
         self.assertEqual(policy.outcome, ConversationPolicyOutcome.HUMAN_HANDOFF)
