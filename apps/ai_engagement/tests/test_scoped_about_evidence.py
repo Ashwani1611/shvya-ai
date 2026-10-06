@@ -42,3 +42,34 @@ class ScopedAboutEvidenceTests(SimpleTestCase):
         text = EvidenceResolver._about_excerpt(source, question="Annual plan price?", question_type="pricing")
         self.assertIn("For members only", text)
         self.assertIn("No cancellation refund", text)
+
+    def test_product_enquiry_selects_complete_late_schedule(self):
+        source = ("# Introduction\n" + "Background. " * 700 +
+                  "\n# Weekly schedule\nAdult classes only.\n"
+                  "## Friday\n09:00 — Grappling (Development)\n18:00 — Grappling (Development)\n"
+                  "## Saturday\n07:00 — Grappling (Performance)\n20:00 — Grappling (Performance)")
+        excerpt = EvidenceResolver._about_excerpt(
+            source, question="Adult grappling Friday Saturday times",
+            question_type="product_or_service")
+        self.assertIn("Adult classes only.", excerpt)
+        self.assertIn("09:00 — Grappling (Development)", excerpt)
+        self.assertIn("20:00 — Grappling (Performance)", excerpt)
+        self.assertNotIn("Background.", excerpt)
+
+    def test_product_evidence_receives_the_actual_question(self):
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        source = ("# Introduction\n" + "Background. " * 700 +
+                  "\n# Programme Omega\nAvailable Thursdays at 18:00.\nEligibility: adults only.")
+        profile = SimpleNamespace(as_dict=lambda: {
+            "business_information": {"about": source}, "business_facts": {}})
+        with patch("apps.ai_engagement.services.evidence_resolver.get_organization_ai_runtime_profile",
+                   return_value=profile):
+            items = EvidenceResolver()._structured_org_evidence(
+                organization=SimpleNamespace(pk=1), lead=SimpleNamespace(),
+                keys=("about",), question="What is Programme Omega eligibility?",
+                question_type="product_or_service")
+        self.assertEqual(len(items), 1)
+        self.assertIn("adults only", items[0].content)
+        self.assertIn("Programme Omega", items[0].content)
+        self.assertNotIn("Background.", items[0].content)
