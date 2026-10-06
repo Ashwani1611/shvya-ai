@@ -74,10 +74,14 @@ class SandboxConversationPolicyTests(SimpleTestCase):
         self.assertEqual(state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"], [])
 
     def test_evidence_scope_restores_parent_policy_after_exception(self):
-        from apps.ai_engagement.services.conversation_policy_runtime import _POLICY, _TURN
+        from apps.ai_engagement.services.conversation_policy_runtime import (
+            _POLICY, _SANDBOX_POLICY_SCOPE, _TURN,
+        )
         from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
         parent = object()
         policy_token = _POLICY.set(parent)
+        parent_scope = {"parent": True}
+        scope_token = _SANDBOX_POLICY_SCOPE.set(parent_scope)
         parent_turn = {"parent": True}
         turn_token = _TURN.set(parent_turn)
         try:
@@ -102,9 +106,15 @@ class SandboxConversationPolicyTests(SimpleTestCase):
                     ):
                         self.assertEqual(_POLICY.get().next_requirement_id, "age")
                         self.assertIsNone(_TURN.get())
+                        scope = _SANDBOX_POLICY_SCOPE.get()
+                        self.assertIs(scope["organization"], self.organization)
+                        self.assertIs(scope["lead"], self.lead)
+                        self.assertIs(scope["policy"], _POLICY.get())
                         raise RuntimeError("scope test")
             self.assertIs(_POLICY.get(), parent)
             self.assertIs(_TURN.get(), parent_turn)
+            self.assertIs(_SANDBOX_POLICY_SCOPE.get(), parent_scope)
         finally:
+            _SANDBOX_POLICY_SCOPE.reset(scope_token)
             _POLICY.reset(policy_token)
             _TURN.reset(turn_token)
