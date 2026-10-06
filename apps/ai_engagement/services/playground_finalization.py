@@ -20,12 +20,14 @@ _PREVIEW_ACTION_TYPES = {
 
 _OWN_ACTION = r"\b(?:i|we|they|our\s+team|the\s+team)(?:\s+(?:will|shall|am|are|have|has)|['’](?:ll|m|re|ve))\s+(?:now\s+)?(?:proceed\s+to\s+)?"
 _FILE_SEND = r"(?:send|sending|sent|share|sharing|shared|attach|attaching|attached)\s+(?:you\s+)?(?:(?:the|a|your|our|product|requested)\s+){0,3}(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b"
-_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:for\s+)?(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo)\b(?!\s+(?:platform|software|system|tool|service|feature))|(?:call|contact|connect)\s+you\b|reach\s+out\s+to\s+you\b|pass\s+(?:your|the|this)\s+(?:request|details)\s+to\b|pass\s+it\s+(?:along|on)\b|coordinate\s+with\s+(?:(?:our|the)\s+)?team\s+to\s+(?:schedule|arrange)\b|be\s+in\s+touch\b)"
+_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:for\s+)?(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo|trial|visit|session)\b(?!\s+(?:platform|software|system|tool|service|feature))|(?:call|contact|connect)\s+you\b|reach\s+out\s+to\s+you\b|pass\s+(?:your|the|this)\s+(?:request|details)\s+to\b|pass\s+it\s+(?:along|on)\b|coordinate\s+with\s+(?:(?:our|the)\s+)?team\s+to\s+(?:schedule|arrange)\b|be\s+in\s+touch\b)"
 _ACTION_ASSURANCE = re.compile(
     _OWN_ACTION + r"(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
     r"\b(?:i|we|our\s+team|the\s+team)\s+(?=(?:sent|shared|attached|scheduled|booked|confirmed|created|arranged)\b)(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
-    r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide|call|callback|reminder|appointment|booking|demo)\s+"
+    r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide|call|callback|reminder|appointment|booking|demo|trial|visit|session)\s+"
     r"(?:has|have|is|are|was|were)\s+(?:been\s+)?(?:now\s+)?(?:sent|shared|attached|scheduled|booked|confirmed|created)\b|"
+    r"\byour\s+(?:trial|visit|session|appointment|booking|demo)\b[^.!?\n]{0,240}?"
+    r"\b(?:has|have|is|are|was|were)\s+(?:been\s+)?(?:now\s+)?(?:successfully\s+)?(?:scheduled|booked|confirmed|reserved)\b|"
     r"\b(?:main|hum|ham|team)\s+(?:ab\s+)?(?:(?:aapko|apko)\s+)?(?:(?:brochure|file|document|guide)\s+)?(?:bhejunga|bhejenge|bhej\s+(?:raha|rahe)|"
     r"(?:call|reminder|file|brochure)\s+.{0,40}?kar\s+(?:diya|di|dunga|denge))\b|"
     r"(?:मैं|हम|टीम)\s*(?:अभी\s*)?(?:भेज(?:ूँगा|ेंगी|ेंगे)|.{0,40}?कर\s*(?:दिया|दूँगा|देंगे))", re.IGNORECASE,
@@ -65,6 +67,7 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
     file_id = preview_file_id(files)
     file_requested = bool(_FILE_OBJECT.search(requested_text))
     call_requested = bool(_CALL_OBJECT.search(requested_text))
+    booking_requested = bool(re.search(r"\b(?:trial|visit|session|appointment|booking|demo)\b", requested_text, re.IGNORECASE))
     # Plain factual answers and qualification questions remain untouched.
     if not removed:
         return decision
@@ -81,6 +84,8 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
             clauses.append("इस प्रीव्यू में कोई दस्तावेज़ भेजा नहीं गया है।")
         if "reminder" in preview_types:
             clauses.append("फ़ॉलो-अप रिमाइंडर केवल प्रीव्यू में दिखाया गया है; वास्तविक कॉल तय नहीं हुई है।")
+        if booking_requested:
+            clauses.append("यह केवल सैंडबॉक्स प्रीव्यू है; वास्तविक ट्रायल, विज़िट या बुकिंग की पुष्टि नहीं हुई है।")
         elif call_requested and ("stage_transition" in preview_types or removed):
             clauses.append("यह केवल सैंडबॉक्स प्रीव्यू है; वास्तविक कॉल या हैंडऑफ़ की पुष्टि नहीं हुई है।")
     elif language == "hinglish":
@@ -91,6 +96,8 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
             clauses.append("Is preview mein koi document send nahi hua hai.")
         if "reminder" in preview_types:
             clauses.append("Follow-up reminder sirf preview mein hai; live call confirm nahi hui hai.")
+        if booking_requested:
+            clauses.append("Yeh sirf Sandbox preview hai; live trial, visit ya booking confirm nahi hui hai.")
         elif call_requested and ("stage_transition" in preview_types or removed):
             clauses.append("Yeh Sandbox preview hai; live call ya handoff confirm nahi hua hai.")
     elif language in {"en", "english"}:
@@ -101,6 +108,8 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
             clauses.append("No document was shared in this preview.")
         if "reminder" in preview_types:
             clauses.append("The follow-up reminder is shown in this preview only; no live call is confirmed.")
+        if booking_requested:
+            clauses.append("This is a Sandbox preview; no live trial, visit or booking is confirmed.")
         elif call_requested and ("stage_transition" in preview_types or removed):
             clauses.append("This is a Sandbox preview; no live call or handoff is confirmed.")
     else:
