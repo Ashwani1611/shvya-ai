@@ -47,6 +47,8 @@ class Reply:
 @pytest.mark.parametrize("promise", [
     "I will coordinate with our team to schedule this for you.",
     "I'll pass it along.",
+    "I will arrange for a callback with a human team member for you.",
+    "We will arrange for your callback.",
 ])
 def test_sandbox_does_not_promise_unperformed_coordination(promise):
     output = enforce_preview_action_honesty(
