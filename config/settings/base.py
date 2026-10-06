@@ -64,7 +64,7 @@ ALLOWED_HOSTS = config(
 OPERATIONS_PUBLIC_ORIGIN = str(
     config(
         "OPERATIONS_PUBLIC_ORIGIN",
-        default="https://dashboard.shvya-ai.com",
+        default="https://shvya-ai.com",
     )
 ).strip().rstrip("/")
 
