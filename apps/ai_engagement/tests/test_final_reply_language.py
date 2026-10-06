@@ -66,6 +66,24 @@ class FinalReplyLanguageTests(SimpleTestCase):
         self.assertEqual(requested_language(configured="English",
             messages=[{"direction": "inbound", "body": "German please: opening hours?"}]), "English")
 
+    def test_affirmative_configured_language_requests(self):
+        cases = (
+            ("English, Hinglish", "Hinglish mein brochure bhejo please", "Hinglish"),
+            ("English, Hinglish", "Now continue in Hinglish: kal gym kab khulega?", "Hinglish"),
+            ("English, German", "Bitte antworten Sie auf Deutsch.", "German"),
+            ("English, German", "Reply in English, not German.", "English"),
+            ("English, German", "Do not reply in German. Reply in English.", "English"),
+            ("English, German", "Reply in German; actually English please.", "English"),
+            ("English, French", "Please reply in French.", "French"),
+            ("English, Arabic", "Please reply in Arabic.", "Arabic"),
+            ("English, Hinglish", "Hinglish", "Hinglish"),
+            ("English", "Hinglish mein brochure bhejo please", "English"),
+        )
+        for configured, body, expected in cases:
+            with self.subTest(body=body):
+                self.assertEqual(requested_language(configured=configured,
+                    messages=[{"direction": "inbound", "body": body}]), expected)
+
     def test_translation_preserves_effects_and_price(self):
         decision = EngagementDecision(should_engage=True, message="DIY costs ₹2,999 per month per user.",
             file_document_id=18, crm_actions=[{"type": "test_preview"}], qualification_updates=[],
