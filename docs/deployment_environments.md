@@ -8,7 +8,7 @@ SHVYA AI uses two long-lived environments and short-lived feature/fix branches.
 
 | Branch | Environment | URL | Server directory |
 | --- | --- | --- | --- |
-| `main` | Production | `https://dashboard.shvya-ai.com` | `/opt/shvya-ai` |
+| `main` | Production | `https://shvya-ai.com` | `/opt/shvya-ai` |
 | `staging` | Staging / pre-production | `https://staging.shvya-ai.com` | `/opt/shvya-ai-staging` |
 | `feature/*`, `fix/*` | Development | local / PR CI | developer machine |
 

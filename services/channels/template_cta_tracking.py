@@ -41,7 +41,7 @@ def _normalized_text(value):
 def _public_origin():
     origin = str(
         getattr(settings, "OPERATIONS_PUBLIC_ORIGIN", "")
-        or "https://dashboard.shvya-ai.com"
+        or "https://shvya-ai.com"
     ).strip().rstrip("/")
     try:
         parsed = urlsplit(origin)
@@ -54,7 +54,7 @@ def _public_origin():
         or parsed.username
         or parsed.password
     ):
-        return "https://dashboard.shvya-ai.com"
+        return "https://shvya-ai.com"
     return origin
 
 

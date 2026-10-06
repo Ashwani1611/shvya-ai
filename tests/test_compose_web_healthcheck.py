@@ -23,7 +23,7 @@ def _pgbouncer_service_block(compose_path: Path) -> str:
 @pytest.mark.parametrize(
     ("filename", "expected_host"),
     [
-        ("docker-compose.yml", "dashboard.shvya-ai.com"),
+        ("docker-compose.yml", "shvya-ai.com"),
         ("docker-compose.staging.yml", "staging.shvya-ai.com"),
     ],
 )

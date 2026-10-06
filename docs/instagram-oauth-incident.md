@@ -32,5 +32,5 @@ META_INSTAGRAM_APP_SECRET=<Instagram App Secret from the same setup>
 The Meta App Dashboard must also contain the exact redirect URI:
 
 ```text
-https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/
+https://shvya-ai.com/dashboard/instagram/connect/return/
 ```

@@ -82,7 +82,7 @@ def _endpoint_check():
 
 def _production_origin_check():
     if operations_resource().startswith(PRODUCTION_OPERATIONS_ORIGIN):
-        return "Production origin is pinned to dashboard.shvya-ai.com."
+        return "Production origin is pinned to shvya-ai.com."
     return "Local/test origin override is active; production remains fail-closed."
 
 

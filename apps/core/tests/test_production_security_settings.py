@@ -32,7 +32,7 @@ print(json.dumps({{
             {
                 "SECRET_KEY": "production-settings-security-test",
                 "DEBUG": "True",
-                "ALLOWED_HOSTS": "dashboard.shvya-ai.com",
+                "ALLOWED_HOSTS": "shvya-ai.com",
                 "REDIS_URL": "redis://localhost:6379/0",
             }
         )
@@ -63,7 +63,7 @@ print(json.dumps({{
                 self.assertTrue(values["hsts_preload"])
                 self.assertFalse(values["cors_allow_all"])
                 expected_operations_origin = {
-                    "config.settings.prod": "https://dashboard.shvya-ai.com",
+                    "config.settings.prod": "https://shvya-ai.com",
                     "config.settings.staging": "https://staging.shvya-ai.com",
                 }[module_name]
                 self.assertEqual(

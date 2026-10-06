@@ -9,7 +9,7 @@ This is the concise release runbook. Environment-specific detail is in [`deploym
 | Environment | Branch | Compose | Checkout | URL |
 | --- | --- | --- | --- | --- |
 | Staging | `staging` | `docker-compose.staging.yml` | `/opt/shvya-ai-staging` | `https://staging.shvya-ai.com` |
-| Production | `main` | `docker-compose.yml` | `/opt/shvya-ai` | `https://dashboard.shvya-ai.com` |
+| Production | `main` | `docker-compose.yml` | `/opt/shvya-ai` | `https://shvya-ai.com` |
 
 Staging and production must keep separate environment files, databases, Redis data, sessions, media/static state and provider/test credentials.
 

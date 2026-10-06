@@ -6,7 +6,7 @@ from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 
-PRODUCTION_OPERATIONS_ORIGIN = "https://dashboard.shvya-ai.com"
+PRODUCTION_OPERATIONS_ORIGIN = "https://shvya-ai.com"
 
 
 def operations_public_origin() -> str:

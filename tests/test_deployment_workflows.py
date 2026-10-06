@@ -229,10 +229,10 @@ def test_production_deploy_verifies_runtime_environment_and_oauth_origin():
     assert "settings.APP_ENV == 'production'" in script
     assert (
         "settings.OPERATIONS_PUBLIC_BASE_URL == "
-        "'https://dashboard.shvya-ai.com'"
+        "'https://shvya-ai.com'"
     ) in script
     assert (
-        "https://dashboard.shvya-ai.com/"
+        "https://shvya-ai.com/"
         ".well-known/oauth-authorization-server/operations"
     ) in script
     assert "data.get('issuer') == base + '/operations'" in script

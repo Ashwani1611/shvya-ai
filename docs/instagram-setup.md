@@ -19,9 +19,9 @@ In Meta App Dashboard:
 1. Add/configure **Instagram API with Instagram Login**.
 2. In the Instagram API setup, copy the Instagram App ID and Instagram App Secret into the two production variables above.
 3. Add this exact OAuth redirect URL:
-   `https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/`
+   `https://shvya-ai.com/dashboard/instagram/connect/return/`
 4. Configure this webhook callback URL:
-   `https://dashboard.shvya-ai.com/webhooks/instagram/`
+   `https://shvya-ai.com/webhooks/instagram/`
 5. Use the existing `META_VERIFY_TOKEN` as the webhook verify token unless the deployment intentionally configures another Instagram verify token.
 6. Request these Instagram Login scopes:
    - `instagram_business_basic`

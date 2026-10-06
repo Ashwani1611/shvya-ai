@@ -16,7 +16,7 @@ from services.channels.template_meta_fix import submit_template
 from services.channels.template_service import build_meta_payload
 
 
-@override_settings(OPERATIONS_PUBLIC_ORIGIN="https://dashboard.shvya-ai.com")
+@override_settings(OPERATIONS_PUBLIC_ORIGIN="https://shvya-ai.com")
 class TemplateCTAPayloadTests(TestCase):
     def setUp(self):
         organization = Organization.objects.create(

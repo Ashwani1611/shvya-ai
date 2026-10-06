@@ -36,7 +36,7 @@ class InstagramOAuthContractTests(SimpleTestCase):
             "user_id": "17840000000001",
             "permissions": list(service.INSTAGRAM_SCOPES),
         }
-        redirect_uri = "https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/"
+        redirect_uri = "https://shvya-ai.com/dashboard/instagram/connect/return/"
         for response in ({"data": [details]}, details):
             with self.subTest(wrapped="data" in response):
                 request.reset_mock()
@@ -167,7 +167,7 @@ class InstagramOAuthPersistenceTests(TestCase):
         self.attempt = InstagramOAuthAttempt.objects.create(
             organization=self.organization, created_by=self.user,
             authorization_code="single-use-code",
-            redirect_uri="https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/",
+            redirect_uri="https://shvya-ai.com/dashboard/instagram/connect/return/",
             expires_at=timezone.now() + timedelta(minutes=5),
         )
 

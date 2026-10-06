@@ -24,7 +24,7 @@ class InstagramTaskTests(TestCase):
             organization=self.organization,
             created_by=self.user,
             authorization_code="",
-            redirect_uri="https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/",
+            redirect_uri="https://shvya-ai.com/dashboard/instagram/connect/return/",
             status=InstagramOAuthAttempt.Status.CONNECTED,
             completed_at=timezone.now(),
         )
