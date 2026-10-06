@@ -263,7 +263,7 @@ class SalesHostedPdfHotfixTests(SalesHotfixBase):
                 document=self.document,
                 user=self.admin,
                 body="Please review your quotation.",
-                base_url="https://dashboard.shvya-ai.com/",
+                base_url="https://shvya-ai.com/",
                 attach_pdf=True,
             )
 
