@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
-from apps.crm.models import Stage, Lead, LeadNote
+from apps.crm.models import Pipeline, Stage, Lead, LeadNote
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import IndiaMartConnection, IndiaMartReceipt
 from apps.organizations.models import Organization
@@ -22,18 +22,49 @@ from apps.crm.models.lead import normalize_phone
 
 
 class RoutingForm(forms.Form):
+    pipeline = forms.ModelChoiceField(
+        queryset=Pipeline.objects.none(),
+        label="Pipeline",
+        empty_label="Select a pipeline",
+    )
     stage = forms.ModelChoiceField(
-        queryset=Stage.objects.none(), label="Destination pipeline / stage"
+        queryset=Stage.objects.none(),
+        label="Stage",
+        empty_label="Select a stage",
     )
 
     def __init__(self, *args, organization, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["stage"].queryset = Stage.objects.filter(
-            pipeline__organization=organization, pipeline__is_active=True
-        ).select_related("pipeline")
-        self.fields["stage"].label_from_instance = lambda stage: (
-            f"{stage.pipeline.name} / {stage.name}"
+        pipelines = Pipeline.objects.filter(organization=organization, is_active=True)
+        self.fields["pipeline"].queryset = pipelines
+        self.fields["pipeline"].label_from_instance = lambda pipeline: pipeline.name
+        stages = Stage.objects.filter(pipeline__in=pipelines, is_active=True)
+        self.stage_options = [
+            {
+                "id": str(stage.id),
+                "pipeline": str(stage.pipeline_id),
+                "name": stage.name,
+            }
+            for stage in stages
+        ]
+        pipeline_id = (
+            self.data.get(self.add_prefix("pipeline"))
+            if self.is_bound
+            else self.initial.get("pipeline")
         )
+        try:
+            pipeline_id = uuid.UUID(str(pipeline_id))
+        except (ValueError, TypeError, AttributeError):
+            pipeline_id = None
+        self.fields["stage"].queryset = stages.filter(pipeline_id=pipeline_id)
+        self.fields["stage"].label_from_instance = lambda stage: stage.name
+        for name, field in self.fields.items():
+            field.widget.attrs.update(
+                {
+                    "class": "w-full border border-gray-200 rounded-xl p-3 bg-white text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-100",
+                    "aria-describedby": f"id_{name}_help",
+                }
+            )
 
 
 @connect_hub_admin_required
@@ -65,8 +96,9 @@ def indiamart_setup_view(request, organization_id):
     form = RoutingForm(
         request.POST or None,
         organization=organization,
-        initial={"stage": connection.stage_id},
+        initial={"pipeline": connection.pipeline_id, "stage": connection.stage_id},
     )
+    status = 200
     if request.method == "POST":
         action = request.POST.get("action")
         if action == "disable":
@@ -74,28 +106,24 @@ def indiamart_setup_view(request, organization_id):
             connection.save(update_fields=["is_enabled"])
         elif action in {"generate", "rotate"} and form.is_valid():
             connection.stage = form.cleaned_data["stage"]
-            connection.pipeline = connection.stage.pipeline
+            connection.pipeline = form.cleaned_data["pipeline"]
             if action == "rotate":
                 connection.webhook_token = uuid.uuid4()
             connection.generated_at = timezone.now()
             connection.is_enabled = True
             connection.save()
         else:
-            return render(
-                request,
-                "superadmin/indiamart.html",
-                {"organization": organization, "connection": connection, "form": form},
-                status=400,
+            status = 400
+        if status != 400:
+            AuditLog.record(
+                actor=request.user,
+                action=AuditLog.Action.ORGANIZATION_UPDATED,
+                target=organization,
+                request=request,
+                integration="indiamart",
+                integration_action=action,
             )
-        AuditLog.record(
-            actor=request.user,
-            action=AuditLog.Action.ORGANIZATION_UPDATED,
-            target=organization,
-            request=request,
-            integration="indiamart",
-            integration_action=action,
-        )
-        return redirect("superadmin-indiamart", organization_id=organization.id)
+            return redirect("superadmin-indiamart", organization_id=organization.id)
     webhook_url = (
         request.build_absolute_uri(
             reverse("indiamart-ingest", kwargs={"token": connection.webhook_token})
@@ -110,11 +138,15 @@ def indiamart_setup_view(request, organization_id):
             "organization": organization,
             "connection": connection,
             "form": form,
+            "stage_options": form.stage_options,
             "webhook_url": webhook_url,
         },
+        status=status,
     )
     response["Cache-Control"] = "no-store"
-    response["Referrer-Policy"] = "no-referrer"
+    # HTTPS CSRF checks require a same-origin Referer when a browser omits
+    # Origin. Still prevent referrer disclosure to external destinations.
+    response["Referrer-Policy"] = "same-origin"
     return response
 
 

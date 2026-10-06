@@ -1,12 +1,64 @@
 {% extends "superadmin/base.html" %}
+{% load static %}
+{% block title %}IndiaMART · {{ organization.name }} · Shvya{% endblock %}
+{% block extra_head %}
+<script src="{% static 'superadmin/indiamart-routing.js' %}" defer></script>
+{% endblock %}
 {% block content %}
-<section class="max-w-3xl mx-auto bg-white rounded-2xl p-8 border">
-<h1 class="text-2xl font-semibold">IndiaMART · {{ organization.name }}</h1>
-<p class="my-4">{% if connection.requested_at %}Setup requested {{ connection.requested_at }}{% else %}No setup request yet{% endif %} · {% if connection.is_enabled %}Enabled{% else %}Disabled{% endif %}</p>
-<form method="post">{% csrf_token %}{{ form.as_p }}<button name="action" value="generate" class="bg-blue-600 text-white rounded-xl px-5 py-3 my-4">Save routing &amp; generate URL</button>{% if connection.generated_at %}<button name="action" value="rotate" class="border rounded-xl px-5 py-3">Replace webhook URL</button><button name="action" value="disable" formnovalidate class="px-5 py-3">Disable</button>{% endif %}</form>
-{% if webhook_url %}<label for="im-url">Webhook listener URL</label><input id="im-url" class="w-full border rounded-xl p-3 my-3" readonly value="{{ webhook_url }}"><p>Copy this private URL. Replacing it invalidates the old URL immediately.</p>{% endif %}
-<ol class="list-decimal pl-6 my-6 space-y-3"><li>Open IndiaMART Seller Panel → Lead Manager → Import/Export Leads → Push API.</li><li>Select Other and enter Shvya CRM as the platform name.</li><li>Paste the HTTPS webhook listener URL and complete IndiaMART’s OTP activation.</li><li>Send a test enquiry and confirm it arrives in the selected CRM stage.</li></ol>
-<p>Confirm Push API availability with IndiaMART for the seller’s account. Ready means Shvya can receive leads; activation must still be completed in IndiaMART.</p>
-<p class="mt-4">Last enquiry: {{ connection.last_received_at|default:"None received yet" }} · Enquiries received: {{ connection.receipts.count }}</p>
+<section class="max-w-3xl mx-auto bg-white rounded-2xl p-6 sm:p-8 border border-gray-200 shadow-sm">
+    <a href="{% url 'superadmin-organization-detail' organization_id=organization.id %}" class="text-sm text-blue-600">← {{ organization.name }}</a>
+    <h1 class="text-2xl font-semibold mt-5">Connect IndiaMART</h1>
+    <p class="mt-2 text-sm text-gray-500">Receive IndiaMART leads directly in your Shvya CRM.</p>
+    <p class="my-5 text-sm text-gray-600">
+        {% if connection.requested_at %}Setup requested {{ connection.requested_at }}{% else %}No setup request yet{% endif %}
+        · {% if connection.is_enabled %}Enabled{% else %}Disabled{% endif %}
+    </p>
+
+    <form method="post" action="{% url 'superadmin-indiamart' organization_id=organization.id %}">
+        {% csrf_token %}
+        <h2 class="text-base font-semibold mb-4">Lead destination</h2>
+        {{ form.non_field_errors }}
+        <div class="grid sm:grid-cols-2 gap-5">
+            <div>
+                <label for="{{ form.pipeline.id_for_label }}" class="block text-sm font-medium mb-2">Pipeline</label>
+                {{ form.pipeline }}
+                <p id="id_pipeline_help" class="mt-2 text-xs text-gray-500">Choose this organization’s destination pipeline.</p>
+                {% for error in form.pipeline.errors %}<p role="alert" class="mt-2 text-sm text-red-600">{{ error }}</p>{% endfor %}
+            </div>
+            <div>
+                <label for="{{ form.stage.id_for_label }}" class="block text-sm font-medium mb-2">Stage</label>
+                {{ form.stage }}
+                <p id="id_stage_help" class="mt-2 text-xs text-gray-500" aria-live="polite">New leads will enter this stage.</p>
+                {% for error in form.stage.errors %}<p role="alert" class="mt-2 text-sm text-red-600">{{ error }}</p>{% endfor %}
+            </div>
+        </div>
+        <div class="flex flex-wrap gap-3 mt-6">
+            <button type="submit" name="action" value="generate" class="bg-blue-600 text-white rounded-xl px-5 py-3 text-sm font-medium">{% if connection.generated_at %}Save routing{% else %}Generate webhook URL{% endif %}</button>
+            {% if connection.generated_at %}
+                <button type="submit" name="action" value="rotate" class="border border-gray-200 rounded-xl px-5 py-3 text-sm">Replace webhook URL</button>
+                <button type="submit" name="action" value="disable" formnovalidate class="px-5 py-3 text-sm text-gray-600">Disable</button>
+            {% endif %}
+        </div>
+    </form>
+    {{ stage_options|json_script:"indiamart-stage-options" }}
+
+    {% if webhook_url %}
+        <div class="mt-7 pt-6 border-t border-gray-100">
+            <label for="im-url" class="text-sm font-medium">Webhook listener URL</label>
+            <input id="im-url" class="w-full border border-gray-200 rounded-xl p-3 my-3 text-sm bg-gray-50" readonly value="{{ webhook_url }}">
+            <p class="text-xs text-gray-500">Copy this private URL. Replacing it invalidates the old URL immediately.</p>
+        </div>
+    {% endif %}
+    <div class="mt-7 pt-6 border-t border-gray-100 text-sm text-gray-600">
+        <h2 class="text-base font-semibold text-gray-900">Activate in IndiaMART</h2>
+        <ol class="list-decimal pl-5 my-4 space-y-3">
+            <li>Open IndiaMART Seller Panel → Lead Manager → Import/Export Leads → Push API.</li>
+            <li>Select Other and enter Shvya CRM as the platform name.</li>
+            <li>Paste the HTTPS webhook listener URL and complete IndiaMART’s OTP activation.</li>
+            <li>Send a test enquiry and confirm it arrives in the selected CRM stage.</li>
+        </ol>
+        <p>Confirm Push API availability with IndiaMART for the seller’s account. Activation must be completed in IndiaMART before leads can arrive.</p>
+        <p class="mt-4">Last enquiry: {{ connection.last_received_at|default:"None received yet" }} · Enquiries received: {{ connection.receipts.count }}</p>
+    </div>
 </section>
 {% endblock %}
