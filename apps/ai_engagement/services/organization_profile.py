@@ -10,7 +10,7 @@ from django.core.cache import cache
 from django.utils.text import slugify
 
 
-PROFILE_VERSION = 4
+PROFILE_VERSION = 5
 PROFILE_CACHE_SECONDS = 300
 
 _OPTION_LINE_RE = re.compile(
@@ -74,7 +74,7 @@ def _looks_like_question(value: str) -> bool:
     text = _clean_requirement_line(value)
     return bool(text) and (
         text.endswith("?")
-        or bool(re.match(r"^(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|select|choose|share|tell)\b", text, re.IGNORECASE))
+        or bool(re.match(r"^(?:please\s+)?(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|select|choose|share|tell|provide)\b", text, re.IGNORECASE))
     )
 
 
