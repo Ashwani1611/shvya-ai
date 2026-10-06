@@ -55,8 +55,22 @@ def _section_title(value: str, *, heading: bool) -> str:
     return title
 
 
+def _tagged_qualification_flows(raw: str) -> set[str]:
+    """Recognize only explicit top-level flows with paired customer-question tags."""
+    text = str(raw or "")
+    headings = list(re.finditer(r"(?m)^\s*#(?!#)\s*(.*?)\s*$", text))
+    result = set()
+    for index, match in enumerate(headings):
+        end = headings[index + 1].start() if index + 1 < len(headings) else len(text)
+        body = text[match.end():end]
+        if re.search(r"<question_content>.*?</question_content>", body, re.I | re.S):
+            result.add(_section_title(match.group(1), heading=True))
+    return result
+
+
 def parse_playbook(raw: str) -> dict[str, str]:
     buckets = {key: [] for key in SECTION_TITLES}
+    tagged_flows = _tagged_qualification_flows(raw)
     current = "rules"
     section_depth = 0
     for line in str(raw or "").splitlines():
@@ -68,6 +82,13 @@ def parse_playbook(raw: str) -> dict[str, str]:
         heading = _HEADING.match(line)
         title = _section_title(heading.group(1) if heading else line, heading=bool(heading))
         canonical = next((key for key, aliases in SECTION_ALIASES.items() if title in aliases), None)
+        # A top-level authored qualification flow is an explicit question scope.
+        # Require tagged customer copy; examples and untagged policy are not flows.
+        if (not canonical and heading and re.match(r"^\s*#(?!#)", line)
+                and title in tagged_flows
+                and title.endswith("qualification flow")
+                and not re.search(r"\b(?:example|sample|reference|demonstration)\b", title)):
+            canonical = "qualification_questions"
         if canonical:
             current = canonical
             section_depth = len(line.lstrip()) - len(line.lstrip().lstrip("#")) if heading else 2
@@ -94,10 +115,32 @@ def parse_playbook(raw: str) -> dict[str, str]:
                      ("qualification_questions", "question_content"),
                      ("acknowledgment_message", "acknowledg(?:e)?ment_message")):
         content, instructions = _message_content(sections[key], tag)
+        if key == "qualification_questions":
+            content = _split_capture_lists(content)
         sections[key] = content
         if instructions:
             sections["rules"] = (sections["rules"] + "\n" + instructions).strip()
     return sections
+
+
+def _split_capture_lists(text: str) -> str:
+    """Compile explicit multi-field capture requests as individual requirements."""
+    groups = []
+    for group in re.split(r"\n\s*\n", text):
+        lines = [line.strip() for line in group.splitlines() if line.strip()]
+        if len(lines) >= 3 and re.fullmatch(
+            r"(?:[^:\n]*[.!]\s*)?(?:please\s+)?(?:share|provide)\s*"
+            r"(?:the following(?: (?:details|information))?)?\s*:", lines[0], re.I
+        ):
+            fields = [re.fullmatch(r"\d+[.)]\s+([\w][\w /()-]{0,80})", line)
+                      for line in lines[1:]]
+            if 2 <= len(fields) <= 10 and all(fields):
+                groups.append("\n".join(
+                    f"Please provide your {field.group(1).strip()}." for field in fields
+                ))
+                continue
+        groups.append(group)
+    return "\n\n".join(groups).strip()
 
 
 def _message_content(text: str, tag: str) -> tuple[str, str]:
