@@ -487,8 +487,9 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         state.get("latest_text", ""),
         has_shared_files=bool(shared_document_ids(context.lead)),
     )
-    candidates = [item for item in candidates if not declined_file_request(state.get("latest_text", ""), item)]
-    if decision.file_document_id is not None and not any(item.get("document_id") == decision.file_document_id for item in candidates):
+    refused = [item for item in candidates if declined_file_request(state.get("latest_text", ""), item)]
+    candidates = [item for item in candidates if item not in refused]
+    if any(item.get("document_id") == decision.file_document_id for item in refused):
         decision = replace(decision, file_document_id=None)
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
     if _FINAL_LANGUAGE_ONLY.get():
