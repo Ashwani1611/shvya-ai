@@ -239,6 +239,30 @@ class JustDialIntegrationTests(TestCase):
             ).exists()
         )
 
+    def test_bad_email_does_not_drop_valid_phone_lead(self):
+        integration = self.provision()
+        url = reverse(
+            "justdial-webhook",
+            kwargs={"token": integration.webhook_token},
+        )
+
+        response = self.client.get(
+            url,
+            {
+                "leadid": "JD-BAD-EMAIL",
+                "name": "Phone Valid",
+                "mobile": "9833333333",
+                "email": "not-an-email",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        lead = Lead.objects.get(
+            organization=self.organization,
+            phone="+919833333333",
+        )
+        self.assertEqual(lead.email, "")
+
     def test_provider_secrets_are_redacted_from_event_log(self):
         integration = self.provision()
         url = reverse(
