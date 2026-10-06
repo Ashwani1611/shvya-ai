@@ -47,3 +47,21 @@ class OperatingSpecDeduplicationTests(SimpleTestCase):
         before = deepcopy(payload)
         _deduplicate_operating_spec(payload, source)
         self.assertEqual(payload, before)
+
+
+class CustomStageHeadingTests(SimpleTestCase):
+    def test_crm_stage_rules_are_compiled_for_explicit_handoff(self):
+        from apps.ai_engagement.services.engagement_instruction_policy import compile_engagement_instruction_policy
+        raw = ("# CRM STAGE RULES\n"
+               "## 34. Call Requested\n"
+               "Move to Call Requested when the lead explicitly asks for a human.\n"
+               "# OTHER POLICY\nNever invent prices.")
+        policy = compile_engagement_instruction_policy(raw)
+        self.assertTrue(any("Call Requested" in item and "human" in item
+                            for item in policy["stage_shifting"]))
+        self.assertFalse(any("invent prices" in item for item in policy["stage_shifting"]))
+
+    def test_plain_policy_mention_does_not_create_stage_section(self):
+        from apps.ai_engagement.services.engagement_instruction_policy import compile_engagement_instruction_policy
+        raw = "# Rules\nThe phrase CRM stage rules is only a reference.\nAnswer the customer."
+        self.assertEqual(compile_engagement_instruction_policy(raw)["stage_shifting"], [])

@@ -40,7 +40,7 @@ SECTION_ALIASES = {
     "qualification_questions": {"qualification questions", "qualification requirements", "questions"},
     "acknowledgment_message": {"acknowledgment message", "acknowledgement message", "final acknowledgment message", "final acknowledgement message", "completion message"},
     "qualification_criteria": {"qualification criteria", "qualification criterion", "qualification rules", "qualification rule", "qualification"},
-    "stage_shifting": {"stage shifting logic", "stage shifting", "stage shift", "stage movement", "stage routing", "pipeline shifting logic", "pipeline shifting", "pipeline shift", "pipeline routing"},
+    "stage_shifting": {"crm stage rules", "stage shifting logic", "stage shifting", "stage shift", "stage movement", "stage routing", "pipeline shifting logic", "pipeline shifting", "pipeline shift", "pipeline routing"},
     "attribute_mapped": {"attribute mapping logic", "attribute mapped", "attributes mapped", "attribute mapping", "attribute mappings", "attribute map", "attribute filling", "attribute fill"},
     "reminders": {"reminder creation logic", "reminder creation", "reminder", "reminders", "reminder rules", "follow up reminder", "follow-up reminder"},
 }
