@@ -124,9 +124,11 @@ class TurnDiagnosticsTests(SimpleTestCase):
         @sandbox_diagnostics
         def run(self, **kwargs):
             trace_service.record("grounding", approved=False, validation_reason="provider_error")
+            self.assertIn("validation/provider_error", summary())
             raise PlaygroundError("Generation failed.")
 
-        with self.assertRaisesRegex(PlaygroundError, "validation/provider_error"):
-            run(None, organization=SimpleNamespace(id="other"))
+        with self.assertRaisesRegex(PlaygroundError, "Generation failed.") as error:
+            run(self, organization=SimpleNamespace(id="other"))
+        self.assertNotIn("Diagnostic:", str(error.exception))
         self.assertIs(trace_service.current(), parent)
         self.assertEqual(summary(), "")
