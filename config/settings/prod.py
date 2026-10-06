@@ -10,11 +10,11 @@ APP_ENV = "production"
 
 # Canonical externally advertised origin for the Operations MCP/OAuth server.
 # This is intentionally pinned in production instead of trusting request Host.
-OPERATIONS_PUBLIC_BASE_URL = "https://dashboard.shvya-ai.com"
+OPERATIONS_PUBLIC_BASE_URL = "https://shvya-ai.com"
 
-if OPERATIONS_PUBLIC_ORIGIN != "https://dashboard.shvya-ai.com":
+if OPERATIONS_PUBLIC_ORIGIN != "https://shvya-ai.com":
     raise ImproperlyConfigured(
-        "OPERATIONS_PUBLIC_ORIGIN must be https://dashboard.shvya-ai.com "
+        "OPERATIONS_PUBLIC_ORIGIN must be https://shvya-ai.com "
         "for production Operations MCP/OAuth metadata."
     )
 
