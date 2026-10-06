@@ -206,9 +206,6 @@ def sandbox_diagnostics(method):
             buffer = trace_service.current()
             if buffer is not None:
                 buffer.data["status"] = "failed"
-            detail = summary()
-            if detail:
-                raise PlaygroundError(f"{exc} Diagnostic: {detail}") from exc
             raise
         except Exception as exc:
             trace_service.mark_error(step="sandbox", exc=exc, code="SANDBOX_PREVIEW_EXCEPTION")
