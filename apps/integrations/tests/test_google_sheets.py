@@ -53,7 +53,7 @@ class GoogleSheetsIntegrationTests(TestCase):
         script = build_google_apps_script(
             integration=self.integration,
             webhook_url=(
-                "https://dashboard.shvya-ai.com/dashboard/connect-hub/"
+                "https://shvya-ai.com/dashboard/connect-hub/"
                 "google-sheets/webhook/token/"
             ),
         )
