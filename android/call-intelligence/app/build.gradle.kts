@@ -19,7 +19,7 @@ android {
         buildConfigField(
             "String",
             "SHVYA_BASE_URL",
-            "\"https://dashboard.shvya-ai.com/\""
+            "\"https://shvya-ai.com/\""
         )
     }
 
