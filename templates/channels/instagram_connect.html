@@ -33,10 +33,42 @@
         </div>
 
         {% if instagram_connected %}
-        <div class="ig-connected-account">
-          <span class="ig-account-avatar">{% if instagram_connection.profile_picture_url %}<img src="{{ instagram_connection.profile_picture_url }}" alt="" referrerpolicy="no-referrer">{% else %}<i class="ti ti-brand-instagram" aria-hidden="true"></i>{% endif %}</span>
-          <div><strong>{% if instagram_connection.username %}@{{ instagram_connection.username }}{% else %}Instagram professional account{% endif %}</strong><span>{{ instagram_connection.display_name|default:"Connected to your SHVYA workspace" }}</span></div>
-        </div>
+        <section class="ig-connected-account" aria-labelledby="ig-connected-account-title">
+          <div class="ig-account-summary">
+            <span class="ig-account-avatar">
+              {% if instagram_connection.profile_picture_url %}
+              <img src="{{ instagram_connection.profile_picture_url }}" alt="" referrerpolicy="no-referrer">
+              {% else %}
+              <i class="ti ti-brand-instagram" aria-hidden="true"></i>
+              {% endif %}
+            </span>
+            <div class="ig-account-identity">
+              <span class="ig-account-kicker" id="ig-connected-account-title">Connected Instagram account</span>
+              <strong>{% if instagram_connection.username %}@{{ instagram_connection.username }}{% else %}Instagram professional account{% endif %}</strong>
+              <span class="ig-account-display-name">{{ instagram_connection.display_name|default:"Connected to your SHVYA workspace" }}</span>
+            </div>
+            <span class="ig-account-authorized"><i class="ti ti-circle-check-filled" aria-hidden="true"></i> Meta authorized</span>
+          </div>
+
+          <div class="ig-account-metadata" aria-label="Instagram account metadata returned by Meta">
+            {% if instagram_connection.ig_user_id %}
+            <div class="ig-account-meta-row">
+              <span class="ig-account-meta-label">Instagram Account ID</span>
+              <code class="ig-account-meta-value">{{ instagram_connection.ig_user_id }}</code>
+            </div>
+            {% endif %}
+            {% if instagram_connection.account_type %}
+            <div class="ig-account-meta-row">
+              <span class="ig-account-meta-label">Account type</span>
+              <span class="ig-account-meta-value">{{ instagram_connection.account_type }}</span>
+            </div>
+            {% endif %}
+            <div class="ig-account-meta-row">
+              <span class="ig-account-meta-label">Connection</span>
+              <span class="ig-account-meta-value">Instagram API with Instagram Login</span>
+            </div>
+          </div>
+        </section>
         {% endif %}
 
         <div class="ig-connect-alert" role="alert" id="ig-setup-error" {% if not instagram_connection_error %}hidden{% endif %}>{{ instagram_connection_error }}</div>
