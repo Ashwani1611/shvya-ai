@@ -19,7 +19,7 @@ class TaggedQualificationFlowTests(SimpleTestCase):
 
     def test_compound_capture_becomes_separate_requirements(self):
         raw = ("# Registration Qualification Flow\n<question_content>\n"
-               "Thank you for the confirmation. Please share:\n"
+               "Thank you for the confirmation. Please share:\n\n"
                "1. Full Name\n2. Age\n3. Preferred Date (DD/MM)\n</question_content>")
         questions = parse_playbook(raw)["qualification_questions"]
         compiled = compile_qualification_requirements(questions)

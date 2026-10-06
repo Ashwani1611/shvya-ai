@@ -125,6 +125,10 @@ def parse_playbook(raw: str) -> dict[str, str]:
 
 def _split_capture_lists(text: str) -> str:
     """Compile explicit multi-field capture requests as individual requirements."""
+    text = re.sub(
+        r"(?m)([^\n]*\b(?:share|provide)\s*:)[ \t]*\n[ \t]*\n(?=[ \t]*1[.)])",
+        r"\1\n", text, flags=re.I,
+    )
     groups = []
     for group in re.split(r"\n\s*\n", text):
         lines = [line.strip() for line in group.splitlines() if line.strip()]
