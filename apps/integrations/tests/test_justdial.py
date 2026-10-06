@@ -239,6 +239,40 @@ class JustDialIntegrationTests(TestCase):
             ).exists()
         )
 
+    def test_provider_secrets_are_redacted_from_event_log(self):
+        integration = self.provision()
+        url = reverse(
+            "justdial-webhook",
+            kwargs={"token": integration.webhook_token},
+        )
+
+        response = self.client.get(
+            url,
+            {
+                "leadid": "JD-SECRET-1",
+                "name": "Secret Safe Lead",
+                "mobile": "9822222222",
+                "token": "provider-token",
+                "username": "provider-user",
+                "password": "provider-password",
+                "client_key": "provider-client-key",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        event = JustDialLeadEvent.objects.get(
+            integration=integration,
+            external_lead_id="JD-SECRET-1",
+        )
+        self.assertEqual(event.payload["token"], "[REDACTED]")
+        self.assertEqual(event.payload["username"], "[REDACTED]")
+        self.assertEqual(event.payload["password"], "[REDACTED]")
+        self.assertEqual(event.payload["client_key"], "[REDACTED]")
+        serialized = str(event.payload)
+        self.assertNotIn("provider-token", serialized)
+        self.assertNotIn("provider-password", serialized)
+        self.assertNotIn("provider-client-key", serialized)
+
     def test_invalid_phone_is_logged_and_rejected(self):
         integration = self.provision()
         url = reverse(
