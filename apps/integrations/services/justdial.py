@@ -12,6 +12,22 @@ from apps.integrations.justdial_models import JustDialIntegration, JustDialLeadE
 from services.crm.lead_service import DuplicateLeadError, upsert_lead
 
 
+SENSITIVE_PAYLOAD_KEYS = {
+    "token",
+    "accesstoken",
+    "accesskey",
+    "apikey",
+    "clientkey",
+    "secret",
+    "clientsecret",
+    "password",
+    "passwd",
+    "authorization",
+    "username",
+    "userid",
+}
+
+
 JUSTDIAL_ATTRIBUTE_DEFINITIONS = (
     ("JustDial Lead ID", "justdial_lead_id"),
     ("JustDial Lead Type", "justdial_lead_type"),
@@ -94,7 +110,9 @@ def clean_payload(payload: Any) -> dict[str, Any]:
         key = str(raw_key or "").strip()[:120]
         if not key:
             continue
-        if isinstance(raw_value, list):
+        if _normalise_key(key) in SENSITIVE_PAYLOAD_KEYS:
+            cleaned[key] = "[REDACTED]"
+        elif isinstance(raw_value, list):
             values = [_string_value(item)[:2000] for item in raw_value[:10]]
             cleaned[key] = values
         elif isinstance(raw_value, dict):
