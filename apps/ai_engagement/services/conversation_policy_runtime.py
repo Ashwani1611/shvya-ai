@@ -340,7 +340,13 @@ def _continue_qualification_immediately(*, organization, lead, turn: dict[str, A
     if not text or "?" in text:
         return False
 
-    intent = turn.get("intent_decision")
+    return short_qualification_answer(intent=turn.get("intent_decision"), text=text)
+
+
+def short_qualification_answer(*, intent, text: str) -> bool:
+    """The same conservative immediate-continuation rule on every transport."""
+    if not text or "?" in text:
+        return False
     if not isinstance(intent, IntentDecision):
         return False
     intents = _intent_values(intent)
