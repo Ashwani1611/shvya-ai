@@ -74,7 +74,7 @@ def _looks_like_question(value: str) -> bool:
     text = _clean_requirement_line(value)
     return bool(text) and (
         text.endswith("?")
-        or bool(re.match(r"^(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|select|choose|share|tell)\b", text, re.IGNORECASE))
+        or bool(re.match(r"^(?:please\s+)?(?:what|which|where|who|how|is|are|do|does|did|have|has|can|could|would|will|select|choose|share|tell|provide)\b", text, re.IGNORECASE))
     )
 
 
