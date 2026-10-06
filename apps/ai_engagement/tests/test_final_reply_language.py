@@ -57,6 +57,15 @@ class FinalReplyLanguageTests(SimpleTestCase):
         self.assertEqual(requested_language(configured="English, German", messages=messages), "German")
         self.assertEqual(requested_language(configured="English", messages=messages), "English")
 
+    def test_language_please_prefix_overrides_mixed_message_detection(self):
+        for body in ("English please: BJJ trial free hai?", "english please. Gym timings kya hai?"):
+            self.assertEqual(requested_language(configured="English, Hinglish",
+                messages=[{"direction": "inbound", "body": body}]), "English")
+        self.assertEqual(requested_language(configured="English, German",
+            messages=[{"direction": "inbound", "body": "Deutsch please: opening hours?"}]), "German")
+        self.assertEqual(requested_language(configured="English",
+            messages=[{"direction": "inbound", "body": "German please: opening hours?"}]), "English")
+
     def test_translation_preserves_effects_and_price(self):
         decision = EngagementDecision(should_engage=True, message="DIY costs ₹2,999 per month per user.",
             file_document_id=18, crm_actions=[{"type": "test_preview"}], qualification_updates=[],
