@@ -74,7 +74,7 @@ SHVYA's existing organization + phone uniqueness rule is used for deduplication:
 
 ## CRM attributes
 
-SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_category, justdial_city, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, and justdial_parent_id.
+SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_category, justdial_city, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, justdial_parent_id, justdial_product_code, justdial_channel_code, justdial_agency_code, justdial_state_code, justdial_city_code, justdial_branch_pin, justdial_dnc_mobile, and justdial_dnc_phone.
 
 ## Messaging safety
 
@@ -89,6 +89,7 @@ A JustDial marketplace enquiry creates/updates a CRM lead, but it is not treated
 - Organization admins can request setup and view/copy an already-provisioned URL.
 - Pipeline/stage are selected server-side by Superadmin and validated to belong to the same organization.
 - Raw request headers/cookies are not stored in JustDial lead-event logs.
+- Common provider credential parameters such as token, API/client key, username, password, authorization, and secret are redacted before event payloads are persisted.
 - Bad lead payloads are logged and return a non-2xx response.
 - Rotating a webhook immediately invalidates the previous URL.
 
