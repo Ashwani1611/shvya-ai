@@ -34,6 +34,12 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
             lead=lead, requirements=requirements, text=message,
             source_message_id=source_id,
         )["state"]
+    # Production accepts source-backed answers before policy selection. Sandbox
+    # multi-answer drafts are reviewed later by the graph. Do not prohibit that
+    # capture path with a pre-review policy when no answer was accepted yet.
+    accepted = _accepted_result(state=state, source_message_id=source_id)
+    if Intent.QUALIFICATION_ANSWER in intents and not accepted["accepted"]:
+        return None
     settings = organization.settings if isinstance(organization.settings, dict) else {}
     qualification_settings = settings.get("ai_qualification") or {}
     continue_now = (
@@ -46,7 +52,7 @@ def sandbox_policy(*, organization, lead, intent, requirements, message,
         lead_id=lead_id, pipeline_id=str(lead.pipeline_id) if lead.pipeline_id else None,
         stage_id=str(lead.stage_id) if lead.stage_id else None,
         qualification_state=state,
-        qualification_result=_accepted_result(state=state, source_message_id=source_id),
+        qualification_result=accepted,
         next_requirement_id=state.get("next_requirement_id") if active else None,
         extracted_facts=tuple(intent.facts), ai_allowed=True,
         capabilities=_capabilities(organization), continue_after_answer=continue_now,
