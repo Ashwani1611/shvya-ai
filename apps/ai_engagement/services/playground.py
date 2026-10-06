@@ -58,6 +58,11 @@ from apps.ai_engagement.services.runtime_state import (
 )
 
 
+from apps.ai_engagement.services.sandbox_display_state import (
+    displayed_requirement_id, sandbox_customer_name,
+)
+
+
 from apps.ai_engagement.services.turn_diagnostics import sandbox_diagnostics
 
 logger = logging.getLogger(__name__)
@@ -73,11 +78,6 @@ def _is_transient_provider_failure(error: BaseException) -> bool:
             return True
         current = current.__cause__ or current.__context__
     return False
-
-
-from apps.ai_engagement.services.sandbox_display_state import (
-    displayed_requirement_id, sandbox_customer_name,
-)
 
 
 class _SandboxLead(SimpleNamespace):

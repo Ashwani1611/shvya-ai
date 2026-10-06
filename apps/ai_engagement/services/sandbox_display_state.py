@@ -54,7 +54,8 @@ def displayed_requirement_id(*, lead, requirements, decision):
     if not requirement or not requirement.get("can_direct_ask"):
         return None
     question = str(requirement.get("question") or "").splitlines()[0].strip()
-    normalize = lambda text: re.sub(r"[^\w]+", " ", text.casefold()).strip()
+    def normalize(text):
+        return re.sub(r"[^\w]+", " ", text.casefold()).strip()
     authored = normalize(question)
     if not authored:
         return None

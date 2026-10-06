@@ -4,7 +4,7 @@ from django.test import SimpleTestCase
 
 from apps.ai_engagement.services.playground import _SandboxLead
 from apps.ai_engagement.services.qualification_state import (
-    apply_unambiguous_reply, record_last_asked_requirement, state_for_lead,
+    apply_unambiguous_reply, record_last_asked_requirement,
 )
 from apps.ai_engagement.services.sandbox_display_state import (
     displayed_requirement_id, sandbox_customer_name,
