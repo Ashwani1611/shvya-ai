@@ -731,13 +731,13 @@ Do not add explanations, markdown, or chain-of-thought.
             context=context,
             qualification_state=((context.lead or {}).get("qualification") or {}),
         )
-        if len(policy.operating_spec) > 50000:
+        if policy.operating_spec:
             from apps.ai_engagement.services.playbook import playbook_for_engagement
 
             if organization_instructions == playbook_for_engagement(policy.operating_spec):
-                # Large saved specifications previously sent their compiled
-                # copy plus a clipped raw prefix. Keep the complete raw source
-                # without paying for that redundant compiled system copy.
+                # The complete raw source below already contains these compiled
+                # instructions. Keep distinct backend guidance, but do not
+                # send another exact authored copy at any playbook size.
                 organization_section = "Use the complete authored AI Playbook in ORGANIZATION OPERATING SPEC below."
         return (
             f"{SHVYABaseInstructions.get()}\n\n"

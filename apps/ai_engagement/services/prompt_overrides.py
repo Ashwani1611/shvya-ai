@@ -43,6 +43,28 @@ def _first_following_requirement(requirements, states, current_id):
     return None
 
 
+
+def _deduplicate_operating_spec(payload, source):
+    """Remove only exact copies already supplied by the operating-spec boundary."""
+    spec = payload.get("organization_operating_spec") or {}
+    organization = payload.get("organization") or {}
+    if spec.get("playbook_in_system_instructions") is not True:
+        return
+    if spec.get("about") and spec.get("about") == organization.get("about"):
+        spec.pop("about")
+        spec["about_source"] = "organization.about"
+    profile = organization.get("ai_profile") or {}
+    compiled = profile.get("playbook") or {}
+    sections = compiled.get("sections")
+    if isinstance(sections, dict):
+        from apps.ai_engagement.services.playbook import parse_playbook
+        expected = parse_playbook(source.get("ai_playbook") or "")
+        expected.pop("qualification_questions", None)
+        if sections == expected:
+            compiled.pop("sections")
+            compiled["source"] = "organization_operating_spec.system_instructions"
+
+
 def install_fixed_prompt_overrides() -> None:
     """Attach compact, state-authoritative runtime payload wrappers."""
     global _INSTALLED
@@ -133,6 +155,8 @@ def install_fixed_prompt_overrides() -> None:
                     qualification_requirements = deepcopy(qualification.get("requirements") or [])
                     qualification.pop("raw", None)
                     qualification.pop("requirements", None)
+
+            _deduplicate_operating_spec(payload, source)
 
             lead = payload.get("lead") if isinstance(payload.get("lead"), dict) else {}
             qstate = lead.get("qualification") if isinstance(lead.get("qualification"), dict) else {}
