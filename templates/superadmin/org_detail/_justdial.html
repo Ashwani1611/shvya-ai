@@ -1,0 +1,28 @@
+<div class="mt-6 rounded-xl border border-gray-200 bg-white p-5">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+            <div class="flex items-center gap-2">
+                <span class="text-lg font-semibold text-blue-600">J</span><span class="-ml-2 text-lg font-semibold text-orange-500">d</span>
+                <h2 class="text-base font-semibold text-gray-950">JustDial lead integration</h2>
+                {% if justdial_integration %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-medium
+                        {% if justdial_integration.is_enabled %}bg-green-50 text-green-700{% else %}bg-amber-50 text-amber-700{% endif %}">
+                        {% if justdial_integration.webhook_token %}
+                            {% if justdial_integration.is_enabled %}Provisioned{% else %}Paused{% endif %}
+                        {% else %}
+                            Setup requested
+                        {% endif %}
+                    </span>
+                {% else %}
+                    <span class="rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-500">Not requested</span>
+                {% endif %}
+            </div>
+            <p class="mt-1 text-sm text-gray-500">
+                Superadmin-only webhook provisioning, lead routing and intake diagnostics for this organization.
+            </p>
+        </div>
+        <a href="{% url 'superadmin-organization-justdial' organization.id %}" class="inline-flex items-center justify-center rounded-lg bg-gray-950 px-4 py-2 text-sm font-semibold text-white hover:bg-black">
+            Manage JustDial
+        </a>
+    </div>
+</div>
