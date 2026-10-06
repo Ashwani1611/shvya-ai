@@ -4,6 +4,7 @@ import re
 from typing import Any
 
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 from django.db.models import F
 from django.utils import timezone
 
@@ -159,6 +160,18 @@ def normalize_justdial_phone(value: Any, *, default_country_code: str = "91") ->
     return f"+{digits}"
 
 
+def normalize_justdial_email(value: Any) -> str:
+    """Keep a malformed marketplace email from dropping an otherwise valid lead."""
+    email = _string_value(value)[:254]
+    if not email:
+        return ""
+    try:
+        validate_email(email)
+    except ValidationError:
+        return ""
+    return email
+
+
 def _ensure_justdial_attribute_definitions(organization) -> None:
     keys = [key for _name, key in JUSTDIAL_ATTRIBUTE_DEFINITIONS]
     existing = set(
@@ -300,7 +313,7 @@ def process_justdial_lead(
         raise ValidationError(message)
 
     name = _lookup(cleaned, "name") or "JustDial Lead"
-    email = _lookup(cleaned, "email")
+    email = normalize_justdial_email(_lookup(cleaned, "email"))
     attributes = _lead_attributes(cleaned)
 
     try:
