@@ -480,12 +480,17 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         explicit_file_request,
         shared_document_ids,
         reconcile_welcome_document,
+        declined_file_request,
     )
     candidates = (context.organization or {}).get("_file_candidates") or []
     requested = explicit_file_request(
         state.get("latest_text", ""),
         has_shared_files=bool(shared_document_ids(context.lead)),
     )
+    refused = [item for item in candidates if declined_file_request(state.get("latest_text", ""), item)]
+    candidates = [item for item in candidates if item not in refused]
+    if any(item.get("document_id") == decision.file_document_id for item in refused):
+        decision = replace(decision, file_document_id=None)
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
     if _FINAL_LANGUAGE_ONLY.get():
         decision = replace(decision, file_document_id=reconcile_welcome_document(
@@ -555,6 +560,14 @@ def _validated_file_document_id(*, decision, context) -> int | None:
         for item in candidates
         if isinstance(item, dict) and item.get("document_id") is not None
     }
+    from apps.ai_engagement.services.file_sharing import declined_file_request
+    messages = (context.conversation or {}).get("messages") or []
+    latest = next((str(item.get("body") or "") for item in reversed(messages)
+                   if isinstance(item, dict) and item.get("direction") == "inbound"), "")
+    selected_candidate = next((item for item in candidates
+                              if isinstance(item, dict) and item.get("document_id") == selected_id), None)
+    if declined_file_request(latest, selected_candidate):
+        return None
     return selected_id if selected_id in allowed else None
 
 

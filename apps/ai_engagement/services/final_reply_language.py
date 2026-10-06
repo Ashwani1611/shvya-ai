@@ -11,7 +11,7 @@ from contextvars import ContextVar
 from dataclasses import replace
 from functools import wraps
 
-from apps.ai_engagement.services.intent_rules import canonical_language, detect_language
+from apps.ai_engagement.services.intent_rules import LANGUAGE_ALIASES, canonical_language, detect_language
 
 _INSTALLED = False
 _TURN_CONTEXT = ContextVar("final_reply_language_context", default=None)
@@ -26,6 +26,38 @@ _ALIASES = {
 }
 
 
+
+def _explicit_reply_language(text, allowed):
+    """Use the latest affirmative request for a configured language."""
+    matches = []
+    for language, label in allowed.items():
+        aliases = {language, str(label).casefold()}
+        aliases.update(alias for alias, canonical in LANGUAGE_ALIASES.items()
+                       if canonical_language(canonical) == language)
+        for code, values in _ALIASES.items():
+            if canonical_language(code) == language:
+                aliases.update(values)
+        for alias in aliases:
+            escaped = re.escape(alias)
+            if re.fullmatch(r"\s*" + escaped + r"\s*[.!]?\s*", text, re.I):
+                matches.append((0, language))
+            prefix = re.compile(
+                r"(?:^|[.!?;,\n]\s*)(?:(?:actually|now|please)\s+)?"
+                + escaped + r"\s+(?:please|mein|me)\b", re.I,
+            )
+            matches.extend((match.start(), language) for match in prefix.finditer(text))
+            command = re.compile(
+                r"\b(?:reply|respond|answer|speak|continue|antworten|antworte)\s+"
+                r"(?:(?:in|using|only|please|now|auf|sie|bitte)\s+){0,4}"
+                + escaped + r"(?!\w)", re.I,
+            )
+            for match in command.finditer(text):
+                before = re.split(r"[.!?;,\n]", text[:match.start()])[-1]
+                if re.search(r"\b(?:do\s+not|don['’]t|never|not)\s*$", before, re.I):
+                    continue
+                matches.append((match.start(), language))
+    return allowed[max(matches, key=lambda item: item[0])[1]] if matches else None
+
 def requested_language(*, configured, messages):
     from apps.ai_engagement.services.organization_profile import _languages
     languages = _languages(configured) if isinstance(configured, str) else list(configured or [])
@@ -36,21 +68,9 @@ def requested_language(*, configured, messages):
         if not isinstance(item, dict) or item.get("direction") != "inbound":
             continue
         text = str(item.get("body") or "")
-        # A lead can name the reply language without a verb: "English please:
-        # ...". Limit this form to an explicit opening request, not a language
-        # mentioned in a product question or quoted business facts.
-        for code, aliases in _ALIASES.items():
-            if canonical_language(code) not in allowed:
-                continue
-            if any(re.match(r"^\s*" + re.escape(alias) + r"\s+please\b", text, re.I)
-                   for alias in aliases):
-                return allowed[canonical_language(code)]
-        # Honour explicit requests even when written in another language.
-        if re.search(r"\b(?:reply|respond|answer|speak|antworten|antworte)\b", text, re.I):
-            for code, aliases in _ALIASES.items():
-                if canonical_language(code) in allowed and any(re.search(r"(?<!\w)" + re.escape(alias) + r"(?!\w)", text, re.I)
-                                           for alias in aliases):
-                    return allowed[canonical_language(code)]
+        explicit = _explicit_reply_language(text, allowed)
+        if explicit:
+            return explicit
         if len(text.split()) <= 2 and (len(text.strip()) <= 3 or text.strip().casefold() in {"ok", "yes", "no"}):
             continue
         detected = canonical_language(detect_language(text))
