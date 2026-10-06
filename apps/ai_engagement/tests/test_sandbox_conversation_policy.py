@@ -12,7 +12,7 @@ from apps.ai_engagement.services.sandbox_conversation_policy import sandbox_poli
 
 class SandboxConversationPolicyTests(SimpleTestCase):
     def setUp(self):
-        self.organization = SimpleNamespace(pk="org", settings={})
+        self.organization = SimpleNamespace(pk="org", id="org", name="Example", settings={})
         self.lead = _SandboxLead(
             pk="playground:test", id="playground:test", attributes={},
             stage=SimpleNamespace(name="New leads"), stage_id=None,
