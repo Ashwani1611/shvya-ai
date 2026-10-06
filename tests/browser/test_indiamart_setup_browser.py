@@ -43,9 +43,6 @@ class IndiaMartSetupBrowserTests(TestCase):
         self.second_stage = Stage.objects.create(
             pipeline=self.second_pipeline, name="New wholesale enquiry", display_order=0
         )
-        self.empty_pipeline = Pipeline.objects.create(
-            organization=self.org, name="Without stages"
-        )
         user = User.objects.create_superuser(
             email="indiamart-browser@example.test", name="Superadmin"
         )
@@ -64,6 +61,12 @@ class IndiaMartSetupBrowserTests(TestCase):
         if old_policy:
             headers["Referrer-Policy"] = "no-referrer"
         posted, errors = [], []
+        expected_stages = [
+            str(stage_id)
+            for stage_id in self.second_pipeline.stages.filter(
+                is_active=True
+            ).values_list("id", flat=True)
+        ]
         script = (
             Path(settings.BASE_DIR) / "static/superadmin/indiamart-routing.js"
         ).read_text()
@@ -118,12 +121,12 @@ class IndiaMartSetupBrowserTests(TestCase):
                     stage.locator('option:not([value=""])').evaluate_all(
                         "options => options.map(option => option.value)"
                     ),
-                    [str(self.second_stage.id)],
+                    expected_stages,
                 )
-                pipeline.select_option(str(self.empty_pipeline.id))
+                pipeline.select_option("")
                 expect(stage).to_be_disabled()
                 expect(page.locator("#id_stage_help")).to_contain_text(
-                    "Add an active stage"
+                    "Select a pipeline to see its stages."
                 )
                 pipeline.select_option(str(self.second_pipeline.id))
                 stage.select_option(str(self.second_stage.id))
