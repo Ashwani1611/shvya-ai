@@ -124,7 +124,12 @@ class IndiaMartTests(TestCase):
         setup = reverse("superadmin-indiamart", kwargs={"organization_id": self.org.id})
         self.assertEqual(
             self.client.post(
-                setup, {"action": "generate", "stage": self.stage.id}
+                setup,
+                {
+                    "action": "generate",
+                    "pipeline": self.pipeline.id,
+                    "stage": self.stage.id,
+                },
             ).status_code,
             302,
         )
@@ -142,14 +147,19 @@ class IndiaMartTests(TestCase):
         stage = Stage.objects.create(pipeline=pipeline, name="New", display_order=0)
         self.assertEqual(
             self.client.post(
-                url, {"action": "generate", "stage": stage.id}
+                url, {"action": "generate", "pipeline": pipeline.id, "stage": stage.id}
             ).status_code,
             400,
         )
         old = self.connection.webhook_token
         self.assertEqual(
             self.client.post(
-                url, {"action": "rotate", "stage": self.stage.id}
+                url,
+                {
+                    "action": "rotate",
+                    "pipeline": self.pipeline.id,
+                    "stage": self.stage.id,
+                },
             ).status_code,
             302,
         )
@@ -159,6 +169,163 @@ class IndiaMartTests(TestCase):
         response = self.client.get(url)
         self.assertContains(response, str(self.connection.webhook_token))
         self.assertEqual(response["Cache-Control"], "no-store")
+
+    def setup_superadmin(self, *, enforce_csrf=False):
+        if enforce_csrf:
+            self.client = Client(enforce_csrf_checks=True)
+        user = User.objects.create_superuser(
+            email="super@im.test", password="test", name="Super"
+        )
+        self.authenticate(user, "superadmin")
+        return reverse("superadmin-indiamart", kwargs={"organization_id": self.org.id})
+
+    def test_https_setup_actions_accept_valid_csrf_without_origin(self):
+        url = self.setup_superadmin(enforce_csrf=True)
+        response = self.client.get(url, secure=True)
+        self.assertEqual(response["Referrer-Policy"], "same-origin")
+        self.assertEqual(response["Cache-Control"], "no-store")
+        token = str(response.context["csrf_token"])
+        for action in ("generate", "rotate", "disable"):
+            with self.subTest(action=action):
+                response = self.client.post(
+                    url,
+                    {
+                        "action": action,
+                        "pipeline": self.pipeline.id,
+                        "stage": self.stage.id,
+                        "csrfmiddlewaretoken": token,
+                    },
+                    secure=True,
+                    HTTP_REFERER=f"https://testserver{url}",
+                )
+                self.assertEqual(response.status_code, 302)
+                self.connection.refresh_from_db()
+                self.assertEqual(self.connection.is_enabled, action != "disable")
+
+    def test_https_setup_still_rejects_missing_or_invalid_csrf_and_foreign_origin(self):
+        url = self.setup_superadmin(enforce_csrf=True)
+        response = self.client.get(url, secure=True)
+        data = {
+            "action": "rotate",
+            "pipeline": self.pipeline.id,
+            "stage": self.stage.id,
+            "csrfmiddlewaretoken": str(response.context["csrf_token"]),
+        }
+        token_before = self.connection.webhook_token
+        cases = [
+            (
+                {**data, "csrfmiddlewaretoken": ""},
+                {"HTTP_REFERER": f"https://testserver{url}"},
+            ),
+            (
+                {**data, "csrfmiddlewaretoken": "x" * 64},
+                {"HTTP_REFERER": f"https://testserver{url}"},
+            ),
+            (data, {"HTTP_ORIGIN": "https://untrusted.example"}),
+            (data, {"HTTP_ORIGIN": "null"}),
+            (data, {}),
+        ]
+        for posted, headers in cases:
+            with self.subTest(headers=headers, csrf=posted["csrfmiddlewaretoken"]):
+                response = self.client.post(url, posted, secure=True, **headers)
+                self.assertEqual(response.status_code, 403)
+                self.connection.refresh_from_db()
+                self.assertEqual(self.connection.webhook_token, token_before)
+
+    def test_routing_dropdowns_are_scoped_and_show_saved_destination(self):
+        url = self.setup_superadmin()
+        other = Organization.objects.create(name="Other seller")
+        foreign = Pipeline.objects.create(organization=other, name="Foreign pipeline")
+        Stage.objects.create(pipeline=foreign, name="Foreign stage", display_order=0)
+        archived = Stage.objects.create(
+            pipeline=self.pipeline, name="Archived", display_order=90, is_active=False
+        )
+        response = self.client.get(url)
+        form = response.context["form"]
+        self.assertContains(response, 'name="pipeline"')
+        self.assertContains(response, 'name="stage"')
+        self.assertEqual(form["pipeline"].value(), self.pipeline.id)
+        self.assertEqual(form["stage"].value(), self.stage.id)
+        self.assertNotIn(foreign, form.fields["pipeline"].queryset)
+        self.assertNotIn(archived, form.fields["stage"].queryset)
+        self.assertTrue(
+            all(
+                row["pipeline"] != str(foreign.id)
+                for row in response.context["stage_options"]
+            )
+        )
+        self.assertTrue(
+            all(
+                stage.pipeline_id == self.pipeline.id
+                for stage in form.fields["stage"].queryset
+            )
+        )
+
+    def test_routing_rejects_mismatched_inactive_and_invalid_selections(self):
+        url = self.setup_superadmin()
+        second = Pipeline.objects.create(organization=self.org, name="Second pipeline")
+        second_stage = Stage.objects.create(
+            pipeline=second, name="Second enquiry", display_order=0
+        )
+        archived = Stage.objects.create(
+            pipeline=self.pipeline, name="Archived", display_order=90, is_active=False
+        )
+        inactive = Pipeline.objects.create(
+            organization=self.org, name="Inactive pipeline", is_active=False
+        )
+        inactive_stage = Stage.objects.create(
+            pipeline=inactive, name="Inactive enquiry", display_order=0
+        )
+        cases = [
+            (self.pipeline.id, second_stage.id),
+            (self.pipeline.id, archived.id),
+            (inactive.id, inactive_stage.id),
+            ("not-a-uuid", self.stage.id),
+            ("", self.stage.id),
+        ]
+        token_before = self.connection.webhook_token
+        for pipeline, stage in cases:
+            with self.subTest(pipeline=pipeline, stage=stage):
+                response = self.client.post(
+                    url,
+                    {
+                        "action": "rotate",
+                        "pipeline": pipeline,
+                        "stage": stage,
+                    },
+                )
+                self.assertEqual(response.status_code, 400)
+                self.assertEqual(response["Cache-Control"], "no-store")
+                self.assertEqual(response["Referrer-Policy"], "same-origin")
+                self.connection.refresh_from_db()
+                self.assertEqual(self.connection.pipeline_id, self.pipeline.id)
+                self.assertEqual(self.connection.stage_id, self.stage.id)
+                self.assertEqual(self.connection.webhook_token, token_before)
+
+    def test_save_routing_keeps_webhook_and_routes_new_leads_to_selected_stage(self):
+        url = self.setup_superadmin()
+        pipeline = Pipeline.objects.create(
+            organization=self.org, name="New destination"
+        )
+        stage = Stage.objects.create(
+            pipeline=pipeline, name="Enquiries", display_order=0
+        )
+        token_before = self.connection.webhook_token
+        response = self.client.post(
+            url,
+            {
+                "action": "generate",
+                "pipeline": pipeline.id,
+                "stage": stage.id,
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+        self.connection.refresh_from_db()
+        self.assertEqual(self.connection.webhook_token, token_before)
+        self.assertEqual(self.post().status_code, 200)
+        lead = Lead.objects.get(organization=self.org, phone="+919876543210")
+        self.assertEqual(lead.pipeline, pipeline)
+        self.assertEqual(lead.stage, stage)
 
     def test_receiver_does_not_require_csrf(self):
         client = Client(enforce_csrf_checks=True)
@@ -221,9 +388,11 @@ class IndiaMartTests(TestCase):
 
     def test_lead_deletion_erases_buyer_data_but_blocks_replay(self):
         self.assertEqual(self.post().status_code, 200)
-        lead = Lead.objects.get(organization=self.org, phone='+919876543210')
+        lead = Lead.objects.get(organization=self.org, phone="+919876543210")
         lead.delete()
-        receipt = IndiaMartReceipt.objects.get(connection=self.connection, query_id='123')
+        receipt = IndiaMartReceipt.objects.get(
+            connection=self.connection, query_id="123"
+        )
         self.assertIsNone(receipt.lead_id)
         self.assertEqual(receipt.payload, {})
         self.assertEqual(self.post().status_code, 200)
