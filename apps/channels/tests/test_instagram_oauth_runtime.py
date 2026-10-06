@@ -39,7 +39,7 @@ class InstagramOAuthRuntimeTests(SimpleTestCase):
         url = build_authorize_url(
             app_id="instagram-app-123",
             redirect_uri=(
-                "https://dashboard.shvya-ai.com/"
+                "https://shvya-ai.com/"
                 "dashboard/instagram/connect/return/"
             ),
             state="signed-state",
