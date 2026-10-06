@@ -244,7 +244,7 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
         objection_strategy=strategies, forbidden_claims=configured_forbidden_claims(settings),
         unknown_information=bool(grounding.get("sensitive") and not grounding.get("verified")
             and not may_answer_from_ai_brain({
-                "about": payload.get("organization_operating_spec", {}).get("about") or profile.get("identity", {}).get("about"),
+                "about": org.get("about") or payload.get("organization_operating_spec", {}).get("about") or profile.get("identity", {}).get("about"),
                 "ai_playbook": instructions,
                 "_authored_faq_candidates": payload.get("authored_faq_candidates"),
             }, grounding)),
