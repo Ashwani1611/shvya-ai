@@ -58,6 +58,11 @@ from apps.ai_engagement.services.runtime_state import (
 )
 
 
+from apps.ai_engagement.services.sandbox_display_state import (
+    displayed_requirement_id, sandbox_customer_name,
+)
+
+
 from apps.ai_engagement.services.turn_diagnostics import sandbox_diagnostics
 
 logger = logging.getLogger(__name__)
@@ -80,6 +85,9 @@ class _SandboxLead(SimpleNamespace):
 
     def _persist_qualification_state(self, attributes):
         self.attributes = deepcopy(attributes)
+        captured_name = sandbox_customer_name(self.attributes)
+        if captured_name:
+            self.name = captured_name
 
 
 class _SandboxContextBuilder:
@@ -476,7 +484,7 @@ class PlaygroundService:
             pipeline_id=getattr(pipeline, "id", None),
             stage=stage or SimpleNamespace(name="New Lead"),
             stage_id=getattr(stage, "id", None),
-            name="Playground Visitor", phone="", email="",
+            name=sandbox_customer_name(saved.get("attributes")) or "", phone="", email="",
             lead_source=lead_source,
             preview_reminder=deepcopy(saved.get("reminder")),
             shared_document_ids=list(saved.get("sent_files") or []),
@@ -640,9 +648,12 @@ class PlaygroundService:
             ) from exc
         # Record only the question selected for the displayed final response,
         # not an earlier draft which post-effect composition may have replaced.
-        if decision.should_engage and decision.next_requirement_id:
+        displayed_id = displayed_requirement_id(
+            lead=visitor, requirements=requirements, decision=decision,
+        )
+        if displayed_id:
             record_last_asked_requirement(
-                visitor, decision.next_requirement_id, requirements=requirements,
+                visitor, displayed_id, requirements=requirements,
             )
         visitor.attributes[STATE_KEY] = contract(
             qualification=state_for_lead(visitor, requirements=requirements),
