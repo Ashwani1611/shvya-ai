@@ -116,6 +116,55 @@ def declined_file_request(text, candidate=None):
     return False
 
 
+
+def _explicit_request_for_candidate(text, candidate):
+    """Only a direct sharing request reverses a prior attachment refusal."""
+    name = " ".join(str((candidate or {}).get("name") or "").split())
+    labels = {name} if name else set()
+    # A natural request may use "brochure" instead of "product brochure".
+    labels.update(match.group(0) for match in _FILE_REQUEST.finditer(name))
+    objects = r"(?:files?|documents?|pdfs?|attachments?)"
+    if labels:
+        objects = "(?:" + objects + "|" + "|".join(
+            re.escape(label) for label in sorted(labels, key=len, reverse=True)
+        ) + ")"
+    english = (
+        r"^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?"
+        r"(?:send|share|attach|resend|re-send)\s+(?:me\s+)?"
+        r"(?:(?:the|a|your|our|this|that|same)\s+)?"
+        + objects + r"(?:\s+(?:please|now|again|once\s+more))*$"
+    )
+    hinglish = (
+        r"^(?:(?:please|mujhe|hume|humko)\s+)*" + objects
+        + r"\s+(?:dobara\s+|phir\s+se\s+)?bhej(?:o|iye|na)?"
+        r"(?:\s+do)?(?:\s+(?:please|ab|dobara|phir\s+se))*$"
+    )
+    return any(
+        re.fullmatch(english, clause.strip(), re.I)
+        or re.fullmatch(hinglish, clause.strip(), re.I)
+        for clause in re.split(r"[.!?;\n]", str(text or ""))
+    )
+
+
+def declined_in_conversation(messages, candidate=None):
+    """Keep refusals within the supplied channel history until an explicit reversal.
+
+    Only inbound lead messages establish a preference. Mentioning a document,
+    asking about its contents, or the assistant offering it cannot reverse it.
+    This filters candidates; it never authorizes a file send.
+    """
+    refused = False
+    for item in messages if isinstance(messages, (list, tuple)) else []:
+        if not isinstance(item, dict) or item.get("direction") != "inbound":
+            continue
+        text = str(item.get("body") or "")
+        if declined_file_request(text, candidate):
+            refused = True
+        elif refused and _explicit_request_for_candidate(text, candidate):
+            refused = False
+    return refused
+
+
 def unconditional_welcome_document(candidates, *, welcome_due):
     """Compile only an exact, unrestricted welcome instruction.
 
@@ -275,18 +324,18 @@ Rules for the fields:
         The authored condition still owns permission; a customer request alone
         cannot override stage, attribute, source or other restrictions.
         """
-        allowed = {
-            item["document_id"] for item in candidates
-            if isinstance(item, dict) and type(item.get("document_id")) is int
-            and item["document_id"] > 0
-        }
-        if not allowed:
-            return None
         data = context.as_dict()
         messages = (data.get("conversation") or {}).get("messages") or []
         latest = next((str(item.get("body") or "") for item in reversed(messages)
                        if isinstance(item, dict) and item.get("direction") == "inbound"), "")
-        candidates = [item for item in candidates if not declined_file_request(latest, item)]
+        candidates = [item for item in candidates
+                      if isinstance(item, dict) and not declined_in_conversation(messages, item)]
+        allowed = {
+            item["document_id"] for item in candidates
+            if type(item.get("document_id")) is int and item["document_id"] > 0
+        }
+        if not allowed:
+            return None
         welcome_document = unrestricted_requested_document(candidates, text=latest)
         if welcome_document is None:
             welcome_document = unconditional_welcome_document(candidates, welcome_due=welcome_due)
@@ -506,6 +555,8 @@ Rules for the fields:
         # an explicit file request. Expose guided files for model evaluation;
         # inclusion is not permission to send without satisfying the condition.
         for document in self.get_eligible_documents(organization=organization):
+            if declined_in_conversation(conversation.get("messages"), {"name": document.name}):
+                continue
             if document.id in shared_ids and not requested_file:
                 continue
             if (document.id not in document_ids and not requested_file
