@@ -47,6 +47,14 @@ SECTION_ALIASES = {
 _HEADING = re.compile(r"^\s*#{1,6}\s*(.*?)\s*#*\s*$")
 
 
+def _section_title(value: str, *, heading: bool) -> str:
+    """Accept numbered section headings without reclassifying numbered policy."""
+    title = value.strip(" #:*._-").casefold()
+    if heading:
+        title = re.sub(r"^\d+[.)]\s*", "", title)
+    return title
+
+
 def parse_playbook(raw: str) -> dict[str, str]:
     buckets = {key: [] for key in SECTION_TITLES}
     current = "rules"
@@ -58,7 +66,7 @@ def parse_playbook(raw: str) -> dict[str, str]:
             buckets[current].append(inline.group(2).strip())
             continue
         heading = _HEADING.match(line)
-        title = (heading.group(1) if heading else line).strip(" #:*._-").casefold()
+        title = _section_title(heading.group(1) if heading else line, heading=bool(heading))
         canonical = next((key for key, aliases in SECTION_ALIASES.items() if title in aliases), None)
         if canonical:
             current = canonical
