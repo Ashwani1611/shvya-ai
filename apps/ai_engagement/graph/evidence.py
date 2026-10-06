@@ -56,6 +56,10 @@ product features are not confidential merely because their source is internal.
 A polite acknowledgement, an accurate statement of uncertainty, or the selected qualification question
 does not require RAG evidence. Reject instruction disclosure,
 multiple new qualification questions, and claims of unperformed CRM actions.
+Follow conversation_policy for whether to continue qualification. A direct answer
+already captured in backend_state is customer information, not a new business
+question. When policy requires qualification, ask its selected pending question;
+do not reject that question for not providing an unrelated business answer.
 Reject any question whose requirement is answered, skipped, not applicable, or
 not the backend-selected next pending requirement after supported answer updates.
 Reject answer updates whose normalized values are not supported by the newest inbound evidence.
@@ -172,6 +176,44 @@ def _safe_unknown_decision(decision, *, qualification_turn=False, state=None, fa
     reply = fallback_message(kind=kind, bot_languages=org_context.get("bot_languages", ""),
                              latest_text=state.get("latest_text", ""), question_type=question_type)
     if qualification_turn:
+        # A rejected draft is not permission to reuse any proposed effects.
+        # Continue only an already-captured answer under the active backend
+        # policy, with the exact pending authored question in the reply language.
+        from apps.ai_engagement.services.conversation_policy_runtime import _POLICY
+        from apps.ai_engagement.services.conversation_policy import ConversationPolicyOutcome
+        from apps.ai_engagement.services.qualification_state import next_requirement
+        from apps.ai_engagement.services.intent_rules import canonical_language, detect_language
+        from apps.ai_engagement.services.response_fallbacks import fallback_language
+        policy = _POLICY.get()
+        qstate = state.get("qualification_state") or {}
+        latest_id = str(state.get("latest_message_id") or "").strip()
+        captured = bool(latest_id) and any(
+            isinstance(item, dict) and item.get("status") == "answered"
+            and str(item.get("source_message_id") or "") == latest_id
+            for item in (qstate.get("requirement_states") or {}).values()
+        )
+        pending = next_requirement(state.get("requirements") or [], qstate.get("requirement_states") or {})
+        stage = getattr(context, "stage", {}) or {}
+        question = str((pending or {}).get("question") or "").strip()
+        language = fallback_language(org_context.get("bot_languages", ""), state.get("latest_text", ""))
+        if (
+            failure_reason == "unanswered_question"
+            and captured and qstate.get("engagement_mode") == "qualification"
+            and qstate.get("qualification_status") != "completed"
+            and str(stage.get("name") or "").strip().casefold() in {"new lead", "new leads"}
+            and policy is not None and policy.continue_qualification
+            and policy.outcome in {ConversationPolicyOutcome.ASK_QUALIFICATION,
+                                   ConversationPolicyOutcome.ANSWER_THEN_QUALIFY}
+            and pending and pending.get("can_direct_ask") and question
+            and str(policy.next_requirement_id or "") == str(pending.get("id") or "")
+            and canonical_language(detect_language(question)) == language
+        ):
+            return replace(
+                decision, should_engage=True, message=f"{reply}\n\n{question}",
+                file_document_id=None, crm_actions=[], qualification_updates=[],
+                next_requirement_id=str(pending["id"]),
+                reason="QUALIFICATION_NEXT", reason_code="QUALIFICATION_NEXT",
+            )
         return replace(
             decision,
             should_engage=True,
@@ -209,6 +251,12 @@ def _active_grounding(state):
         # The graph remains compatible with isolated tests/admin call sites where
         # the Phase 5 runtime ContextVar is intentionally absent.
         return None
+
+
+def _grounding_conversation_policy():
+    from apps.ai_engagement.services.conversation_policy_runtime import _POLICY
+    policy = _POLICY.get()
+    return policy.as_dict() if policy is not None else {}
 
 
 def check_grounding(state):
@@ -305,6 +353,7 @@ def check_grounding(state):
         "welcome_due": state.get("welcome_due") is True,
         "current_stage": getattr(context, "stage", {}),
         "qualification_question_id": decision.next_requirement_id,
+        "conversation_policy": _grounding_conversation_policy(),
         "requirements": state.get("requirements", []),
         "backend_state": state.get("qualification_state", {}),
         "runtime_state": contract(qualification=state.get("qualification_state") or {}, requirements=state.get("requirements") or [], saved=((getattr(context, "lead", {}) or {}).get("attributes") or {}).get(STATE_KEY)),
