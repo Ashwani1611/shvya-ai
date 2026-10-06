@@ -35,7 +35,7 @@ class RejectedQualificationContinuationTests(SimpleTestCase):
         }
 
     def recover(self, state, outcome=ConversationPolicyOutcome.ASK_QUALIFICATION,
-                next_id="age", continue_flow=True):
+                next_id="age", continue_flow=True, failure_reason="unanswered_question"):
         policy = ConversationPolicyDecision(
             outcome=outcome, reason_code="TEST", confidence=1,
             continue_qualification=continue_flow, next_requirement_id=next_id,
@@ -50,7 +50,7 @@ class RejectedQualificationContinuationTests(SimpleTestCase):
             )
             return _safe_unknown_decision(
                 decision, qualification_turn=True, state=state,
-                failure_reason="unanswered_question",
+                failure_reason=failure_reason,
             )
         finally:
             _POLICY.reset(token)
@@ -88,3 +88,8 @@ class RejectedQualificationContinuationTests(SimpleTestCase):
         state = self.state()
         state["latest_text"] = "What is the membership price?"
         self.assertIsNone(self.recover(state).next_requirement_id)
+
+    def test_non_wording_rejections_cannot_use_continuation_recovery(self):
+        for reason in ("unsupported_claim", "invalid_qualification", "invalid_file", "provider_error"):
+            with self.subTest(reason=reason):
+                self.assertIsNone(self.recover(self.state(), failure_reason=reason).next_requirement_id)

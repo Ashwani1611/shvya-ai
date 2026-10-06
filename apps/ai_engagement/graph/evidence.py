@@ -197,7 +197,8 @@ def _safe_unknown_decision(decision, *, qualification_turn=False, state=None, fa
         question = str((pending or {}).get("question") or "").strip()
         language = fallback_language(org_context.get("bot_languages", ""), state.get("latest_text", ""))
         if (
-            captured and qstate.get("engagement_mode") == "qualification"
+            failure_reason == "unanswered_question"
+            and captured and qstate.get("engagement_mode") == "qualification"
             and qstate.get("qualification_status") != "completed"
             and str(stage.get("name") or "").strip().casefold() in {"new lead", "new leads"}
             and policy is not None and policy.continue_qualification
