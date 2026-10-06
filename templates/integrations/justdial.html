@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block title %}Connect JustDial | SHVYA AI{% endblock %}
+{% block header %}Connect JustDial{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-[1120px] px-2 pb-10 sm:px-4">
+    <a href="{% url 'crm-connect-hub' %}" class="mb-5 inline-flex items-center gap-2 rounded-xl px-2 py-2 text-sm font-medium text-gray-600 transition hover:bg-gray-100 hover:text-gray-950 focus:outline-none focus:ring-4 focus:ring-blue-100">
+        <i class="ti ti-arrow-left text-xl"></i>
+        <span>Connect Hub</span>
+    </a>
+
+    <section class="overflow-hidden rounded-[28px] border border-black/[0.07] bg-white shadow-[0_18px_55px_rgba(15,23,42,0.08)]">
+        <div class="px-6 py-12 text-center sm:px-10 sm:py-16">
+            <div class="mx-auto flex h-20 items-center justify-center" aria-label="JustDial">
+                <span class="text-[54px] font-bold leading-none tracking-[-0.11em] text-[#0A78C8]">J</span>
+                <span class="-ml-1 text-[54px] font-bold leading-none tracking-[-0.08em] text-[#FF5A1F]">d</span>
+            </div>
+
+            <h1 class="mt-3 text-[30px] font-semibold tracking-[-0.035em] text-gray-950 sm:text-[34px]">
+                Connect JustDial
+            </h1>
+
+            {% if not integration %}
+                <p class="mx-auto mt-4 max-w-2xl text-[15px] italic leading-7 text-gray-500 sm:text-base">
+                    Receive JustDial leads directly in your Shvya CRM. Our team will create the setup for you.
+                </p>
+
+                <form method="post" class="mt-7">
+                    {% csrf_token %}
+                    <input type="hidden" name="action" value="request_setup">
+                    <button
+                        type="submit"
+                        class="inline-flex min-h-12 items-center justify-center rounded-xl bg-[#007AFF] px-8 py-3 text-[15px] font-semibold text-white shadow-[0_8px_22px_rgba(0,122,255,0.24)] transition hover:bg-[#006EE6] focus:outline-none focus:ring-4 focus:ring-blue-100 active:scale-[0.99]"
+                    >
+                        Request JustDial Setup
+                    </button>
+                </form>
+
+                <p class="mt-5 text-sm italic text-gray-500">
+                    Our team will contact you within 24 hours.
+                </p>
+            {% elif not integration.webhook_token %}
+                <div class="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border border-amber-200/80 bg-amber-50 px-3.5 py-1.5 text-xs font-semibold text-amber-700">
+                    <span class="h-2 w-2 rounded-full bg-amber-500"></span>
+                    Setup requested
+                </div>
+
+                <p class="mx-auto mt-5 max-w-2xl text-[15px] leading-7 text-gray-500 sm:text-base">
+                    Your request is with the SHVYA team. A Superadmin will generate the organization webhook and configure the destination pipeline.
+                </p>
+
+                <div class="mx-auto mt-7 max-w-[540px] rounded-2xl border border-gray-200 bg-[#F7F7F9] px-5 py-4 text-left">
+                    <div class="flex items-start gap-3">
+                        <div class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-gray-700 shadow-sm">
+                            <i class="ti ti-clock text-xl"></i>
+                        </div>
+                        <div>
+                            <div class="text-sm font-semibold text-gray-950">SHVYA-managed setup</div>
+                            <p class="mt-1 text-sm leading-6 text-gray-500">
+                                You do not need to create API keys or webhook secrets. We will provision the URL and you can share it with your JustDial account manager.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <p class="mt-5 text-sm italic text-gray-500">
+                    Requested {{ integration.requested_at|date:"d M Y, H:i" }} · Our team will contact you within 24 hours.
+                </p>
+            {% else %}
+                <div class="mx-auto mt-5 inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-xs font-semibold
+                    {% if integration.is_enabled %}border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border-gray-200 bg-gray-100 text-gray-600{% endif %}">
+                    <span class="h-2 w-2 rounded-full {% if integration.is_enabled %}bg-emerald-500{% else %}bg-gray-400{% endif %}"></span>
+                    {% if integration.connection_state == "active" %}
+                        Connected · receiving leads
+                    {% elif integration.is_enabled %}
+                        Webhook ready
+                    {% else %}
+                        Setup paused
+                    {% endif %}
+                </div>
+
+                <p class="mx-auto mt-5 max-w-2xl text-[15px] leading-7 text-gray-500 sm:text-base">
+                    Your JustDial endpoint has been provisioned by SHVYA. Share the exact URL below with your JustDial account manager for CRM lead push setup.
+                </p>
+
+                <div class="mx-auto mt-8 max-w-[760px] rounded-[20px] border border-gray-200 bg-[#F7F7F9] p-4 text-left sm:p-5">
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <label for="justdial-webhook-url" class="text-xs font-semibold uppercase tracking-[0.12em] text-gray-500">
+                            Webhook URL
+                        </label>
+                        <span class="rounded-full border border-gray-200 bg-white px-2.5 py-1 font-mono text-[11px] font-semibold text-gray-600">
+                            GET
+                        </span>
+                    </div>
+                    <div class="flex flex-col gap-2 sm:flex-row">
+                        <input
+                            id="justdial-webhook-url"
+                            type="text"
+                            readonly
+                            value="{{ webhook_url }}"
+                            class="min-h-11 flex-1 rounded-xl border border-gray-200 bg-white px-3.5 font-mono text-xs text-gray-700 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-50"
+                        >
+                        <button
+                            type="button"
+                            id="copy-justdial-webhook"
+                            class="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gray-950 px-4 text-sm font-semibold text-white transition hover:bg-black focus:outline-none focus:ring-4 focus:ring-gray-200"
+                        >
+                            <i class="ti ti-copy text-lg"></i>
+                            <span>Copy</span>
+                        </button>
+                    </div>
+
+                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-xl border border-black/[0.05] bg-white px-4 py-3">
+                            <div class="text-[11px] font-semibold uppercase tracking-[0.1em] text-gray-400">Destination</div>
+                            <div class="mt-1 text-sm font-semibold text-gray-900">
+                                {{ integration.pipeline.name|default:"Not selected" }}
+                                {% if integration.stage %}<span class="font-normal text-gray-400">→</span> {{ integration.stage.name }}{% endif %}
+                            </div>
+                        </div>
+                        <div class="rounded-xl border border-black/[0.05] bg-white px-4 py-3">
+                            <div class="text-[11px] font-semibold uppercase tracking-[0.1em] text-gray-400">Lead source</div>
+                            <div class="mt-1 text-sm font-semibold text-gray-900">JustDial</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mx-auto mt-5 max-w-[760px] rounded-2xl border border-blue-100 bg-blue-50/70 px-4 py-3 text-left">
+                    <div class="flex gap-3">
+                        <i class="ti ti-info-circle mt-0.5 shrink-0 text-lg text-blue-600"></i>
+                        <p class="text-sm leading-6 text-blue-900">
+                            JustDial configures the lead-push callback on its side. Send this URL to your JustDial account manager and ask them to configure the CRM lead push using the GET method.
+                        </p>
+                    </div>
+                </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if integration.webhook_token %}
+    <section class="mt-6 overflow-hidden rounded-[24px] border border-black/[0.07] bg-white shadow-[0_12px_36px_rgba(15,23,42,0.05)]">
+        <div class="flex flex-col gap-2 border-b border-gray-100 px-5 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+            <div>
+                <h2 class="text-base font-semibold tracking-[-0.015em] text-gray-950">Recent lead events</h2>
+                <p class="mt-1 text-sm text-gray-500">Latest lead pushes received for this organization.</p>
+            </div>
+            <div class="flex items-center gap-2 text-xs text-gray-500">
+                <span>{{ integration.created_count }} created</span>
+                <span class="text-gray-300">•</span>
+                <span>{{ integration.updated_count }} updated</span>
+                {% if integration.error_count %}
+                    <span class="text-gray-300">•</span>
+                    <span class="text-red-600">{{ integration.error_count }} failed</span>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if recent_events %}
+            <div class="divide-y divide-gray-100">
+                {% for event in recent_events %}
+                <div class="flex flex-col gap-2 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="text-sm font-semibold text-gray-900">
+                                {% if event.lead %}{{ event.lead.name }}{% else %}JustDial event{% endif %}
+                            </span>
+                            <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold
+                                {% if event.status == 'created' %}bg-emerald-50 text-emerald-700
+                                {% elif event.status == 'updated' %}bg-blue-50 text-blue-700
+                                {% elif event.status == 'failed' %}bg-red-50 text-red-700
+                                {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                {{ event.get_status_display }}
+                            </span>
+                        </div>
+                        <div class="mt-1 truncate text-xs text-gray-500">
+                            {% if event.external_lead_id %}Lead ID {{ event.external_lead_id }} · {% endif %}{{ event.method }}
+                        </div>
+                    </div>
+                    <time class="shrink-0 text-xs text-gray-400">{{ event.created_at|date:"d M Y, H:i" }}</time>
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="px-6 py-9 text-center text-sm text-gray-500">
+                No JustDial lead events have arrived yet.
+            </div>
+        {% endif %}
+    </section>
+    {% endif %}
+</div>
+
+{% if webhook_url %}
+<script>
+(function () {
+    "use strict";
+    const button = document.getElementById("copy-justdial-webhook");
+    const input = document.getElementById("justdial-webhook-url");
+    if (!button || !input) return;
+
+    button.addEventListener("click", async function () {
+        const label = button.querySelector("span");
+        try {
+            await navigator.clipboard.writeText(input.value);
+            if (label) label.textContent = "Copied";
+            setTimeout(function () {
+                if (label) label.textContent = "Copy";
+            }, 1400);
+        } catch (error) {
+            input.focus();
+            input.select();
+            document.execCommand("copy");
+            if (label) label.textContent = "Copied";
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}

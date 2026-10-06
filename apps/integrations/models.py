@@ -559,3 +559,9 @@ from .meta_conversions_models import (  # noqa: E402,F401
     MetaConversionMapping,
     MetaConversionDelivery,
 )
+
+
+from .justdial_models import (  # noqa: E402,F401
+    JustDialIntegration,
+    JustDialLeadEvent,
+)

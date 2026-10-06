@@ -50,3 +50,15 @@ class LeadCreatedActivitySourceTests(SimpleTestCase):
         payload = create.call_args.kwargs
         self.assertEqual(payload["actor_name"], "Meta ads")
         self.assertEqual(payload["details"]["lead_source"], "meta_ads")
+
+
+    @patch("services.crm_activity_service.LeadActivity.objects.create")
+    def test_justdial_creation_is_attributed_to_justdial(self, create):
+        record_lead_created(
+            lead=self._lead("justdial"),
+            actor=None,
+        )
+
+        payload = create.call_args.kwargs
+        self.assertEqual(payload["actor_name"], "JustDial")
+        self.assertEqual(payload["details"]["lead_source"], "justdial")

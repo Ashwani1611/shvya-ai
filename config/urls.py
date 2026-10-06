@@ -8,6 +8,7 @@ from apps.channels.webhook_security import whatsapp_webhook_secure_view
 from apps.core.health import live as health_live, ready as health_ready
 from apps.core.runtime_status import runtime_metrics
 from apps.integrations.views.meta_leads import meta_lead_webhook
+from apps.integrations.views.justdial import justdial_webhook_view
 from apps.superadmin.views import admin_global_search
 
 from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeView, PricingView
@@ -196,6 +197,11 @@ urlpatterns = [
         "webhooks/meta-leads/",
         meta_lead_webhook,
         name="meta-lead-webhook",
+    ),
+    path(
+        "webhooks/justdial/<uuid:token>/",
+        justdial_webhook_view,
+        name="justdial-webhook",
     ),
 
     # =========================================================

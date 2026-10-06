@@ -78,10 +78,10 @@ CONNECT_HUB_GROUPS = [
         "items": [
             {
                 "slug": "justdial",
-                "name": "Justdial",
+                "name": "JustDial",
                 "icon": "ti-letter-j",
                 "url_name": "crm-connect-hub-justdial",
-                "description": "Bring Justdial inquiries into Shvya for faster follow-up.",
+                "description": "Receive JustDial enquiries directly in Shvya CRM through a managed lead-push webhook.",
             },
             {
                 "slug": "indiamart",
@@ -233,21 +233,22 @@ INTEGRATION_DETAILS = {
         "note": "Payment secrets must remain server-side and should never be placed in client-side code.",
     },
     "justdial": {
-        "name": "Justdial",
+        "name": "JustDial",
         "icon": "ti-letter-j",
-        "description": "Capture Justdial inquiries in Shvya and route them to your sales pipeline.",
+        "description": "Receive JustDial enquiries through an organization-scoped SHVYA webhook.",
         "accent": "Lead Marketplace",
         "requirements": [
-            "An active Justdial business account",
-            "Lead/API access available for your Justdial plan",
-            "A Shvya pipeline and stage for incoming inquiries",
+            "An active JustDial advertiser/business account",
+            "A SHVYA Superadmin-provisioned webhook URL",
+            "A destination Shvya pipeline and stage",
         ],
         "steps": [
-            "Connect the Justdial lead source for your organization.",
-            "Choose the destination pipeline and stage.",
-            "Map inquiry fields and confirm a sample lead before activation.",
+            "Request JustDial setup from Connect Hub.",
+            "SHVYA Superadmin provisions the organization webhook and routing.",
+            "Share the URL with your JustDial account manager for GET lead-push activation.",
+            "Validate the first live enquiry in the SHVYA event log.",
         ],
-        "note": "Lead source attribution should remain Justdial so reporting can distinguish marketplace inquiries.",
+        "note": "Only SHVYA Superadmin can generate or rotate the JustDial webhook URL.",
     },
     "indiamart": {
         "name": "IndiaMART",
