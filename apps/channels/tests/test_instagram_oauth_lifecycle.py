@@ -33,7 +33,7 @@ class InstagramOAuthLifecycleTests(TestCase):
         return InstagramOAuthAttempt.objects.create(
             organization=self.org, created_by=self.user,
             authorization_code="" if completed else "single-use-code",
-            redirect_uri="https://dashboard.shvya-ai.com/dashboard/instagram/connect/return/",
+            redirect_uri="https://shvya-ai.com/dashboard/instagram/connect/return/",
             status=InstagramOAuthAttempt.Status.CONNECTED if completed else InstagramOAuthAttempt.Status.QUEUED,
             completed_at=self.account.connected_at if completed else None,
             expires_at=timezone.now() + timedelta(minutes=5),
