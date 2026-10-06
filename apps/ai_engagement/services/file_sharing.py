@@ -82,6 +82,29 @@ class FileSharingError(Exception):
     """
 
 
+
+def declined_file_request(text, candidate=None):
+    """Respect an explicit attachment refusal for this candidate and turn."""
+    name = " ".join(str((candidate or {}).get("name") or "").split())
+    nouns = r"(?:brochures?|files?|documents?|pdfs?|attachments?|catalog(?:ue)?s?)"
+    for clause in re.split(r"[.!?;\n]", str(text or "")):
+        refusal = re.search(
+            r"\b(?:do\s+not|don['’]t|never|no\s+need\s+to)\s+(?:send|share|attach)\b"
+            r"|\b(?:send|share)\s+(?:mat|nahi)\b", clause, re.I)
+        if not refusal:
+            continue
+        tail = clause[refusal.end():]
+        if re.search(r"\b(?:any|a|the|me|another|again|please|us|this|that)\b", tail, re.I):
+            tail = re.sub(r"\b(?:any|a|the|me|another|again|please|us|this|that)\b", " ", tail, flags=re.I)
+        # File-specific refusals do not cancel a different named document.
+        if name and re.search(re.escape(name), tail, re.I):
+            return True
+        broad = r"(?:files?|documents?|pdfs?|attachments?)"
+        if re.fullmatch(r"\s*(?:" + broad + r")\s*", tail, re.I) or (re.search(r"\bany\b", clause, re.I) and re.search(broad, tail, re.I)):
+            return True
+    return False
+
+
 def unconditional_welcome_document(candidates, *, welcome_due):
     """Compile only an exact, unrestricted welcome instruction.
 
