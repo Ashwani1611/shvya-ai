@@ -68,3 +68,12 @@ def test_explicit_attachment_refusals_override_welcome_selection():
     assert not declined_file_request("Send the product brochure.", candidate(""))
     assert not declined_file_request("Don't send the price list.", candidate(""))
     assert not declined_file_request("Do not book a trial. Send the brochure.", candidate(""))
+
+def test_explicit_resend_respects_exact_authored_request_permission():
+    from apps.ai_engagement.services.file_sharing import unrestricted_requested_document
+    files = [candidate("send this product brochure along with welcome message or when ever lead ask product brochure.", already_shared=True)]
+    assert unrestricted_requested_document(files, text="Please resend the same brochure now.") == 18
+    assert unrestricted_requested_document(files, text="Thanks, I have it.") is None
+    assert unrestricted_requested_document(files, text="Don't send the product brochure.") is None
+    assert unrestricted_requested_document([candidate("send product brochure with welcome message", already_shared=True)], text="Please resend it.") is None
+    assert unrestricted_requested_document([candidate("send product brochure with welcome message or when lead ask product brochure after qualification", already_shared=True)], text="Please resend it.") is None

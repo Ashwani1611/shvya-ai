@@ -149,6 +149,28 @@ def unconditional_welcome_document(candidates, *, welcome_due):
     return matches[0] if len(matches) == 1 else None
 
 
+def unrestricted_requested_document(candidates, *, text):
+    """Compile an exact unrestricted request branch, including deliberate resend."""
+    matches = []
+    for item in candidates:
+        if not isinstance(item, dict):
+            continue
+        name = " ".join(str(item.get("name") or "").split())
+        instruction = " ".join(str(item.get("share_instruction") or "").split())
+        if not re.search(r"\b(?:whenever|when\s+ever|when)\b", instruction, re.I):
+            continue
+        if declined_file_request(text, item):
+            continue
+        if not (name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text, re.I)):
+            if not (item.get("already_shared") and _CONTEXTUAL_RESHARE.search(text)):
+                continue
+        checked = {**item, "already_shared": False}
+        selected = unconditional_welcome_document([checked], welcome_due=True)
+        if selected is not None:
+            matches.append(selected)
+    return matches[0] if len(matches) == 1 else None
+
+
 def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request):
     """Remove an exact welcome-only choice if final rendering omits welcome."""
     if document_id is None or welcome_due or explicit_request:
@@ -248,13 +270,20 @@ Rules for the fields:
         }
         if not allowed:
             return None
-        welcome_document = unconditional_welcome_document(candidates, welcome_due=welcome_due)
+        data = context.as_dict()
+        messages = (data.get("conversation") or {}).get("messages") or []
+        latest = next((str(item.get("body") or "") for item in reversed(messages)
+                       if isinstance(item, dict) and item.get("direction") == "inbound"), "")
+        candidates = [item for item in candidates if not declined_file_request(latest, item)]
+        welcome_document = unrestricted_requested_document(candidates, text=latest)
+        if welcome_document is None:
+            welcome_document = unconditional_welcome_document(candidates, welcome_due=welcome_due)
         if welcome_document is not None:
             # Retain the same tenant ownership/readiness validation as AI choices.
             decision = self.parse_decision(
                 organization=organization, lead=lead,
                 raw_text=json.dumps({"should_share": True, "document_id": welcome_document,
-                                     "reason": "Unrestricted authored welcome instruction applies."}),
+                                     "reason": "Unrestricted authored welcome or request instruction applies."}),
                 model="authored_welcome_instruction",
             )
             return decision.document_id
