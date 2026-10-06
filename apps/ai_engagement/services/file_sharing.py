@@ -86,7 +86,6 @@ class FileSharingError(Exception):
 def declined_file_request(text, candidate=None):
     """Respect an explicit attachment refusal for this candidate and turn."""
     name = " ".join(str((candidate or {}).get("name") or "").split())
-    nouns = r"(?:brochures?|files?|documents?|pdfs?|attachments?|catalog(?:ue)?s?)"
     for clause in re.split(r"[.!?;\n]", str(text or "")):
         refusal = re.search(
             r"\b(?:do\s+not|don['’]t|never|no\s+need\s+to)\s+(?:send|share|attach)\b"
