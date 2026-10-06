@@ -351,7 +351,26 @@ class EvidenceResolver:
         if not pattern:
             return ""
         query = set(_query_tokens(question))
-        parts = re.split(r"\n\s*\n", str(about or "")[:20000])
+        # A price paragraph without its parent heading can lose eligibility,
+        # billing period or refund exceptions. Keep complete scoped source units.
+        source = str(about or "").strip()
+        segments = re.split(r"(?=^#{1,6}\s+\S)", source, flags=re.M)
+        parts = []
+        parents = []
+        for segment in segments:
+            segment = segment.strip()
+            if not segment:
+                continue
+            heading = re.match(r"^(#{1,6})\s+", segment)
+            if not heading:
+                parents = [(0, segment)]
+                parts.append(segment)
+                continue
+            depth = len(heading.group(1))
+            parents = [(level, content) for level, content in parents if level < depth]
+            scoped = "\n\n".join([content for _, content in parents] + [segment])
+            parts.append(scoped)
+            parents.append((depth, segment))
         ranked = []
         for index, part in enumerate(parts):
             part = part.strip()
@@ -364,8 +383,10 @@ class EvidenceResolver:
         for _, _, part in sorted(ranked, key=lambda row: (-row[0], row[1])):
             if remaining <= 0:
                 break
-            selected.append(part[:remaining])
-            remaining -= len(selected[-1]) + 2
+            if len(part) > remaining:
+                continue
+            selected.append(part)
+            remaining -= len(part) + 2
         return "\n\n".join(selected)[:cls.MAX_CONTENT_CHARS]
 
     def _knowledge_evidence(self, *, organization, question: str, guard: TenantGuard) -> tuple[EvidenceItem, ...]:
