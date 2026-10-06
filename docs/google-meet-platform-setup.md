@@ -47,7 +47,7 @@ require a separate Meet REST API key or a service-account JSON key.
    application. Save the client ID/secret only in backend secret storage.
 3. Register the production callback URI. Run `python manage.py check_google_calendar`
    to obtain `organization_oauth_callback_path`, then prepend the canonical
-   `https://dashboard.shvya-ai.com` origin. Keep staging callbacks separate.
+   `https://shvya-ai.com` origin. Keep staging callbacks separate.
 4. Authorise a DEDICATED SHVYA organiser account for these exact scopes:
    `openid email https://www.googleapis.com/auth/calendar`, with offline access.
    Each organisation can still use the normal SHVYA Connect Google Calendar flow
