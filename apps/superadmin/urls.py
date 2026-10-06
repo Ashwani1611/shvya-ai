@@ -1,4 +1,5 @@
 from .model_routing_views import organization_model_routing_update_view
+from .justdial_views import organization_justdial_view
 from .platform_email import platform_email_view
 from django.urls import path
 from .bac_views import bac_list
@@ -137,6 +138,11 @@ urlpatterns = [
         "organization/<uuid:organization_id>/",
         organization_detail_view,
         name="superadmin-organization-detail",
+    ),
+    path(
+        "organization/<uuid:organization_id>/justdial/",
+        organization_justdial_view,
+        name="superadmin-organization-justdial",
     ),
 
     # Existing Hosted WhatsApp chat protection lives at the organization

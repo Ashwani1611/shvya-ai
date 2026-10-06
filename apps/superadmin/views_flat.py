@@ -18,6 +18,7 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 from apps.crm.models import Lead, Pipeline
+from apps.integrations.justdial_models import JustDialIntegration
 from apps.organizations.features import module_controls
 from apps.organizations.models import (
     APIKey,
@@ -293,6 +294,13 @@ def org_list_view(request):
             payment_mode=Organization.PaymentMode.PARTIAL,
         )
 
+    if request.GET.get("justdial_setup") == "pending":
+
+        orgs = orgs.filter(
+            justdial_integration__isnull=False,
+            justdial_integration__webhook_token__isnull=True,
+        )
+
     plan = request.GET.get(
         "plan",
         "",
@@ -327,6 +335,9 @@ def org_list_view(request):
             "all_tags": OrganizationTag.objects.all(),
             "packages": Organization.Package.choices,
             "search": search,
+            "justdial_pending_count": JustDialIntegration.objects.filter(
+                webhook_token__isnull=True,
+            ).count(),
         },
     )
 
@@ -561,6 +572,9 @@ def organization_detail_view(
             "active_operations_tokens": active_operations_tokens,
             "open_operations_support_sessions": open_operations_support_sessions,
             "operations_audit_events": operations_audit_events,
+            "justdial_integration": JustDialIntegration.objects.filter(
+                organization=organization,
+            ).first(),
         },
     )
 

@@ -183,9 +183,12 @@ class LeadDataIntegrityTests(TestCase):
         evidence; deleting a Lead clears its pointer but preserves the frozen
         recipient and attempt history. SalesDocument is legal/commercial
         evidence with a frozen recipient snapshot, so deleting the CRM Lead
-        clears only its optional CRM pointer. Every other Lead-owned relation
-        must CASCADE. IndiaMART receipts retain only their query ID after buyer
-        payload erasure to prevent retries from recreating deleted leads.
+        clears only its optional CRM pointer. JustDialLeadEvent is provider
+        ingestion/audit evidence whose optional CRM pointer is cleared.
+        IndiaMART receipts retain only their query ID after buyer payload
+        erasure to prevent retries from recreating deleted leads. Every other
+        Lead-owned relation must CASCADE.
+
         """
         exceptions = []
 
@@ -208,6 +211,8 @@ class LeadDataIntegrityTests(TestCase):
                 # Account-owned provider history survives, with its CRM link cleared.
                 ("channels.instagramconversation", "lead"),
                 ("followups.followupsenderstate", "last_lead"),
+                # Provider ingestion evidence survives, with its CRM link cleared.
+                ("integrations.justdialleadevent", "lead"),
                 # Commercial/legal documents survive CRM lead deletion.
                 ("sales.salesdocument", "lead"),
                 # Enquiry tombstones survive; pre_delete erases buyer payloads.

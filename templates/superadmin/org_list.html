@@ -39,6 +39,11 @@
         <div class="sa-stat-value">{{ all_tags|length }}</div>
         <div class="sa-stat-note">Labels available for client grouping</div>
     </div>
+    <div class="sa-stat-card">
+        <div class="sa-stat-label">JustDial setup requests</div>
+        <div class="sa-stat-value">{{ justdial_pending_count }}</div>
+        <div class="sa-stat-note">Waiting for Superadmin webhook provisioning</div>
+    </div>
 </div>
 
 <form method="get" class="sa-panel sa-filter-panel" aria-label="Organization filters">
@@ -88,6 +93,16 @@
                 {% if request.GET.installment_client %}checked{% endif %}
             >
             Installment client
+        </label>
+
+        <label class="sa-filter-check">
+            <input
+                type="checkbox"
+                name="justdial_setup"
+                value="pending"
+                {% if request.GET.justdial_setup == "pending" %}checked{% endif %}
+            >
+            JustDial setup requested
         </label>
 
         <label class="sa-filter-check is-disabled" title="No usage filter configured yet">

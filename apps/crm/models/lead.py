@@ -123,6 +123,7 @@ class Lead(models.Model):
             ("instagram", "Instagram"),
             ("shvya_calendar", "SHVYA Calendar"),
             ("phone_call", "Phone Call"),
+            ("justdial", "JustDial"),
         ],
         default="system",
     )

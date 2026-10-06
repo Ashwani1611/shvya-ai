@@ -127,6 +127,7 @@ def record_lead_created(
         "google_sheets": "Google Sheet",
         "indiamart": "IndiaMART",
         "meta_ads": "Meta ads",
+        "justdial": "JustDial",
     }
     actor_name_override = (
         source_labels.get(getattr(lead, "lead_source", ""))

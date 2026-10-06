@@ -8,8 +8,8 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('crm', '0033_alter_lead_lead_source'),
-        ('integrations', '0018_metaconversionsconfiguration_metaconversionmapping_and_more'),
+        ('crm', '0034_alter_lead_lead_source_indiamart'),
+        ('integrations', '0019_justdial_integration'),
         ('organizations', '0007_organizationdeletioncleanup'),
     ]
 
