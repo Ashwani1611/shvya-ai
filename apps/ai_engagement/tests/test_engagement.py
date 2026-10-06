@@ -161,14 +161,14 @@ class EngagementServiceTests(TestCase):
         payload = json.loads(input_text)
         self.assertIn("SHVYA", instructions)
         self.assertIn("customer-facing", instructions.lower())
-        self.assertIn(playbook_for_engagement(self.org_info.ai_playbook), instructions)
+        self.assertIn(self.org_info.ai_playbook, instructions)
         self.assertLess(
-            instructions.index(playbook_for_engagement(self.org_info.ai_playbook)),
+            instructions.index(self.org_info.ai_playbook),
             instructions.index("SHVYA AI ENGAGEMENT TASK"),
         )
         self.assertIn(self.organization.name, input_text)
         self.assertIn(self.lead.name, input_text)
-        self.assertIn(playbook_for_engagement(self.org_info.ai_playbook), instructions)
+        self.assertIn(self.org_info.ai_playbook, instructions)
         self.assertNotIn(qualification_questions(self.org_info.ai_playbook), input_text)
         self.assertNotIn("requirements", payload["organization"]["ai_profile"]["qualification"])
         self.assertIn("qualification_turn", payload)
