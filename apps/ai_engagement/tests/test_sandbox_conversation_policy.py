@@ -72,3 +72,39 @@ class SandboxConversationPolicyTests(SimpleTestCase):
         self.lead.attributes = {}
         self.policy("Alex QA")
         self.assertEqual(state_for_lead(self.lead, requirements=self.requirements)["answered_requirement_ids"], [])
+
+    def test_evidence_scope_restores_parent_policy_after_exception(self):
+        from apps.ai_engagement.services.conversation_policy_runtime import _POLICY, _TURN
+        from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
+        parent = object()
+        policy_token = _POLICY.set(parent)
+        parent_turn = {"parent": True}
+        turn_token = _TURN.set(parent_turn)
+        try:
+            with (
+                patch("apps.ai_engagement.models.OrgInfo.objects.filter") as info,
+                patch("apps.ai_engagement.services.organization_profile.compile_org_ai_profile",
+                      return_value={"qualification": {"requirements": self.requirements}}),
+                patch("apps.ai_engagement.services.intent_engine.IntentEngine") as engine,
+                patch("apps.ai_engagement.services.phase5_6_runtime.EvidenceResolver") as resolver,
+                patch("apps.ai_engagement.services.sandbox_conversation_policy._capabilities",
+                      return_value=frozenset()),
+            ):
+                info.return_value.first.return_value = SimpleNamespace()
+                engine.return_value.classify.return_value = IntentDecision(
+                    primary_intent=Intent.QUALIFICATION_ANSWER, confidence=1,
+                )
+                resolver.return_value.resolve.return_value = SimpleNamespace()
+                with self.assertRaisesRegex(RuntimeError, "scope test"):
+                    with sandbox_evidence_context(
+                        organization=self.organization, lead=self.lead,
+                        message="Alex QA", source_message_id="playground:test:turn:2",
+                    ):
+                        self.assertEqual(_POLICY.get().next_requirement_id, "age")
+                        self.assertIsNone(_TURN.get())
+                        raise RuntimeError("scope test")
+            self.assertIs(_POLICY.get(), parent)
+            self.assertIs(_TURN.get(), parent_turn)
+        finally:
+            _POLICY.reset(policy_token)
+            _TURN.reset(turn_token)

@@ -284,7 +284,7 @@ class QualifiedHinglishPricingSandboxTests(TestCase):
         self.assertEqual(response.data["stage"]["name"], "Qualified")
         self.assertEqual(response.data["channel"], "whatsapp")
         self.assertEqual(response.data["lead_source"], "whatsapp")
-        self.assertEqual(response.data["diagnostics"], "knowledge/chunks=0/websites=0/uploads=0")
+        self.assertNotIn("diagnostics", response.data)
         self.assertEqual(len(self.verifier_payloads), 2)
         self.assertEqual(self.verifier_payloads[0], self.verifier_payloads[1])
         payload = next(item for item in self.generation_payloads if "response_plan" in item)
