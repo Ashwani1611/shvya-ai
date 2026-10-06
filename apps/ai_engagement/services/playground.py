@@ -518,7 +518,8 @@ class PlaygroundService:
             try:
                 from apps.ai_engagement.services.phase5_6_runtime import sandbox_evidence_context
                 evidence_scope = (sandbox_evidence_context(organization=organization, lead=visitor,
-                                  message=message, provider=self.provider)
+                                  message=message, provider=self.provider,
+                                  source_message_id=conversation[-1]["id"], channel=channel)
                                   if hasattr(organization, "_meta") else nullcontext())
                 with evidence_scope:
                     decision = service.engage(organization=organization, lead=visitor)

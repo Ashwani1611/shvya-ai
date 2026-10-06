@@ -1120,7 +1120,8 @@ __all__ = [
 
 
 @contextmanager
-def sandbox_evidence_context(*, organization, lead, message, provider=None):
+def sandbox_evidence_context(*, organization, lead, message, provider=None,
+                             source_message_id=None, channel="sandbox"):
     """Bind the shared evidence/composition contract without production writes."""
     from apps.ai_engagement.services.intent_engine import IntentEngine
     from apps.ai_engagement.services.qualification_state import state_for_lead
@@ -1128,7 +1129,8 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None):
     from apps.ai_engagement.models import OrgInfo
     info = OrgInfo.objects.filter(organization=organization).first()
     profile = compile_org_ai_profile(organization_name=organization.name, org_info=info)
-    requirements = profile.get("qualification", {}).get("requirements", [])
+    from apps.ai_engagement.services.qualification_state import requirements_for_lead
+    requirements = requirements_for_lead(lead, profile.get("qualification", {}).get("requirements", []))
     intent = IntentEngine(provider=provider).classify(organization=organization, lead=lead,
         message=message, requirements=requirements, qualification_state=state_for_lead(lead, requirements=requirements))
     try:
@@ -1144,9 +1146,24 @@ def sandbox_evidence_context(*, organization, lead, message, provider=None):
     evidence_token = _ACTIVE_EVIDENCE.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk), "resolution": resolution})
     memory_token = _ACTIVE_MEMORY.set({"organization_id": str(organization.pk), "lead_id": str(lead.pk),
                                      "snapshot": {}, "settings": dict(organization.settings or {}), "intent_decision": intent})
+    from apps.ai_engagement.services import conversation_policy_runtime as policy_runtime
+    from apps.ai_engagement.services.sandbox_conversation_policy import sandbox_policy
+    policy_token = None
+    turn_token = None
     try:
+        policy = sandbox_policy(
+            organization=organization, lead=lead, intent=intent,
+            requirements=requirements, message=message,
+            source_message_id=source_message_id, channel=channel,
+        )
+        turn_token = policy_runtime._TURN.set(None)
+        policy_token = policy_runtime._POLICY.set(policy)
         yield
     finally:
+        if policy_token is not None:
+            policy_runtime._POLICY.reset(policy_token)
+        if turn_token is not None:
+            policy_runtime._TURN.reset(turn_token)
         _ACTIVE_MEMORY.reset(memory_token)
         _ACTIVE_EVIDENCE.reset(evidence_token)
 
