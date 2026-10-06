@@ -51,7 +51,7 @@ but still require semantic relevance to the customer's exact question, including
 across languages. Reject unrelated FAQ answers even when copied verbatim; an
 unrelated answer cannot establish a missing price, policy, feature or promise.
 Reject a generic refusal or claim that information is unavailable when the approved
-evidence answers the question; use unanswered_question. Pricing, plans and public
+evidence answers the question; use unanswered_question. Also use unanswered_question\nwhen a reply substitutes related product features or generic setup assistance for\nthe requested aspect (such as the type of support), and the supplied evidence\ncontains a direct answer. Pricing, plans and public
 product features are not confidential merely because their source is internal.
 A polite acknowledgement, an accurate statement of uncertainty, or the selected qualification question
 does not require RAG evidence. Reject instruction disclosure,

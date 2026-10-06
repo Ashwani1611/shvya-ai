@@ -933,7 +933,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
             or not isinstance(evidence, str)
             or not evidence.strip()
             or evidence not in source_text
-            or _non_answer_evidence(evidence, source_text)
+            or _non_answer_evidence(evidence, source_text, requirement=by_id.get(requirement_id))
             or not isinstance(value, (str, int, float, bool))
             or (isinstance(value, str) and not value.strip())
         ):
@@ -982,7 +982,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
     return result
 
 
-def _non_answer_evidence(evidence: str, source: str) -> bool:
+def _non_answer_evidence(evidence: str, source: str, *, requirement=None) -> bool:
     """A quoted enquiry or reply-language instruction is not a customer fact.
 
     Retain punctuation while locating the quote. Splitting comma-separated
@@ -993,6 +993,22 @@ def _non_answer_evidence(evidence: str, source: str) -> bool:
         return True
     clauses = re.findall(r"[^.!?;，,\n।？]+[.!?;，,\n।？]?", source)
     containing = [part.strip() for part in clauses if evidence in part]
+    if not containing and evidence.strip() == source.strip():
+        containing = [part.strip() for part in clauses]
+    assistance = re.compile(r"\b(?:call|callback|demo|human|consultant|specialist|meeting|appointment|handoff)\b", re.I)
+    request_start = re.compile(r"^(?:i\s+(?:want|need|would\s+like|wish|request|do\s+not\s+want|don['’]t\s+want)\b|please\b|call\b|contact\b|connect\b|arrange\b|schedule\b|book\b)", re.I)
+    declared_fact = re.compile(
+        r"\b(?:because|but|my\s+(?:biggest|main|problem|issue)|"
+        r"(?:i|we|our\s+team)\s+(?:use|manage|receive|run|have)|"
+        r"currently\s+(?:running|using|managing)|leads\s+per\s+day)\b", re.I,
+    )
+    # A request for assistance can answer a question specifically about that
+    # assistance. It cannot establish unrelated qualification facts.
+    question = str((requirement or {}).get("question") or "")
+    assistance_question = bool(assistance.search(question))
+    def assistance_only(part):
+        return (not assistance_question and assistance.search(part)
+                and request_start.search(part) and not declared_fact.search(part))
     question_start = re.compile(r"^(?:what|which|where|when|why|how|who)\b|"
                                 r"^(?:was\s+kostet|wie\s+viel|welche\s+)\b", re.I)
     language_request = re.compile(
@@ -1002,7 +1018,7 @@ def _non_answer_evidence(evidence: str, source: str) -> bool:
         r"(?:ਪੰਜਾਬੀ|हिंदी|हिन्दी|मराठी|ಕನ್ನಡ).*(?:ਜਵਾਬ|उत्तर|जवाब|ಉತ್ತರ).*(?:ਦਿਓ|दो|दें|द्या|ಕೊಡಿ)", re.I,
     )
     return bool(containing) and all(
-        part.endswith(("?", "？")) or question_start.search(part) or language_request.search(part)
+        part.endswith(("?", "？")) or question_start.search(part) or language_request.search(part) or assistance_only(part)
         for part in containing
     )
 

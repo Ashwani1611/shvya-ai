@@ -479,6 +479,7 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         FileSharingService,
         explicit_file_request,
         shared_document_ids,
+        reconcile_welcome_document,
     )
     candidates = (context.organization or {}).get("_file_candidates") or []
     requested = explicit_file_request(
@@ -486,6 +487,11 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
         has_shared_files=bool(shared_document_ids(context.lead)),
     )
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
+    if _FINAL_LANGUAGE_ONLY.get():
+        decision = replace(decision, file_document_id=reconcile_welcome_document(
+            decision.file_document_id, candidates, welcome_due=welcome_due,
+            explicit_request=requested,
+        ))
     review_trigger = "explicit_request" if requested else "welcome" if welcome_due else "none"
     review_status = (
         "final_language_only" if _FINAL_LANGUAGE_ONLY.get()

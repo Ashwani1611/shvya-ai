@@ -25,6 +25,9 @@ CONTROLLED RESPONSE COMPOSITION
 Confirmed action outcomes are source-bound committed receipts, not proposals. A no_op is not a newly completed action; a missing receipt is not proof of failure. Historical execution does not prove a reminder is still active or a stage is still current. Respect still_exists, current_status and current_state_matches. A queued file is not sent; sent means provider acceptance, not recipient delivery. Never promise a human callback merely because a reminder exists.
 - Answer the customer's actual question before the one permitted next question.
   Preserve every configured option in order. Do not repeat answered questions.
+  Answer the requested aspect directly from the relevant facts. A list of related
+  product features is not an answer about support, limits or another specific
+  aspect when the source provides that detail.
 - Address an explicit file, reminder or handoff request before continuing qualification.
   Use resolved_request_outcomes for this turn. A preview is simulated, not a live
   send or scheduled reminder. Do not say a file cannot be shared when its current
@@ -122,6 +125,26 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     if grounding.get("verified"):
         facts = [deepcopy(item) for item in grounding.get("evidence", [])[:8]
                  if isinstance(item, dict)]
+    elif not grounding.get("sensitive"):
+        # Ordinary later-stage enquiries can retain relevant retrieved passages
+        # even when the evidence classifier does not mark the turn sensitive.
+        # Otherwise the composer sees only About and drops URL/PDF-only details.
+        remaining = 12000
+        seen = set()
+        chunks = payload.get("knowledge") or []
+        chunks = chunks if isinstance(chunks, (list, tuple)) else []
+        for item in chunks[:8]:
+            if not isinstance(item, dict):
+                continue
+            content = str(item.get("content") or "").strip()
+            key = " ".join(content.casefold().split())
+            if not content or key in seen or remaining <= 0:
+                continue
+            seen.add(key)
+            content = content[:min(4000, remaining)]
+            facts.append({**deepcopy(item), "content": content,
+                          "source_type": item.get("source_type") or "knowledge_chunk"})
+            remaining -= len(content)
     # About is approved public business context, including on ordinary later-stage
     # turns whose intent was not classified as a product question. It must never
     # stand in for missing evidence on pricing, policies or internal CRM data.
