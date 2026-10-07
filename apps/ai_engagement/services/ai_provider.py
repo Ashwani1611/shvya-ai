@@ -483,7 +483,10 @@ class OpenAIProvider:
         bounded_instructions = self._clip_text(instructions, instruction_budget)
 
         remaining = max(4000, budget_chars - len(bounded_instructions))
-        bounded_input = self._clip_text(bounded_input, remaining)
+        # Reclaim unused instruction allocation from the original input. Re-clipping
+        # the already-shortened copy cannot restore state/evidence discarded by
+        # the initial split, even when most of the request budget is still free.
+        bounded_input = self._clip_text(input_text, remaining)
 
         # Make the final bound exact even if minimum allocations above compete
         # with a very small configured budget.
