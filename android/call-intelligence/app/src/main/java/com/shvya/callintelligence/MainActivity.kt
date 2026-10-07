@@ -289,23 +289,23 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply { setOnClickListener { showSettings() } })
         root.addView(header)
-        root.addView(space(18))
-        root.addView(workspaceStatusCard())
-        root.addView(space(26))
+        root.addView(space(20))
 
         if (!essentialPermissionsGranted()) {
             val permissionCard = card()
-            permissionCard.addView(iconBadge(R.drawable.ic_phone_outline, blue, Color.rgb(234, 242, 253)))
+            permissionCard.addView(iconBadge(R.drawable.ic_phone_outline, blue, Color.rgb(238, 244, 253)))
+            permissionCard.addView(space(16))
+            permissionCard.addView(sectionTitle("Finish setup").apply { textSize = 22f })
+            permissionCard.addView(body("Allow phone and call-log access so SHVYA can organize your call activity automatically."))
             permissionCard.addView(space(18))
-            permissionCard.addView(sectionTitle("Connect your calls").apply { textSize = 23f })
-            permissionCard.addView(body("Allow phone and call log access to capture your calls. Contacts help identify callers; notifications keep you informed."))
-            permissionCard.addView(space(20))
-            permissionCard.addView(primaryButton("Allow access").apply {
+            permissionCard.addView(primaryButton("Allow call access").apply {
                 setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
             })
             permissionCard.addView(space(8))
-            permissionCard.addView(secondaryButton("Open app permissions").apply {
-                setOnClickListener { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
+            permissionCard.addView(quietButton("Open Android settings").apply {
+                setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }
             })
             root.addView(permissionCard)
         } else {
@@ -328,8 +328,10 @@ class MainActivity : AppCompatActivity() {
         root.addView(title("Your day").apply { textSize = 36f })
         root.addView(body("Calls, follow-ups and leads that need your attention."))
         root.addView(space(20))
-        root.addView(syncHealthCard())
-        root.addView(space(16))
+        if (pendingSyncCount > 0) {
+            root.addView(syncHealthCard())
+            root.addView(space(16))
+        }
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
@@ -2173,9 +2175,13 @@ class MainActivity : AppCompatActivity() {
     private fun card(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(22), dp(22), dp(22))
-            background = rounded(Color.WHITE, 23f)
-            elevation = dp(1).toFloat()
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = roundedStroke(
+                color = Color.WHITE,
+                radius = 22f,
+                strokeColor = Color.rgb(232, 235, 240),
+            )
+            elevation = 0f
         }
 
     private fun dialogContent(): LinearLayout = LinearLayout(this).apply {
