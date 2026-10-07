@@ -1,7 +1,7 @@
 """Attachment refusals do not become resend permission."""
 from unittest import TestCase
 
-from apps.ai_engagement.services.file_sharing import declined_file_request, declined_in_conversation
+from apps.ai_engagement.services.file_sharing import declined_file_request, declined_in_conversation, reconcile_welcome_document
 
 
 class FileRefusalIntentTests(TestCase):
@@ -41,3 +41,15 @@ class FileRefusalIntentTests(TestCase):
     def test_assistant_messages_do_not_reverse_customer_refusal(self):
         messages = [{"direction": "inbound", "body": "No file please."}, {"direction": "outbound", "body": "Please resend the product brochure."}]
         self.assertTrue(declined_in_conversation(messages, self.candidate))
+
+    def test_content_question_cannot_authorize_an_exact_welcome_request_rule(self):
+        candidate = {**self.candidate, "share_instruction": "send this product brochure along with welcome message or when ever lead ask product brochure."}
+        for body in ("What does the brochure say about billing?", "Can I upload a PDF as a knowledge source?", "Do not resend the file. Just explain its contents."):
+            with self.subTest(body=body):
+                self.assertIsNone(reconcile_welcome_document(18, [candidate], welcome_due=False, explicit_request=True, requested_text=body))
+        self.assertEqual(reconcile_welcome_document(18, [candidate], welcome_due=False, explicit_request=True, requested_text="Please send the product brochure again."), 18)
+        self.assertEqual(reconcile_welcome_document(18, [candidate], welcome_due=True, explicit_request=False, requested_text="Hello"), 18)
+
+    def test_complex_authored_file_condition_is_not_rewritten_by_exact_rule_guard(self):
+        candidate = {**self.candidate, "share_instruction": "Send only to qualified Instagram leads who request a brochure."}
+        self.assertEqual(reconcile_welcome_document(18, [candidate], welcome_due=False, explicit_request=False, requested_text="Tell me more."), 18)

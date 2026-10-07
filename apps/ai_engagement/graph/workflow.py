@@ -492,11 +492,10 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
     if any(item.get("document_id") == decision.file_document_id for item in refused):
         decision = replace(decision, file_document_id=None)
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
-    if _FINAL_LANGUAGE_ONLY.get():
-        decision = replace(decision, file_document_id=reconcile_welcome_document(
-            decision.file_document_id, candidates, welcome_due=welcome_due,
-            explicit_request=requested,
-        ))
+    decision = replace(decision, file_document_id=reconcile_welcome_document(
+        decision.file_document_id, candidates, welcome_due=welcome_due,
+        explicit_request=requested, requested_text=state.get("latest_text", ""),
+    ))
     review_trigger = "explicit_request" if requested else "welcome" if welcome_due else "none"
     review_status = (
         "final_language_only" if _FINAL_LANGUAGE_ONLY.get()
@@ -710,3 +709,4 @@ def run_engagement_graph(
                 graph_capture_count=len(final["decision"].qualification_updates or []),
                 grounding_status="approved" if final.get("grounding_approved") else "rejected")
     return final["decision"]
+

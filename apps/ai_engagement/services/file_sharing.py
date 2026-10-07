@@ -254,14 +254,17 @@ def unrestricted_requested_document(candidates, *, text):
     return matches[0] if len(matches) == 1 else None
 
 
-def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request):
+def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request, requested_text=None):
     """Remove an exact welcome-only choice if final rendering omits welcome."""
-    if document_id is None or welcome_due or explicit_request:
+    if document_id is None or welcome_due:
         return document_id
     selected = [item for item in candidates if isinstance(item, dict)
                 and item.get("document_id") == document_id]
-    if unconditional_welcome_document(selected, welcome_due=True) == document_id:
-        return None
+    checked = [{**item, "already_shared": False} for item in selected]
+    if unconditional_welcome_document(checked, welcome_due=True) == document_id:
+        if requested_text is not None:
+            return document_id if unrestricted_requested_document(selected, text=requested_text) == document_id else None
+        return document_id if explicit_request else None
     return document_id
 
 
@@ -370,6 +373,14 @@ Rules for the fields:
                 model="authored_welcome_instruction",
             )
             return decision.document_id
+        # An exactly compiled welcome/request rule has no other trigger.
+        # Generic mentions or content questions cannot broaden its permission.
+        candidates = [item for item in candidates if
+                      unconditional_welcome_document([{**item, "already_shared": False}], welcome_due=True) is None]
+        allowed = {item["document_id"] for item in candidates
+                   if type(item.get("document_id")) is int and item["document_id"] > 0}
+        if not allowed:
+            return None
         data = context.as_dict()
         result = generate(
             provider=provider,
