@@ -226,7 +226,7 @@ def docs_context(*, category=None, slug=None, legacy_topic=None, query=""):
             "docs_results": matches,
         }
     if legacy_topic and not category:
-        category, slug = LEGACY_TOPICS.get(legacy_topic, (None, None))
+        category, slug = LEGACY_TOPICS.get(legacy_topic, LEGACY_TOPICS["overview"])
     selected = DOC_LOOKUP.get((category, slug))
     if not selected:
         raise Http404("Documentation article not found")
