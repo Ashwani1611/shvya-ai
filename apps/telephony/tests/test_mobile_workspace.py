@@ -321,15 +321,16 @@ class MobileWorkspaceTests(TestCase):
             password="secret123",
             role=User.Role.AGENT,
         )
-        other_call = ingest_call_event(
+        other_call = CallRecord.objects.create(
+            organization=self.org,
             user=peer,
-            payload=self.payload(
-                source_call_id="today-peer-call",
-                phone_number="+919811112222",
-                status="missed",
-                talk_duration_seconds=0,
-            ),
-        )["call"]
+            source="cloud",
+            source_call_id="today-peer-call",
+            phone_number="+919811112222",
+            direction="incoming",
+            status="missed",
+            ended_at=timezone.now(),
+        )
         response = self.api().get("/api/v1/call-intelligence/today/", {"mine": "1"})
         self.assertEqual(response.status_code, 200)
         ids = [row["id"] for row in response.data["recent_calls"]]
