@@ -5,7 +5,7 @@ from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
 from django.views.generic import FormView, TemplateView
 
-from apps.core.docs_content import DOC_TOPICS, docs_index
+from apps.core.docs_portal import docs_context
 from apps.core.forms import MarketingBookingForm
 from apps.core.booking import BookingUnavailable, save_booking
 from apps.core.ratelimit import ratelimit
@@ -38,29 +38,13 @@ class DocumentationView(CRMUserContextMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        topic_slug = self.request.GET.get("topic") or "overview"
-        query = (self.request.GET.get("q") or "").strip().lower()
-        if topic_slug not in DOC_TOPICS:
-            topic_slug = "overview"
-
-        topics = DOC_TOPICS
-        if query:
-            topics = {
-                slug: topic
-                for slug, topic in DOC_TOPICS.items()
-                if query in " ".join(
-                    [topic["title"], topic["intro"], *[item for _, texts in topic["sections"] for item in texts]]
-                ).lower()
-            }
-
         context.update(
-            {
-                "topic_slug": topic_slug,
-                "topic": DOC_TOPICS[topic_slug],
-                "topics": docs_index(),
-                "query": query,
-                "filtered_topics": [(slug, topic["title"], topic["intro"]) for slug, topic in topics.items()],
-            }
+            docs_context(
+                category=self.kwargs.get("category"),
+                slug=self.kwargs.get("slug"),
+                legacy_topic=self.request.GET.get("topic"),
+                query=self.request.GET.get("q", ""),
+            )
         )
         return context
 
