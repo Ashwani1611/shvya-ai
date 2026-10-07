@@ -128,7 +128,7 @@ def detect_language(text: str) -> str | None:
         # ordinary customer questions without pretending to solve every
         # linguistic ambiguity; the configured-language matcher can still
         # choose the first authored language when the script is ambiguous.
-        if re.search(r"(?:आहे|आणि|मला|तुम्ही|तुमचा|किती|किंमत|बद्दल|करायचं|पाहिजे)", value):
+        if re.search(r"(?:आहे|आणि|मला|तुम्ही|तुमचा|किती|किंमत|बद्दल|करायचं|पाहिजे|आम्ही|आमची|आमचा|आमचे|माझी|माझा|ठेवतो|मराठी|मराठीत)", value):
             return "mr"
         return "hi"
     value = value.casefold()
@@ -507,4 +507,5 @@ def requested_action(intents: set[Intent]) -> str | None:
         if intent in intents:
             return action
     return None
+
 
