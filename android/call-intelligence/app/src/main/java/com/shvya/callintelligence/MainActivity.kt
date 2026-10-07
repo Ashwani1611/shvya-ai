@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private var leadPrefillName = ""
     private var leadPrefillPhone = ""
     private var pendingOpenCallId = ""
+    private var pendingOpenLeadId = ""
     private var pendingReminderId = ""
     private var pendingReminderAction = ""
     private var dateFrom = ""
@@ -113,6 +114,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleLaunchIntent(intent: Intent?) {
         pendingOpenCallId = intent?.getStringExtra("open_call_id").orEmpty()
+        pendingOpenLeadId = intent?.getStringExtra("open_lead_id").orEmpty()
         pendingReminderId = intent?.getStringExtra("reminder_id").orEmpty()
         pendingReminderAction = intent?.getStringExtra("reminder_action").orEmpty()
         if (intent?.getBooleanExtra("post_call_review", false) == true) {
@@ -129,6 +131,11 @@ class MainActivity : AppCompatActivity() {
         if (callId.isNotBlank() && auth.hasSession()) {
             pendingOpenCallId = ""
             window.decorView.post { showCallDetail(callId) }
+        }
+        val leadId = pendingOpenLeadId
+        if (leadId.isNotBlank() && auth.hasSession()) {
+            pendingOpenLeadId = ""
+            window.decorView.post { showLeadDetail(leadId) }
         }
         val reminderId = pendingReminderId
         val reminderAction = pendingReminderAction
