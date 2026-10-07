@@ -1174,15 +1174,12 @@ class MainActivity : AppCompatActivity() {
     private fun saveCallOutcome(call: JSONObject, code: String, button: Button, label: String) {
         button.isEnabled = false
         lifecycleScope.launch {
+            val path = apiPath + "calls/" + call.getString("id") + "/notes/"
+            val payload = JSONObject()
+                .put("notes", call.optString("notes"))
+                .put("disposition", code)
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    ApiClient(this@MainActivity).authorizedPatch(
-                        apiPath + "calls/" + call.getString("id") + "/notes/",
-                        JSONObject()
-                            .put("notes", call.optString("notes"))
-                            .put("disposition", code),
-                    )
-                }.getOrNull()
+                runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
             }
             button.isEnabled = true
             if (result?.successful == true) {
@@ -1190,7 +1187,12 @@ class MainActivity : AppCompatActivity() {
                 button.text = label
                 toast("Call outcome saved")
                 render()
-            } else toast("Could not save call outcome.")
+            } else if (shouldQueueOffline(result)) {
+                queueOfflineAction(path, "PATCH", payload, "Call outcome")
+                call.put("disposition", code)
+                button.text = label
+                toast("Saved offline · will sync automatically")
+            } else toast(apiError(result?.body, "Could not save call outcome."))
         }
     }
 
@@ -1198,60 +1200,61 @@ class MainActivity : AppCompatActivity() {
         val existing = call.optString("notes").trim()
         val notes = if (existing.isBlank()) value else existing + "\n" + value
         lifecycleScope.launch {
+            val path = apiPath + "calls/" + call.getString("id") + "/notes/"
+            val payload = JSONObject()
+                .put("notes", notes)
+                .put("disposition", call.optString("disposition"))
             val result = withContext(Dispatchers.IO) {
-                runCatching {
-                    ApiClient(this@MainActivity).authorizedPatch(
-                        apiPath + "calls/" + call.getString("id") + "/notes/",
-                        JSONObject()
-                            .put("notes", notes)
-                            .put("disposition", call.optString("disposition")),
-                    )
-                }.getOrNull()
+                runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
             }
             if (result?.successful == true) {
                 call.put("notes", notes)
                 toast("Quick note saved")
                 render()
-            } else toast("Could not save note.")
+            } else if (shouldQueueOffline(result)) {
+                queueOfflineAction(path, "PATCH", payload, "Call note")
+                call.put("notes", notes)
+                toast("Saved offline · will sync automatically")
+            } else toast(apiError(result?.body, "Could not save note."))
         }
     }
 
     private fun scheduleCallFollowUp(callId: String, dueAtMillis: Long) {
         lifecycleScope.launch {
+            val path = apiPath + "calls/" + callId + "/follow-up/"
+            val payload = JSONObject()
+                .put("due_at", isoUtc(dueAtMillis))
+                .put("title", "Call follow-up")
             val response = withContext(Dispatchers.IO) {
-                runCatching {
-                    ApiClient(this@MainActivity).authorizedPost(
-                        apiPath + "calls/" + callId + "/follow-up/",
-                        JSONObject()
-                            .put("due_at", isoUtc(dueAtMillis))
-                            .put("title", "Call follow-up"),
-                    )
-                }.getOrNull()
+                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
             }
             if (response?.successful == true) {
                 toast("Follow-up scheduled")
                 selectedTab = "followups"
                 reminderSegment = "today"
                 render()
+            } else if (shouldQueueOffline(response)) {
+                queueOfflineAction(path, "POST", payload, "Call follow-up")
+                toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
     }
 
     private fun scheduleLeadFollowUp(leadId: String, dueAtMillis: Long) {
         lifecycleScope.launch {
+            val path = apiPath + "leads/" + leadId + "/"
+            val payload = JSONObject()
+                .put("due_at", isoUtc(dueAtMillis))
+                .put("title", "Lead follow-up")
             val response = withContext(Dispatchers.IO) {
-                runCatching {
-                    ApiClient(this@MainActivity).authorizedPost(
-                        apiPath + "leads/" + leadId + "/",
-                        JSONObject()
-                            .put("due_at", isoUtc(dueAtMillis))
-                            .put("title", "Lead follow-up"),
-                    )
-                }.getOrNull()
+                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
             }
             if (response?.successful == true) {
                 toast("Follow-up scheduled")
                 render()
+            } else if (shouldQueueOffline(response)) {
+                queueOfflineAction(path, "POST", payload, "Lead follow-up")
+                toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
     }
@@ -1279,20 +1282,21 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Move lead")
             .setItems(labels.toTypedArray()) { _, which ->
                 lifecycleScope.launch {
+                    val path = apiPath + "leads/" + lead.getString("id") + "/"
+                    val payload = JSONObject()
+                        .put("pipeline_id", pipelineIds[which])
+                        .put("stage_id", stageIds[which])
                     val response = withContext(Dispatchers.IO) {
-                        runCatching {
-                            ApiClient(this@MainActivity).authorizedPatch(
-                                apiPath + "leads/" + lead.getString("id") + "/",
-                                JSONObject()
-                                    .put("pipeline_id", pipelineIds[which])
-                                    .put("stage_id", stageIds[which]),
-                            )
-                        }.getOrNull()
+                        runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
                     }
                     if (response?.successful == true) {
                         toast("Lead moved")
                         parent.dismiss()
                         render()
+                    } else if (shouldQueueOffline(response)) {
+                        queueOfflineAction(path, "PATCH", payload, "Move lead")
+                        toast("Stage change saved offline · will sync automatically")
+                        parent.dismiss()
                     } else toast(apiError(response?.body, "Could not move this lead."))
                 }
             }
