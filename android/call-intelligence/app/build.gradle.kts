@@ -13,8 +13,8 @@ android {
         minSdk = 23
         targetSdk = 35
         // Keep the code increasing so existing installations can update in place.
-        versionCode = 6
-        versionName = "1.2"
+        versionCode = 7
+        versionName = "1.3"
 
         buildConfigField(
             "String",

@@ -178,45 +178,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLogin() {
-        val root = page().apply { setPadding(dp(22), dp(28), dp(22), dp(40)) }
-        root.addView(space(22))
+        val root = page().apply { setPadding(dp(24), dp(36), dp(24), dp(42)) }
+        root.addView(space(12))
         root.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-            layoutParams = LinearLayout.LayoutParams(dp(68), dp(68)).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        })
-        root.addView(space(20))
-        root.addView(kicker("SHVYA MOBILE WORKSPACE").apply { gravity = Gravity.CENTER })
-        root.addView(title("Welcome back").apply { gravity = Gravity.CENTER; textSize = 32f })
-        root.addView(body("Your calls, reminders and CRM context — organized in one secure workspace.").apply {
-            gravity = Gravity.CENTER
-            textSize = 15f
-        })
-        root.addView(space(30))
-
-        val card = card().apply { setPadding(dp(24), dp(26), dp(24), dp(26)) }
-        card.addView(sectionTitle("Sign in to SHVYA").apply { textSize = 23f })
-        card.addView(body("Use the same work account you use on shvya-ai.com."))
-        card.addView(space(24))
-
-        val email = field("name@company.com").apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setText(auth.email)
-            isSingleLine = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
             }
-        }
+        })
+        root.addView(space(18))
+        root.addView(kicker("SHVYA CALL INTELLIGENCE").apply { gravity = Gravity.CENTER })
+        root.addView(title("Sign in").apply {
+            gravity = Gravity.CENTER
+            textSize = 34f
+        })
+        root.addView(body("Your calls, CRM leads and follow-ups — in one focused mobile workspace.").apply {
+            gravity = Gravity.CENTER
+            textSize = 14f
+            setPadding(dp(12), dp(8), dp(12), 0)
+        })
+        root.addView(space(28))
+
+        val card = card().apply { setPadding(dp(22), dp(24), dp(22), dp(24)) }
+        val (emailShell, email) = loginTextField(
+            hintText = "name@company.com",
+            inputTypeValue = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            autofillHint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) View.AUTOFILL_HINT_EMAIL_ADDRESS else null,
+        )
+        email.setText(auth.email)
         val (passwordShell, password) = passwordField()
-        val message = body("").apply { setPadding(0, dp(12), 0, 0) }
-        val login = primaryButton("Continue to workspace").apply { minHeight = dp(52) }
+        val message = body("").apply {
+            setPadding(0, dp(12), 0, 0)
+            gravity = Gravity.CENTER
+        }
+        val login = primaryButton("Continue").apply { minimumHeight = dp(54) }
 
         login.setOnClickListener {
             val emailValue = email.text.toString().trim()
             val passwordValue = password.text.toString()
             if (emailValue.isBlank() || passwordValue.isBlank()) {
-                message.text = "Enter your SHVYA email and password."
-                message.setTextColor(Color.rgb(210, 45, 40))
+                message.text = "Enter your work email and password."
+                message.setTextColor(Color.rgb(196, 58, 54))
                 return@setOnClickListener
             }
             login.isEnabled = false
@@ -229,7 +232,7 @@ class MainActivity : AppCompatActivity() {
                         .getOrElse {
                             com.shvya.callintelligence.net.LoginResult(
                                 false,
-                                "Could not reach the secure SHVYA server. Check your internet connection and try again."
+                                "Could not reach SHVYA. Check your internet connection and try again."
                             )
                         }
                 }
@@ -238,22 +241,22 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     login.isEnabled = true
                     login.alpha = 1f
-                    login.text = "Continue to workspace"
+                    login.text = "Continue"
                     message.text = result.message
-                    message.setTextColor(Color.rgb(210, 45, 40))
+                    message.setTextColor(Color.rgb(196, 58, 54))
                 }
             }
         }
 
         card.addView(fieldLabel("Work email"))
         card.addView(space(8))
-        card.addView(email)
+        card.addView(emailShell, LinearLayout.LayoutParams(-1, dp(56)))
         card.addView(space(18))
         card.addView(fieldLabel("Password"))
         card.addView(space(8))
-        card.addView(passwordShell)
+        card.addView(passwordShell, LinearLayout.LayoutParams(-1, dp(56)))
         card.addView(space(22))
-        card.addView(login)
+        card.addView(login, LinearLayout.LayoutParams(-1, dp(54)))
         card.addView(message)
         root.addView(card)
 
@@ -261,7 +264,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER
             addView(statusDot(Color.rgb(35, 139, 100)))
-            addView(body("Secure connection  ·  shvya-ai.com").apply {
+            addView(body("Secure · shvya-ai.com").apply {
                 setPadding(dp(7), 0, 0, 0)
                 textSize = 12f
             })
@@ -286,23 +289,23 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply { setOnClickListener { showSettings() } })
         root.addView(header)
-        root.addView(space(18))
-        root.addView(workspaceStatusCard())
-        root.addView(space(26))
+        root.addView(space(20))
 
         if (!essentialPermissionsGranted()) {
             val permissionCard = card()
-            permissionCard.addView(iconBadge(R.drawable.ic_phone_outline, blue, Color.rgb(234, 242, 253)))
+            permissionCard.addView(iconBadge(R.drawable.ic_phone_outline, blue, Color.rgb(238, 244, 253)))
+            permissionCard.addView(space(16))
+            permissionCard.addView(sectionTitle("Finish setup").apply { textSize = 22f })
+            permissionCard.addView(body("Allow phone and call-log access so SHVYA can organize your call activity automatically."))
             permissionCard.addView(space(18))
-            permissionCard.addView(sectionTitle("Connect your calls").apply { textSize = 23f })
-            permissionCard.addView(body("Allow phone and call log access to capture your calls. Contacts help identify callers; notifications keep you informed."))
-            permissionCard.addView(space(20))
-            permissionCard.addView(primaryButton("Allow access").apply {
+            permissionCard.addView(primaryButton("Allow call access").apply {
                 setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
             })
             permissionCard.addView(space(8))
-            permissionCard.addView(secondaryButton("Open app permissions").apply {
-                setOnClickListener { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
+            permissionCard.addView(quietButton("Open Android settings").apply {
+                setOnClickListener {
+                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
+                }
             })
             root.addView(permissionCard)
         } else {
@@ -322,32 +325,39 @@ class MainActivity : AppCompatActivity() {
 
     private fun showToday(root: LinearLayout, version: Int) {
         root.addView(kicker("TODAY"))
-        root.addView(title("Your day").apply { textSize = 36f })
-        root.addView(body("Calls, follow-ups and leads that need your attention."))
+        root.addView(title("Today").apply { textSize = 34f })
+        root.addView(body("Your calls and follow-ups, focused on what needs attention."))
         root.addView(space(20))
-        root.addView(syncHealthCard())
-        root.addView(space(16))
+        if (pendingSyncCount > 0) {
+            root.addView(syncHealthCard())
+            root.addView(space(16))
+        }
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
         loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "today/?mine=1") }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
-            summary.addView(sectionTitle("Today at a glance"))
-            summary.addView(body("A focused view of the work that matters now."))
+            summary.addView(sectionTitle(
+                if (stats.optInt("overdue") > 0 || stats.optInt("missed_needing_action") > 0) {
+                    "Needs your attention"
+                } else {
+                    "You're on track"
+                }
+            ))
+            summary.addView(body(
+                if (stats.optInt("overdue") > 0 || stats.optInt("missed_needing_action") > 0) {
+                    "Clear the important items first, then continue with today's calls."
+                } else {
+                    "No urgent call or follow-up issues are waiting right now."
+                }
+            ))
             summary.addView(space(18))
             summary.addView(metricRow(listOf(
                 "Calls" to stats.optInt("total"),
-                "Answered" to stats.optInt("answered"),
-                "Missed" to stats.optInt("missed"),
-                "New leads" to stats.optInt("new_leads"),
-            )))
-            summary.addView(space(16))
-            summary.addView(metricRow(listOf(
+                "Missed" to stats.optInt("missed_needing_action"),
                 "Due" to stats.optInt("followups_due"),
                 "Overdue" to stats.optInt("overdue"),
-                "Needs action" to stats.optInt("missed_needing_action"),
-                "Outgoing" to stats.optInt("outgoing"),
             )))
             content.addView(summary)
             content.addView(space(16))
@@ -406,7 +416,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLeads(root: LinearLayout, version: Int) {
         root.addView(kicker("CRM"))
-        root.addView(title("Leads").apply { textSize = 36f })
+        root.addView(title("Leads").apply { textSize = 34f })
         root.addView(body("Call, message, follow up and move leads without leaving your phone."))
         root.addView(space(22))
 
@@ -662,8 +672,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCalls(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR WORKSPACE"))
-        root.addView(title("Calls").apply { textSize = 36f })
-        root.addView(body("Every conversation, thoughtfully organized."))
+        root.addView(title("Calls").apply { textSize = 34f })
+        root.addView(body("Find a call, take the next action and keep CRM updated."))
         root.addView(space(26))
 
         val search = field("Search leads or numbers").apply {
@@ -683,58 +693,27 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(10) })
         root.addView(searchRow)
         root.addView(space(12))
-        val filters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        filters.addView(quietButton(if (dateFrom.isBlank()) "All dates  ⌄" else "$dateFrom – $dateTo").apply {
-            setOnClickListener { pickDate("From date") { start ->
-                pickDate("To date") { end ->
-                    if (end < start) toast("End date must follow the start date.") else {
-                        dateFrom = start; dateTo = end; pageNumber = 1; render()
-                    }
+        val filterRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        filterRow.addView(secondaryButton(callFilterLabel() + "  ⌄").apply {
+            setOnClickListener { showCallFilterPicker() }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+        filterRow.addView(secondaryButton(callDateLabel() + "  ⌄").apply {
+            setOnClickListener { showCallDatePicker() }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        root.addView(filterRow)
+        if (query.isNotBlank() || callFilter != "all" || dateFrom.isNotBlank()) {
+            root.addView(space(4))
+            root.addView(quietButton("Reset search & filters").apply {
+                setOnClickListener {
+                    query = ""
+                    callFilter = "all"
+                    dateFrom = ""
+                    dateTo = ""
+                    pageNumber = 1
+                    render()
                 }
-            } }
-        })
-        if (query.isNotBlank() || dateFrom.isNotBlank()) filters.addView(quietButton("Clear filters").apply {
-            setOnClickListener { query = ""; dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
-        })
-        root.addView(filters)
-        root.addView(space(10))
-        listOf(
-            listOf("all" to "All", "answered" to "Answered", "missed" to "Missed", "followup" to "Follow-up"),
-            listOf("incoming" to "Incoming", "outgoing" to "Outgoing", "linked" to "CRM leads", "unknown" to "No lead"),
-        ).forEach { group ->
-            val quickFilters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            group.forEach { (key, label) ->
-                quickFilters.addView(quietButton(if (callFilter == key) "•  " + label else label).apply {
-                    setOnClickListener { callFilter = key; pageNumber = 1; render() }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
-            }
-            root.addView(quickFilters)
+            })
         }
-        val datePresets = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        datePresets.addView(quietButton("Today").apply {
-            setOnClickListener {
-                val value = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                dateFrom = value
-                dateTo = value
-                pageNumber = 1
-                render()
-            }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        datePresets.addView(quietButton("This week").apply {
-            setOnClickListener {
-                val cal = Calendar.getInstance()
-                val end = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                cal.add(Calendar.DAY_OF_YEAR, -6)
-                dateFrom = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                dateTo = end
-                pageNumber = 1
-                render()
-            }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        datePresets.addView(quietButton("All dates").apply {
-            setOnClickListener { dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        root.addView(datePresets)
         root.addView(space(20))
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -830,8 +809,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showReminders(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR FOLLOW-UPS"))
-        root.addView(title("Reminders").apply { textSize = 36f })
-        root.addView(body("Every follow-up in your CRM pipelines, in one place."))
+        root.addView(title("Follow-ups").apply { textSize = 34f })
+        root.addView(body("Overdue, due today and upcoming work — clearly separated."))
         root.addView(space(16))
         val segments = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         listOf(
@@ -1662,18 +1641,56 @@ class MainActivity : AppCompatActivity() {
                         else { isEnabled = true; toast("Could not save settings. Please retry.") }
                     }
                 } })
-            } else content.addView(body("Could not load settings. Close and retry when connected."))
-            content.addView(space(18))
-            content.addView(sectionTitle("Phone & account"))
-            content.addView(secondaryButton("Phone permissions").apply { setOnClickListener { permissionLauncher.launch(requiredPermissions()) } })
-            content.addView(secondaryButton("Background access").apply { setOnClickListener { requestBatteryOptimizationExemption() } })
-            content.addView(secondaryButton("Open dashboard").apply { setOnClickListener {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/?section=analytics")))
-            } })
-            content.addView(body("Version " + BuildConfig.VERSION_NAME))
-            content.addView(secondaryButton("Sign out").apply { setOnClickListener {
+            } else content.addView(body("Could not load organization settings. You can still manage this device below."))
+
+            content.addView(space(24))
+            content.addView(sectionTitle("Device & sync"))
+            val deviceCard = card()
+            deviceCard.addView(statusLine("Call access", essentialPermissionsGranted()))
+            deviceCard.addView(statusLine(
+                if (pendingSyncCount == 0) "All activity synced" else pendingSyncCount.toString() + " items waiting to sync",
+                pendingSyncCount == 0,
+            ))
+            deviceCard.addView(space(10))
+            deviceCard.addView(secondaryButton("Sync now").apply {
+                setOnClickListener {
+                    TrackingScheduler.enqueueReconcile(this@MainActivity)
+                    TrackingScheduler.enqueueSync(this@MainActivity)
+                    toast("Sync requested")
+                    refreshLocalSyncHealth()
+                }
+            })
+            content.addView(deviceCard)
+            content.addView(space(10))
+            val deviceActions = LinearLayout(this@MainActivity)
+            deviceActions.addView(quietButton("Permissions").apply {
+                setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
+            }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+            deviceActions.addView(quietButton("Background access").apply {
+                setOnClickListener { requestBatteryOptimizationExemption() }
+            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            content.addView(deviceActions)
+
+            content.addView(space(24))
+            content.addView(sectionTitle("Account"))
+            content.addView(body(auth.email.ifBlank { "Signed in to SHVYA" }).apply {
+                setTextColor(ink)
+                setPadding(0, dp(6), 0, dp(10))
+            })
+            content.addView(secondaryButton("Open web dashboard").apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                        BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/?section=analytics"
+                    )))
+                }
+            })
+            content.addView(body("App version " + BuildConfig.VERSION_NAME).apply {
+                textSize = 12f
+                setPadding(0, dp(10), 0, dp(6))
+            })
+            content.addView(quietButton("Sign out").apply { setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("Sign out?")
-                    .setMessage("Call tracking will stop. Sync any pending calls first.")
+                    .setMessage("Call tracking will stop on this device until you sign in again.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Sign out") { _, _ ->
                         stopService(Intent(this@MainActivity, CallTrackingService::class.java))
                         WorkManager.getInstance(this@MainActivity).cancelAllWork()
@@ -2064,6 +2081,11 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 minimumHeight = dp(58)
                 contentDescription = label
+                background = if (active) {
+                    rounded(Color.rgb(244, 248, 253), 17f)
+                } else {
+                    rounded(Color.TRANSPARENT, 17f)
+                }
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(drawable)
                     imageTintList = ColorStateList.valueOf(if (active) blue else muted)
@@ -2087,6 +2109,88 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         setContentView(shell)
+    }
+
+    private fun callFilterLabel(): String = when (callFilter) {
+        "answered" -> "Answered"
+        "missed" -> "Missed"
+        "followup" -> "Needs follow-up"
+        "incoming" -> "Incoming"
+        "outgoing" -> "Outgoing"
+        "linked" -> "CRM leads"
+        "unknown" -> "No CRM lead"
+        else -> "All calls"
+    }
+
+    private fun callDateLabel(): String = when {
+        dateFrom.isBlank() -> "All dates"
+        dateFrom == dateTo -> dateFrom
+        else -> dateFrom + " – " + dateTo
+    }
+
+    private fun showCallFilterPicker() {
+        val options = listOf(
+            "all" to "All calls",
+            "answered" to "Answered",
+            "missed" to "Missed",
+            "followup" to "Needs follow-up",
+            "incoming" to "Incoming",
+            "outgoing" to "Outgoing",
+            "linked" to "CRM leads",
+            "unknown" to "No CRM lead",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Filter calls")
+            .setItems(options.map { it.second }.toTypedArray()) { _, which ->
+                callFilter = options[which].first
+                pageNumber = 1
+                render()
+            }
+            .show()
+    }
+
+    private fun showCallDatePicker() {
+        val options = arrayOf("All dates", "Today", "Last 7 days", "Custom range")
+        AlertDialog.Builder(this)
+            .setTitle("Call dates")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        dateFrom = ""
+                        dateTo = ""
+                        pageNumber = 1
+                        render()
+                    }
+                    1 -> {
+                        val value = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                        dateFrom = value
+                        dateTo = value
+                        pageNumber = 1
+                        render()
+                    }
+                    2 -> {
+                        val cal = Calendar.getInstance()
+                        dateTo = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                        cal.add(Calendar.DAY_OF_YEAR, -6)
+                        dateFrom = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                        pageNumber = 1
+                        render()
+                    }
+                    else -> pickDate("From date") { start ->
+                        pickDate("To date") { end ->
+                            if (end < start) {
+                                toast("End date must follow the start date.")
+                            } else {
+                                dateFrom = start
+                                dateTo = end
+                                pageNumber = 1
+                                render()
+                            }
+                        }
+                    }
+                }
+            }
+            .show()
     }
 
     private fun pickDate(label: String, chosen: (String) -> Unit) {
@@ -2170,9 +2274,13 @@ class MainActivity : AppCompatActivity() {
     private fun card(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(22), dp(22), dp(22))
-            background = rounded(Color.WHITE, 23f)
-            elevation = dp(1).toFloat()
+            setPadding(dp(20), dp(20), dp(20), dp(20))
+            background = roundedStroke(
+                color = Color.WHITE,
+                radius = 22f,
+                strokeColor = Color.rgb(232, 235, 240),
+            )
+            elevation = 0f
         }
 
     private fun dialogContent(): LinearLayout = LinearLayout(this).apply {
@@ -2275,13 +2383,44 @@ class MainActivity : AppCompatActivity() {
         ).apply { setPadding(0, 0, 0, 0) })
     }
 
+    private fun loginTextField(
+        hintText: String,
+        inputTypeValue: Int,
+        autofillHint: String? = null,
+    ): Pair<LinearLayout, EditText> {
+        val input = EditText(this).apply {
+            hint = hintText
+            textSize = 15f
+            setTextColor(ink)
+            setHintTextColor(Color.rgb(142, 150, 162))
+            setPadding(dp(16), 0, dp(16), 0)
+            inputType = inputTypeValue
+            isSingleLine = true
+            background = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autofillHint != null) {
+                setAutofillHints(autofillHint)
+            }
+        }
+        val shell = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(56)
+            background = roundedStroke(
+                color = Color.rgb(248, 249, 251),
+                radius = 16f,
+                strokeColor = Color.rgb(224, 228, 234),
+            )
+            addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+        }
+        return shell to input
+    }
+
     private fun passwordField(): Pair<LinearLayout, EditText> {
         val input = EditText(this).apply {
             hint = "Enter your password"
             textSize = 15f
             setTextColor(ink)
-            setHintTextColor(Color.rgb(145, 145, 150))
-            setPadding(dp(16), 0, dp(8), 0)
+            setHintTextColor(Color.rgb(142, 150, 162))
+            setPadding(dp(16), 0, dp(6), 0)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = PasswordTransformationMethod.getInstance()
             isSingleLine = true
@@ -2294,7 +2433,7 @@ class MainActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_eye_outline)
             imageTintList = ColorStateList.valueOf(muted)
             contentDescription = "Show password"
-            setPadding(dp(13), dp(13), dp(13), dp(13))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             isClickable = true
             isFocusable = true
             var visible = false
@@ -2312,10 +2451,14 @@ class MainActivity : AppCompatActivity() {
         }
         val shell = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            background = rounded(Color.rgb(241, 243, 247), 15f)
-            minimumHeight = dp(54)
-            addView(input, LinearLayout.LayoutParams(0, dp(54), 1f))
-            addView(eye, LinearLayout.LayoutParams(dp(50), dp(54)))
+            minimumHeight = dp(56)
+            background = roundedStroke(
+                color = Color.rgb(248, 249, 251),
+                radius = 16f,
+                strokeColor = Color.rgb(224, 228, 234),
+            )
+            addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+            addView(eye, LinearLayout.LayoutParams(dp(52), dp(56)))
         }
         return shell to input
     }
@@ -2386,6 +2529,18 @@ class MainActivity : AppCompatActivity() {
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radius.toInt()).toFloat()
+        }
+
+    private fun roundedStroke(
+        color: Int,
+        radius: Float,
+        strokeColor: Int,
+        strokeWidth: Int = 1,
+    ): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius.toInt()).toFloat()
+            setStroke(dp(strokeWidth), strokeColor)
         }
 
     private fun space(height: Int): View =
