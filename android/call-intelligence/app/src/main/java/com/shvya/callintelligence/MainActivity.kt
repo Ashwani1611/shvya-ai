@@ -1126,7 +1126,7 @@ class MainActivity : AppCompatActivity() {
             setTextColor(if (ready) Color.rgb(35, 139, 100) else blue)
             gravity = Gravity.CENTER
             setPadding(dp(10), 0, dp(10), 0)
-            minHeight = dp(30)
+            minimumHeight = dp(30)
             background = rounded(
                 if (ready) Color.rgb(235, 248, 242) else Color.rgb(236, 244, 255),
                 15f,
