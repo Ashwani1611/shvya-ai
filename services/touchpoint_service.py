@@ -19,6 +19,7 @@ MAX_TOTAL_BYTES = 50 * 1024 * 1024
 ATTACHMENT_EXTENSIONS = {
     "image": frozenset({".jpg", ".jpeg", ".png"}),
     "video": frozenset({".mp4", ".mov", ".webm", ".3gp"}),
+    "audio": frozenset({".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav"}),
     "document": frozenset({
         ".pdf", ".doc", ".docx", ".xls", ".xlsx",
         ".ppt", ".pptx", ".txt", ".csv",
@@ -76,7 +77,7 @@ def attachment_kind(filename):
     for kind, extensions in ATTACHMENT_EXTENSIONS.items():
         if ext in extensions:
             return kind
-    raise ValidationError("Unsupported file. Upload a photo, video, PDF, Office file, TXT or CSV.")
+    raise ValidationError("Unsupported file. Upload a photo, video, audio, PDF, Office file, TXT or CSV.")
 
 
 def validate_attachment_changes(*, reply, uploads, remove_ids):
@@ -101,7 +102,7 @@ def validate_attachment_changes(*, reply, uploads, remove_ids):
         if not 0 < size <= MAX_ATTACHMENT_BYTES:
             raise ValidationError("Each attachment must be nonempty and at most 25 MB.")
         submitted_mime = str(getattr(upload, "content_type", "") or "").lower().split(";", 1)[0]
-        if kind in {"image", "video"} and submitted_mime and not submitted_mime.startswith(kind + "/"):
+        if kind in {"image", "video", "audio"} and submitted_mime and not submitted_mime.startswith(kind + "/"):
             raise ValidationError("The uploaded media type does not match the file extension.")
         total += size
     if total > MAX_TOTAL_BYTES:
