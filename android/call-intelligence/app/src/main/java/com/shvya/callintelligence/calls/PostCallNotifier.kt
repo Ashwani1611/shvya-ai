@@ -75,7 +75,7 @@ object PostCallNotifier {
             .setContentText("$readableStatus · Add notes, outcome or follow-up in SHVYA.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "SHVYA captured this call safely on-device. Open Call Intelligence to add post-call notes, choose a disposition, set the next follow-up and run grounded AI analysis."
+                    "SHVYA captured this call safely on-device. Open Call Intelligence to add notes, choose an outcome, set the next follow-up and keep the CRM updated."
                 )
             )
             .setContentIntent(openApp)
