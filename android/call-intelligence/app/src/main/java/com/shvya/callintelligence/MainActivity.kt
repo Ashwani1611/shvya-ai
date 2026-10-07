@@ -48,6 +48,7 @@ import com.shvya.callintelligence.calls.TrackingScheduler
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
 import com.shvya.callintelligence.data.AppDatabase
+import com.shvya.callintelligence.data.PendingAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -1387,6 +1388,29 @@ class MainActivity : AppCompatActivity() {
         return runCatching { JSONObject(bodyText).optString("detail") }.getOrNull()
             .orEmpty()
             .ifBlank { fallback }
+    }
+
+    private fun shouldQueueOffline(response: com.shvya.callintelligence.net.ApiResponse?): Boolean =
+        response == null || response.code == 408 || response.code == 429 || response.code in 500..599
+
+    private suspend fun queueOfflineAction(
+        path: String,
+        method: String,
+        payload: JSONObject,
+        label: String,
+    ) {
+        withContext(Dispatchers.IO) {
+            AppDatabase.get(this@MainActivity).callDao().insertPendingAction(
+                PendingAction(
+                    path = path,
+                    method = method,
+                    payload = payload.toString(),
+                    label = label,
+                )
+            )
+        }
+        pendingSyncCount += 1
+        TrackingScheduler.enqueueSync(this)
     }
 
     private fun performReminderAction(reminderId: String, action: String) {
