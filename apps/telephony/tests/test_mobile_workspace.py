@@ -275,6 +275,59 @@ class MobileWorkspaceTests(TestCase):
         payload["stage_id"] = str(other_stage.id)
         self.assertEqual(self.api().post(url, payload, format="json").status_code, 400)
 
+    def test_mobile_lead_detail_returns_only_human_readable_configured_attributes(self):
+        AttributeDefinition.objects.create(
+            organization=self.org,
+            key="interest",
+            name="Product interest",
+            field_type="text",
+            display_order=1,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.org,
+            key="budget",
+            name="Budget",
+            field_type="text",
+            display_order=2,
+        )
+        AttributeDefinition.objects.create(
+            organization=self.org,
+            key="internal_payload",
+            name="Internal payload",
+            field_type="text",
+            display_order=3,
+        )
+        call = self.call()
+        lead = call.lead
+        lead.attributes = {
+            "interest": "CRM automation",
+            "budget": "₹50,000",
+            "internal_payload": '{"trace_id":"hidden","score":0.91}',
+            "unknown_system_key": "must not render",
+        }
+        lead.save(update_fields=["attributes"])
+
+        response = self.api().get(f"/api/v1/call-intelligence/leads/{lead.id}/")
+        self.assertEqual(response.status_code, 200)
+        rows = response.data["lead"]["attribute_details"]
+        self.assertEqual(
+            rows,
+            [
+                {
+                    "key": "interest",
+                    "name": "Product interest",
+                    "field_type": "text",
+                    "value": "CRM automation",
+                },
+                {
+                    "key": "budget",
+                    "name": "Budget",
+                    "field_type": "text",
+                    "value": "₹50,000",
+                },
+            ],
+        )
+
     def test_agent_cannot_choose_unassigned_pipeline(self):
         self.pipeline.owner = None
         self.pipeline.save(update_fields=["owner"])
@@ -303,13 +356,15 @@ class MobileWorkspaceTests(TestCase):
             lead=missed.lead,
             assigned_to=self.user,
             title="Call back",
-            due_at=timezone.now() + timedelta(hours=1),
+            # Keep this deterministic around local midnight. A +1 hour reminder
+            # can legitimately belong to tomorrow and should not count as due today.
+            due_at=timezone.now() - timedelta(minutes=5),
         )
         response = self.api().get("/api/v1/call-intelligence/today/")
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(response.data["stats"]["total"], 2)
         self.assertGreaterEqual(response.data["stats"]["missed"], 1)
-        self.assertGreaterEqual(response.data["stats"]["followups_due"], 1)
+        self.assertGreaterEqual(response.data["stats"]["overdue"], 1)
         self.assertIn("recent_calls", response.data)
         self.assertIn("reminders", response.data)
 
