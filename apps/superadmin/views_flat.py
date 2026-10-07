@@ -18,6 +18,7 @@ from apps.accounts.session_utils import (
     set_authenticated_user,
 )
 from apps.crm.models import Lead, Pipeline
+from apps.integrations.indiamart_models import IndiaMartConnection
 from apps.integrations.justdial_models import JustDialIntegration
 from apps.organizations.features import module_controls
 from apps.organizations.models import (
@@ -572,6 +573,9 @@ def organization_detail_view(
             "active_operations_tokens": active_operations_tokens,
             "open_operations_support_sessions": open_operations_support_sessions,
             "operations_audit_events": operations_audit_events,
+            "indiamart_connection": IndiaMartConnection.objects.filter(
+                organization=organization,
+            ).first(),
             "justdial_integration": JustDialIntegration.objects.filter(
                 organization=organization,
             ).first(),
