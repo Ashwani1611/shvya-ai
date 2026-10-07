@@ -30,7 +30,7 @@ from services.followup_service import (
     set_lead_followup_enabled,
 )
 from .models import WhatsAppAccount, WhatsAppTemplate, WhatsAppMessage
-from services.touchpoint_service import render_touchpoint, attachment_kind
+from services.touchpoint_service import render_touchpoint, attachment_kind, placeholder_keys
 
 
 def linked_api(lead):
@@ -74,10 +74,15 @@ def contact_panel(request, lead_id):
             "attachments"
         ),
     )))
+    # Compute the organisation's allowed keys and this lead's current values
+    # once, not once per quick reply in a potentially large library.
+    from services.followup_service import _lead_template_values
+    allowed_keys = placeholder_keys(lead.organization)
+    lead_values = _lead_template_values(lead, request.crm_user)
     for category in categories:
         for reply in category.replies.all():
             reply.personalized_body, reply.missing_placeholders = render_touchpoint(
-                reply=reply, lead=lead, user=request.crm_user,
+                reply=reply, lead=lead, allowed_keys=allowed_keys, values=lead_values,
             )
 
     response = render(
