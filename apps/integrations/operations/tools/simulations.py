@@ -46,7 +46,11 @@ def simulate_cadence(*, identity, arguments):
     else:
         reference = timezone.now()
 
-    automation_settings = get_session_settings(account=sequence.whatsapp_account)
+    if sequence.instagram_account_id:
+        from apps.channels.services.instagram_automation import get_settings
+        automation_settings = get_settings(organization_id=organization.id)
+    else:
+        automation_settings = get_session_settings(account=sequence.whatsapp_account)
     rows = []
     cursor = reference
     for step in sequence.steps.filter(is_active=True).order_by("position", "created_at"):
@@ -68,6 +72,7 @@ def simulate_cadence(*, identity, arguments):
                 "due_at": due.isoformat(),
                 "content_preview": (
                     snapshot.get("hosted_body")
+                    or snapshot.get("instagram_body")
                     or snapshot.get("email_body")
                     or snapshot.get("reminder_text")
                     or ""

@@ -7,7 +7,7 @@ from apps.crm.models import Lead
 
 @receiver(post_save, sender=Lead, dispatch_uid="telephony_reconcile_lead_calls")
 def link_earlier_calls(sender, instance, raw=False, update_fields=None, **kwargs):
-    if raw or not instance.phone:
+    if raw or instance.is_operations_test or not instance.phone:
         return
     if update_fields is not None and "phone" not in update_fields:
         return

@@ -554,6 +554,12 @@ from .operations_models import (  # noqa: E402,F401
 
 from .setup_models import OperationsIntakeEntry  # noqa: E402,F401
 
+from .operations_testing_models import (  # noqa: E402,F401
+    OperationsAIFlowRun,
+    OperationsAIFlowTurn,
+    OperationsAIFlowReservation,
+)
+
 from .meta_conversions_models import (  # noqa: E402,F401
     MetaConversionsConfiguration,
     MetaConversionMapping,

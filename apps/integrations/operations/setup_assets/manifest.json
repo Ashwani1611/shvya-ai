@@ -612,6 +612,42 @@
         }
       ],
       "path": "skills/shvya-acceptance-testing/SKILL.md"
+    },
+    {
+      "name": "shvya-ai-flow-testing",
+      "title": "SHVYA AI flow testing",
+      "description": "Run bounded stateful production AI and CRM tests on owned disposable fixtures with no channel delivery.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-ai-flow-testing/SKILL.md"
+    },
+    {
+      "name": "shvya-account-handover",
+      "title": "SHVYA account handover",
+      "description": "Explain the verified account journey and create an onboarding demonstration guide.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-account-handover/SKILL.md"
     }
   ],
   "resources": [
@@ -641,6 +677,78 @@
       "description": "Immutable Shvya evaluation guidance: evals/acceptance-cases.json",
       "kind": "evaluation",
       "mimeType": "application/json"
+    },
+    {
+      "resource_id": "framework/context-and-delegation.md",
+      "uri": "shvya-kit:///framework/context-and-delegation.md",
+      "name": "framework/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable Shvya reference guidance: framework/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/customer-content-gates.md",
+      "uri": "shvya-kit:///framework/customer-content-gates.md",
+      "name": "framework/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable Shvya reference guidance: framework/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/eval-contract.md",
+      "uri": "shvya-kit:///framework/eval-contract.md",
+      "name": "framework/eval-contract.md",
+      "title": "Evaluation Contract",
+      "description": "Immutable Shvya reference guidance: framework/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/evidence-and-attribution.md",
+      "uri": "shvya-kit:///framework/evidence-and-attribution.md",
+      "name": "framework/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable Shvya reference guidance: framework/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/execution-and-recovery.md",
+      "uri": "shvya-kit:///framework/execution-and-recovery.md",
+      "name": "framework/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable Shvya reference guidance: framework/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/known-trap-method.md",
+      "uri": "shvya-kit:///framework/known-trap-method.md",
+      "name": "framework/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable Shvya reference guidance: framework/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "framework/skill-matrix.json",
+      "uri": "shvya-kit:///framework/skill-matrix.json",
+      "name": "framework/skill-matrix.json",
+      "title": "Skill Matrix",
+      "description": "Immutable Shvya reference guidance: framework/skill-matrix.json",
+      "kind": "reference",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "framework/skill-quality-contract.md",
+      "uri": "shvya-kit:///framework/skill-quality-contract.md",
+      "name": "framework/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable Shvya reference guidance: framework/skill-quality-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
     },
     {
       "resource_id": "prompts/ai-brain-knowledge-contract.md",
@@ -697,12 +805,210 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-acceptance-testing/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-acceptance-testing/SKILL.md",
+      "name": "skills/shvya-acceptance-testing/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-acceptance-testing/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-acceptance-testing/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-acceptance-testing/evals/evals.json",
+      "name": "skills/shvya-acceptance-testing/evals/evals.json",
+      "title": "shvya-acceptance-testing Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-acceptance-testing/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-acceptance-testing/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-acceptance-testing/references/domain-checks.md",
+      "name": "skills/shvya-acceptance-testing/references/domain-checks.md",
+      "title": "shvya-acceptance-testing Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-acceptance-testing/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/SKILL.md",
+      "name": "skills/shvya-account-handover/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable SHVYA skill guidance: skills/shvya-account-handover/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/agents/openai.yaml.md",
+      "name": "skills/shvya-account-handover/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/agents/openai.yaml.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-account-handover/evals/evals.json",
+      "name": "skills/shvya-account-handover/evals/evals.json",
+      "title": "Evals",
+      "description": "Immutable SHVYA evaluation guidance: skills/shvya-account-handover/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/conflict-audit.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/conflict-audit.md",
+      "name": "skills/shvya-account-handover/references/conflict-audit.md",
+      "title": "Conflict Audit",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/conflict-audit.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/context-and-delegation.md",
+      "name": "skills/shvya-account-handover/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/customer-content-gates.md",
+      "name": "skills/shvya-account-handover/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/demo-script.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/demo-script.md",
+      "name": "skills/shvya-account-handover/references/demo-script.md",
+      "title": "Demo Script",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/demo-script.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/domain-checks.md",
+      "name": "skills/shvya-account-handover/references/domain-checks.md",
+      "title": "Domain Checks",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/eval-contract.md",
+      "name": "skills/shvya-account-handover/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/evidence-and-attribution.md",
+      "name": "skills/shvya-account-handover/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/execution-and-recovery.md",
+      "name": "skills/shvya-account-handover/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/handover-protocol.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/handover-protocol.md",
+      "name": "skills/shvya-account-handover/references/handover-protocol.md",
+      "title": "Handover Protocol",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/handover-protocol.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/handover-template.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/handover-template.md",
+      "name": "skills/shvya-account-handover/references/handover-template.md",
+      "title": "Handover Template",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/handover-template.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/known-trap-method.md",
+      "name": "skills/shvya-account-handover/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/known-traps.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/known-traps.md",
+      "name": "skills/shvya-account-handover/references/known-traps.md",
+      "title": "Known Traps",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/known-traps.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/mcp-tools.md",
+      "name": "skills/shvya-account-handover/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/runtime-contract.md",
+      "name": "skills/shvya-account-handover/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/skill-quality-contract.md",
+      "name": "skills/shvya-account-handover/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-handover/references/skill-quality-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-review/SKILL.md",
       "uri": "shvya-kit:///skills/shvya-account-review/SKILL.md",
       "name": "skills/shvya-account-review/SKILL.md",
       "title": "Skill",
       "description": "Immutable Shvya skill guidance: skills/shvya-account-review/SKILL.md",
       "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/agents/openai.yaml.md",
+      "name": "skills/shvya-account-review/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/agents/openai.yaml.md",
+      "kind": "reference",
       "mimeType": "text/markdown"
     },
     {
@@ -742,11 +1048,83 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-account-review/references/conflict-audit.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/conflict-audit.md",
+      "name": "skills/shvya-account-review/references/conflict-audit.md",
+      "title": "Conflict Audit",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/conflict-audit.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/context-and-delegation.md",
+      "name": "skills/shvya-account-review/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/customer-content-gates.md",
+      "name": "skills/shvya-account-review/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/domain-checks.md",
+      "name": "skills/shvya-account-review/references/domain-checks.md",
+      "title": "shvya-account-review Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-account-review/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/eval-contract.md",
+      "name": "skills/shvya-account-review/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/evidence-and-attribution.md",
+      "name": "skills/shvya-account-review/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-review/references/evidence-sources.md",
       "uri": "shvya-kit:///skills/shvya-account-review/references/evidence-sources.md",
       "name": "skills/shvya-account-review/references/evidence-sources.md",
       "title": "Evidence Sources",
       "description": "Immutable Shvya reference guidance: skills/shvya-account-review/references/evidence-sources.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/execution-and-recovery.md",
+      "name": "skills/shvya-account-review/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/known-trap-method.md",
+      "name": "skills/shvya-account-review/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/known-trap-method.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -769,11 +1147,38 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-account-review/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/mcp-tools.md",
+      "name": "skills/shvya-account-review/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-review/references/review-checks.md",
       "uri": "shvya-kit:///skills/shvya-account-review/references/review-checks.md",
       "name": "skills/shvya-account-review/references/review-checks.md",
       "title": "Review Checks",
       "description": "Immutable Shvya reference guidance: skills/shvya-account-review/references/review-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/runtime-contract.md",
+      "name": "skills/shvya-account-review/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-review/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-review/references/skill-quality-contract.md",
+      "name": "skills/shvya-account-review/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-review/references/skill-quality-contract.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -785,6 +1190,24 @@
       "description": "Immutable Shvya skill guidance: skills/shvya-account-setup/SKILL.md",
       "kind": "skill",
       "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/agents/openai.yaml.md",
+      "name": "skills/shvya-account-setup/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/agents/openai.yaml.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-account-setup/evals/evals.json",
+      "name": "skills/shvya-account-setup/evals/evals.json",
+      "title": "shvya-account-setup Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-account-setup/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
     },
     {
       "resource_id": "skills/shvya-account-setup/references/account-setup-instructions.md",
@@ -850,6 +1273,24 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-account-setup/references/ai-brain-knowledge-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/ai-brain-knowledge-contract.md",
+      "name": "skills/shvya-account-setup/references/ai-brain-knowledge-contract.md",
+      "title": "Ai Brain Knowledge Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/ai-brain-knowledge-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/ai-playbook.template.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/ai-playbook.template.md",
+      "name": "skills/shvya-account-setup/references/ai-playbook.template.md",
+      "title": "Ai Playbook.Template",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/ai-playbook.template.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-setup/references/api-reference.md",
       "uri": "shvya-kit:///skills/shvya-account-setup/references/api-reference.md",
       "name": "skills/shvya-account-setup/references/api-reference.md",
@@ -873,6 +1314,15 @@
       "name": "skills/shvya-account-setup/references/cadence-scheduling.md",
       "title": "Cadence Scheduling",
       "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/cadence-scheduling.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/company-about.template.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/company-about.template.md",
+      "name": "skills/shvya-account-setup/references/company-about.template.md",
+      "title": "Company About.Template",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/company-about.template.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -904,11 +1354,29 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-account-setup/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/context-and-delegation.md",
+      "name": "skills/shvya-account-setup/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-setup/references/current-workflow.md",
       "uri": "shvya-kit:///skills/shvya-account-setup/references/current-workflow.md",
       "name": "skills/shvya-account-setup/references/current-workflow.md",
       "title": "Current Workflow",
       "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/current-workflow.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/customer-content-gates.md",
+      "name": "skills/shvya-account-setup/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/customer-content-gates.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -920,6 +1388,51 @@
       "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/diagnostics.md",
       "kind": "reference",
       "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/domain-checks.md",
+      "name": "skills/shvya-account-setup/references/domain-checks.md",
+      "title": "shvya-account-setup Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/eval-contract.md",
+      "name": "skills/shvya-account-setup/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/evidence-and-attribution.md",
+      "name": "skills/shvya-account-setup/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/execution-and-recovery.md",
+      "name": "skills/shvya-account-setup/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/generic-example.values.json",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/generic-example.values.json",
+      "name": "skills/shvya-account-setup/references/generic-example.values.json",
+      "title": "Generic Example.Values",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/generic-example.values.json",
+      "kind": "reference",
+      "mimeType": "application/json"
     },
     {
       "resource_id": "skills/shvya-account-setup/references/industry-playbooks.md",
@@ -940,11 +1453,1176 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-account-setup/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/known-trap-method.md",
+      "name": "skills/shvya-account-setup/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/mcp-tools.md",
+      "name": "skills/shvya-account-setup/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-account-setup/references/prod-account-patterns.md",
       "uri": "shvya-kit:///skills/shvya-account-setup/references/prod-account-patterns.md",
       "name": "skills/shvya-account-setup/references/prod-account-patterns.md",
       "title": "Prod Account Patterns",
       "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/prod-account-patterns.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/runtime-contract.md",
+      "name": "skills/shvya-account-setup/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/shvya-example.values.json",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/shvya-example.values.json",
+      "name": "skills/shvya-account-setup/references/shvya-example.values.json",
+      "title": "Shvya Example.Values",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/shvya-example.values.json",
+      "kind": "reference",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/shvya-mcp-operator.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/shvya-mcp-operator.md",
+      "name": "skills/shvya-account-setup/references/shvya-mcp-operator.md",
+      "title": "Shvya Mcp Operator",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/shvya-mcp-operator.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/shvya-ria-ai-playbook.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/shvya-ria-ai-playbook.md",
+      "name": "skills/shvya-account-setup/references/shvya-ria-ai-playbook.md",
+      "title": "Shvya Ria Ai Playbook",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/shvya-ria-ai-playbook.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/shvya-ria-review-notes.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/shvya-ria-review-notes.md",
+      "name": "skills/shvya-account-setup/references/shvya-ria-review-notes.md",
+      "title": "Shvya Ria Review Notes",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/shvya-ria-review-notes.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/skill-quality-contract.md",
+      "name": "skills/shvya-account-setup/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/skill-quality-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-adaptation-rules.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-adaptation-rules.md",
+      "name": "skills/shvya-account-setup/references/source-adaptation-rules.md",
+      "title": "Source Adaptation Rules",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/source-adaptation-rules.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-manifest.json",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-manifest.json",
+      "name": "skills/shvya-account-setup/references/source-manifest.json",
+      "title": "Source Manifest",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/source-manifest.json",
+      "kind": "reference",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-provenance.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-provenance.md",
+      "name": "skills/shvya-account-setup/references/source-provenance.md",
+      "title": "Source Provenance",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/source-provenance.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/SKILL.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/SKILL.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/SKILL.md.source.txt.md",
+      "title": "Skill.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/evals/evals.json.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/evals/evals.json.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/evals/evals.json.source.txt.md",
+      "title": "Evals.Json.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/1-config-inventory.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/1-config-inventory.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/1-config-inventory.md.source.txt.md",
+      "title": "1 Config Inventory.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/2-call-requirements.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/2-call-requirements.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/2-call-requirements.md.source.txt.md",
+      "title": "2 Call Requirements.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/3-group-requirements.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/3-group-requirements.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/agent-prompts/3-group-requirements.md.source.txt.md",
+      "title": "3 Group Requirements.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/evidence-sources.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/evidence-sources.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/evidence-sources.md.source.txt.md",
+      "title": "Evidence Sources.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/known-traps.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/known-traps.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/known-traps.md.source.txt.md",
+      "title": "Known Traps.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/live-behaviour.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/live-behaviour.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/live-behaviour.md.source.txt.md",
+      "title": "Live Behaviour.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/account-review/references/review-checks.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/account-review/references/review-checks.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/account-review/references/review-checks.md.source.txt.md",
+      "title": "Review Checks.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/SKILL.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/SKILL.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/SKILL.md.source.txt.md",
+      "title": "Skill.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/agent-prompt-template.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/agent-prompt-template.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/agent-prompt-template.md.source.txt.md",
+      "title": "Agent Prompt Template.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/call-instructions-template.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/call-instructions-template.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/call-instructions-template.md.source.txt.md",
+      "title": "Call Instructions Template.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/dialnexa-api.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/dialnexa-api.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/references/dialnexa-api.md.source.txt.md",
+      "title": "Dialnexa Api.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/scripts/dialnexa_agent.py.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/scripts/dialnexa_agent.py.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/dialnexa-voice-agent/scripts/dialnexa_agent.py.source.txt.md",
+      "title": "Dialnexa_Agent.Py.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/docs/README.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/docs/README.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/docs/README.md.source.txt.md",
+      "title": "Readme.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/docs/kraya-account-agent-guide.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/docs/kraya-account-agent-guide.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/docs/kraya-account-agent-guide.md.source.txt.md",
+      "title": "Kraya Account Agent Guide.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/docs/kraya-api-powers.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/docs/kraya-api-powers.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/docs/kraya-api-powers.md.source.txt.md",
+      "title": "Kraya Api Powers.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/SKILL.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/SKILL.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/SKILL.md.source.txt.md",
+      "title": "Skill.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/evals/evals.json.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/evals/evals.json.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/evals/evals.json.source.txt.md",
+      "title": "Evals.Json.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/account-setup-instructions.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/account-setup-instructions.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/account-setup-instructions.md.source.txt.md",
+      "title": "Account Setup Instructions.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-kickoffs.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-kickoffs.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-kickoffs.md.source.txt.md",
+      "title": "Agent Kickoffs.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/1-client-profile-builder.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/1-client-profile-builder.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/1-client-profile-builder.md.source.txt.md",
+      "title": "1 Client Profile Builder.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/2-ai-qualification-builder.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/2-ai-qualification-builder.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/2-ai-qualification-builder.md.source.txt.md",
+      "title": "2 Ai Qualification Builder.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/3-sequence-outline-generator.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/3-sequence-outline-generator.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/3-sequence-outline-generator.md.source.txt.md",
+      "title": "3 Sequence Outline Generator.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/4-sequence-writer.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/4-sequence-writer.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/4-sequence-writer.md.source.txt.md",
+      "title": "4 Sequence Writer.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/5-account-setup-builder.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/5-account-setup-builder.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/agent-prompts/5-account-setup-builder.md.source.txt.md",
+      "title": "5 Account Setup Builder.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/api-reference.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/api-reference.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/api-reference.md.source.txt.md",
+      "title": "Api Reference.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/brainstorming-checklist.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/brainstorming-checklist.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/brainstorming-checklist.md.source.txt.md",
+      "title": "Brainstorming Checklist.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/conflict-audit.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/conflict-audit.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/conflict-audit.md.source.txt.md",
+      "title": "Conflict Audit.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/content-rules.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/content-rules.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/content-rules.md.source.txt.md",
+      "title": "Content Rules.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/current-workflow.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/current-workflow.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/current-workflow.md.source.txt.md",
+      "title": "Current Workflow.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-playbooks.ts.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-playbooks.ts.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-playbooks.ts.source.txt.md",
+      "title": "Industry Playbooks.Ts.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-templates.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-templates.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/industry-templates.md.source.txt.md",
+      "title": "Industry Templates.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/langsmith.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/langsmith.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/langsmith.md.source.txt.md",
+      "title": "Langsmith.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/prod-account-patterns.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/prod-account-patterns.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-account-setup/references/prod-account-patterns.md.source.txt.md",
+      "title": "Prod Account Patterns.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/SKILL.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-vault/SKILL.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/SKILL.md.source.txt.md",
+      "title": "Skill.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/references/section-map.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-vault/references/section-map.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/references/section-map.md.source.txt.md",
+      "title": "Section Map.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/scripts/vault.py.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/kraya-vault/scripts/vault.py.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/kraya-vault/scripts/vault.py.source.txt.md",
+      "title": "Vault.Py.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/SKILL.md.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/SKILL.md.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/SKILL.md.source.txt.md",
+      "title": "Skill.Md.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/scripts/read_group.py.source.txt.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/scripts/read_group.py.source.txt.md",
+      "name": "skills/shvya-account-setup/references/source-snapshot/read-whatsapp-group/scripts/read_group.py.source.txt.md",
+      "title": "Read_Group.Py.Source.Txt",
+      "description": "Historical Kraya source preserved byte-for-byte; provenance only, not SHVYA operational authority.",
+      "kind": "reference",
+      "mimeType": "text/markdown",
+      "historical_source": true
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/variable-registry.json",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/variable-registry.json",
+      "name": "skills/shvya-account-setup/references/variable-registry.json",
+      "title": "Variable Registry",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/variable-registry.json",
+      "kind": "reference",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/references/variables.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/references/variables.md",
+      "name": "skills/shvya-account-setup/references/variables.md",
+      "title": "Variables",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/references/variables.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-setup/scripts/verify_reference_fidelity.py.md",
+      "uri": "shvya-kit:///skills/shvya-account-setup/scripts/verify_reference_fidelity.py.md",
+      "name": "skills/shvya-account-setup/scripts/verify_reference_fidelity.py.md",
+      "title": "Verify_Reference_Fidelity.Py",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-account-setup/scripts/verify_reference_fidelity.py.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-brain/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-brain/SKILL.md",
+      "name": "skills/shvya-ai-brain/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-brain/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-brain/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-ai-brain/evals/evals.json",
+      "name": "skills/shvya-ai-brain/evals/evals.json",
+      "title": "shvya-ai-brain Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-brain/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-ai-brain/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-ai-brain/references/domain-checks.md",
+      "name": "skills/shvya-ai-brain/references/domain-checks.md",
+      "title": "shvya-ai-brain Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-ai-brain/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-debugger/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-debugger/SKILL.md",
+      "name": "skills/shvya-ai-debugger/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-debugger/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-debugger/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-ai-debugger/evals/evals.json",
+      "name": "skills/shvya-ai-debugger/evals/evals.json",
+      "title": "shvya-ai-debugger Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-debugger/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-ai-debugger/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-ai-debugger/references/domain-checks.md",
+      "name": "skills/shvya-ai-debugger/references/domain-checks.md",
+      "title": "shvya-ai-debugger Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-ai-debugger/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/SKILL.md",
+      "name": "skills/shvya-ai-flow-testing/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable SHVYA skill guidance: skills/shvya-ai-flow-testing/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/agents/openai.yaml.md",
+      "name": "skills/shvya-ai-flow-testing/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/agents/openai.yaml.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/evals/evals.json",
+      "name": "skills/shvya-ai-flow-testing/evals/evals.json",
+      "title": "Evals",
+      "description": "Immutable SHVYA evaluation guidance: skills/shvya-ai-flow-testing/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/conflict-audit.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/conflict-audit.md",
+      "name": "skills/shvya-ai-flow-testing/references/conflict-audit.md",
+      "title": "Conflict Audit",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/conflict-audit.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/context-and-delegation.md",
+      "name": "skills/shvya-ai-flow-testing/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/customer-content-gates.md",
+      "name": "skills/shvya-ai-flow-testing/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/domain-checks.md",
+      "name": "skills/shvya-ai-flow-testing/references/domain-checks.md",
+      "title": "Domain Checks",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/eval-contract.md",
+      "name": "skills/shvya-ai-flow-testing/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/evidence-and-attribution.md",
+      "name": "skills/shvya-ai-flow-testing/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/execution-and-recovery.md",
+      "name": "skills/shvya-ai-flow-testing/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/judge-rubric.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/judge-rubric.md",
+      "name": "skills/shvya-ai-flow-testing/references/judge-rubric.md",
+      "title": "Judge Rubric",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/judge-rubric.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/known-trap-method.md",
+      "name": "skills/shvya-ai-flow-testing/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/known-traps.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/known-traps.md",
+      "name": "skills/shvya-ai-flow-testing/references/known-traps.md",
+      "title": "Known Traps",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/known-traps.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/mcp-tools.md",
+      "name": "skills/shvya-ai-flow-testing/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/personas.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/personas.md",
+      "name": "skills/shvya-ai-flow-testing/references/personas.md",
+      "title": "Personas",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/personas.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/report-format.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/report-format.md",
+      "name": "skills/shvya-ai-flow-testing/references/report-format.md",
+      "title": "Report Format",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/report-format.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/runtime-contract.md",
+      "name": "skills/shvya-ai-flow-testing/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/scenario-derivation.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/scenario-derivation.md",
+      "name": "skills/shvya-ai-flow-testing/references/scenario-derivation.md",
+      "title": "Scenario Derivation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/scenario-derivation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/skill-quality-contract.md",
+      "name": "skills/shvya-ai-flow-testing/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/skill-quality-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-flow-testing/references/test-protocol.md",
+      "uri": "shvya-kit:///skills/shvya-ai-flow-testing/references/test-protocol.md",
+      "name": "skills/shvya-ai-flow-testing/references/test-protocol.md",
+      "title": "Test Protocol",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-ai-flow-testing/references/test-protocol.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-playbook/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-ai-playbook/SKILL.md",
+      "name": "skills/shvya-ai-playbook/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-ai-playbook/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-ai-playbook/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-ai-playbook/evals/evals.json",
+      "name": "skills/shvya-ai-playbook/evals/evals.json",
+      "title": "shvya-ai-playbook Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-playbook/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-ai-playbook/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-ai-playbook/references/domain-checks.md",
+      "name": "skills/shvya-ai-playbook/references/domain-checks.md",
+      "title": "shvya-ai-playbook Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-ai-playbook/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-automation-debugger/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-automation-debugger/SKILL.md",
+      "name": "skills/shvya-automation-debugger/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-automation-debugger/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-automation-debugger/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-automation-debugger/evals/evals.json",
+      "name": "skills/shvya-automation-debugger/evals/evals.json",
+      "title": "shvya-automation-debugger Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-automation-debugger/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-automation-debugger/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-automation-debugger/references/domain-checks.md",
+      "name": "skills/shvya-automation-debugger/references/domain-checks.md",
+      "title": "shvya-automation-debugger Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-automation-debugger/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-cadence-builder/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-cadence-builder/SKILL.md",
+      "name": "skills/shvya-cadence-builder/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-cadence-builder/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-cadence-builder/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-cadence-builder/evals/evals.json",
+      "name": "skills/shvya-cadence-builder/evals/evals.json",
+      "title": "shvya-cadence-builder Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-cadence-builder/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-cadence-builder/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-cadence-builder/references/domain-checks.md",
+      "name": "skills/shvya-cadence-builder/references/domain-checks.md",
+      "title": "shvya-cadence-builder Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-cadence-builder/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-calendar/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-calendar/SKILL.md",
+      "name": "skills/shvya-calendar/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-calendar/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-calendar/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-calendar/evals/evals.json",
+      "name": "skills/shvya-calendar/evals/evals.json",
+      "title": "shvya-calendar Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-calendar/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-calendar/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-calendar/references/domain-checks.md",
+      "name": "skills/shvya-calendar/references/domain-checks.md",
+      "title": "shvya-calendar Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-calendar/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-channel-routing/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-channel-routing/SKILL.md",
+      "name": "skills/shvya-channel-routing/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-channel-routing/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-channel-routing/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-channel-routing/evals/evals.json",
+      "name": "skills/shvya-channel-routing/evals/evals.json",
+      "title": "shvya-channel-routing Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-channel-routing/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-channel-routing/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-channel-routing/references/domain-checks.md",
+      "name": "skills/shvya-channel-routing/references/domain-checks.md",
+      "title": "shvya-channel-routing Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-channel-routing/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-crm-architect/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-crm-architect/SKILL.md",
+      "name": "skills/shvya-crm-architect/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-crm-architect/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-crm-architect/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-crm-architect/evals/evals.json",
+      "name": "skills/shvya-crm-architect/evals/evals.json",
+      "title": "shvya-crm-architect Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-crm-architect/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-crm-architect/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-crm-architect/references/domain-checks.md",
+      "name": "skills/shvya-crm-architect/references/domain-checks.md",
+      "title": "shvya-crm-architect Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-crm-architect/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-diagnostics/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-diagnostics/SKILL.md",
+      "name": "skills/shvya-diagnostics/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-diagnostics/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-diagnostics/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-diagnostics/evals/evals.json",
+      "name": "skills/shvya-diagnostics/evals/evals.json",
+      "title": "shvya-diagnostics Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-diagnostics/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-diagnostics/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-diagnostics/references/domain-checks.md",
+      "name": "skills/shvya-diagnostics/references/domain-checks.md",
+      "title": "shvya-diagnostics Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-diagnostics/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-email/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-email/SKILL.md",
+      "name": "skills/shvya-email/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-email/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-email/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-email/evals/evals.json",
+      "name": "skills/shvya-email/evals/evals.json",
+      "title": "shvya-email Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-email/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-email/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-email/references/domain-checks.md",
+      "name": "skills/shvya-email/references/domain-checks.md",
+      "title": "shvya-email Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-email/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-incident-repair/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-incident-repair/SKILL.md",
+      "name": "skills/shvya-incident-repair/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-incident-repair/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-incident-repair/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-incident-repair/evals/evals.json",
+      "name": "skills/shvya-incident-repair/evals/evals.json",
+      "title": "shvya-incident-repair Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-incident-repair/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-incident-repair/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-incident-repair/references/domain-checks.md",
+      "name": "skills/shvya-incident-repair/references/domain-checks.md",
+      "title": "shvya-incident-repair Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-incident-repair/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-industry-designer/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-industry-designer/SKILL.md",
+      "name": "skills/shvya-industry-designer/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-industry-designer/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-industry-designer/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-industry-designer/evals/evals.json",
+      "name": "skills/shvya-industry-designer/evals/evals.json",
+      "title": "shvya-industry-designer Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-industry-designer/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-industry-designer/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-industry-designer/references/domain-checks.md",
+      "name": "skills/shvya-industry-designer/references/domain-checks.md",
+      "title": "shvya-industry-designer Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-industry-designer/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-instagram/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-instagram/SKILL.md",
+      "name": "skills/shvya-instagram/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-instagram/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-instagram/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-instagram/evals/evals.json",
+      "name": "skills/shvya-instagram/evals/evals.json",
+      "title": "shvya-instagram Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-instagram/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-instagram/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-instagram/references/domain-checks.md",
+      "name": "skills/shvya-instagram/references/domain-checks.md",
+      "title": "shvya-instagram Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-instagram/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-integration-manager/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-integration-manager/SKILL.md",
+      "name": "skills/shvya-integration-manager/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-integration-manager/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-integration-manager/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-integration-manager/evals/evals.json",
+      "name": "skills/shvya-integration-manager/evals/evals.json",
+      "title": "shvya-integration-manager Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-integration-manager/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-integration-manager/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-integration-manager/references/domain-checks.md",
+      "name": "skills/shvya-integration-manager/references/domain-checks.md",
+      "title": "shvya-integration-manager Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-integration-manager/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-knowledge-manager/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-knowledge-manager/SKILL.md",
+      "name": "skills/shvya-knowledge-manager/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-knowledge-manager/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-knowledge-manager/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-knowledge-manager/evals/evals.json",
+      "name": "skills/shvya-knowledge-manager/evals/evals.json",
+      "title": "shvya-knowledge-manager Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-knowledge-manager/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-knowledge-manager/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-knowledge-manager/references/domain-checks.md",
+      "name": "skills/shvya-knowledge-manager/references/domain-checks.md",
+      "title": "shvya-knowledge-manager Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-knowledge-manager/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-lead-repair/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-lead-repair/SKILL.md",
+      "name": "skills/shvya-lead-repair/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-lead-repair/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-lead-repair/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-lead-repair/evals/evals.json",
+      "name": "skills/shvya-lead-repair/evals/evals.json",
+      "title": "shvya-lead-repair Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-lead-repair/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-lead-repair/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-lead-repair/references/domain-checks.md",
+      "name": "skills/shvya-lead-repair/references/domain-checks.md",
+      "title": "shvya-lead-repair Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-lead-repair/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-qualification/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-qualification/SKILL.md",
+      "name": "skills/shvya-qualification/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-qualification/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-qualification/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-qualification/evals/evals.json",
+      "name": "skills/shvya-qualification/evals/evals.json",
+      "title": "shvya-qualification Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-qualification/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-qualification/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-qualification/references/domain-checks.md",
+      "name": "skills/shvya-qualification/references/domain-checks.md",
+      "title": "shvya-qualification Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-qualification/references/domain-checks.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -958,6 +2636,15 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-read-whatsapp-group/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/agents/openai.yaml.md",
+      "name": "skills/shvya-read-whatsapp-group/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/agents/openai.yaml.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-read-whatsapp-group/evals/evals.json",
       "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/evals/evals.json",
       "name": "skills/shvya-read-whatsapp-group/evals/evals.json",
@@ -967,11 +2654,119 @@
       "mimeType": "application/json"
     },
     {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/context-and-delegation.md",
+      "name": "skills/shvya-read-whatsapp-group/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/customer-content-gates.md",
+      "name": "skills/shvya-read-whatsapp-group/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/domain-checks.md",
+      "name": "skills/shvya-read-whatsapp-group/references/domain-checks.md",
+      "title": "shvya-read-whatsapp-group Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-read-whatsapp-group/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/eval-contract.md",
+      "name": "skills/shvya-read-whatsapp-group/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/evidence-and-attribution.md",
+      "name": "skills/shvya-read-whatsapp-group/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/execution-and-recovery.md",
+      "name": "skills/shvya-read-whatsapp-group/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-read-whatsapp-group/references/export-format.md",
       "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/export-format.md",
       "name": "skills/shvya-read-whatsapp-group/references/export-format.md",
       "title": "Export Format",
       "description": "Immutable Shvya reference guidance: skills/shvya-read-whatsapp-group/references/export-format.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/group-contract.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/group-contract.md",
+      "name": "skills/shvya-read-whatsapp-group/references/group-contract.md",
+      "title": "Group Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/group-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/known-trap-method.md",
+      "name": "skills/shvya-read-whatsapp-group/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/mcp-tools.md",
+      "name": "skills/shvya-read-whatsapp-group/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/requirements-extraction.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/requirements-extraction.md",
+      "name": "skills/shvya-read-whatsapp-group/references/requirements-extraction.md",
+      "title": "Requirements Extraction",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/requirements-extraction.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/runtime-contract.md",
+      "name": "skills/shvya-read-whatsapp-group/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-read-whatsapp-group/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/skill-quality-contract.md",
+      "name": "skills/shvya-read-whatsapp-group/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-read-whatsapp-group/references/skill-quality-contract.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -985,6 +2780,15 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-vault/agents/openai.yaml.md",
+      "uri": "shvya-kit:///skills/shvya-vault/agents/openai.yaml.md",
+      "name": "skills/shvya-vault/agents/openai.yaml.md",
+      "title": "Openai.Yaml",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/agents/openai.yaml.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-vault/evals/evals.json",
       "uri": "shvya-kit:///skills/shvya-vault/evals/evals.json",
       "name": "skills/shvya-vault/evals/evals.json",
@@ -992,6 +2796,78 @@
       "description": "Immutable Shvya evaluation guidance: skills/shvya-vault/evals/evals.json",
       "kind": "evaluation",
       "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/call-and-source-protocol.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/call-and-source-protocol.md",
+      "name": "skills/shvya-vault/references/call-and-source-protocol.md",
+      "title": "Call And Source Protocol",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/call-and-source-protocol.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/context-and-delegation.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/context-and-delegation.md",
+      "name": "skills/shvya-vault/references/context-and-delegation.md",
+      "title": "Context And Delegation",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/context-and-delegation.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/customer-content-gates.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/customer-content-gates.md",
+      "name": "skills/shvya-vault/references/customer-content-gates.md",
+      "title": "Customer Content Gates",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/customer-content-gates.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/domain-checks.md",
+      "name": "skills/shvya-vault/references/domain-checks.md",
+      "title": "shvya-vault Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-vault/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/eval-contract.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/eval-contract.md",
+      "name": "skills/shvya-vault/references/eval-contract.md",
+      "title": "Eval Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/eval-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/evidence-and-attribution.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/evidence-and-attribution.md",
+      "name": "skills/shvya-vault/references/evidence-and-attribution.md",
+      "title": "Evidence And Attribution",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/evidence-and-attribution.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/execution-and-recovery.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/execution-and-recovery.md",
+      "name": "skills/shvya-vault/references/execution-and-recovery.md",
+      "title": "Execution And Recovery",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/execution-and-recovery.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/known-trap-method.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/known-trap-method.md",
+      "name": "skills/shvya-vault/references/known-trap-method.md",
+      "title": "Known Trap Method",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/known-trap-method.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
     },
     {
       "resource_id": "skills/shvya-vault/references/local-format.md",
@@ -1003,11 +2879,47 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-vault/references/mcp-tools.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/mcp-tools.md",
+      "name": "skills/shvya-vault/references/mcp-tools.md",
+      "title": "Mcp Tools",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/mcp-tools.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/runtime-contract.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/runtime-contract.md",
+      "name": "skills/shvya-vault/references/runtime-contract.md",
+      "title": "Runtime Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/runtime-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-vault/references/section-map.md",
       "uri": "shvya-kit:///skills/shvya-vault/references/section-map.md",
       "name": "skills/shvya-vault/references/section-map.md",
       "title": "Section Map",
       "description": "Immutable Shvya reference guidance: skills/shvya-vault/references/section-map.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/skill-quality-contract.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/skill-quality-contract.md",
+      "name": "skills/shvya-vault/references/skill-quality-contract.md",
+      "title": "Skill Quality Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/skill-quality-contract.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-vault/references/vault-contract.md",
+      "uri": "shvya-kit:///skills/shvya-vault/references/vault-contract.md",
+      "name": "skills/shvya-vault/references/vault-contract.md",
+      "title": "Vault Contract",
+      "description": "Immutable SHVYA reference guidance: skills/shvya-vault/references/vault-contract.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -1048,6 +2960,15 @@
       "mimeType": "text/markdown"
     },
     {
+      "resource_id": "skills/shvya-voice-agent/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-voice-agent/references/domain-checks.md",
+      "name": "skills/shvya-voice-agent/references/domain-checks.md",
+      "title": "shvya-voice-agent Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-voice-agent/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
       "resource_id": "skills/shvya-voice-agent/references/provider-capability-contract.md",
       "uri": "shvya-kit:///skills/shvya-voice-agent/references/provider-capability-contract.md",
       "name": "skills/shvya-voice-agent/references/provider-capability-contract.md",
@@ -1062,6 +2983,60 @@
       "name": "skills/shvya-voice-agent/references/testing-and-debugging.md",
       "title": "Testing And Debugging",
       "description": "Immutable Shvya reference guidance: skills/shvya-voice-agent/references/testing-and-debugging.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-whatsapp/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-whatsapp/SKILL.md",
+      "name": "skills/shvya-whatsapp/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-whatsapp/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-whatsapp/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-whatsapp/evals/evals.json",
+      "name": "skills/shvya-whatsapp/evals/evals.json",
+      "title": "shvya-whatsapp Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-whatsapp/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-whatsapp/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-whatsapp/references/domain-checks.md",
+      "name": "skills/shvya-whatsapp/references/domain-checks.md",
+      "title": "shvya-whatsapp Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-whatsapp/references/domain-checks.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-workflow-builder/SKILL.md",
+      "uri": "shvya-kit:///skills/shvya-workflow-builder/SKILL.md",
+      "name": "skills/shvya-workflow-builder/SKILL.md",
+      "title": "Skill",
+      "description": "Immutable Shvya skill guidance: skills/shvya-workflow-builder/SKILL.md",
+      "kind": "skill",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-workflow-builder/evals/evals.json",
+      "uri": "shvya-kit:///skills/shvya-workflow-builder/evals/evals.json",
+      "name": "skills/shvya-workflow-builder/evals/evals.json",
+      "title": "shvya-workflow-builder Evals",
+      "description": "Immutable Shvya evaluation guidance: skills/shvya-workflow-builder/evals/evals.json",
+      "kind": "evaluation",
+      "mimeType": "application/json"
+    },
+    {
+      "resource_id": "skills/shvya-workflow-builder/references/domain-checks.md",
+      "uri": "shvya-kit:///skills/shvya-workflow-builder/references/domain-checks.md",
+      "name": "skills/shvya-workflow-builder/references/domain-checks.md",
+      "title": "shvya-workflow-builder Domain Checks",
+      "description": "Immutable Shvya reference guidance: skills/shvya-workflow-builder/references/domain-checks.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     },
@@ -1098,672 +3073,6 @@
       "name": "templates/variables.md",
       "title": "Variables",
       "description": "Immutable Shvya reference guidance: templates/variables.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-industry-designer/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-industry-designer/SKILL.md",
-      "name": "skills/shvya-industry-designer/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-industry-designer/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-crm-architect/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-crm-architect/SKILL.md",
-      "name": "skills/shvya-crm-architect/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-crm-architect/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-qualification/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-qualification/SKILL.md",
-      "name": "skills/shvya-qualification/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-qualification/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-lead-repair/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-lead-repair/SKILL.md",
-      "name": "skills/shvya-lead-repair/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-lead-repair/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-brain/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-ai-brain/SKILL.md",
-      "name": "skills/shvya-ai-brain/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-ai-brain/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-playbook/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-ai-playbook/SKILL.md",
-      "name": "skills/shvya-ai-playbook/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-ai-playbook/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-knowledge-manager/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-knowledge-manager/SKILL.md",
-      "name": "skills/shvya-knowledge-manager/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-knowledge-manager/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-debugger/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-ai-debugger/SKILL.md",
-      "name": "skills/shvya-ai-debugger/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-ai-debugger/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-workflow-builder/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-workflow-builder/SKILL.md",
-      "name": "skills/shvya-workflow-builder/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-workflow-builder/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-cadence-builder/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-cadence-builder/SKILL.md",
-      "name": "skills/shvya-cadence-builder/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-cadence-builder/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-automation-debugger/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-automation-debugger/SKILL.md",
-      "name": "skills/shvya-automation-debugger/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-automation-debugger/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-channel-routing/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-channel-routing/SKILL.md",
-      "name": "skills/shvya-channel-routing/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-channel-routing/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-whatsapp/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-whatsapp/SKILL.md",
-      "name": "skills/shvya-whatsapp/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-whatsapp/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-instagram/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-instagram/SKILL.md",
-      "name": "skills/shvya-instagram/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-instagram/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-email/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-email/SKILL.md",
-      "name": "skills/shvya-email/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-email/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-calendar/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-calendar/SKILL.md",
-      "name": "skills/shvya-calendar/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-calendar/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-diagnostics/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-diagnostics/SKILL.md",
-      "name": "skills/shvya-diagnostics/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-diagnostics/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-incident-repair/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-incident-repair/SKILL.md",
-      "name": "skills/shvya-incident-repair/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-incident-repair/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-integration-manager/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-integration-manager/SKILL.md",
-      "name": "skills/shvya-integration-manager/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-integration-manager/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-acceptance-testing/SKILL.md",
-      "uri": "shvya-kit:///skills/shvya-acceptance-testing/SKILL.md",
-      "name": "skills/shvya-acceptance-testing/SKILL.md",
-      "title": "Skill",
-      "description": "Immutable Shvya skill guidance: skills/shvya-acceptance-testing/SKILL.md",
-      "kind": "skill",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/skill-quality-contract.md",
-      "uri": "shvya-kit:///framework/skill-quality-contract.md",
-      "name": "framework/skill-quality-contract.md",
-      "title": "Skill Quality Contract",
-      "description": "Immutable Shvya reference guidance: framework/skill-quality-contract.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/evidence-and-attribution.md",
-      "uri": "shvya-kit:///framework/evidence-and-attribution.md",
-      "name": "framework/evidence-and-attribution.md",
-      "title": "Evidence And Attribution",
-      "description": "Immutable Shvya reference guidance: framework/evidence-and-attribution.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/known-trap-method.md",
-      "uri": "shvya-kit:///framework/known-trap-method.md",
-      "name": "framework/known-trap-method.md",
-      "title": "Known Trap Method",
-      "description": "Immutable Shvya reference guidance: framework/known-trap-method.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/execution-and-recovery.md",
-      "uri": "shvya-kit:///framework/execution-and-recovery.md",
-      "name": "framework/execution-and-recovery.md",
-      "title": "Execution And Recovery",
-      "description": "Immutable Shvya reference guidance: framework/execution-and-recovery.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/eval-contract.md",
-      "uri": "shvya-kit:///framework/eval-contract.md",
-      "name": "framework/eval-contract.md",
-      "title": "Evaluation Contract",
-      "description": "Immutable Shvya reference guidance: framework/eval-contract.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/skill-matrix.json",
-      "uri": "shvya-kit:///framework/skill-matrix.json",
-      "name": "framework/skill-matrix.json",
-      "title": "Skill Matrix",
-      "description": "Immutable Shvya reference guidance: framework/skill-matrix.json",
-      "kind": "reference",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-account-review/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-account-review/references/domain-checks.md",
-      "name": "skills/shvya-account-review/references/domain-checks.md",
-      "title": "shvya-account-review Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-account-review/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-account-setup/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-account-setup/references/domain-checks.md",
-      "name": "skills/shvya-account-setup/references/domain-checks.md",
-      "title": "shvya-account-setup Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-account-setup/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-account-setup/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-account-setup/evals/evals.json",
-      "name": "skills/shvya-account-setup/evals/evals.json",
-      "title": "shvya-account-setup Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-account-setup/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-read-whatsapp-group/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-read-whatsapp-group/references/domain-checks.md",
-      "name": "skills/shvya-read-whatsapp-group/references/domain-checks.md",
-      "title": "shvya-read-whatsapp-group Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-read-whatsapp-group/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-vault/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-vault/references/domain-checks.md",
-      "name": "skills/shvya-vault/references/domain-checks.md",
-      "title": "shvya-vault Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-vault/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-voice-agent/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-voice-agent/references/domain-checks.md",
-      "name": "skills/shvya-voice-agent/references/domain-checks.md",
-      "title": "shvya-voice-agent Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-voice-agent/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-industry-designer/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-industry-designer/references/domain-checks.md",
-      "name": "skills/shvya-industry-designer/references/domain-checks.md",
-      "title": "shvya-industry-designer Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-industry-designer/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-industry-designer/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-industry-designer/evals/evals.json",
-      "name": "skills/shvya-industry-designer/evals/evals.json",
-      "title": "shvya-industry-designer Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-industry-designer/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-crm-architect/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-crm-architect/references/domain-checks.md",
-      "name": "skills/shvya-crm-architect/references/domain-checks.md",
-      "title": "shvya-crm-architect Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-crm-architect/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-crm-architect/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-crm-architect/evals/evals.json",
-      "name": "skills/shvya-crm-architect/evals/evals.json",
-      "title": "shvya-crm-architect Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-crm-architect/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-qualification/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-qualification/references/domain-checks.md",
-      "name": "skills/shvya-qualification/references/domain-checks.md",
-      "title": "shvya-qualification Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-qualification/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-qualification/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-qualification/evals/evals.json",
-      "name": "skills/shvya-qualification/evals/evals.json",
-      "title": "shvya-qualification Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-qualification/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-lead-repair/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-lead-repair/references/domain-checks.md",
-      "name": "skills/shvya-lead-repair/references/domain-checks.md",
-      "title": "shvya-lead-repair Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-lead-repair/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-lead-repair/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-lead-repair/evals/evals.json",
-      "name": "skills/shvya-lead-repair/evals/evals.json",
-      "title": "shvya-lead-repair Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-lead-repair/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-ai-brain/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-ai-brain/references/domain-checks.md",
-      "name": "skills/shvya-ai-brain/references/domain-checks.md",
-      "title": "shvya-ai-brain Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-ai-brain/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-brain/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-ai-brain/evals/evals.json",
-      "name": "skills/shvya-ai-brain/evals/evals.json",
-      "title": "shvya-ai-brain Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-brain/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-ai-playbook/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-ai-playbook/references/domain-checks.md",
-      "name": "skills/shvya-ai-playbook/references/domain-checks.md",
-      "title": "shvya-ai-playbook Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-ai-playbook/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-playbook/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-ai-playbook/evals/evals.json",
-      "name": "skills/shvya-ai-playbook/evals/evals.json",
-      "title": "shvya-ai-playbook Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-playbook/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-knowledge-manager/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-knowledge-manager/references/domain-checks.md",
-      "name": "skills/shvya-knowledge-manager/references/domain-checks.md",
-      "title": "shvya-knowledge-manager Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-knowledge-manager/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-knowledge-manager/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-knowledge-manager/evals/evals.json",
-      "name": "skills/shvya-knowledge-manager/evals/evals.json",
-      "title": "shvya-knowledge-manager Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-knowledge-manager/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-ai-debugger/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-ai-debugger/references/domain-checks.md",
-      "name": "skills/shvya-ai-debugger/references/domain-checks.md",
-      "title": "shvya-ai-debugger Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-ai-debugger/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-ai-debugger/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-ai-debugger/evals/evals.json",
-      "name": "skills/shvya-ai-debugger/evals/evals.json",
-      "title": "shvya-ai-debugger Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-ai-debugger/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-workflow-builder/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-workflow-builder/references/domain-checks.md",
-      "name": "skills/shvya-workflow-builder/references/domain-checks.md",
-      "title": "shvya-workflow-builder Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-workflow-builder/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-workflow-builder/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-workflow-builder/evals/evals.json",
-      "name": "skills/shvya-workflow-builder/evals/evals.json",
-      "title": "shvya-workflow-builder Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-workflow-builder/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-cadence-builder/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-cadence-builder/references/domain-checks.md",
-      "name": "skills/shvya-cadence-builder/references/domain-checks.md",
-      "title": "shvya-cadence-builder Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-cadence-builder/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-cadence-builder/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-cadence-builder/evals/evals.json",
-      "name": "skills/shvya-cadence-builder/evals/evals.json",
-      "title": "shvya-cadence-builder Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-cadence-builder/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-automation-debugger/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-automation-debugger/references/domain-checks.md",
-      "name": "skills/shvya-automation-debugger/references/domain-checks.md",
-      "title": "shvya-automation-debugger Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-automation-debugger/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-automation-debugger/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-automation-debugger/evals/evals.json",
-      "name": "skills/shvya-automation-debugger/evals/evals.json",
-      "title": "shvya-automation-debugger Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-automation-debugger/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-channel-routing/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-channel-routing/references/domain-checks.md",
-      "name": "skills/shvya-channel-routing/references/domain-checks.md",
-      "title": "shvya-channel-routing Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-channel-routing/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-channel-routing/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-channel-routing/evals/evals.json",
-      "name": "skills/shvya-channel-routing/evals/evals.json",
-      "title": "shvya-channel-routing Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-channel-routing/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-whatsapp/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-whatsapp/references/domain-checks.md",
-      "name": "skills/shvya-whatsapp/references/domain-checks.md",
-      "title": "shvya-whatsapp Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-whatsapp/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-whatsapp/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-whatsapp/evals/evals.json",
-      "name": "skills/shvya-whatsapp/evals/evals.json",
-      "title": "shvya-whatsapp Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-whatsapp/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-instagram/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-instagram/references/domain-checks.md",
-      "name": "skills/shvya-instagram/references/domain-checks.md",
-      "title": "shvya-instagram Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-instagram/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-instagram/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-instagram/evals/evals.json",
-      "name": "skills/shvya-instagram/evals/evals.json",
-      "title": "shvya-instagram Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-instagram/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-email/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-email/references/domain-checks.md",
-      "name": "skills/shvya-email/references/domain-checks.md",
-      "title": "shvya-email Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-email/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-email/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-email/evals/evals.json",
-      "name": "skills/shvya-email/evals/evals.json",
-      "title": "shvya-email Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-email/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-calendar/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-calendar/references/domain-checks.md",
-      "name": "skills/shvya-calendar/references/domain-checks.md",
-      "title": "shvya-calendar Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-calendar/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-calendar/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-calendar/evals/evals.json",
-      "name": "skills/shvya-calendar/evals/evals.json",
-      "title": "shvya-calendar Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-calendar/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-diagnostics/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-diagnostics/references/domain-checks.md",
-      "name": "skills/shvya-diagnostics/references/domain-checks.md",
-      "title": "shvya-diagnostics Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-diagnostics/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-diagnostics/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-diagnostics/evals/evals.json",
-      "name": "skills/shvya-diagnostics/evals/evals.json",
-      "title": "shvya-diagnostics Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-diagnostics/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-incident-repair/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-incident-repair/references/domain-checks.md",
-      "name": "skills/shvya-incident-repair/references/domain-checks.md",
-      "title": "shvya-incident-repair Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-incident-repair/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-incident-repair/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-incident-repair/evals/evals.json",
-      "name": "skills/shvya-incident-repair/evals/evals.json",
-      "title": "shvya-incident-repair Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-incident-repair/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-integration-manager/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-integration-manager/references/domain-checks.md",
-      "name": "skills/shvya-integration-manager/references/domain-checks.md",
-      "title": "shvya-integration-manager Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-integration-manager/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-integration-manager/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-integration-manager/evals/evals.json",
-      "name": "skills/shvya-integration-manager/evals/evals.json",
-      "title": "shvya-integration-manager Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-integration-manager/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "skills/shvya-acceptance-testing/references/domain-checks.md",
-      "uri": "shvya-kit:///skills/shvya-acceptance-testing/references/domain-checks.md",
-      "name": "skills/shvya-acceptance-testing/references/domain-checks.md",
-      "title": "shvya-acceptance-testing Domain Checks",
-      "description": "Immutable Shvya reference guidance: skills/shvya-acceptance-testing/references/domain-checks.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "skills/shvya-acceptance-testing/evals/evals.json",
-      "uri": "shvya-kit:///skills/shvya-acceptance-testing/evals/evals.json",
-      "name": "skills/shvya-acceptance-testing/evals/evals.json",
-      "title": "shvya-acceptance-testing Evals",
-      "description": "Immutable Shvya evaluation guidance: skills/shvya-acceptance-testing/evals/evals.json",
-      "kind": "evaluation",
-      "mimeType": "application/json"
-    },
-    {
-      "resource_id": "framework/customer-content-gates.md",
-      "uri": "shvya-kit:///framework/customer-content-gates.md",
-      "name": "framework/customer-content-gates.md",
-      "title": "Customer Content Gates",
-      "description": "Immutable Shvya reference guidance: framework/customer-content-gates.md",
-      "kind": "reference",
-      "mimeType": "text/markdown"
-    },
-    {
-      "resource_id": "framework/context-and-delegation.md",
-      "uri": "shvya-kit:///framework/context-and-delegation.md",
-      "name": "framework/context-and-delegation.md",
-      "title": "Context And Delegation",
-      "description": "Immutable Shvya reference guidance: framework/context-and-delegation.md",
       "kind": "reference",
       "mimeType": "text/markdown"
     }

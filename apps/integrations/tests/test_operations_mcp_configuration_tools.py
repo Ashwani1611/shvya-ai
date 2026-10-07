@@ -652,9 +652,10 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertNotIn('"qr":', json.dumps(connected).lower())
 
     def test_meta_template_can_be_created_and_submitted_through_operations_mcp(self):
+        self.account.connection_type = WhatsAppAccount.ConnectionType.API
         self.account.waba_id = "waba-restaurant-1"
         self.account.access_token = "meta-secret-token"
-        self.account.save(update_fields=["waba_id", "access_token", "updated_at"])
+        self.account.save(update_fields=["connection_type", "waba_id", "access_token", "updated_at"])
 
         create_args = {
             "dry_run": False,
@@ -715,9 +716,10 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertNotIn("meta-secret-token", json.dumps(listed))
 
     def test_multiple_meta_templates_can_be_submitted_in_one_operations_call(self):
+        self.account.connection_type = WhatsAppAccount.ConnectionType.API
         self.account.waba_id = "waba-batch-1"
         self.account.access_token = "meta-batch-secret"
-        self.account.save(update_fields=["waba_id", "access_token", "updated_at"])
+        self.account.save(update_fields=["connection_type", "waba_id", "access_token", "updated_at"])
         first = WhatsAppTemplate.objects.create(
             organization=self.organization,
             account=self.account,
@@ -779,7 +781,9 @@ class OperationsMCPConfigurationToolsTests(TestCase):
                 },
             },
         )
-        self.assertTrue(result["ingestion_queued"])
+        self.assertTrue(result["ingestion_scheduled"])
+        self.assertEqual(result["dispatch_status"], "pending_commit")
+        self.assertFalse(result["ingestion_queued"])
         document = Document.objects.get(pk=result["document"]["id"])
         self.assertEqual(document.organization_id, self.organization.id)
         self.assertEqual(document.processing_status, Document.ProcessingStatus.PENDING)

@@ -46,6 +46,8 @@ from apps.integrations.operations_policy import (
     DEFAULT_ORG_CAPABILITIES,
     ROLE_ORGANIZATION_ADMIN,
     ROLE_SUPERADMIN,
+    SUPERADMIN_ONLY_CAPABILITIES,
+    ALWAYS_APPROVAL_CAPABILITIES,
     WRITE_CAPABILITIES,
     capabilities_for_grant,
 )
@@ -688,7 +690,7 @@ def organization_operations_policy_update_view(request, organization_id):
     allowed = [
         capability
         for capability in ALL_CAPABILITIES
-        if capability in requested_allowed
+        if capability in requested_allowed and capability not in SUPERADMIN_ONLY_CAPABILITIES
     ]
     requested_approval = set(
         request.POST.getlist(
@@ -700,7 +702,7 @@ def organization_operations_policy_update_view(request, organization_id):
         for capability in WRITE_CAPABILITIES
         if (
             capability in allowed
-            and capability in requested_approval
+            and (capability in requested_approval or capability in ALWAYS_APPROVAL_CAPABILITIES)
         )
     ]
 

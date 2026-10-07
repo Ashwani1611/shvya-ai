@@ -59,6 +59,17 @@ class CRMActionExecutor:
             raise CRMActionExecutionError("Organization is required.")
         if lead is None:
             raise CRMActionExecutionError("Lead is required.")
+        if getattr(lead, "is_operations_test", False):
+            from apps.integrations.operations_testing_scope import current_test_scope
+            scope = current_test_scope()
+            if scope is None or scope.lead_id != str(lead.pk) or scope.organization_id != str(organization.pk):
+                raise CRMActionExecutionError("Operations test lead is outside its owned test scope.")
+            if any(action.get("type") not in {"attribute_updates", "pipeline_transition", "add_note"} for action in actions):
+                raise CRMActionExecutionError("External/calendar actions are not executed in isolated AI tests.")
+            if any(update.get("create_if_missing") for action in actions if action.get("type") == "attribute_updates" for update in action.get("updates", [])):
+                raise CRMActionExecutionError("Isolated AI tests cannot create shared attribute definitions.")
+            if any(str(update.get("key") or "").strip().lower() == "booked_at" for action in actions if action.get("type") == "attribute_updates" for update in action.get("updates", [])):
+                raise CRMActionExecutionError("Isolated AI tests cannot mutate calendar booking attributes.")
         if lead.organization_id != organization.id:
             raise CRMActionExecutionError("Lead does not belong to this organization.")
 

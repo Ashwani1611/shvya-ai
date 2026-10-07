@@ -6,7 +6,6 @@ import base64
 import binascii
 import re
 
-from django.core.files.base import ContentFile
 from django.db import transaction
 from django.db.models import Count, Q
 
@@ -172,87 +171,10 @@ def _decode_upload(data):
 
 
 def upload_knowledge_document(*, identity, arguments):
-    organization = _organization_for(identity)
-    dry_run, reason = _write_gate(
-        identity=identity,
-        organization=organization,
-        capability=CAP_AI_CONFIG_WRITE,
-        tool_name="upload_knowledge_document",
-        arguments=arguments,
-    )
-    data = (arguments or {}).get("data")
-    if not isinstance(data, dict):
-        raise OperationsToolError("data must be a knowledge document object.")
-    filename, raw = _decode_upload(data)
-    name = str(data.get("name") or filename).strip()
-    proposal = {
-        "organization_id": str(organization.id),
-        "filename": filename,
-        "name": name,
-        "size": len(raw),
-    }
-    if not dry_run:
-        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
-    if dry_run:
-        return ToolExecution(
-            data={
-                "status": "DRY_RUN",
-                "filename": filename,
-                "size": len(raw),
-                "approval_required": approval_required(
-                    role=identity.role,
-                    organization=organization,
-                    capability=CAP_AI_CONFIG_WRITE,
-                ),
-                "ingestion_will_be_queued": True,
-                "reversible": True,
-            },
-            capability=CAP_AI_CONFIG_WRITE,
-            target_type="organization",
-            target_id=str(organization.id),
-            reason=reason,
-            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
-            audit_summary={"operation": "upload_knowledge_document", "proposal_digest": _proposal_digest(proposal), "size": len(raw)},
-        )
-
-    from apps.ai_engagement.tasks import ingest_and_index_document
-
-    with transaction.atomic():
-        locked_org = organization.__class__.objects.select_for_update().get(pk=organization.pk)
-        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
-        upload = ContentFile(raw, name=filename)
-        try:
-            source, document = KnowledgeSourceService().create_file_source(
-                organization=locked_org,
-                uploaded_file=upload,
-                name=name,
-            )
-        except KnowledgeSourceServiceError as exc:
-            raise OperationsToolError(str(exc)) from exc
-        transaction.on_commit(
-            lambda document_id=document.id, org_id=locked_org.id: ingest_and_index_document.delay(
-                document_id, org_id
-            )
-        )
-    return ToolExecution(
-        data={
-            "status": "FIXED",
-            "source_id": str(source.id),
-            "document": {
-                "id": str(document.id),
-                "name": document.name,
-                "processing_status": document.processing_status,
-                "active": document.is_active,
-            },
-            "ingestion_queued": True,
-            "verification": "passed",
-        },
-        capability=CAP_AI_CONFIG_WRITE,
-        target_type="knowledge_document",
-        target_id=str(document.id),
-        reason=reason,
-        audit_summary={"operation": "upload_knowledge_document", "source_id": str(source.id), "verification": "passed"},
-    )
+    # Share the dashboard parity path so upload descriptions, file signatures,
+    # quota, source versions and exact bytes are included in the preview gate.
+    from apps.integrations.operations.tools.ai_knowledge_dashboard import upload_knowledge_document_v2
+    return upload_knowledge_document_v2(identity=identity, arguments=arguments)
 
 
 def publish_knowledge_document(*, identity, arguments):

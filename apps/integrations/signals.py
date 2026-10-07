@@ -10,7 +10,7 @@ from apps.integrations.services.webhook import build_lead_webhook_payload
 @receiver(pre_save, sender=Lead, dispatch_uid="integrations.meta_conversion_previous_stage")
 def remember_meta_conversion_stage(sender, instance, raw=False, update_fields=None, **kwargs):
     instance._meta_conversion_context = None
-    if raw or not instance.organization_id:
+    if raw or instance.is_operations_test or not instance.organization_id:
         return
     if update_fields is not None and not {
         "pipeline", "pipeline_id", "stage", "stage_id", "attributes", "lead_source",
@@ -41,7 +41,7 @@ def remember_meta_conversion_stage(sender, instance, raw=False, update_fields=No
 def capture_meta_conversion(sender, instance, raw=False, **kwargs):
     context = getattr(instance, "_meta_conversion_context", None)
     instance._meta_conversion_context = None
-    if raw or context is None:
+    if raw or instance.is_operations_test or context is None:
         return
     from apps.integrations.services.meta_conversions import capture_stage_event
     configuration, occurred_at, previous = context
@@ -63,7 +63,7 @@ def capture_meta_conversion(sender, instance, raw=False, **kwargs):
 @receiver(post_save, sender=Lead, dispatch_uid="integrations.queue_lead_webhook")
 def queue_lead_webhook(sender, instance, created, raw=False, **kwargs):
     """Persist a webhook event in the same DB transaction, then deliver on commit."""
-    if raw or not instance.organization_id:
+    if raw or instance.is_operations_test or not instance.organization_id:
         return
 
     webhook = (

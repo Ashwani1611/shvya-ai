@@ -1,6 +1,7 @@
 """Durable, ordered event evaluation. Mutations serialize on the lead row."""
 
 import logging
+from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import timedelta
 
@@ -16,6 +17,21 @@ from apps.triggers.models import SmartTrigger, TriggerEvent, TriggerRun
 logger = logging.getLogger(__name__)
 
 causal_rules = ContextVar("smart_trigger_causal_rules", default=())
+_workflow_events_suppressed = ContextVar("workflow_events_suppressed", default=False)
+
+
+@contextmanager
+def suppress_workflow_events():
+    """Suppress new workflow fan-out within one explicit provisioning context.
+
+    ContextVars isolate concurrent requests and nested calls. This does not
+    disable existing rules or cancel already-queued work for other leads.
+    """
+    token = _workflow_events_suppressed.set(True)
+    try:
+        yield
+    finally:
+        _workflow_events_suppressed.reset(token)
 
 
 def delta(config):
@@ -91,6 +107,8 @@ def matches(rule, lead, payload):
 
 
 def emit(lead, kind, key, payload=None):
+    if _workflow_events_suppressed.get() or getattr(lead, "is_operations_test", False):
+        return None
     return TriggerEvent.objects.get_or_create(
         key=key,
         defaults={
@@ -124,6 +142,9 @@ def emit(lead, kind, key, payload=None):
 def evaluate(event_id):
     # Same lock ordering as CRM actions: lead, then event/run.
     initial = TriggerEvent.objects.get(id=event_id)
+    if TriggerEvent.objects.filter(pk=initial.pk, lead__is_operations_test=True).exists():
+        TriggerEvent.objects.filter(pk=initial.pk, processed_at__isnull=True).update(processed_at=timezone.now())
+        return
     lead = (
         Lead.objects.select_for_update(of=("self",))
         .select_related("organization", "pipeline", "stage")
@@ -131,6 +152,10 @@ def evaluate(event_id):
     )
     event = TriggerEvent.objects.select_for_update().get(id=event_id)
     if event.processed_at:
+        return
+    if getattr(lead, "is_operations_test", False):
+        event.processed_at = timezone.now()
+        event.save(update_fields=["processed_at"])
         return
     rules = SmartTrigger.objects.filter(
         organization_id=event.organization_id,

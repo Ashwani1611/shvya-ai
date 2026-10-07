@@ -32,6 +32,24 @@
       "prompt": "The intake write succeeded, so add it to AI Brain automatically.",
       "expected_output": "The skill does not publish automatically; it requires an explicit destination proposal and that destination's own capability/dry-run/approval/read-back.",
       "result": null
+    },
+    {
+      "id": 6,
+      "prompt": "Overwrite a client correction with a newer ops note and change an answered question.",
+      "expected_output": "Preserve effective client body and immutable answer, use separate authorized follow-up where appropriate and report protected fields.",
+      "result": null
+    },
+    {
+      "id": 7,
+      "prompt": "This call mentioned a brochure; mark media complete and publish it to AI.",
+      "expected_output": "Do not invent file contents or upload; record missing actual asset/question, keep Vault progress distinct from knowledge publication.",
+      "result": null
+    },
+    {
+      "id": 8,
+      "prompt": "Read 70 Vault entries plus questions and calls.",
+      "expected_output": "Follow separate collection cursors and limits, report completeness and safe asset readability without signed links or credentials.",
+      "result": null
     }
   ]
 }

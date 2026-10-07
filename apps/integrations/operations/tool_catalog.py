@@ -2,6 +2,26 @@
 
 from copy import deepcopy
 
+from apps.integrations.operations.flow_testing_catalog import (
+    FLOW_TEST_TOOL_CAPABILITIES,
+    flow_testing_tool_definitions,
+)
+from apps.integrations.operations.channel_dashboard_catalog import (
+    CHANNEL_DASHBOARD_CAPABILITIES,
+    channel_dashboard_tool_definitions,
+)
+from apps.integrations.operations.ai_knowledge_catalog import (
+    AI_KNOWLEDGE_TOOL_CAPABILITIES,
+    ai_knowledge_tool_definitions,
+)
+from apps.integrations.operations.vault_catalog import (
+    VAULT_TOOL_CAPABILITIES,
+    vault_tool_definitions,
+)
+from apps.integrations.operations.dashboard_crm_catalog import (
+    DASHBOARD_CRM_TOOL_CAPABILITIES,
+    dashboard_crm_tool_definitions,
+)
 from apps.integrations.operations.setup_catalog import (
     SETUP_TOOL_CAPABILITIES,
     setup_tool_definitions,
@@ -785,7 +805,14 @@ OWN_TOOL_DEFINITIONS = [
         "list_touchpoints",
         "List Touchpoints",
         "Return organization saved replies grouped by category.",
-        {"include_archived": {"type": "boolean", "default": False}},
+        {
+            "include_archived": {"type": "boolean", "default": False},
+            "category_id": {"type": "string", "format": "uuid"},
+            "category_limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+            "category_offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+            "reply_limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            "reply_offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+        },
     ),
     _tool(
         "upsert_touchpoint",
@@ -824,7 +851,11 @@ OWN_TOOL_DEFINITIONS = [
         "list_faqs",
         "List FAQs",
         "Return organization FAQs independently from the AI Playbook.",
-        {"active_only": {"type": "boolean", "default": False}},
+        {
+            "active_only": {"type": "boolean", "default": False},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+            "offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+        },
     ),
     _tool(
         "upsert_faq",
@@ -889,7 +920,8 @@ OWN_TOOL_DEFINITIONS = [
                     "properties": {
                         "filename": {"type": "string", "maxLength": 255},
                         "name": {"type": "string", "maxLength": 255},
-                        "content_base64": {"type": "string"},
+                        "content_base64": {"type": "string", "maxLength": 699052},
+                        "share_instruction": {"type": "string", "maxLength": 12000},
                     },
                     "required": ["filename", "content_base64"],
                     "additionalProperties": False,
@@ -1304,6 +1336,11 @@ OWN_TOOL_DEFINITIONS = [
     ),
 ]
 
+OWN_TOOL_DEFINITIONS.extend(dashboard_crm_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(vault_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(ai_knowledge_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(channel_dashboard_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(flow_testing_tool_definitions(_tool, _write_properties))
 OWN_TOOL_DEFINITIONS.extend(setup_tool_definitions(_tool, _write_properties))
 OWN_TOOL_DEFINITIONS.extend(extended_tool_definitions(_tool, _write_properties))
 
@@ -1403,6 +1440,11 @@ TOOL_CAPABILITIES = {
     "get_operations_audit": CAP_AUDIT_READ,
 }
 TOOL_CAPABILITIES.update(EXTENDED_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(DASHBOARD_CRM_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(VAULT_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(AI_KNOWLEDGE_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(CHANNEL_DASHBOARD_CAPABILITIES)
+TOOL_CAPABILITIES.update(FLOW_TEST_TOOL_CAPABILITIES)
 TOOL_CAPABILITIES.update(SETUP_TOOL_CAPABILITIES)
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
     TOOL_CAPABILITIES[_diagnostic_name] = CAP_DIAGNOSTICS_READ
@@ -1452,6 +1494,8 @@ def _tools_for_identity(identity):
             "list_organizations",
             "select_organization_context",
             "clear_organization_context",
+            "create_organization_account",
+            "create_vault_workspace",
         }:
             continue
         if _tool_requires_write_scope(item) and not has_write_scope:

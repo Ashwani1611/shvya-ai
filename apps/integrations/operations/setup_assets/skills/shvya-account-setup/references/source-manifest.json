@@ -1,0 +1,246 @@
+{
+  "source_status": "Historical raw evidence; not SHVYA operating instructions",
+  "files": [
+    {
+      "source": "zip/.claude/skills/account-review/SKILL.md",
+      "path": "references/source-snapshot/account-review/SKILL.md.source.txt.md",
+      "sha256": "74b2e09d79739575fb0040b6484a57682ec74148db159db9c69af394544e61f8",
+      "bytes": 11715
+    },
+    {
+      "source": "zip/.claude/skills/account-review/evals/evals.json",
+      "path": "references/source-snapshot/account-review/evals/evals.json.source.txt.md",
+      "sha256": "fbcff0a3e865cc78fc78f3836b4983f02cc66a0d3526a8a48d20cd8fa8826a64",
+      "bytes": 5130
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/agent-prompts/1-config-inventory.md",
+      "path": "references/source-snapshot/account-review/references/agent-prompts/1-config-inventory.md.source.txt.md",
+      "sha256": "c1729b785bacdfc7cd222d815a3194ec6ed9902627f69eda7f13765a84caff5c",
+      "bytes": 4191
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/agent-prompts/2-call-requirements.md",
+      "path": "references/source-snapshot/account-review/references/agent-prompts/2-call-requirements.md.source.txt.md",
+      "sha256": "9893d92df01a68cec8f38078bbb5a92cf016319e0f5073c1a5f82a66e10dbfec",
+      "bytes": 3203
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/agent-prompts/3-group-requirements.md",
+      "path": "references/source-snapshot/account-review/references/agent-prompts/3-group-requirements.md.source.txt.md",
+      "sha256": "154f85e5a65f82c935b0abbf5b71ca53d0eab1ab4d62b3798e37c57f9fd8727e",
+      "bytes": 3389
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/evidence-sources.md",
+      "path": "references/source-snapshot/account-review/references/evidence-sources.md.source.txt.md",
+      "sha256": "129ac15a43be9112a5035d0d41be9679b6bd0f2cbf2dd98854959f8eee036212",
+      "bytes": 7090
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/known-traps.md",
+      "path": "references/source-snapshot/account-review/references/known-traps.md.source.txt.md",
+      "sha256": "9693e5585f11641898b75c9a28b0142042c546fa1edea2a741c45d4424442e6a",
+      "bytes": 7313
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/live-behaviour.md",
+      "path": "references/source-snapshot/account-review/references/live-behaviour.md.source.txt.md",
+      "sha256": "1a494cdd1a15ce29d68dee91342b91c6fde9b0162d4d73d17b0e48858690c662",
+      "bytes": 7461
+    },
+    {
+      "source": "zip/.claude/skills/account-review/references/review-checks.md",
+      "path": "references/source-snapshot/account-review/references/review-checks.md.source.txt.md",
+      "sha256": "20fd6c8fbc60ffff9a1297336ed73c79936f6df17e213a27784cb98397ee0396",
+      "bytes": 11644
+    },
+    {
+      "source": "zip/.claude/skills/dialnexa-voice-agent/SKILL.md",
+      "path": "references/source-snapshot/dialnexa-voice-agent/SKILL.md.source.txt.md",
+      "sha256": "f3fb42a7526e23f78a2f27903fe4576bf38fbeba8ce15a418165627f61961c87",
+      "bytes": 19833
+    },
+    {
+      "source": "zip/.claude/skills/dialnexa-voice-agent/references/agent-prompt-template.md",
+      "path": "references/source-snapshot/dialnexa-voice-agent/references/agent-prompt-template.md.source.txt.md",
+      "sha256": "1c0a544a75ba2d489d8b046accf48cb20a3d29f27b105b44a67002316694e5ce",
+      "bytes": 17913
+    },
+    {
+      "source": "zip/.claude/skills/dialnexa-voice-agent/references/call-instructions-template.md",
+      "path": "references/source-snapshot/dialnexa-voice-agent/references/call-instructions-template.md.source.txt.md",
+      "sha256": "05a6739f531faa9f458396c372b4f630f11dae087c80fa0e70d80ede301c2d59",
+      "bytes": 14076
+    },
+    {
+      "source": "zip/.claude/skills/dialnexa-voice-agent/references/dialnexa-api.md",
+      "path": "references/source-snapshot/dialnexa-voice-agent/references/dialnexa-api.md.source.txt.md",
+      "sha256": "9d8b18a695c880d6ab0409b00d3e14393b32b7104c428b2a29deb4f57aaf54ac",
+      "bytes": 5432
+    },
+    {
+      "source": "zip/.claude/skills/dialnexa-voice-agent/scripts/dialnexa_agent.py",
+      "path": "references/source-snapshot/dialnexa-voice-agent/scripts/dialnexa_agent.py.source.txt.md",
+      "sha256": "74f965b5b26ded530e8785b0499035332b38dbba72a3cb8b9396ad33aa90329d",
+      "bytes": 4443
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/SKILL.md",
+      "path": "references/source-snapshot/kraya-account-setup/SKILL.md.source.txt.md",
+      "sha256": "467efa60f6417658c5d01487010498fd67ddb217611505ce2d7ec115efb03acb",
+      "bytes": 26073
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/evals/evals.json",
+      "path": "references/source-snapshot/kraya-account-setup/evals/evals.json.source.txt.md",
+      "sha256": "54a2682f00d9e5c18432ed72a4560d9fd456ecbcf90ee7b5669f19605d366c3a",
+      "bytes": 2870
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/account-setup-instructions.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/account-setup-instructions.md.source.txt.md",
+      "sha256": "420c935662313fabfe64dd9ddbd1e69dc8445cb6cebf8f9cec90df9d77635676",
+      "bytes": 12074
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-kickoffs.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-kickoffs.md.source.txt.md",
+      "sha256": "a0f64a1c58899a76bc1ef44cc75a9e6d1200a8387ab3e3588099f92e69f93119",
+      "bytes": 13268
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-prompts/1-client-profile-builder.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-prompts/1-client-profile-builder.md.source.txt.md",
+      "sha256": "fe90c0146d96012dfcc36b0fcba2d4ccd1f5edbb0731c0ad3e4eec0864c12215",
+      "bytes": 15194
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-prompts/2-ai-qualification-builder.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-prompts/2-ai-qualification-builder.md.source.txt.md",
+      "sha256": "f7d5c5cd811e2e6e7868103d1577d34b4b0108411cbfbe05d2fb9c919c8f5ead",
+      "bytes": 43154
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-prompts/3-sequence-outline-generator.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-prompts/3-sequence-outline-generator.md.source.txt.md",
+      "sha256": "24fe4279d951100d0bbfb360910767f3f28a74d59eb7b431a911a044b7c53379",
+      "bytes": 22348
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-prompts/4-sequence-writer.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-prompts/4-sequence-writer.md.source.txt.md",
+      "sha256": "140a3338f6885a7e4aea1600dc3e0976d0dee96430bc437a7c4067a5af58b468",
+      "bytes": 33525
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/agent-prompts/5-account-setup-builder.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/agent-prompts/5-account-setup-builder.md.source.txt.md",
+      "sha256": "c97f7df10d6341381e319a14c3f4237a1138d2c696c1001e2238754e75031065",
+      "bytes": 24457
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/api-reference.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/api-reference.md.source.txt.md",
+      "sha256": "3b07e178c0feca1fb7945be2cec1e9d1cf8620c9307f2319a78e0231dbe7291f",
+      "bytes": 80174
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/brainstorming-checklist.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/brainstorming-checklist.md.source.txt.md",
+      "sha256": "7a8d9dde7d96ff3bccbb959ab2aba0d91ff5b0447751ed404d6139375b36603b",
+      "bytes": 17072
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/conflict-audit.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/conflict-audit.md.source.txt.md",
+      "sha256": "113550ba6a5ceeb0c4fa444ec2b5026b611d1585a1f4bfdd73f82adaa530c3d1",
+      "bytes": 13205
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/content-rules.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/content-rules.md.source.txt.md",
+      "sha256": "8d35bf8c834840eaa700fd7ae9b9d74519c25622d0a0d00852f44445ec9c9929",
+      "bytes": 20368
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/current-workflow.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/current-workflow.md.source.txt.md",
+      "sha256": "e1453fa7475f5716f8a31976f43e9d06aa0e9894f4404abe2575414c0cb078ed",
+      "bytes": 11897
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/industry-playbooks.ts",
+      "path": "references/source-snapshot/kraya-account-setup/references/industry-playbooks.ts.source.txt.md",
+      "sha256": "c33a10e742662df2f7da3cd630ca013db6ad9a27334a1a4b05838b91b272ef47",
+      "bytes": 74481
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/industry-templates.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/industry-templates.md.source.txt.md",
+      "sha256": "990f4fb9dc85d371ac344baeacc9f8a40e4ea79fbfcdd0ffc3c9f5dcee789ede",
+      "bytes": 67582
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/langsmith.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/langsmith.md.source.txt.md",
+      "sha256": "8aff51978bd953155f791d6179147a046994b778c720eb0ce06aaea58fe42529",
+      "bytes": 8400
+    },
+    {
+      "source": "zip/.claude/skills/kraya-account-setup/references/prod-account-patterns.md",
+      "path": "references/source-snapshot/kraya-account-setup/references/prod-account-patterns.md.source.txt.md",
+      "sha256": "06bf0139d49abefbf5a948d60437b07195a331494d0910459a1d18dba7f7f09d",
+      "bytes": 26781
+    },
+    {
+      "source": "zip/.claude/skills/kraya-vault/SKILL.md",
+      "path": "references/source-snapshot/kraya-vault/SKILL.md.source.txt.md",
+      "sha256": "b3f5e7b6a817a14fac62a61d80fdfaf5c2b2994cdef576c5308d7c6103e763c4",
+      "bytes": 7669
+    },
+    {
+      "source": "zip/.claude/skills/kraya-vault/references/section-map.md",
+      "path": "references/source-snapshot/kraya-vault/references/section-map.md.source.txt.md",
+      "sha256": "aea820bcf5d56b8a99eb6becb8760679e225e4075acdbae81a04aa4443465fc8",
+      "bytes": 4659
+    },
+    {
+      "source": "zip/.claude/skills/kraya-vault/scripts/vault.py",
+      "path": "references/source-snapshot/kraya-vault/scripts/vault.py.source.txt.md",
+      "sha256": "d5d2eaf111f89ba9cc23cb931fd4effe8c548622e04fc2be30d30c9243613bff",
+      "bytes": 8258
+    },
+    {
+      "source": "zip/.claude/skills/read-whatsapp-group/SKILL.md",
+      "path": "references/source-snapshot/read-whatsapp-group/SKILL.md.source.txt.md",
+      "sha256": "166406595bce635f98057f8a9ead6e4254cb198b5f68a8613638b9d65f087236",
+      "bytes": 6132
+    },
+    {
+      "source": "zip/.claude/skills/read-whatsapp-group/scripts/read_group.py",
+      "path": "references/source-snapshot/read-whatsapp-group/scripts/read_group.py.source.txt.md",
+      "sha256": "69a3084da339f75466e8e3175805ec1da3157b841657f9a2067a51f0c5969488",
+      "bytes": 8444
+    },
+    {
+      "source": "attached/README.md",
+      "path": "references/source-snapshot/docs/README.md.source.txt.md",
+      "sha256": "5de9cdc06f60da0c41c55c04e8e053c92c3045f4fc2c2f5af2f54b89606eb9dd",
+      "bytes": 3009
+    },
+    {
+      "source": "attached/kraya-account-agent-guide.md",
+      "path": "references/source-snapshot/docs/kraya-account-agent-guide.md.source.txt.md",
+      "sha256": "b5211535664bb94bbc23e490466d836d54a38cf8225e053b8bcbb3e020ae1fd0",
+      "bytes": 57240
+    },
+    {
+      "source": "attached/kraya-api-powers.md",
+      "path": "references/source-snapshot/docs/kraya-api-powers.md.source.txt.md",
+      "sha256": "54c856df057a5decc15a3ec3e06503ceafd6fc2b0ff029c93c3245c0f30d395f",
+      "bytes": 52520
+    }
+  ],
+  "verification": "Compare bytes and SHA-256 against paths; executable verifier is packaged as text in scripts/verify_reference_fidelity.py.md."
+}

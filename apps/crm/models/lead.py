@@ -52,6 +52,12 @@ def normalize_phone(phone):
 
 class Lead(models.Model):
 
+    # Only the Operations test manifest creates these rows. They are hidden from
+    # normal CRM reads and workers; a scoped run can see its own fixture only.
+    from apps.integrations.operations_testing_scope import OperationsVisibleLeadManager
+    objects = OperationsVisibleLeadManager()
+    is_operations_test = models.BooleanField(default=False, editable=False)
+
     id = models.UUIDField(
         primary_key=True,
         default=uuid.uuid4,
@@ -210,6 +216,11 @@ class Lead(models.Model):
         ]
 
     def save(self, *args, **kwargs):
+        if self.is_operations_test:
+            # Test contacts can never become routable customer identities.
+            if self.phone or self.email:
+                raise ValidationError("Operations AI test leads cannot have phone or email contacts.")
+            return super().save(*args, **kwargs)
         fields = kwargs.get("update_fields")
         if fields is not None and "attributes" not in fields:
             return super().save(*args, **kwargs)

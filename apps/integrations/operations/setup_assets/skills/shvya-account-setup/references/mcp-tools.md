@@ -1,0 +1,47 @@
+# MCP operations map
+
+Inspect the deployed schemas and get_operations_context/get_capability_discovery before calling any tool. Names below describe the corresponding code capability, not a guarantee that an older deployment or current OAuth grant exposes it. Use the exact returned schema; all live writes use reason, dry_run and backend approval fields when required. Never synthesize an approval ID.
+
+| Job | Native tools | Scope and evidence |
+|---|---|---|
+| Identity and org selection | get_operations_context; get_capability_discovery; list_organizations; select_organization_context; clear_organization_context | Superadmin context selection is audited; verify exact tenant. |
+| Create company account | create_organization_account | Superadmin only; name, package, number_of_seats, optional owner; owner is inactive with unusable password, no onboarding email/credentials returned. Console activation remains separate. |
+| CRM inventory | get_organization_configuration; get_configuration_dependency_graph; get_configuration_integrity_diagnostics; list_crm_leads; get_crm_lead | Bounded reads; no hidden/internal AI attributes through normal lead tools. |
+| CRM schema | upsert_pipeline_configuration; upsert_stage_configuration; upsert_attribute_configuration | Give descriptions, preserve real IDs/options/protected stages; inspect current native field schema. |
+| Leads | create_crm_lead; update_crm_lead; import_crm_leads; bulk_move_crm_leads; move_lead_stage | Create/import stable UUID client_request_id; import/move at most 100 rows/IDs per call. Read state after each batch. |
+| AI Setup | get_ai_configuration; update_ai_configuration; get_qualification_configuration; upsert_qualification_configuration | Full ai_playbook replacement requires full read; model/dual-AI authority is Superadmin-only. |
+| Grounded knowledge | create_knowledge_source; upload_knowledge_document; publish_knowledge_document; get_knowledge_health; list_playbook_documents; get_playbook_document; create_playbook_document; update_knowledge_document; repair_knowledge_document | Text document creation/URL and file ingestion are separate from runtime instructions and sendable media. Chunk text is bounded; embeddings not exposed. |
+| FAQs and Quick Replies | list_faqs; upsert_faq; list_touchpoints; upsert_touchpoint; exposed Quick Reply aliases | Aliases change terminology, not duplicate entities or permissions. Resolve actual ID schema. |
+| Channel authoring | get_channel_authoring_schema; get_channel_cadence_configuration; upsert_channel_cadence; add_channel_cadence_step; configure_whatsapp_template_delivery | Explicit api/coexistence/hosted/instagram, exact sender, supported placeholders and schedules. No enrollment/sending. |
+| Existing Cadences | upsert_cadence_configuration; add_cadence_step; add_hosted_whatsapp_step; update_cadence_step; reorder_cadence_steps; simulate_cadence; validate_cadence_batch | Use specialized channel facade when exposed; keep existing compatibility fields only if returned by schema. |
+| WhatsApp templates | list_whatsapp_templates; create_whatsapp_template; submit_whatsapp_template; configure_whatsapp_template_delivery | Creation, submission and provider approval are different states. Bind approved sender-owned template component variables. |
+| Workflows | get_workflow_schema; list_workflow_triggers; list_workflow_actions; upsert_workflow_configuration; validate_workflow_configuration; simulate_workflow | One action per Workflow; actual conditions/scopes and destination ownership govern. |
+| Channels and routing | list_whatsapp_accounts; get_messaging_automation_settings; validate_whatsapp_routing; bind_whatsapp_account_to_pipeline; update_messaging_automation_settings | Use current connection and tenant-owned sender; never treat Coexistence as Hosted. |
+| Calendar and team | get_calendar_configuration; validate_calendar_configuration; upsert_calendar_configuration; verify_booking; get_team_settings; upsert_team_settings | Calendar settings do not themselves reserve slots or prove reminders delivered. |
+| Evidence and validation | get_production_trace; validate_organization_configuration; validate_qualification_configuration; test_ai_response_policy; simulate_ai_conversation; run_acceptance_suite; prepare_account_onboarding | Deterministic no-send checks do not generate actual LLM replies or prove transport. |
+| Production-engine tests | create_ai_flow_test_run; run_ai_flow_test_turn; get_ai_flow_test_run; cleanup_ai_flow_test_run | Own fixture IDs, idempotency and enforced model/credit/turn budget; no customer transport. |
+| Native client Vault | get_vault; export_vault; get_vault_entry; get_vault_asset; create_vault_workspace; upsert_vault_entry; upsert_vault_question; upsert_vault_call; upload_vault_asset; set_vault_section | Client-visible; client edits protected; Superadmin workspace creation; no auto-publication. |
+| Internal intake | get_setup_intake; upsert_setup_intake_entry; archive_setup_intake_entry | Separate draft evidence record; not the client's Vault. |
+| Support groups | list_hosted_whatsapp_groups; read_hosted_whatsapp_group; send_hosted_whatsapp_group_message | Exact account/group, owned member sender, per-message receipt; text only, no arbitrary edits/deletes. |
+| Commitments | list_commitments; upsert_commitment | Records owned follow-up tasks; does not send or activate. |
+| Source skill resources | list_setup_library; get_setup_library_resource; get_setup_variable_schema; render_setup_template | Follow resource offsets/cursors; never treat the first chunk as a complete reference. |
+
+## CRM creation/import details
+
+create_crm_lead takes pipeline_id, stage_id, data and a caller-generated UUID client_request_id. import_crm_leads takes rows, duplicate_policy error or skip and the same stable retry identity; each batch uses a different stable UUID, retries reuse it. Creation requires name and phone, with an empty phone permitted only for a properly declared Instagram source. Do not invent an Indian country code for international leads. AI and follow-ups are off by default; welcome and lead-created Workflows are suppressed unless allow_workflows is explicitly authorized. Updates preserve internal state. Bulk stage moves can trigger already-configured stage-moved Workflows; include that impact in the preview.
+
+The tools validate known safe attribute keys/types and block internal state injection. Do not write _ai_qualified or flow_state through lead.attributes. Moving to Qualified requires canonical required evidence. A batch's scope is exact IDs and the target stage's owning pipeline; do not infer cross-pipeline authority.
+
+## Knowledge details
+
+create_playbook_document creates an actual text knowledge file, not another AI Playbook field; use about/ai_playbook in update_ai_configuration for behavior. update_knowledge_document covers supported name/share_instruction changes. repair_knowledge_document returns allowed retry_upload, reindex_missing or refresh_url operations when appropriate. Follow the returned repair eligibility instead of repeatedly re-ingesting healthy data. Native tool availability determines whether content can be read or changed.
+
+## Pagination and final harness boundaries
+
+list_faqs uses limit/offset. list_touchpoints uses category_limit/category_offset/category_id and reply_limit/reply_offset; follow each category's next_reply_offset plus top-level next_category_offset. get_channel_cadence_configuration(cadence_id, offset, limit<=100) returns full typed ordered steps, channel/account identity, total_steps and next_offset; read every page needed for review or replacement. get_channel_authoring_schema(template_id?) exposes exact template-delivery parameter fields/current bindings.
+
+create_ai_flow_test_run requires pipeline_id, stage_id and idempotency_key, with the standard write reason/approval. Current channel is only whatsapp; this is an isolated native WhatsApp engine fixture, not distinct Hosted/API/Coexistence adapters or Instagram delivery. Limits: max_turns 1–500 (default 30), max_provider_calls 1–2000 (default 100), max_credits 1–100000 (default 1000). run_ai_flow_test_turn requires run_id, message (1–4000 characters) and idempotency_key. get_ai_flow_test_run accepts a bounded result limit 1–100 and returns actual persisted fixture attributes/stage/qualification/summary plus real ledger usage. cleanup_ai_flow_test_run accepts only run_id, rejects arbitrary lead/account IDs and refuses active-turn cleanup. All test writes require bound approval. Config drift requires a new run, not altered hidden state.
+
+The harness uses server-owned real ORM Lead and inactive credential-free WhatsApp account fixtures hidden from normal dashboard/task selection. It runs the production controller, CRM executor and summary path without actual files, reminder/calendar, Workflows or transport execution. Native Instagram is unsupported for this harness. A rejected/replayed idempotency key never re-runs or bills a turn; partial failures remain in the run evidence.
+
+Knowledge writes report SAVED with ingestion_scheduled=true and dispatch_status=pending_commit. This is not queued/complete proof. get_playbook_document exposes processing/readiness and latest_repair status/outcome. repair_knowledge_document reports REQUESTED for a durable job that may consume credits; inspect eventual outcome. Text/file registration, indexing readiness and actual source retrieval are separate states.

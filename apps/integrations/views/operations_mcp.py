@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import nullcontext
 from urllib.parse import urlencode, urlparse
 
 from django.db import transaction
@@ -112,12 +113,17 @@ SUPPORTED_PROTOCOL_VERSIONS = (
     MODERN_PROTOCOL_VERSION,
     LEGACY_PROTOCOL_VERSION,
 )
-SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
+SERVER_INFO = {"name": "shvya-operations", "version": "1.1.0"}
 logger = logging.getLogger(__name__)
 OAUTH_MAX_BODY_BYTES = 32 * 1024
 OAUTH_MAX_STATE_LENGTH = 1024
 
 TOOL_RESPONSE_TEXT_LIMITS = {
+    "get_channel_cadence_configuration": 20000,
+    "read_hosted_whatsapp_group": 10000,
+    "send_hosted_whatsapp_group_message": 10500,
+    "get_ai_flow_test_run": 20000,
+    "run_ai_flow_test_turn": 20000,
     # These tools deliberately expose bounded configuration text after secret
     # redaction. Keep ordinary diagnostics on the sanitizer's 800-char default.
     "get_ai_configuration": 110000,
@@ -134,6 +140,25 @@ TOOL_RESPONSE_TEXT_LIMITS = {
     "get_setup_intake": 12000,
     "upsert_setup_intake_entry": 12000,
     "archive_setup_intake_entry": 12000,
+    "get_vault": 20000,
+    "export_vault": 20000,
+    "get_vault_entry": 20000,
+    "get_vault_asset": 20000,
+    "create_vault_workspace": 20000,
+    "upsert_vault_entry": 20000,
+    "upsert_vault_question": 20000,
+    "upsert_vault_call": 20000,
+    "upload_vault_asset": 20000,
+    "set_vault_section": 20000,
+    "list_playbook_documents": 20000,
+    "get_playbook_document": 20000,
+    "create_playbook_document": 20000,
+    "update_knowledge_document": 20000,
+    "repair_knowledge_document": 20000,
+    "list_faqs": 20000,
+    "list_touchpoints": 20000,
+    "get_crm_lead": 20000,
+    "list_crm_leads": 20000,
 }
 
 def _oauth_request_too_large(request):
@@ -1099,6 +1124,7 @@ def _setup_protocol_response(request, *, request_id, method, params, modern):
 @csrf_exempt
 @ratelimit(limit=240, window=60)
 @require_POST
+@transaction.non_atomic_requests
 def operations_mcp(request):
     try:
         raw_body = read_operations_mcp_body(request)
@@ -1313,7 +1339,11 @@ def operations_mcp(request):
             description=sanitize_text(exc, limit=160),
         )
 
-    with transaction.atomic():
+    # A flow turn commits its claim and credit reservations before provider I/O.
+    # Wrapping that operation in an outer transaction would lose durable budget
+    # and replay evidence after a worker crash. All other tools remain atomic.
+    boundary = nullcontext() if tool_name == "run_ai_flow_test_turn" else transaction.atomic()
+    with boundary:
         started = time.perf_counter()
         execution = None
         error_code = ""

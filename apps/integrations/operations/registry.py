@@ -140,3 +140,25 @@ EXTENDED_HANDLERS = {
     "get_team_settings": get_team_settings,
     "upsert_team_settings": upsert_team_settings,
 }
+
+
+from apps.integrations.operations.tools.dashboard_crm import DASHBOARD_CRM_HANDLERS  # noqa: E402
+EXTENDED_HANDLERS.update(DASHBOARD_CRM_HANDLERS)
+
+
+from apps.integrations.operations.tools.vault import VAULT_TOOL_HANDLERS  # noqa: E402
+EXTENDED_HANDLERS.update(VAULT_TOOL_HANDLERS)
+
+
+from apps.integrations.operations.tools.ai_knowledge_dashboard import AI_KNOWLEDGE_TOOL_HANDLERS  # noqa: E402
+EXTENDED_HANDLERS.update(AI_KNOWLEDGE_TOOL_HANDLERS)
+
+
+from apps.integrations.operations.tools.channel_dashboard import CHANNEL_DASHBOARD_HANDLERS  # noqa: E402
+EXTENDED_HANDLERS.update(CHANNEL_DASHBOARD_HANDLERS)
+
+
+from apps.integrations.operations.tools import flow_testing  # noqa: E402
+EXTENDED_HANDLERS.update({name: getattr(flow_testing, name) for name in (
+    "create_ai_flow_test_run", "run_ai_flow_test_turn", "get_ai_flow_test_run", "cleanup_ai_flow_test_run",
+)})

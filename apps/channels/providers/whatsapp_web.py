@@ -120,6 +120,18 @@ class WhatsAppWebClient:
             timeout=120,
         )
 
+    def list_groups(self, *, session_id, limit=50):
+        return self._request("GET", f"/sessions/{session_id}/groups?limit={int(limit)}")
+
+    def read_group(self, *, session_id, group_id, limit=50):
+        group = quote(str(group_id), safe="")
+        return self._request("GET", f"/sessions/{session_id}/groups/{group}/messages?limit={int(limit)}")
+
+    def send_group_message(self, *, session_id, group_id, body, request_id):
+        group = quote(str(group_id), safe="")
+        return self._request("POST", f"/sessions/{session_id}/groups/{group}/messages",
+                             payload={"body": body, "requestId": str(request_id)}, timeout=45)
+
     def send_message(
         self,
         *,

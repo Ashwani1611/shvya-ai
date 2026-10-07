@@ -11,6 +11,8 @@ from .models import WhatsAppMessage
 
 @receiver(post_save, sender=WhatsAppMessage, dispatch_uid="whatsapp-throughput-metric")
 def record_whatsapp_throughput(sender, instance, created, **kwargs):
+    if getattr(instance.account, "is_operations_test", False):
+        return
     if created:
         increment(
             "messaging.messages_created",

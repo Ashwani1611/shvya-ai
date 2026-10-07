@@ -30,38 +30,67 @@ def list_touchpoints(*, identity, arguments):
     _require_operations_capability(
         identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ
     )
-    include_archived = bool((arguments or {}).get("include_archived", False))
-    reply_qs = TouchpointReply.objects.all()
+    arguments = arguments or {}
+    if not isinstance(arguments, dict) or set(arguments) - {
+        "include_archived", "category_id", "category_limit", "category_offset", "reply_limit", "reply_offset",
+    }:
+        raise OperationsToolError("Unsupported saved reply list arguments.")
+    include_archived = arguments.get("include_archived", False)
+    if type(include_archived) is not bool:
+        raise OperationsToolError("include_archived must be a boolean.")
+    values = {}
+    for field, default, minimum, maximum in (
+        ("category_limit", 20, 1, 20), ("category_offset", 0, 0, 1000000),
+        ("reply_limit", 25, 1, 100), ("reply_offset", 0, 0, 1000000),
+    ):
+        value = arguments.get(field, default)
+        if type(value) is not int or not minimum <= value <= maximum:
+            raise OperationsToolError(f"{field} must be an integer from {minimum} to {maximum}.")
+        values[field] = value
+    category_id = arguments.get("category_id")
+    if values["reply_offset"] and not category_id:
+        raise OperationsToolError("A nonzero reply_offset requires one category_id.")
+    if category_id and values["category_offset"]:
+        raise OperationsToolError("category_offset cannot be combined with category_id.")
+    category_qs = TouchpointCategory.objects.filter(organization=organization)
+    if category_id:
+        category_qs = category_qs.filter(pk=_uuid(category_id, field="category_id"))
+        if not category_qs.exists():
+            raise OperationsToolError("Saved reply category not found in this organization.")
+    reply_qs = TouchpointReply.objects.filter(category__organization=organization)
     if not include_archived:
         reply_qs = reply_qs.filter(is_active=True)
-    categories = list(
-        TouchpointCategory.objects.filter(organization=organization)
-        .prefetch_related(Prefetch("replies", queryset=reply_qs))
-        .order_by("name")[:100]
-    )
-    rows = [
-        {
-            "category_id": str(category.id),
-            "category_name": category.name,
-            "replies": [
-                {
-                    "id": str(reply.id),
-                    "title": reply.title,
-                    "body": reply.body,
-                    "active": reply.is_active,
-                    "updated_at": reply.updated_at.isoformat(),
-                }
-                for reply in category.replies.all()
-            ],
-        }
-        for category in categories
-    ]
+    reply_offset, reply_limit = values["reply_offset"], values["reply_limit"]
+    # Django implements this sliced prefetch with a per-category window limit;
+    # a category with thousands of saved replies cannot produce an unbounded read.
+    reply_qs = reply_qs.order_by("title", "id")[reply_offset:reply_offset + reply_limit + 1]
+    category_offset, category_limit = values["category_offset"], values["category_limit"]
+    selected = list(category_qs.prefetch_related(
+        Prefetch("replies", queryset=reply_qs, to_attr="mcp_replies")
+    ).order_by("name", "id")[category_offset:category_offset + category_limit + 1])
+    rows = []
+    for category in selected[:category_limit]:
+        has_more_replies = len(category.mcp_replies) > reply_limit
+        rows.append({
+            "category_id": str(category.pk), "category_name": category.name,
+            "replies": [{"id": str(reply.pk), "title": reply.title, "body": reply.body,
+                         "active": reply.is_active, "updated_at": reply.updated_at.isoformat()}
+                        for reply in category.mcp_replies[:reply_limit]],
+            "reply_offset": reply_offset, "has_more": has_more_replies,
+            "next_reply_offset": reply_offset + reply_limit if has_more_replies else None,
+        })
+    more_categories = len(selected) > category_limit
+    count = sum(len(row["replies"]) for row in rows)
     return ToolExecution(
-        data={"categories": rows, "count": sum(len(row["replies"]) for row in rows)},
+        data={"categories": rows, "count": count, "category_count": len(rows),
+              "category_offset": category_offset, "category_limit": category_limit, "reply_limit": reply_limit,
+              "has_more": more_categories or any(row["has_more"] for row in rows),
+              "has_more_categories": more_categories,
+              "next_category_offset": category_offset + category_limit if more_categories else None},
         capability=CAP_ORGANIZATION_READ,
         target_type="organization",
         target_id=str(organization.id),
-        audit_summary={"touchpoint_count": sum(len(row["replies"]) for row in rows)},
+        audit_summary={"touchpoint_count": count, "category_count": len(rows)},
     )
 
 
