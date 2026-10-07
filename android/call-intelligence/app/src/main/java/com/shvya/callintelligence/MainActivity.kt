@@ -2278,13 +2278,44 @@ class MainActivity : AppCompatActivity() {
         ).apply { setPadding(0, 0, 0, 0) })
     }
 
+    private fun loginTextField(
+        hintText: String,
+        inputTypeValue: Int,
+        autofillHint: String? = null,
+    ): Pair<LinearLayout, EditText> {
+        val input = EditText(this).apply {
+            hint = hintText
+            textSize = 15f
+            setTextColor(ink)
+            setHintTextColor(Color.rgb(142, 150, 162))
+            setPadding(dp(16), 0, dp(16), 0)
+            inputType = inputTypeValue
+            isSingleLine = true
+            background = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autofillHint != null) {
+                setAutofillHints(autofillHint)
+            }
+        }
+        val shell = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(56)
+            background = roundedStroke(
+                color = Color.rgb(248, 249, 251),
+                radius = 16f,
+                strokeColor = Color.rgb(224, 228, 234),
+            )
+            addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+        }
+        return shell to input
+    }
+
     private fun passwordField(): Pair<LinearLayout, EditText> {
         val input = EditText(this).apply {
             hint = "Enter your password"
             textSize = 15f
             setTextColor(ink)
-            setHintTextColor(Color.rgb(145, 145, 150))
-            setPadding(dp(16), 0, dp(8), 0)
+            setHintTextColor(Color.rgb(142, 150, 162))
+            setPadding(dp(16), 0, dp(6), 0)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = PasswordTransformationMethod.getInstance()
             isSingleLine = true
@@ -2297,7 +2328,7 @@ class MainActivity : AppCompatActivity() {
             setImageResource(R.drawable.ic_eye_outline)
             imageTintList = ColorStateList.valueOf(muted)
             contentDescription = "Show password"
-            setPadding(dp(13), dp(13), dp(13), dp(13))
+            setPadding(dp(14), dp(14), dp(14), dp(14))
             isClickable = true
             isFocusable = true
             var visible = false
@@ -2315,10 +2346,14 @@ class MainActivity : AppCompatActivity() {
         }
         val shell = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
-            background = rounded(Color.rgb(241, 243, 247), 15f)
-            minimumHeight = dp(54)
-            addView(input, LinearLayout.LayoutParams(0, dp(54), 1f))
-            addView(eye, LinearLayout.LayoutParams(dp(50), dp(54)))
+            minimumHeight = dp(56)
+            background = roundedStroke(
+                color = Color.rgb(248, 249, 251),
+                radius = 16f,
+                strokeColor = Color.rgb(224, 228, 234),
+            )
+            addView(input, LinearLayout.LayoutParams(0, dp(56), 1f))
+            addView(eye, LinearLayout.LayoutParams(dp(52), dp(56)))
         }
         return shell to input
     }
@@ -2389,6 +2424,18 @@ class MainActivity : AppCompatActivity() {
         GradientDrawable().apply {
             setColor(color)
             cornerRadius = dp(radius.toInt()).toFloat()
+        }
+
+    private fun roundedStroke(
+        color: Int,
+        radius: Float,
+        strokeColor: Int,
+        strokeWidth: Int = 1,
+    ): GradientDrawable =
+        GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius.toInt()).toFloat()
+            setStroke(dp(strokeWidth), strokeColor)
         }
 
     private fun space(height: Int): View =
