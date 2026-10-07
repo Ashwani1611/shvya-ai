@@ -1180,7 +1180,7 @@ class MainActivity : AppCompatActivity() {
         val shell = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             background = rounded(Color.rgb(241, 243, 247), 15f)
-            minHeight = dp(54)
+            minimumHeight = dp(54)
             addView(input, LinearLayout.LayoutParams(0, dp(54), 1f))
             addView(eye, LinearLayout.LayoutParams(dp(50), dp(54)))
         }
