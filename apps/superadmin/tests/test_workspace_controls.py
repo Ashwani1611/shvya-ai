@@ -109,6 +109,37 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("old-password-123"))
 
+    def test_org_list_surfaces_and_filters_pending_indiamart_setup_requests(self):
+        from django.utils import timezone
+
+        IndiaMartConnection.objects.create(
+            organization=self.organization,
+            requested_at=timezone.now(),
+        )
+        configured = Organization.objects.create(name="Configured IndiaMART Org")
+        IndiaMartConnection.objects.create(
+            organization=configured,
+            requested_at=timezone.now(),
+            generated_at=timezone.now(),
+            is_enabled=False,
+        )
+
+        response = self.client.get(reverse("superadmin-org-list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["indiamart_pending_count"], 1)
+        self.assertContains(response, "IndiaMART setup requests")
+        self.assertContains(response, "IndiaMART setup requested")
+
+        filtered = self.client.get(
+            reverse("superadmin-org-list"),
+            {"indiamart_setup": "pending"},
+        )
+
+        self.assertEqual(filtered.status_code, 200)
+        self.assertContains(filtered, self.organization.name)
+        self.assertNotContains(filtered, configured.name)
+
     def test_organization_detail_always_shows_marketplace_setup_cards(self):
         response = self.client.get(
             reverse(
