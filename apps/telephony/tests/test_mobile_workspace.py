@@ -356,8 +356,8 @@ class MobileWorkspaceTests(TestCase):
             lead=missed.lead,
             assigned_to=self.user,
             title="Call back",
-            # Keep this deterministic around local midnight. A +1 hour reminder
-            # can legitimately belong to tomorrow and should not count as due today.
+            # Keep this deterministic around local midnight: a future +1 hour
+            # reminder may belong to tomorrow, so this fixture intentionally tests overdue.
             due_at=timezone.now() - timedelta(minutes=5),
         )
         response = self.api().get("/api/v1/call-intelligence/today/")
