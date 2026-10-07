@@ -822,6 +822,532 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showCallDetail(callId: String) {
+        if (callId.isBlank()) return
+        val content = dialogContent()
+        val scroll = ScrollView(this).apply { addView(content) }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Call detail")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .create()
+        content.addView(body("Loading call details…"))
+        dialog.show()
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching { ApiClient(this@MainActivity).authorizedGet(apiPath + "calls/" + callId + "/") }.getOrNull()
+            }
+            content.removeAllViews()
+            if (response?.successful != true) {
+                content.addView(body("Could not load this call. Check your connection and retry."))
+                return@launch
+            }
+            val data = runCatching { JSONObject(response.body) }.getOrNull()
+            if (data == null) {
+                content.addView(body("SHVYA returned an invalid call response."))
+                return@launch
+            }
+            val call = data.getJSONObject("call")
+            val lead = call.optJSONObject("lead")
+            val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
+                .ifBlank { call.optString("phone_number") }
+
+            content.addView(kicker("CALL"))
+            content.addView(title(name).apply { textSize = 28f })
+            content.addView(body(call.optString("phone_number")))
+            content.addView(space(14))
+            val meta = card()
+            meta.addView(sectionTitle(
+                call.optString("direction").replaceFirstChar { it.uppercase() } + " · " +
+                    call.optString("status").replace('_', ' ').replaceFirstChar { it.uppercase() }
+            ))
+            meta.addView(body(
+                formatDate(call.optString("ended_at")) + " · Talk " +
+                    call.optString("talk_duration").ifBlank { call.optInt("talk_duration_seconds").toString() + " sec" }
+            ))
+            meta.addView(space(10))
+            meta.addView(body("Ring " + call.optString("ring_duration").ifBlank { "—" }))
+            content.addView(meta)
+            content.addView(space(12))
+
+            val contactActions = LinearLayout(this@MainActivity)
+            contactActions.addView(secondaryButton("Call back").apply {
+                setOnClickListener { dial(call.optString("phone_number")) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            contactActions.addView(primaryButton("WhatsApp").apply {
+                setOnClickListener { openWhatsApp(call.optString("phone_number")) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            content.addView(contactActions)
+
+            content.addView(space(22))
+            content.addView(sectionTitle("CRM lead").apply { textSize = 20f })
+            if (lead != null) {
+                val leadBox = card()
+                leadBox.addView(sectionTitle(lead.optString("name")).apply { setPadding(0, 0, 0, 0) })
+                leadBox.addView(body(lead.optString("pipeline") + "  ›  " + lead.optString("stage")))
+                if (lead.optString("source").isNotBlank()) {
+                    leadBox.addView(body("Source · " + lead.optString("source").replace('_', ' ')))
+                }
+                leadBox.setOnClickListener { showLeadDetail(lead.optString("id")) }
+                content.addView(leadBox)
+                content.addView(space(8))
+                content.addView(secondaryButton("Move stage").apply {
+                    setOnClickListener { showLeadDetail(lead.optString("id")) }
+                })
+            } else {
+                content.addView(body("This number is not linked to a SHVYA CRM lead yet."))
+                content.addView(space(10))
+                content.addView(primaryButton("Create CRM lead").apply {
+                    setOnClickListener {
+                        leadPrefillName = call.optString("contact_name")
+                        leadPrefillPhone = call.optString("phone_number")
+                        dialog.dismiss()
+                        addLead()
+                    }
+                })
+            }
+
+            content.addView(space(22))
+            content.addView(sectionTitle("Outcome").apply { textSize = 20f })
+            content.addView(body("Classify what happened so missed calls and follow-ups stay actionable."))
+            content.addView(space(10))
+            val dispositions = data.optJSONArray("dispositions") ?: org.json.JSONArray()
+            val outcomeButton = secondaryButton(
+                dispositionLabel(dispositions, call.optString("disposition")).ifBlank { "Choose outcome  ⌄" }
+            )
+            outcomeButton.setOnClickListener {
+                if (dispositions.length() == 0) {
+                    toast("No call outcomes are configured for this organization.")
+                    return@setOnClickListener
+                }
+                val labels = Array(dispositions.length()) { index -> dispositions.getJSONObject(index).optString("name") }
+                AlertDialog.Builder(this@MainActivity).setTitle("Call outcome").setItems(labels) { _, which ->
+                    val selected = dispositions.getJSONObject(which)
+                    saveCallOutcome(call, selected.optString("code"), outcomeButton, selected.optString("name"))
+                }.show()
+            }
+            content.addView(outcomeButton)
+
+            content.addView(space(22))
+            content.addView(sectionTitle("Quick notes").apply { textSize = 20f })
+            content.addView(body("Tap a common note or write your own."))
+            val quickNotes = listOf(
+                "Interested", "Send pricing", "Call tomorrow",
+                "Requested demo", "Not interested", "No answer",
+            )
+            quickNotes.chunked(2).forEach { pair ->
+                val noteRow = LinearLayout(this@MainActivity)
+                pair.forEach { text ->
+                    noteRow.addView(quietButton(text).apply {
+                        setOnClickListener { saveQuickNote(call, text) }
+                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }
+                content.addView(noteRow)
+            }
+            if (call.optString("notes").isNotBlank()) {
+                content.addView(space(10))
+                content.addView(card().apply {
+                    addView(body(call.optString("notes")).apply { setTextColor(ink); setPadding(0, 0, 0, 0) })
+                })
+            }
+            content.addView(space(10))
+            content.addView(secondaryButton(if (call.optString("notes").isBlank()) "Add detailed note" else "Edit detailed note").apply {
+                setOnClickListener { editCallNotes(call) }
+            })
+
+            content.addView(space(22))
+            content.addView(sectionTitle("Next follow-up").apply { textSize = 20f })
+            if (lead == null) {
+                content.addView(body("Create or link a CRM lead before setting a follow-up."))
+            } else {
+                if (call.optBoolean("follow_up_required") && call.optString("follow_up_at").isNotBlank()) {
+                    content.addView(body("Scheduled · " + formatDate(call.optString("follow_up_at"))).apply {
+                        setTextColor(Color.rgb(35, 139, 100))
+                    })
+                    content.addView(space(8))
+                }
+                val followRow = LinearLayout(this@MainActivity)
+                followRow.addView(quietButton("1 hour").apply {
+                    setOnClickListener { scheduleCallFollowUp(callId, System.currentTimeMillis() + 60L * 60L * 1000L) }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                followRow.addView(quietButton("Tomorrow").apply {
+                    setOnClickListener { scheduleCallFollowUp(callId, tomorrowAtTen()) }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                followRow.addView(quietButton("3 days").apply {
+                    setOnClickListener { scheduleCallFollowUp(callId, daysFromNowAtTen(3)) }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                content.addView(followRow)
+                content.addView(quietButton("Custom date & time").apply {
+                    setOnClickListener { pickFollowUpDate { value -> scheduleCallFollowUp(callId, value) } }
+                })
+            }
+
+            val history = data.optJSONArray("history") ?: org.json.JSONArray()
+            if (history.length() > 0) {
+                content.addView(space(22))
+                content.addView(sectionTitle("Previous calls").apply { textSize = 20f })
+                content.addView(body("Recent call history for this contact."))
+                content.addView(space(10))
+                for (i in 0 until history.length()) {
+                    content.addView(compactCallCard(history.getJSONObject(i)))
+                    content.addView(space(8))
+                }
+            }
+        }
+    }
+
+    private fun showLeadDetail(leadId: String) {
+        if (leadId.isBlank()) return
+        val content = dialogContent()
+        val scroll = ScrollView(this).apply { addView(content) }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Lead")
+            .setView(scroll)
+            .setNegativeButton("Close", null)
+            .create()
+        content.addView(body("Loading lead…"))
+        dialog.show()
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching { ApiClient(this@MainActivity).authorizedGet(apiPath + "leads/" + leadId + "/") }.getOrNull()
+            }
+            content.removeAllViews()
+            if (response?.successful != true) {
+                content.addView(body("Could not load this CRM lead."))
+                return@launch
+            }
+            val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return@launch
+            val lead = data.getJSONObject("lead")
+            val isFavorite = favoriteLeadIds().contains(leadId)
+
+            content.addView(kicker("CRM LEAD"))
+            content.addView(title(lead.optString("name")).apply { textSize = 28f })
+            content.addView(body(lead.optString("phone")))
+            if (lead.optString("email").isNotBlank()) content.addView(body(lead.optString("email")))
+            content.addView(space(12))
+            val stageCard = card()
+            stageCard.addView(sectionTitle(lead.optString("pipeline") + "  ›  " + lead.optString("stage")))
+            stageCard.addView(body("Source · " + lead.optString("source").replace('_', ' ')))
+            content.addView(stageCard)
+            content.addView(space(10))
+
+            val contactActions = LinearLayout(this@MainActivity)
+            contactActions.addView(secondaryButton("Call").apply {
+                setOnClickListener { dial(lead.optString("phone")) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            contactActions.addView(primaryButton("WhatsApp").apply {
+                setOnClickListener { openWhatsApp(lead.optString("phone")) }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            content.addView(contactActions)
+            content.addView(space(8))
+            val leadActions = LinearLayout(this@MainActivity)
+            leadActions.addView(secondaryButton(if (isFavorite) "★ Priority" else "☆ Priority").apply {
+                setOnClickListener {
+                    val nowFavorite = toggleFavoriteLead(leadId)
+                    text = if (nowFavorite) "★ Priority" else "☆ Priority"
+                    toast(if (nowFavorite) "Added to priority leads" else "Removed from priority leads")
+                }
+            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+            leadActions.addView(secondaryButton("Move stage").apply {
+                setOnClickListener { chooseLeadStage(lead, dialog) }
+            }, LinearLayout.LayoutParams(0, dp(46), 1f))
+            content.addView(leadActions)
+
+            val reminder = lead.optJSONObject("reminder")
+            content.addView(space(22))
+            content.addView(sectionTitle("Follow-up").apply { textSize = 20f })
+            if (reminder != null) {
+                content.addView(body(
+                    (if (reminder.optBoolean("overdue")) "Overdue · " else "Scheduled · ") +
+                        formatDate(reminder.optString("due_at"))
+                ).apply {
+                    setTextColor(if (reminder.optBoolean("overdue")) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
+                })
+                content.addView(space(8))
+            }
+            val followRow = LinearLayout(this@MainActivity)
+            followRow.addView(quietButton("1 hour").apply {
+                setOnClickListener { scheduleLeadFollowUp(leadId, System.currentTimeMillis() + 60L * 60L * 1000L) }
+            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            followRow.addView(quietButton("Tomorrow").apply {
+                setOnClickListener { scheduleLeadFollowUp(leadId, tomorrowAtTen()) }
+            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            followRow.addView(quietButton("3 days").apply {
+                setOnClickListener { scheduleLeadFollowUp(leadId, daysFromNowAtTen(3)) }
+            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            content.addView(followRow)
+            content.addView(quietButton("Custom date & time").apply {
+                setOnClickListener { pickFollowUpDate { value -> scheduleLeadFollowUp(leadId, value) } }
+            })
+
+            if (lead.optString("notes").isNotBlank()) {
+                content.addView(space(22))
+                content.addView(sectionTitle("Lead notes").apply { textSize = 20f })
+                content.addView(card().apply {
+                    addView(body(lead.optString("notes")).apply { setTextColor(ink); setPadding(0, 0, 0, 0) })
+                })
+            }
+
+            val attributes = lead.optJSONObject("attributes")
+            if (attributes != null && attributes.length() > 0) {
+                content.addView(space(22))
+                content.addView(sectionTitle("Lead details").apply { textSize = 20f })
+                val keys = attributes.keys()
+                while (keys.hasNext()) {
+                    val key = keys.next()
+                    val value = attributes.optString(key)
+                    if (value.isNotBlank()) {
+                        content.addView(body(key.replace('_', ' ').replaceFirstChar { it.uppercase() } + " · " + value))
+                    }
+                }
+            }
+
+            val calls = lead.optJSONArray("recent_calls") ?: org.json.JSONArray()
+            if (calls.length() > 0) {
+                content.addView(space(22))
+                content.addView(sectionTitle("Call history").apply { textSize = 20f })
+                for (i in 0 until calls.length()) {
+                    content.addView(compactCallCard(calls.getJSONObject(i)))
+                    content.addView(space(8))
+                }
+            }
+            content.addView(space(18))
+            content.addView(quietButton("Open CRM workspace").apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/")))
+                }
+            })
+        }
+    }
+
+    private fun dispositionLabel(rows: org.json.JSONArray, code: String): String {
+        if (code.isBlank()) return ""
+        for (i in 0 until rows.length()) {
+            val row = rows.optJSONObject(i) ?: continue
+            if (row.optString("code") == code) return row.optString("name")
+        }
+        return code.replace('_', ' ').replaceFirstChar { it.uppercase() }
+    }
+
+    private fun saveCallOutcome(call: JSONObject, code: String, button: Button, label: String) {
+        button.isEnabled = false
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedPatch(
+                        apiPath + "calls/" + call.getString("id") + "/notes/",
+                        JSONObject()
+                            .put("notes", call.optString("notes"))
+                            .put("disposition", code),
+                    )
+                }.getOrNull()
+            }
+            button.isEnabled = true
+            if (result?.successful == true) {
+                call.put("disposition", code)
+                button.text = label
+                toast("Call outcome saved")
+                render()
+            } else toast("Could not save call outcome.")
+        }
+    }
+
+    private fun saveQuickNote(call: JSONObject, value: String) {
+        val existing = call.optString("notes").trim()
+        val notes = if (existing.isBlank()) value else existing + "\n" + value
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedPatch(
+                        apiPath + "calls/" + call.getString("id") + "/notes/",
+                        JSONObject()
+                            .put("notes", notes)
+                            .put("disposition", call.optString("disposition")),
+                    )
+                }.getOrNull()
+            }
+            if (result?.successful == true) {
+                call.put("notes", notes)
+                toast("Quick note saved")
+                render()
+            } else toast("Could not save note.")
+        }
+    }
+
+    private fun scheduleCallFollowUp(callId: String, dueAtMillis: Long) {
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedPost(
+                        apiPath + "calls/" + callId + "/follow-up/",
+                        JSONObject()
+                            .put("due_at", isoUtc(dueAtMillis))
+                            .put("title", "Call follow-up"),
+                    )
+                }.getOrNull()
+            }
+            if (response?.successful == true) {
+                toast("Follow-up scheduled")
+                selectedTab = "followups"
+                reminderSegment = "today"
+                render()
+            } else toast(apiError(response?.body, "Could not create follow-up."))
+        }
+    }
+
+    private fun scheduleLeadFollowUp(leadId: String, dueAtMillis: Long) {
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedPost(
+                        apiPath + "leads/" + leadId + "/",
+                        JSONObject()
+                            .put("due_at", isoUtc(dueAtMillis))
+                            .put("title", "Lead follow-up"),
+                    )
+                }.getOrNull()
+            }
+            if (response?.successful == true) {
+                toast("Follow-up scheduled")
+                render()
+            } else toast(apiError(response?.body, "Could not create follow-up."))
+        }
+    }
+
+    private fun chooseLeadStage(lead: JSONObject, parent: AlertDialog) {
+        val pipelines = lead.optJSONArray("pipelines") ?: return
+        val labels = mutableListOf<String>()
+        val pipelineIds = mutableListOf<String>()
+        val stageIds = mutableListOf<String>()
+        for (i in 0 until pipelines.length()) {
+            val pipeline = pipelines.getJSONObject(i)
+            val stages = pipeline.optJSONArray("stages") ?: continue
+            for (j in 0 until stages.length()) {
+                val stage = stages.getJSONObject(j)
+                labels.add(pipeline.optString("name") + "  ›  " + stage.optString("name"))
+                pipelineIds.add(pipeline.optString("id"))
+                stageIds.add(stage.optString("id"))
+            }
+        }
+        if (labels.isEmpty()) {
+            toast("No stages are available.")
+            return
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Move lead")
+            .setItems(labels.toTypedArray()) { _, which ->
+                lifecycleScope.launch {
+                    val response = withContext(Dispatchers.IO) {
+                        runCatching {
+                            ApiClient(this@MainActivity).authorizedPatch(
+                                apiPath + "leads/" + lead.getString("id") + "/",
+                                JSONObject()
+                                    .put("pipeline_id", pipelineIds[which])
+                                    .put("stage_id", stageIds[which]),
+                            )
+                        }.getOrNull()
+                    }
+                    if (response?.successful == true) {
+                        toast("Lead moved")
+                        parent.dismiss()
+                        render()
+                    } else toast(apiError(response?.body, "Could not move this lead."))
+                }
+            }
+            .show()
+    }
+
+    private fun pickFollowUpDate(chosen: (Long) -> Unit) {
+        val now = Calendar.getInstance()
+        DatePickerDialog(this, { _, year, month, day ->
+            TimePickerDialog(this, { _, hour, minute ->
+                val value = Calendar.getInstance().apply {
+                    set(Calendar.YEAR, year)
+                    set(Calendar.MONTH, month)
+                    set(Calendar.DAY_OF_MONTH, day)
+                    set(Calendar.HOUR_OF_DAY, hour)
+                    set(Calendar.MINUTE, minute)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                if (value.timeInMillis <= System.currentTimeMillis()) {
+                    toast("Choose a future time.")
+                } else chosen(value.timeInMillis)
+            }, now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), false).show()
+        }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).show()
+    }
+
+    private fun tomorrowAtTen(): Long = daysFromNowAtTen(1)
+
+    private fun daysFromNowAtTen(days: Int): Long = Calendar.getInstance().apply {
+        add(Calendar.DAY_OF_YEAR, days)
+        set(Calendar.HOUR_OF_DAY, 10)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
+
+    private fun isoUtc(value: Long): String = SimpleDateFormat(
+        "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'",
+        Locale.US,
+    ).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(Date(value))
+
+    private fun openWhatsApp(phone: String) {
+        val digits = phone.filter { it.isDigit() }
+        if (digits.isBlank()) {
+            toast("No phone number is available.")
+            return
+        }
+        runCatching {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://wa.me/" + digits)))
+        }.onFailure { toast("WhatsApp could not be opened.") }
+    }
+
+    private fun favoriteLeadIds(): Set<String> {
+        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        return prefs.getStringSet("favorite_leads", emptySet())?.toSet() ?: emptySet()
+    }
+
+    private fun toggleFavoriteLead(leadId: String): Boolean {
+        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        val values = favoriteLeadIds().toMutableSet()
+        val nowFavorite = if (values.contains(leadId)) {
+            values.remove(leadId)
+            false
+        } else {
+            values.add(leadId)
+            true
+        }
+        prefs.edit().putStringSet("favorite_leads", values).apply()
+        return nowFavorite
+    }
+
+    private fun recentLeadSearches(): List<String> {
+        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        return prefs.getString("recent_lead_searches", "").orEmpty()
+            .split("|||")
+            .filter { it.isNotBlank() }
+            .take(5)
+    }
+
+    private fun rememberLeadSearch(value: String) {
+        if (value.isBlank()) return
+        val items = recentLeadSearches().toMutableList()
+        items.remove(value)
+        items.add(0, value)
+        getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+            .edit()
+            .putString("recent_lead_searches", items.take(5).joinToString("|||"))
+            .apply()
+    }
+
+    private fun apiError(bodyText: String?, fallback: String): String {
+        if (bodyText.isNullOrBlank()) return fallback
+        return runCatching { JSONObject(bodyText).optString("detail") }.getOrNull()
+            .orEmpty()
+            .ifBlank { fallback }
+    }
+
     private fun reminderAction(item: JSONObject, action: String, button: View) {
         button.isEnabled = false
         lifecycleScope.launch {
