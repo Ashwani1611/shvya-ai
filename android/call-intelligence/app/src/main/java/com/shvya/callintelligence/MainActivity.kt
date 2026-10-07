@@ -713,10 +713,28 @@ class MainActivity : AppCompatActivity() {
         root.addView(kicker("YOUR FOLLOW-UPS"))
         root.addView(title("Reminders").apply { textSize = 36f })
         root.addView(body("Every follow-up in your CRM pipelines, in one place."))
-        root.addView(space(26))
+        root.addView(space(16))
+        val segments = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        listOf(
+            "overdue" to "Overdue",
+            "today" to "Today",
+            "upcoming" to "Upcoming",
+            "completed" to "Done",
+        ).forEach { (key, label) ->
+            segments.addView(quietButton(if (reminderSegment == key) "•  " + label else label).apply {
+                setOnClickListener { reminderSegment = key; pageNumber = 1; render() }
+            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        }
+        root.addView(segments)
+        root.addView(space(18))
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
-        loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "reminders/?page=$pageNumber") }) { data ->
+        val reminderPath = if (reminderSegment == "completed") {
+            apiPath + "reminders/?status=completed&page=" + pageNumber
+        } else {
+            apiPath + "reminders/?segment=" + reminderSegment + "&page=" + pageNumber
+        }
+        loadInto(content, version, { ApiClient(this).authorizedGet(reminderPath) }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
             summary.addView(sectionTitle("Call reminders"))
@@ -728,7 +746,10 @@ class MainActivity : AppCompatActivity() {
             )))
             content.addView(summary)
             content.addView(space(32))
-            content.addView(sectionHeader("Reminder list", "Refresh").apply { setOnClickListener { render() } })
+            content.addView(sectionHeader(
+                if (reminderSegment == "completed") "Completed follow-ups" else "Reminder list",
+                "Refresh"
+            ).apply { setOnClickListener { render() } })
             content.addView(space(14))
             val rows = data.getJSONArray("reminders")
             if (rows.length() == 0) content.addView(emptyCard("All caught up", "Reminders for leads in your CRM pipelines will appear here."))
@@ -751,17 +772,19 @@ class MainActivity : AppCompatActivity() {
                         setPadding(0, dp(4), 0, 0)
                     })
                 }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(14) })
-                val deleteControl = iconAction(R.drawable.ic_trash_outline, "Delete reminder").apply {
-                    imageTintList = ColorStateList.valueOf(Color.rgb(204, 79, 65))
-                    background = RippleDrawable(ColorStateList.valueOf(Color.rgb(255, 220, 216)),
-                        rounded(Color.rgb(255, 238, 235), 17f), null)
+                if (item.optString("status") != "completed") {
+                    val deleteControl = iconAction(R.drawable.ic_trash_outline, "Delete reminder").apply {
+                        imageTintList = ColorStateList.valueOf(Color.rgb(204, 79, 65))
+                        background = RippleDrawable(ColorStateList.valueOf(Color.rgb(255, 220, 216)),
+                            rounded(Color.rgb(255, 238, 235), 17f), null)
+                    }
+                    deleteControl.setOnClickListener {
+                        AlertDialog.Builder(this@MainActivity).setTitle("Delete reminder?")
+                            .setMessage(item.optString("lead_name")).setNegativeButton("Cancel", null)
+                            .setPositiveButton("Delete") { _, _ -> reminderAction(item, "delete", deleteControl) }.show()
+                    }
+                    heading.addView(deleteControl)
                 }
-                deleteControl.setOnClickListener {
-                    AlertDialog.Builder(this@MainActivity).setTitle("Delete reminder?")
-                        .setMessage(item.optString("lead_name")).setNegativeButton("Cancel", null)
-                        .setPositiveButton("Delete") { _, _ -> reminderAction(item, "delete", deleteControl) }.show()
-                }
-                heading.addView(deleteControl)
                 row.addView(heading)
                 row.addView(space(20))
                 row.addView(sectionTitle(item.optString("title")).apply { setPadding(0, 0, 0, 0) })
@@ -771,16 +794,27 @@ class MainActivity : AppCompatActivity() {
                 row.addView(space(22))
                 row.addView(divider())
                 row.addView(space(18))
-                val actions = LinearLayout(this@MainActivity)
-                actions.addView(secondaryButton("Snooze 30 min").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
-                    LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
-                actions.addView(primaryButton("Mark done").apply { setOnClickListener { reminderAction(item, "complete", this) } },
-                    LinearLayout.LayoutParams(0, dp(50), 1f))
-                row.addView(actions)
+                if (item.optString("status") != "completed") {
+                    val actions = LinearLayout(this@MainActivity)
+                    actions.addView(secondaryButton("Snooze 30 min").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
+                        LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
+                    actions.addView(primaryButton("Mark done").apply { setOnClickListener { reminderAction(item, "complete", this) } },
+                        LinearLayout.LayoutParams(0, dp(50), 1f))
+                    row.addView(actions)
+                } else {
+                    row.addView(body("Completed").apply { setTextColor(Color.rgb(35, 139, 100)); setPadding(0, 0, 0, 0) })
+                }
                 if (item.optString("phone").isNotBlank()) {
                     row.addView(space(8))
-                    row.addView(quietButton("Call lead").apply { setOnClickListener { dial(item.optString("phone")) } })
+                    val contactActions = LinearLayout(this@MainActivity)
+                    contactActions.addView(quietButton("Call").apply { setOnClickListener { dial(item.optString("phone")) } },
+                        LinearLayout.LayoutParams(0, dp(44), 1f))
+                    contactActions.addView(quietButton("WhatsApp").apply { setOnClickListener { openWhatsApp(item.optString("phone")) } },
+                        LinearLayout.LayoutParams(0, dp(44), 1f))
+                    row.addView(contactActions)
                 }
+                val leadId = item.optString("lead_id")
+                if (leadId.isNotBlank()) row.setOnClickListener { showLeadDetail(leadId) }
                 content.addView(row)
                 content.addView(space(14))
             }
