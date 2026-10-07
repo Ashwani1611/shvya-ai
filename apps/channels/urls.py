@@ -33,6 +33,7 @@ urlpatterns = [
     path("chats/instagram/<uuid:conversation_id>/contact/", contact_panel_ui.instagram_contact, name="chat-instagram-contact"),
     path("chats/<uuid:lead_id>/followups-toggle/", contact_panel_ui.toggle_followups, name="chat-followups-toggle"),
     path("leads/<uuid:lead_id>/contact-panel/", contact_panel_ui.contact_panel, name="chat-contact-panel"),
+    path("leads/<uuid:lead_id>/touchpoint-files/<uuid:attachment_id>/send/", contact_panel_ui.send_touchpoint_attachment, name="chat-touchpoint-attachment-send"),
     path("leads/<uuid:lead_id>/checking-in/", contact_panel_ui.start_checking_in, name="chat-checking-in"),
     path("leads/<uuid:lead_id>/ai-status/", ai_reply_status_ui.ai_reply_status, name="whatsapp-ai-reply-status"),
     path("accounts/", api_account_ui.whatsapp_account_list_view, name="whatsapp-accounts"),
