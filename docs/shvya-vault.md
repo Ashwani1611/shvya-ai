@@ -163,7 +163,9 @@ Browser mutations use CSRF protection. The Bearer-only API accepts JSON objects
 up to 64 KiB and rejects protected fields such as organization IDs, author type,
 client overrides and confirmation timestamps. File download links expire after
 one hour; pulling again obtains fresh links. Private responses disable caching,
-referrer transmission and indexing. Attachments are served as downloads rather
+cross-origin referrer transmission and indexing. Same-origin form submissions
+retain the Origin/Referer headers required for HTTPS CSRF verification.
+Attachments are served as downloads rather
 than executable inline content.
 
 ## Routes and agent API
