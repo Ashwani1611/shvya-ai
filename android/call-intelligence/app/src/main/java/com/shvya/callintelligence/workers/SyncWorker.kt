@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.shvya.callintelligence.data.AppDatabase
+import com.shvya.callintelligence.calls.PostCallNotifier
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
 import org.json.JSONObject
@@ -51,6 +52,16 @@ class SyncWorker(
                     }
                     dao.updateSyncState(call.id, "synced", queue.retryCount, "", remoteId)
                     dao.deleteQueue(queue.id)
+                    if (remoteId.isNotBlank()) {
+                        PostCallNotifier.notifyCaptured(
+                            context = applicationContext,
+                            callLogId = call.callLogId,
+                            contactName = call.contactName,
+                            phoneNumber = call.phoneNumber,
+                            status = call.status,
+                            remoteCallId = remoteId,
+                        )
+                    }
                 } else {
                     val retryCount = queue.retryCount + 1
                     val error = ("HTTP " + response.code + " " + response.body).take(1000)
