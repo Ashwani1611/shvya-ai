@@ -112,6 +112,8 @@ def _validate_upload(uploaded_file, message_type):
         raise HostedWhatsAppValidationError("Selected photo is not a valid image file.")
     if message_type == WhatsAppMessage.MessageType.VIDEO and not mime_type.startswith("video/"):
         raise HostedWhatsAppValidationError("Selected video is not a valid video file.")
+    if message_type == WhatsAppMessage.MessageType.AUDIO and not mime_type.startswith("audio/"):
+        raise HostedWhatsAppValidationError("Selected audio is not a valid audio file.")
     if not mime_type:
         mime_type = "application/octet-stream"
 
