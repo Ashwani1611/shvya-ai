@@ -138,9 +138,10 @@
       }
       // URL fragments remain local to the browser and help retain the active section.
       if (root && root.contains(form) && active) {
-        const action = new URL(form.action, window.location.href);
+        // The hidden name="action" field shadows the form.action DOM property.
+        const action = new URL(form.getAttribute('action') || window.location.href, window.location.href);
         action.hash = active;
-        form.action = action.href;
+        form.setAttribute('action', action.href);
       }
     });
   });
