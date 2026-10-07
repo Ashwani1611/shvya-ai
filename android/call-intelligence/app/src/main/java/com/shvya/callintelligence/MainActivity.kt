@@ -69,6 +69,7 @@ class MainActivity : AppCompatActivity() {
     private var leadPrefillName = ""
     private var leadPrefillPhone = ""
     private var pendingOpenCallId = ""
+    private var pendingCallAction = ""
     private var pendingOpenLeadId = ""
     private var pendingReminderId = ""
     private var pendingReminderAction = ""
@@ -114,6 +115,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleLaunchIntent(intent: Intent?) {
         pendingOpenCallId = intent?.getStringExtra("open_call_id").orEmpty()
+        pendingCallAction = intent?.getStringExtra("call_action").orEmpty()
         pendingOpenLeadId = intent?.getStringExtra("open_lead_id").orEmpty()
         pendingReminderId = intent?.getStringExtra("reminder_id").orEmpty()
         pendingReminderAction = intent?.getStringExtra("reminder_action").orEmpty()
@@ -128,9 +130,17 @@ class MainActivity : AppCompatActivity() {
 
     private fun openPendingCallAfterRender() {
         val callId = pendingOpenCallId
+        val callAction = pendingCallAction
         if (callId.isNotBlank() && auth.hasSession()) {
             pendingOpenCallId = ""
-            window.decorView.post { showCallDetail(callId) }
+            pendingCallAction = ""
+            window.decorView.post {
+                when (callAction) {
+                    "note" -> openCallNoteAction(callId)
+                    "remind_tomorrow" -> scheduleCallFollowUp(callId, tomorrowAtTen())
+                    else -> showCallDetail(callId)
+                }
+            }
         }
         val leadId = pendingOpenLeadId
         if (leadId.isNotBlank() && auth.hasSession()) {
@@ -868,6 +878,26 @@ class MainActivity : AppCompatActivity() {
                 content.addView(space(14))
             }
             if (rows.length() > 0) content.addView(pagination(data.optBoolean("has_next")))
+        }
+    }
+
+    private fun openCallNoteAction(callId: String) {
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedGet(apiPath + "calls/" + callId + "/")
+                }.getOrNull()
+            }
+            val data = if (response?.successful == true) {
+                runCatching { JSONObject(response.body) }.getOrNull()
+            } else null
+            val call = data?.optJSONObject("call")
+            if (call != null) {
+                editCallNotes(call)
+            } else {
+                toast("Could not open this call note.")
+                showCallDetail(callId)
+            }
         }
     }
 
