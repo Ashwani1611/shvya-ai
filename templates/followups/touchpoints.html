@@ -73,7 +73,7 @@
       <label data-reply-field class="block"><span class="mb-1 block text-sm font-medium">Reply title</span><input name="title" maxlength="150" class="w-full rounded-lg border border-gray-300 px-3 py-2"></label>
       <div data-reply-field>
         <label for="touchpoint-message" class="mb-1 block text-sm font-medium">Message</label>
-        <textarea id="touchpoint-message" data-personalization-target name="body" maxlength="1000" rows="6" placeholder="Hi {{lead_first_name}}, thanks for your interest…" class="w-full resize-y rounded-lg border border-gray-300 px-3 py-2"></textarea>
+        <textarea id="touchpoint-message" data-personalization-target name="body" maxlength="1000" rows="6" placeholder="Write a helpful message, then insert CRM placeholders below…" class="w-full resize-y rounded-lg border border-gray-300 px-3 py-2"></textarea>
         {% include "followups/partials/personalization_chips.html" %}
         <p class="mt-1 text-xs text-gray-500">Placeholders use the selected lead's current CRM values when you use this Touchpoint. Missing values are flagged before sending.</p>
       </div>
