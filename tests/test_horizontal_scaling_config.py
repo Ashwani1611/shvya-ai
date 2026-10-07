@@ -76,3 +76,15 @@ def test_nginx_resolves_web_and_asgi_membership_dynamically(filename):
     assert "proxy_pass http://ws:8001;" not in content
     assert "proxy_pass $django_web;" in content
     assert "proxy_pass $django_ws;" in content
+
+
+def test_legacy_production_hosts_proxy_api_without_redirecting_posts():
+    content = (ROOT / "nginx/conf.d/dashboard.conf").read_text(encoding="utf-8")
+    marker = "server_name www.shvya-ai.com dashboard.shvya-ai.com;"
+    start = content.index(marker)
+    end = content.index("\nserver {", start)
+    legacy = content[start:end]
+    assert "location ^~ /api/" in legacy
+    assert "proxy_pass $django_web;" in legacy
+    assert "proxy_set_header Host shvya-ai.com;" in legacy
+    assert "return 301 https://shvya-ai.com$request_uri;" in legacy
