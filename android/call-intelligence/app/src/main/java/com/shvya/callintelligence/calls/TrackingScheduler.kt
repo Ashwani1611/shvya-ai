@@ -14,6 +14,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.shvya.callintelligence.workers.HeartbeatWorker
 import com.shvya.callintelligence.workers.ReconcileWorker
+import com.shvya.callintelligence.workers.ReminderWorker
 import com.shvya.callintelligence.workers.SyncWorker
 import java.util.concurrent.TimeUnit
 
@@ -50,6 +51,13 @@ object TrackingScheduler {
             "shvya-call-heartbeat",
             ExistingPeriodicWorkPolicy.UPDATE,
             PeriodicWorkRequestBuilder<HeartbeatWorker>(15, TimeUnit.MINUTES)
+                .setConstraints(network)
+                .build(),
+        )
+        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+            "shvya-follow-up-reminders",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            PeriodicWorkRequestBuilder<ReminderWorker>(15, TimeUnit.MINUTES)
                 .setConstraints(network)
                 .build(),
         )

@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.shvya.callintelligence.data.AppDatabase
+import com.shvya.callintelligence.calls.PostCallNotifier
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
 import org.json.JSONObject
@@ -51,6 +52,16 @@ class SyncWorker(
                     }
                     dao.updateSyncState(call.id, "synced", queue.retryCount, "", remoteId)
                     dao.deleteQueue(queue.id)
+                    if (remoteId.isNotBlank()) {
+                        PostCallNotifier.notifyCaptured(
+                            context = applicationContext,
+                            callLogId = call.callLogId,
+                            contactName = call.contactName,
+                            phoneNumber = call.phoneNumber,
+                            status = call.status,
+                            remoteCallId = remoteId,
+                        )
+                    }
                 } else {
                     val retryCount = queue.retryCount + 1
                     val error = ("HTTP " + response.code + " " + response.body).take(1000)
@@ -70,6 +81,37 @@ class SyncWorker(
                 val error = (exc.message ?: exc.javaClass.simpleName).take(1000)
                 dao.updateSyncState(call.id, "pending", retryCount, error, call.remoteCallId)
                 dao.updateQueueRetry(queue.id, retryCount, error)
+                shouldRetry = true
+            }
+        }
+        dao.pendingActions(50).forEach { action ->
+            try {
+                val payload = JSONObject(action.payload)
+                val response = when (action.method.uppercase()) {
+                    "PATCH" -> api.authorizedPatch(action.path, payload)
+                    else -> api.authorizedPost(action.path, payload)
+                }
+                if (response.successful) {
+                    dao.deletePendingAction(action.id)
+                } else {
+                    val retryCount = action.retryCount + 1
+                    val error = ("HTTP " + response.code + " " + response.body).take(1000)
+                    val permanent = response.code in 400..499 &&
+                        response.code !in setOf(401, 403, 408, 429)
+                    if (permanent || retryCount >= 10) {
+                        dao.deletePendingAction(action.id)
+                    } else {
+                        dao.updatePendingAction(action.id, retryCount, error)
+                        shouldRetry = true
+                    }
+                }
+            } catch (exc: Exception) {
+                val retryCount = action.retryCount + 1
+                dao.updatePendingAction(
+                    action.id,
+                    retryCount,
+                    (exc.message ?: exc.javaClass.simpleName).take(1000),
+                )
                 shouldRetry = true
             }
         }

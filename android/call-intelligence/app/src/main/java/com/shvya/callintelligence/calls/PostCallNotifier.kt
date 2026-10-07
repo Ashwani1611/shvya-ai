@@ -22,6 +22,7 @@ object PostCallNotifier {
         contactName: String,
         phoneNumber: String,
         status: String,
+        remoteCallId: String = "",
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -52,9 +53,45 @@ object PostCallNotifier {
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("post_call_review", true)
+                if (remoteCallId.isNotBlank()) {
+                    putExtra("open_call_id", remoteCallId)
+                }
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+
+        val callBack = PendingIntent.getActivity(
+            context,
+            (callLogId.hashCode() * 31) + 7,
+            Intent(Intent.ACTION_DIAL, android.net.Uri.fromParts("tel", phoneNumber, null)),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val addNote = if (remoteCallId.isNotBlank()) {
+            PendingIntent.getActivity(
+                context,
+                (callLogId.hashCode() * 31) + 11,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("post_call_review", true)
+                    putExtra("open_call_id", remoteCallId)
+                    putExtra("call_action", "note")
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else null
+        val remindTomorrow = if (remoteCallId.isNotBlank()) {
+            PendingIntent.getActivity(
+                context,
+                (callLogId.hashCode() * 31) + 13,
+                Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("post_call_review", true)
+                    putExtra("open_call_id", remoteCallId)
+                    putExtra("call_action", "remind_tomorrow")
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+        } else null
 
         val name = contactName.ifBlank { phoneNumber }
         val readableStatus = status.replace('_', ' ')
@@ -64,10 +101,22 @@ object PostCallNotifier {
             .setContentText("$readableStatus · Add notes, outcome or follow-up in SHVYA.")
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    "SHVYA captured this call safely on-device. Open Call Intelligence to add post-call notes, choose a disposition, set the next follow-up and run grounded AI analysis."
+                    "SHVYA captured this call safely on-device. Open Call Intelligence to add notes, choose an outcome, set the next follow-up and keep the CRM updated."
                 )
             )
             .setContentIntent(openApp)
+            .addAction(android.R.drawable.sym_action_call, "Call back", callBack)
+            .apply {
+                if (addNote != null) {
+                    addAction(android.R.drawable.ic_menu_edit, "Add note", addNote)
+                }
+                if (remindTomorrow != null) {
+                    addAction(android.R.drawable.ic_popup_reminder, "Remind tomorrow", remindTomorrow)
+                }
+                if (addNote == null && remindTomorrow == null) {
+                    addAction(android.R.drawable.ic_menu_view, "Review", openApp)
+                }
+            }
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()

@@ -45,7 +45,19 @@ abstract class CallDao {
         error: String,
     )
 
-    @Query("SELECT COUNT(*) FROM sync_queue")
+    @Insert
+    abstract suspend fun insertPendingAction(action: PendingAction): Long
+
+    @Query("SELECT * FROM pending_actions ORDER BY createdAt ASC LIMIT :limit")
+    abstract suspend fun pendingActions(limit: Int = 50): List<PendingAction>
+
+    @Query("DELETE FROM pending_actions WHERE id = :id")
+    abstract suspend fun deletePendingAction(id: Long)
+
+    @Query("UPDATE pending_actions SET retryCount = :retryCount, lastError = :error WHERE id = :id")
+    abstract suspend fun updatePendingAction(id: Long, retryCount: Int, error: String)
+
+    @Query("SELECT (SELECT COUNT(*) FROM sync_queue) + (SELECT COUNT(*) FROM pending_actions)")
     abstract suspend fun pendingCount(): Int
 
     @Transaction

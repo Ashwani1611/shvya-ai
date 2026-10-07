@@ -60,3 +60,19 @@ data class SyncQueueItem(
     val lastError: String = "",
     val createdAt: Long = System.currentTimeMillis(),
 )
+
+
+@Entity(
+    tableName = "pending_actions",
+    indices = [Index(value = ["createdAt"])],
+)
+data class PendingAction(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val path: String,
+    val method: String,
+    val payload: String,
+    val label: String = "",
+    val retryCount: Int = 0,
+    val lastError: String = "",
+    val createdAt: Long = System.currentTimeMillis(),
+)
