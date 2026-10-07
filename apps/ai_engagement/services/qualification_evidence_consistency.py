@@ -26,7 +26,7 @@ def _source_clause(evidence, source):
     return clauses[0].strip() if len(clauses) == 1 else evidence.strip()
 
 
-def contradicts_option_evidence(*, requirement, value, evidence, source):
+def contradicts_option_evidence(*, requirement, value, evidence, source, requirements=()):
     from apps.ai_engagement.services.qualification_state import _question_options
 
     options = requirement.get("options") or _question_options(requirement.get("question") or "")
@@ -43,6 +43,20 @@ def contradicts_option_evidence(*, requirement, value, evidence, source):
     question = (str(requirement.get("question") or requirement.get("label") or "").splitlines() or [""])[0]
 
     if set(authored) == {"yes", "no"}:
+        # A clear scalar answer to a different authored numeric question cannot
+        # fill this binary goal. Quoting the right inbound text is insufficient
+        # when it describes daily volume rather than the requested status.
+        topic = _tokens(question) - {"currently", "now", "run", "running", "use", "using", "have", "has", "am"}
+        if not (topic & _tokens(clause)) and len(re.findall(r"(?<!\w)\d+(?:\.\d+)?(?!\w)", normalized)) == 1:
+            for other in requirements or ():
+                if not isinstance(other, dict) or other.get("id") == requirement.get("id"):
+                    continue
+                other_options = other.get("options") or _question_options(other.get("question") or "")
+                if not other_options or not all(isinstance(item, dict) and _range_for_option(item.get("value", "")) for item in other_options):
+                    continue
+                other_question = (str(other.get("question") or other.get("label") or "").splitlines() or [""])[0]
+                if (_tokens(other_question) & _tokens(clause)) and _match_numeric_option(normalized, other_options) is not None:
+                    return True
         # Conflicting/corrected polarities and compound clauses need semantics.
         if _NEGATIVE.search(question) or re.search(r"\b(?:but|however|actually|correction)\b", normalized):
             return False
@@ -106,3 +120,4 @@ def contradicts_option_evidence(*, requirement, value, evidence, source):
     if _NEGATIVE.search(normalized) or re.search(r"\b(?:but|however|actually|correction)\b", normalized):
         return False
     return len(matched) == 1 and selected not in matched
+

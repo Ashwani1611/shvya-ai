@@ -949,6 +949,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
         from apps.ai_engagement.services.qualification_evidence_consistency import contradicts_option_evidence
         if contradicts_option_evidence(
             requirement=by_id[requirement_id], value=value, evidence=evidence, source=source_text,
+            requirements=requirements,
         ):
             raise ValueError("Qualification answer contradicts its inbound evidence.")
 
@@ -1009,6 +1010,12 @@ def _non_answer_evidence(evidence: str, source: str, *, requirement=None) -> boo
     def assistance_only(part):
         return (not assistance_question and assistance.search(part)
                 and request_start.search(part) and not declared_fact.search(part))
+    greeting_only = re.compile(r"^(?:hi|hello|hey|hallo|namaste|good\s+(?:morning|afternoon|evening))[.!\s]*$", re.I)
+    file_request = re.compile(
+        r"^(?:please\s+)?(?:(?:do\s+not|don't|don’t|never)\s+)?"
+        r"(?:send|share|attach|download)\b.*\b(?:file|files|brochure|pdf|document|documents|guide)\b", re.I,
+    )
+    file_question = bool(re.search(r"\b(?:file|files|brochure|pdf|document|documents|guide)\b", question, re.I))
     question_start = re.compile(r"^(?:what|which|where|when|why|how|who)\b|"
                                 r"^(?:was\s+kostet|wie\s+viel|welche\s+)\b", re.I)
     language_request = re.compile(
@@ -1019,6 +1026,7 @@ def _non_answer_evidence(evidence: str, source: str, *, requirement=None) -> boo
     )
     return bool(containing) and all(
         part.endswith(("?", "？")) or question_start.search(part) or language_request.search(part) or assistance_only(part)
+        or greeting_only.fullmatch(part) or (not file_question and file_request.search(part))
         for part in containing
     )
 
@@ -1074,3 +1082,4 @@ def persist_answer_updates(*, lead, updates):
     if state.get("qualification_status") == STATUS_COMPLETED:
         _append_history(state, event="qualification_answers_complete")
     return _persist_state(lead, state)
+
