@@ -1,3 +1,135 @@
-{% extends "marketing/dark_base.html" %}{% block title %}Documentation — SHVYA AI{% endblock %}{% block content %}{% include "marketing/dark_header.html" %}
-<div class="docs-layout"><aside class="docs-sidebar"><p class="eyebrow">SHVYA DOCUMENTATION</p>{% for slug,title in topics %}<a href="{% url 'docs' %}?topic={{ slug }}" class="{% if slug == topic_slug %}active{% endif %}">{{ title }}</a>{% endfor %}</aside><main class="docs-main"><form method="get" action="{% url 'docs' %}" class="docs-search"><label for="docs-query" class="eyebrow">FIND A GUIDE</label><input id="docs-query" name="q" placeholder="Search documentation…" value="{{ query }}"><button class="button small" type="submit">Search</button></form>
-{% if query %}<h1>Search results</h1><div class="docs-grid">{% for slug,title,intro in filtered_topics %}<a href="{% url 'docs' %}?topic={{ slug }}"><b>{{ title }} ↗</b><p>{{ intro }}</p></a>{% empty %}<p>No matching guides. Try cadence, playbooks or integrations.</p>{% endfor %}</div>{% else %}<p class="eyebrow">GUIDES / {{ topic_slug|upper }}</p><h1>{{ topic.title }}</h1><p>{{ topic.intro }}</p>{% for heading,items in topic.sections %}<section><h2>{{ heading }}</h2>{% if items|length == 1 %}<p>{{ items.0 }}</p>{% else %}<ol>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ol>{% endif %}</section>{% endfor %}{% endif %}<div class="notice">Ready to apply this to your business? <a href="{% url 'book_call' %}"><b>Book a Shvya session ↗</b></a></div></main></div>{% include "marketing/dark_footer.html" %}{% endblock %}
+{% extends "marketing/dark_base.html" %}
+{% load static %}
+{% block title %}{% if docs_page %}{{ docs_page.title }} — SHVYA Docs{% elif docs_search %}Search — SHVYA Docs{% else %}Documentation — SHVYA AI{% endif %}{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'marketing/docs-portal.css' %}">
+{% endblock %}
+{% block content %}
+{% include "marketing/dark_header.html" %}
+
+<div class="kb-app">
+  <a class="kb-skip" href="#kb-content">Skip to documentation content</a>
+  <div class="kb-mobile-bar">
+    <button type="button" class="kb-mobile-menu" data-kb-nav-toggle aria-controls="kb-sidebar" aria-expanded="false"><span aria-hidden="true">☰</span> Browse guides</button>
+    <a href="/docs/" class="kb-mobile-brand">SHVYA Docs</a>
+    <a href="/dashboard/" class="kb-mobile-dashboard">Dashboard ↗</a>
+  </div>
+  <div class="kb-shell">
+    <aside class="kb-sidebar" id="kb-sidebar" aria-label="Documentation navigation">
+      <div class="kb-sidebar-header">
+        <span class="kb-sidebar-kicker">THE SHVYA PLATFORM</span>
+        <a href="/docs/" class="kb-sidebar-title">Documentation <span aria-hidden="true">↗</span></a>
+        <span class="kb-sidebar-count">{{ docs_page_count }} practical guides</span>
+      </div>
+      <a href="/docs/" class="kb-side-home {% if docs_home %}is-current{% endif %}" {% if docs_home %}aria-current="page"{% endif %}>⌂ &nbsp; All documentation</a>
+      {% for group in docs_groups %}
+      <details class="kb-nav-group" {% if docs_group.slug == group.slug or docs_home or docs_search %}open{% endif %}>
+        <summary><span>{{ group.title }}</span><span class="kb-nav-count">{{ group.count }}</span></summary>
+        <nav aria-label="{{ group.title }}">
+          {% for item in group.pages %}
+          <a class="kb-side-link {% if docs_page.url == item.url %}is-current{% endif %}" href="{{ item.url }}" {% if docs_page.url == item.url %}aria-current="page"{% endif %}>{{ item.title }}</a>
+          {% endfor %}
+        </nav>
+      </details>
+      {% endfor %}
+      <div class="kb-side-help">
+        <span class="kb-help-symbol" aria-hidden="true">?</span>
+        <strong>Need a hand?</strong>
+        <p>Can't find an answer? Our support team can investigate your case.</p>
+        <a href="/dashboard/support-portal/">Open Help &amp; Support ↗</a>
+      </div>
+    </aside>
+    <button type="button" class="kb-nav-scrim" data-kb-nav-close aria-label="Close navigation"></button>
+
+    <main id="kb-content" class="kb-main">
+      <div class="kb-toolbar">
+        <form class="kb-search" method="get" action="/docs/" role="search">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          <label class="kb-visually-hidden" for="kb-search-input">Search SHVYA documentation</label>
+          <input type="search" id="kb-search-input" name="q" placeholder="Search guides, features, integrations, errors..." value="{{ docs_query }}" maxlength="120" autocomplete="off">
+          <kbd class="kb-key-hint">⌘ K</kbd>
+          <button type="submit" class="kb-search-submit">Search</button>
+        </form>
+        <a class="kb-toolbar-action" href="/dashboard/">Go to workspace <span aria-hidden="true">↗</span></a>
+      </div>
+
+      {% if docs_home %}
+      <section class="kb-hero">
+        <div class="kb-pill"><span class="kb-status-dot"></span> SHVYA KNOWLEDGE BASE <span class="kb-pill-count">· {{ docs_page_count }} guides</span></div>
+        <h1>Everything you need to <span>get more from SHVYA.</span></h1>
+        <p>From your first lead to AI conversations, WhatsApp integrations, appointments and sales operations. Practical product guidance, provider setup and issue resolution—organized in one place.</p>
+        <div class="kb-hero-ctas"><a href="/docs/getting-started/quickstart/" class="kb-primary-link">Start the quickstart <span aria-hidden="true">↗</span></a><a href="/docs/troubleshooting/first-checks/" class="kb-secondary-link">Troubleshoot an issue <span aria-hidden="true">↗</span></a></div>
+      </section>
+      <section class="kb-section">
+        <div class="kb-section-head"><div><span class="kb-section-eyebrow">FIND YOUR NEXT STEP</span><h2>Browse by category</h2></div><span class="kb-section-subtitle">Eight connected areas</span></div>
+        <div class="kb-category-grid">
+          {% for group in docs_groups %}
+          <a href="{{ group.pages.0.url }}" class="kb-category-card">
+            <span class="kb-category-icon kb-category-{{ group.slug }}" aria-hidden="true">
+              {% if group.slug == "getting-started" %}↗{% elif group.slug == "crm-leads" %}◎{% elif group.slug == "messaging-channels" %}◉{% elif group.slug == "ai-automation" %}✧{% elif group.slug == "connect-hub" %}⌘{% elif group.slug == "sales-calendar" %}▦{% elif group.slug == "operations" %}◈{% else %}?{% endif %}
+            </span>
+            <span class="kb-category-name">{{ group.title }}</span>
+            <span class="kb-category-desc">{{ group.description }}</span>
+            <span class="kb-category-foot">{{ group.count }} guides <span aria-hidden="true">↗</span></span>
+          </a>
+          {% endfor %}
+        </div>
+      </section>
+      <section class="kb-section kb-featured">
+        <div class="kb-section-head"><div><span class="kb-section-eyebrow">RECOMMENDED READING</span><h2>Popular starting points</h2></div></div>
+        <div class="kb-featured-grid">
+          {% for item in docs_popular %}
+          <a href="{{ item.url }}" class="kb-guide-card"><span class="kb-guide-group">{{ item.group_title }}</span><strong>{{ item.title }}</strong><span>{{ item.summary }}</span><span class="kb-guide-arrow">Read guide →</span></a>
+          {% endfor %}
+        </div>
+      </section>
+      <section class="kb-wide-promo">
+        <div><span class="kb-section-eyebrow">FIRST-TIME SETUP</span><h2>Go from a new workspace to a working lead journey.</h2><p>Follow the recommended sequence for CRM, channel connection, AI Brain and controlled testing.</p></div>
+        <a href="/docs/getting-started/quickstart/" class="kb-primary-link">Read the quickstart ↗</a>
+      </section>
+
+      {% elif docs_search %}
+      <section class="kb-results">
+        <nav class="kb-breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Documentation</a><span aria-hidden="true">/</span><span>Search</span></nav>
+        <span class="kb-section-eyebrow">DOCUMENTATION SEARCH</span>
+        <h1>Results for “{{ docs_query }}”</h1>
+        <p class="kb-results-count">{{ docs_results|length }} matching guides. Search looks across titles, descriptions and article content.</p>
+        {% for item in docs_results %}
+        <a href="{{ item.url }}" class="kb-result-row">
+          <div><span class="kb-guide-group">{{ item.group_title }}</span><h2>{{ item.title }}</h2><p>{{ item.summary }}</p></div>
+          <span class="kb-result-arrow" aria-hidden="true">↗</span>
+        </a>
+        {% empty %}
+        <div class="kb-empty-results"><span aria-hidden="true">⌕</span><h2>Nothing matched that search.</h2><p>Try the product name, an integration like JustDial or Instagram, or an error such as "queued", "QR", "template" or "booking".</p><a href="/docs/">Browse all guides ↗</a></div>
+        {% endfor %}
+      </section>
+
+      {% else %}
+      <div class="kb-article-grid">
+        <article class="kb-article">
+          <nav class="kb-breadcrumb" aria-label="Breadcrumb"><a href="/docs/">Documentation</a><span aria-hidden="true">/</span><span>{{ docs_group.title }}</span><span aria-hidden="true">/</span><span aria-current="page">{{ docs_page.title }}</span></nav>
+          <div class="kb-article-head"><span class="kb-article-category">{{ docs_group.title }}</span><h1>{{ docs_page.title }}</h1><p class="kb-article-deck">{{ docs_page.summary }}</p><div class="kb-article-actions"><span class="kb-version">SHVYA product documentation</span><button type="button" class="kb-copy-link" data-kb-copy-link>Copy article link ↗</button></div></div>
+          <div class="kb-article-body">{{ docs_html }}</div>
+          <div class="kb-article-feedback">
+            <div><strong>Still need help with this?</strong><p>Open a support ticket with the affected feature, what happened and a safe error reference.</p></div>
+            <a href="/dashboard/support-portal/">Contact support ↗</a>
+          </div>
+          <nav class="kb-next-prev" aria-label="Previous and next articles">
+            {% if docs_previous %}<a href="{{ docs_previous.url }}" class="kb-prev"><small>← Previous guide</small><strong>{{ docs_previous.title }}</strong></a>{% endif %}
+            {% if docs_next %}<a href="{{ docs_next.url }}" class="kb-next"><small>Next guide →</small><strong>{{ docs_next.title }}</strong></a>{% endif %}
+          </nav>
+          {% if docs_related %}<section class="kb-article-related"><h2>More in {{ docs_group.title }}</h2><div>{% for item in docs_related %}<a href="{{ item.url }}">{{ item.title }} <span aria-hidden="true">↗</span></a>{% endfor %}</div></section>{% endif %}
+        </article>
+        {% if docs_toc %}
+        <aside class="kb-on-this-page" aria-label="On this page"><strong>ON THIS PAGE</strong><nav>{% for section in docs_toc %}<a href="#{{ section.id }}" class="{% if section.level == 3 %}kb-toc-nested{% endif %}">{{ section.title }}</a>{% endfor %}</nav><a href="#kb-content" class="kb-back-top">Back to top ↑</a></aside>
+        {% endif %}
+      </div>
+      {% endif %}
+    </main>
+  </div>
+</div>
+{% include "marketing/dark_footer.html" %}
+{% endblock %}
+{% block extra_scripts %}
+<script src="{% static 'marketing/docs-portal.js' %}" defer></script>
+{% endblock %}
