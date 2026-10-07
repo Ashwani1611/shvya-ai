@@ -178,45 +178,48 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLogin() {
-        val root = page().apply { setPadding(dp(22), dp(28), dp(22), dp(40)) }
-        root.addView(space(22))
+        val root = page().apply { setPadding(dp(24), dp(36), dp(24), dp(42)) }
+        root.addView(space(12))
         root.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-            layoutParams = LinearLayout.LayoutParams(dp(68), dp(68)).apply { gravity = Gravity.CENTER_HORIZONTAL }
-        })
-        root.addView(space(20))
-        root.addView(kicker("SHVYA MOBILE WORKSPACE").apply { gravity = Gravity.CENTER })
-        root.addView(title("Welcome back").apply { gravity = Gravity.CENTER; textSize = 32f })
-        root.addView(body("Your calls, reminders and CRM context — organized in one secure workspace.").apply {
-            gravity = Gravity.CENTER
-            textSize = 15f
-        })
-        root.addView(space(30))
-
-        val card = card().apply { setPadding(dp(24), dp(26), dp(24), dp(26)) }
-        card.addView(sectionTitle("Sign in to SHVYA").apply { textSize = 23f })
-        card.addView(body("Use the same work account you use on shvya-ai.com."))
-        card.addView(space(24))
-
-        val email = field("name@company.com").apply {
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-            setText(auth.email)
-            isSingleLine = true
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
+            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+                gravity = Gravity.CENTER_HORIZONTAL
             }
-        }
+        })
+        root.addView(space(18))
+        root.addView(kicker("SHVYA CALL INTELLIGENCE").apply { gravity = Gravity.CENTER })
+        root.addView(title("Sign in").apply {
+            gravity = Gravity.CENTER
+            textSize = 34f
+        })
+        root.addView(body("Your calls, CRM leads and follow-ups — in one focused mobile workspace.").apply {
+            gravity = Gravity.CENTER
+            textSize = 14f
+            setPadding(dp(12), dp(8), dp(12), 0)
+        })
+        root.addView(space(28))
+
+        val card = card().apply { setPadding(dp(22), dp(24), dp(22), dp(24)) }
+        val (emailShell, email) = loginTextField(
+            hintText = "name@company.com",
+            inputTypeValue = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
+            autofillHint = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) View.AUTOFILL_HINT_EMAIL_ADDRESS else null,
+        )
+        email.setText(auth.email)
         val (passwordShell, password) = passwordField()
-        val message = body("").apply { setPadding(0, dp(12), 0, 0) }
-        val login = primaryButton("Continue to workspace").apply { minHeight = dp(52) }
+        val message = body("").apply {
+            setPadding(0, dp(12), 0, 0)
+            gravity = Gravity.CENTER
+        }
+        val login = primaryButton("Continue").apply { minimumHeight = dp(54) }
 
         login.setOnClickListener {
             val emailValue = email.text.toString().trim()
             val passwordValue = password.text.toString()
             if (emailValue.isBlank() || passwordValue.isBlank()) {
-                message.text = "Enter your SHVYA email and password."
-                message.setTextColor(Color.rgb(210, 45, 40))
+                message.text = "Enter your work email and password."
+                message.setTextColor(Color.rgb(196, 58, 54))
                 return@setOnClickListener
             }
             login.isEnabled = false
@@ -229,7 +232,7 @@ class MainActivity : AppCompatActivity() {
                         .getOrElse {
                             com.shvya.callintelligence.net.LoginResult(
                                 false,
-                                "Could not reach the secure SHVYA server. Check your internet connection and try again."
+                                "Could not reach SHVYA. Check your internet connection and try again."
                             )
                         }
                 }
@@ -238,22 +241,22 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     login.isEnabled = true
                     login.alpha = 1f
-                    login.text = "Continue to workspace"
+                    login.text = "Continue"
                     message.text = result.message
-                    message.setTextColor(Color.rgb(210, 45, 40))
+                    message.setTextColor(Color.rgb(196, 58, 54))
                 }
             }
         }
 
         card.addView(fieldLabel("Work email"))
         card.addView(space(8))
-        card.addView(email)
+        card.addView(emailShell, LinearLayout.LayoutParams(-1, dp(56)))
         card.addView(space(18))
         card.addView(fieldLabel("Password"))
         card.addView(space(8))
-        card.addView(passwordShell)
+        card.addView(passwordShell, LinearLayout.LayoutParams(-1, dp(56)))
         card.addView(space(22))
-        card.addView(login)
+        card.addView(login, LinearLayout.LayoutParams(-1, dp(54)))
         card.addView(message)
         root.addView(card)
 
@@ -261,7 +264,7 @@ class MainActivity : AppCompatActivity() {
         root.addView(LinearLayout(this).apply {
             gravity = Gravity.CENTER
             addView(statusDot(Color.rgb(35, 139, 100)))
-            addView(body("Secure connection  ·  shvya-ai.com").apply {
+            addView(body("Secure · shvya-ai.com").apply {
                 setPadding(dp(7), 0, 0, 0)
                 textSize = 12f
             })
