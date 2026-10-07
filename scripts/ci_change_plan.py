@@ -16,7 +16,7 @@ APP_DEPENDENCIES = {
     "accounts": ("accounts",),
     "ai_engagement": ("ai_engagement", "channels"),
     "analytics": ("analytics",),
-    "calls": ("calls", "telephony"),
+    "calls": ("telephony",),
     "channels": ("channels", "crm", "ai_engagement", "hosted_automation"),
     "copilot": ("copilot", "ai_engagement"),
     "core": ("core",),
@@ -28,7 +28,7 @@ APP_DEPENDENCIES = {
     "superadmin": ("superadmin", "organizations"),
     "support": ("support",),
     "teams": ("teams",),
-    "telephony": ("telephony", "calls"),
+    "telephony": ("telephony",),
     "triggers": ("triggers", "crm"),
 }
 
