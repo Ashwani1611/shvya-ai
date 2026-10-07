@@ -2,6 +2,10 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - "android/call-intelligence/**"
+      - ".github/workflows/android-apk.yml"
   push:
     branches: [main]
     paths:
@@ -37,15 +41,15 @@ jobs:
         run: |
           mkdir -p dist
           cp android/call-intelligence/app/build/outputs/apk/release/app-release.apk \
-            dist/SHVYA-Call-Intelligence-v1.1.apk
-          sha256sum dist/SHVYA-Call-Intelligence-v1.1.apk > dist/SHA256SUMS.txt
+            dist/SHVYA-Call-Intelligence-v1.2.apk
+          sha256sum dist/SHVYA-Call-Intelligence-v1.2.apk > dist/SHA256SUMS.txt
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SHVYA-Call-Intelligence-v1.1
+          name: SHVYA-Call-Intelligence-v1.2
           path: |
-            dist/SHVYA-Call-Intelligence-v1.1.apk
+            dist/SHVYA-Call-Intelligence-v1.2.apk
             dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 30
