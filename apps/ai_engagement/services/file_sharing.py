@@ -128,22 +128,36 @@ def _explicit_request_for_candidate(text, candidate):
         objects = "(?:" + objects + "|" + "|".join(
             re.escape(label) for label in sorted(labels, key=len, reverse=True)
         ) + ")"
+    # Language/format preferences may accompany a direct request. They cannot
+    # turn a document-content question or a quoted instruction into a send.
+    language_prefix = (
+        r"^(?:(?:please\s+)?(?:reply|respond|answer)\s+in\s+[\w-]+(?:\s+[\w-]+)?"
+        r"\s*(?:,\s*(?:and\s+)?|\s+and\s+)|"
+        r"(?!(?:send|share|attach|resend|re-send)\b)(?:[\w-]+\s+){1,2}(?:mein|me)\s+"
+        r"(?:(?:reply|jawab)\s+(?:karo|do)\s*)?)"
+    )
+    object_format = r"(?:(?:uploaded|attached|selected)\s+)?" + objects + r"(?:\s+pdf)?"
+    format_suffix = (
+        r"(?:\s+as\s+(?:an?\s+)?(?:file|attachment))?"
+        r"(?:,?\s+(?:rather\s+than|instead\s+of)\s+(?:just\s+)?(?:a\s+)?(?:website\s+link|link|url))?"
+    )
     english = (
         r"^(?:please\s+)?(?:(?:can|could|would|will)\s+you\s+)?"
-        r"(?:send|share|attach|resend|re-send)\s+(?:me\s+)?"
+        r"(?:please\s+)?(?:send|share|attach|resend|re-send)\s+(?:me\s+)?"
         r"(?:(?:the|a|your|our|this|that|same)\s+)?"
-        + objects + r"(?:\s+(?:please|now|again|once\s+more))*$"
+        + object_format + format_suffix + r"(?:\s+(?:please|now|again|once\s+more))*$"
     )
     hinglish = (
         r"^(?:(?:please|mujhe|hume|humko)\s+)*" + objects
         + r"\s+(?:dobara\s+|phir\s+se\s+)?bhej(?:o|iye|na)?"
         r"(?:\s+do)?(?:\s+(?:please|ab|dobara|phir\s+se))*$"
     )
-    return any(
-        re.fullmatch(english, clause.strip(), re.I)
-        or re.fullmatch(hinglish, clause.strip(), re.I)
-        for clause in re.split(r"[.!?;\n]", str(text or ""))
-    )
+    for clause in re.split(r"[.!?;\n]", str(text or "")):
+        clause = re.sub(language_prefix, "", clause.strip(), count=1, flags=re.I)
+        clause = re.sub(r",\s*please\s*$", " please", clause, flags=re.I)
+        if re.fullmatch(english, clause, re.I) or re.fullmatch(hinglish, clause, re.I):
+            return True
+    return False
 
 
 def declined_in_conversation(messages, candidate=None):
@@ -222,7 +236,10 @@ def unrestricted_requested_document(candidates, *, text):
             continue
         if declined_file_request(text, item):
             continue
-        if not (name and re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text, re.I)):
+        labels = {name, *(match.group(0) for match in _FILE_REQUEST.finditer(name))} if name else set()
+        named_request = any(re.search(r"(?<!\w)" + re.escape(label) + r"(?!\w)", text, re.I)
+                            for label in labels)
+        if not (named_request and _explicit_request_for_candidate(text, item)):
             if not (item.get("already_shared") and _CONTEXTUAL_RESHARE.search(text)):
                 continue
         checked = {**item, "already_shared": False}
