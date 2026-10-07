@@ -102,6 +102,14 @@ def test_ci_self_change_forces_every_safety_gate():
         assert plan[key] == "true"
 
 
+def test_telephony_change_targets_existing_telephony_tests_only():
+    plan = classify(["apps/telephony/tests/test_mobile_workspace.py"])
+    assert plan["full"] == "false"
+    assert plan["targeted"] == "true"
+    assert "apps/telephony/tests" in plan["pytest_targets"]
+    assert "apps/calls/tests" not in plan["pytest_targets"]
+
+
 def test_cross_cutting_service_change_falls_back_to_full_suite():
     plan = classify(["services/followup_service.py"])
     assert plan["full"] == "true"
