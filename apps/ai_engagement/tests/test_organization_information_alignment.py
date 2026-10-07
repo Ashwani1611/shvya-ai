@@ -1,6 +1,5 @@
 from __future__ import annotations
 from tests.playbook_fixtures import build_ai_playbook
-from apps.ai_engagement.services.playbook import playbook_for_engagement
 
 
 import json
@@ -66,7 +65,10 @@ def test_engagement_input_keeps_org_facts_but_hides_full_questionnaire():
 
     assert organization["about"] == context.organization["about"]
     assert organization["bot_languages"] == context.organization["bot_languages"]
-    assert playbook_for_engagement(organization["ai_playbook"]) == playbook_for_engagement(context.organization["ai_playbook"])
+    assert "ai_playbook" not in organization
+    assert organization["ai_playbook_source"] == "organization_operating_spec.system_instructions"
+    instructions = EngagementService()._build_instructions(context=context)
+    assert context.organization["ai_playbook"] in instructions
     assert "qualification_requirements" not in organization
 
     profile_qualification = organization["ai_profile"]["qualification"]
@@ -85,7 +87,10 @@ def test_authored_company_facts_and_instagram_conditions_survive_prompt_compacti
     organization = payload["organization"]
     assert organization["about"] == context.organization["about"]
     assert organization["bot_languages"] == "Hindi, English"
-    assert "For Instagram leads answer in Hindi." in organization["ai_playbook"]
+    assert "ai_playbook" not in organization
+    instructions = EngagementService()._build_instructions(context=context)
+    assert context.organization["ai_playbook"] in instructions
+    assert instructions.count("For Instagram leads answer in Hindi.") == 1
     assert organization["ai_profile"]["knowledge_policy"]["source"] == "approved_organization_and_retrieved_knowledge"
     assert payload["lead"]["lead_source"] == "instagram"
     assert payload["recent_conversation"]["channel"] == "whatsapp"
