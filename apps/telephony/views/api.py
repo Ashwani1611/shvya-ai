@@ -848,6 +848,8 @@ class MobileTodayView(APIView):
         now = timezone.now()
         today = timezone.localdate()
         calls = _call_queryset(user).filter(ended_at__date=today)
+        if request.query_params.get("mine") == "1":
+            calls = calls.filter(user=user)
         reminders = _reminders(user).filter(status="pending")
         accessible_leads = _mobile_leads(user)
         stats = calls.aggregate(
