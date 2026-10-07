@@ -667,18 +667,43 @@ class MainActivity : AppCompatActivity() {
         })
         root.addView(filters)
         root.addView(space(10))
-        val quickFilters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         listOf(
-            "all" to "All",
-            "missed" to "Missed",
-            "followup" to "Follow-up",
-            "unknown" to "No lead",
-        ).forEach { (key, label) ->
-            quickFilters.addView(quietButton(if (callFilter == key) "•  " + label else label).apply {
-                setOnClickListener { callFilter = key; pageNumber = 1; render() }
-            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            listOf("all" to "All", "answered" to "Answered", "missed" to "Missed", "followup" to "Follow-up"),
+            listOf("incoming" to "Incoming", "outgoing" to "Outgoing", "linked" to "CRM leads", "unknown" to "No lead"),
+        ).forEach { group ->
+            val quickFilters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            group.forEach { (key, label) ->
+                quickFilters.addView(quietButton(if (callFilter == key) "•  " + label else label).apply {
+                    setOnClickListener { callFilter = key; pageNumber = 1; render() }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }
+            root.addView(quickFilters)
         }
-        root.addView(quickFilters)
+        val datePresets = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        datePresets.addView(quietButton("Today").apply {
+            setOnClickListener {
+                val value = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                dateFrom = value
+                dateTo = value
+                pageNumber = 1
+                render()
+            }
+        }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        datePresets.addView(quietButton("This week").apply {
+            setOnClickListener {
+                val cal = Calendar.getInstance()
+                val end = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                cal.add(Calendar.DAY_OF_YEAR, -6)
+                dateFrom = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                dateTo = end
+                pageNumber = 1
+                render()
+            }
+        }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        datePresets.addView(quietButton("All dates").apply {
+            setOnClickListener { dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
+        }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        root.addView(datePresets)
         root.addView(space(20))
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -686,8 +711,12 @@ class MainActivity : AppCompatActivity() {
         var path = apiPath + "calls/?mine=1&page=" + pageNumber + "&q=" + URLEncoder.encode(query, "UTF-8") +
             "&date_from=" + dateFrom + "&date_to=" + dateTo
         path += when (callFilter) {
+            "answered" -> "&status=answered"
             "missed" -> "&status=missed"
             "followup" -> "&needs_follow_up=1"
+            "incoming" -> "&direction=incoming"
+            "outgoing" -> "&direction=outgoing"
+            "linked" -> "&linked=1"
             "unknown" -> "&unlinked=1"
             else -> ""
         }
