@@ -688,58 +688,27 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(10) })
         root.addView(searchRow)
         root.addView(space(12))
-        val filters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        filters.addView(quietButton(if (dateFrom.isBlank()) "All dates  ⌄" else "$dateFrom – $dateTo").apply {
-            setOnClickListener { pickDate("From date") { start ->
-                pickDate("To date") { end ->
-                    if (end < start) toast("End date must follow the start date.") else {
-                        dateFrom = start; dateTo = end; pageNumber = 1; render()
-                    }
+        val filterRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        filterRow.addView(secondaryButton(callFilterLabel() + "  ⌄").apply {
+            setOnClickListener { showCallFilterPicker() }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+        filterRow.addView(secondaryButton(callDateLabel() + "  ⌄").apply {
+            setOnClickListener { showCallDatePicker() }
+        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        root.addView(filterRow)
+        if (query.isNotBlank() || callFilter != "all" || dateFrom.isNotBlank()) {
+            root.addView(space(4))
+            root.addView(quietButton("Reset search & filters").apply {
+                setOnClickListener {
+                    query = ""
+                    callFilter = "all"
+                    dateFrom = ""
+                    dateTo = ""
+                    pageNumber = 1
+                    render()
                 }
-            } }
-        })
-        if (query.isNotBlank() || dateFrom.isNotBlank()) filters.addView(quietButton("Clear filters").apply {
-            setOnClickListener { query = ""; dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
-        })
-        root.addView(filters)
-        root.addView(space(10))
-        listOf(
-            listOf("all" to "All", "answered" to "Answered", "missed" to "Missed", "followup" to "Follow-up"),
-            listOf("incoming" to "Incoming", "outgoing" to "Outgoing", "linked" to "CRM leads", "unknown" to "No lead"),
-        ).forEach { group ->
-            val quickFilters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-            group.forEach { (key, label) ->
-                quickFilters.addView(quietButton(if (callFilter == key) "•  " + label else label).apply {
-                    setOnClickListener { callFilter = key; pageNumber = 1; render() }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
-            }
-            root.addView(quickFilters)
+            })
         }
-        val datePresets = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
-        datePresets.addView(quietButton("Today").apply {
-            setOnClickListener {
-                val value = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-                dateFrom = value
-                dateTo = value
-                pageNumber = 1
-                render()
-            }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        datePresets.addView(quietButton("This week").apply {
-            setOnClickListener {
-                val cal = Calendar.getInstance()
-                val end = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                cal.add(Calendar.DAY_OF_YEAR, -6)
-                dateFrom = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
-                dateTo = end
-                pageNumber = 1
-                render()
-            }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        datePresets.addView(quietButton("All dates").apply {
-            setOnClickListener { dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
-        }, LinearLayout.LayoutParams(0, dp(42), 1f))
-        root.addView(datePresets)
         root.addView(space(20))
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
@@ -2092,6 +2061,88 @@ class MainActivity : AppCompatActivity() {
             insets
         }
         setContentView(shell)
+    }
+
+    private fun callFilterLabel(): String = when (callFilter) {
+        "answered" -> "Answered"
+        "missed" -> "Missed"
+        "followup" -> "Needs follow-up"
+        "incoming" -> "Incoming"
+        "outgoing" -> "Outgoing"
+        "linked" -> "CRM leads"
+        "unknown" -> "No CRM lead"
+        else -> "All calls"
+    }
+
+    private fun callDateLabel(): String = when {
+        dateFrom.isBlank() -> "All dates"
+        dateFrom == dateTo -> dateFrom
+        else -> dateFrom + " – " + dateTo
+    }
+
+    private fun showCallFilterPicker() {
+        val options = listOf(
+            "all" to "All calls",
+            "answered" to "Answered",
+            "missed" to "Missed",
+            "followup" to "Needs follow-up",
+            "incoming" to "Incoming",
+            "outgoing" to "Outgoing",
+            "linked" to "CRM leads",
+            "unknown" to "No CRM lead",
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Filter calls")
+            .setItems(options.map { it.second }.toTypedArray()) { _, which ->
+                callFilter = options[which].first
+                pageNumber = 1
+                render()
+            }
+            .show()
+    }
+
+    private fun showCallDatePicker() {
+        val options = arrayOf("All dates", "Today", "Last 7 days", "Custom range")
+        AlertDialog.Builder(this)
+            .setTitle("Call dates")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> {
+                        dateFrom = ""
+                        dateTo = ""
+                        pageNumber = 1
+                        render()
+                    }
+                    1 -> {
+                        val value = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+                        dateFrom = value
+                        dateTo = value
+                        pageNumber = 1
+                        render()
+                    }
+                    2 -> {
+                        val cal = Calendar.getInstance()
+                        dateTo = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                        cal.add(Calendar.DAY_OF_YEAR, -6)
+                        dateFrom = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(cal.time)
+                        pageNumber = 1
+                        render()
+                    }
+                    else -> pickDate("From date") { start ->
+                        pickDate("To date") { end ->
+                            if (end < start) {
+                                toast("End date must follow the start date.")
+                            } else {
+                                dateFrom = start
+                                dateTo = end
+                                pageNumber = 1
+                                render()
+                            }
+                        }
+                    }
+                }
+            }
+            .show()
     }
 
     private fun pickDate(label: String, chosen: (String) -> Unit) {
