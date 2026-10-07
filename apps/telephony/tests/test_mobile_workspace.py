@@ -288,3 +288,102 @@ class MobileWorkspaceTests(TestCase):
             "pipeline_id": str(self.pipeline.id), "stage_id": str(self.stage.id),
         }, format="json")
         self.assertEqual(result.status_code, 400)
+
+
+    def test_mobile_today_dashboard_returns_actionable_counts(self):
+        self.call(status="answered")
+        missed = self.call(
+            status="missed",
+            talk_duration_seconds=0,
+            ring_duration_seconds=12,
+        )
+        missed.disposition = ""
+        missed.save(update_fields=["disposition"])
+        LeadReminder.objects.create(
+            lead=missed.lead,
+            assigned_to=self.user,
+            title="Call back",
+            due_at=timezone.now() + timedelta(hours=1),
+        )
+        response = self.api().get("/api/v1/call-intelligence/today/")
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(response.data["stats"]["total"], 2)
+        self.assertGreaterEqual(response.data["stats"]["missed"], 1)
+        self.assertGreaterEqual(response.data["stats"]["followups_due"], 1)
+        self.assertIn("recent_calls", response.data)
+        self.assertIn("reminders", response.data)
+
+    def test_mobile_call_detail_includes_history_and_crm_context(self):
+        first = self.call()
+        second = self.call(phone_number=first.phone_number)
+        response = self.api().get(
+            f"/api/v1/call-intelligence/calls/{second.id}/"
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["call"]["lead"]["id"], str(second.lead_id))
+        self.assertTrue(any(row["id"] == str(first.id) for row in response.data["history"]))
+        self.assertIn("dispositions", response.data)
+
+    def test_mobile_lead_list_detail_move_and_follow_up_are_scoped(self):
+        call = self.call()
+        lead = call.lead
+        next_stage = Stage.objects.create(
+            pipeline=self.pipeline,
+            name="Mobile next",
+            display_order=99,
+        )
+        listing = self.api().get("/api/v1/call-intelligence/leads/list/", {"q": lead.phone[-6:]})
+        self.assertEqual(listing.status_code, 200)
+        self.assertIn(str(lead.id), [row["id"] for row in listing.data["results"]])
+
+        detail_url = f"/api/v1/call-intelligence/leads/{lead.id}/"
+        detail = self.api().get(detail_url)
+        self.assertEqual(detail.status_code, 200)
+        self.assertEqual(detail.data["lead"]["pipeline_id"], str(self.pipeline.id))
+        moved = self.api().patch(
+            detail_url,
+            {"pipeline_id": str(self.pipeline.id), "stage_id": str(next_stage.id)},
+            format="json",
+        )
+        self.assertEqual(moved.status_code, 200)
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage_id, next_stage.id)
+
+        due_at = (timezone.now() + timedelta(days=1)).isoformat()
+        reminder = self.api().post(
+            detail_url,
+            {"due_at": due_at, "title": "Mobile follow-up"},
+            format="json",
+        )
+        self.assertEqual(reminder.status_code, 201)
+        self.assertTrue(
+            LeadReminder.objects.filter(lead=lead, status="pending").exists()
+        )
+        self.assertEqual(self.api(self.other_user).get(detail_url).status_code, 404)
+
+    def test_mobile_reminder_segments_include_completed_history(self):
+        _, row = self.reminder()
+        action_url = f"/api/v1/call-intelligence/reminders/{row.id}/action/"
+        self.assertEqual(
+            self.api().post(action_url, {"action": "complete"}, format="json").status_code,
+            200,
+        )
+        completed = self.api().get(
+            "/api/v1/call-intelligence/reminders/",
+            {"status": "completed"},
+        )
+        self.assertEqual(completed.status_code, 200)
+        self.assertIn(str(row.id), [item["id"] for item in completed.data["reminders"]])
+        self.assertGreaterEqual(completed.data["stats"]["completed"], 1)
+
+    def test_mobile_call_filters_support_follow_up_and_unlinked_segments(self):
+        call = self.call()
+        call.follow_up_required = True
+        call.follow_up_at = timezone.now() + timedelta(days=1)
+        call.save(update_fields=["follow_up_required", "follow_up_at"])
+        response = self.api().get(
+            "/api/v1/call-intelligence/calls/",
+            {"mine": "1", "needs_follow_up": "1"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(str(call.id), [row["id"] for row in response.data["calls"]])
