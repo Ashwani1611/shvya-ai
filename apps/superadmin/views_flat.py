@@ -295,6 +295,13 @@ def org_list_view(request):
             payment_mode=Organization.PaymentMode.PARTIAL,
         )
 
+    if request.GET.get("indiamart_setup") == "pending":
+
+        orgs = orgs.filter(
+            indiamart_connection__requested_at__isnull=False,
+            indiamart_connection__generated_at__isnull=True,
+        )
+
     if request.GET.get("justdial_setup") == "pending":
 
         orgs = orgs.filter(
@@ -336,6 +343,10 @@ def org_list_view(request):
             "all_tags": OrganizationTag.objects.all(),
             "packages": Organization.Package.choices,
             "search": search,
+            "indiamart_pending_count": IndiaMartConnection.objects.filter(
+                requested_at__isnull=False,
+                generated_at__isnull=True,
+            ).count(),
             "justdial_pending_count": JustDialIntegration.objects.filter(
                 webhook_token__isnull=True,
             ).count(),
