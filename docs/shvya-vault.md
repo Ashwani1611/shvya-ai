@@ -43,7 +43,7 @@ Models:
 | Model | Purpose |
 |---|---|
 | `Vault` | One-to-one organization workspace, random slug, status, access controls, quota |
-| `VaultSection` | Stable section key, empty/filled/unavailable state, completion flag |
+| `VaultSection` | Section identifier, content status (empty, filled or unavailable), completion flag |
 | `VaultEntry` | Note, link, file or audio; provenance, client override, sharing instructions |
 | `VaultEntryRevision` | Prior text and metadata when an entry changes |
 | `VaultQuestion` | Scoped question, client answer and answer timestamp |

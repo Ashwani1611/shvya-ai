@@ -1280,11 +1280,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
-            manageActions.addView(quietButton(if (isFavorite) "★ Priority" else "☆ Priority").apply {
+            manageActions.addView(priorityButton(isFavorite).apply {
                 setOnClickListener {
                     val active = toggleFavoriteLead(leadId)
-                    text = if (active) "★ Priority" else "☆ Priority"
                     toast(if (active) "Added to priority leads" else "Removed from priority leads")
+                    showLeadDetailPage(leadId)
                 }
             }, LinearLayout.LayoutParams(0, dp(48), 1f))
             content.addView(manageActions)
@@ -1331,29 +1331,17 @@ class MainActivity : AppCompatActivity() {
             })
             content.addView(followCard)
 
-            val attributes = lead.optJSONObject("attributes")
-            if (attributes != null) {
-                val visible = mutableListOf<Pair<String, String>>()
-                val keys = attributes.keys()
-                while (keys.hasNext()) {
-                    val key = keys.next()
-                    val value = attributes.optString(key).trim()
-                    if (value.isNotBlank()) {
-                        visible.add(
-                            key.replace('_', ' ').replaceFirstChar { it.uppercase() } to value
-                        )
-                    }
+            val visibleAttributes = humanLeadAttributes(lead)
+            if (visibleAttributes.isNotEmpty()) {
+                content.addView(space(26))
+                content.addView(sectionTitle("Lead information").apply { textSize = 19f })
+                content.addView(space(10))
+                val detailsCard = card()
+                visibleAttributes.forEachIndexed { index, row ->
+                    detailsCard.addView(detailRow(row.first, row.second))
+                    if (index != visibleAttributes.lastIndex) detailsCard.addView(divider())
                 }
-                if (visible.isNotEmpty()) {
-                    content.addView(space(26))
-                    content.addView(sectionTitle("Lead information").apply { textSize = 19f })
-                    val detailsCard = card()
-                    visible.forEachIndexed { index, (label, value) ->
-                        detailsCard.addView(detailRow(label, value))
-                        if (index != visible.lastIndex) detailsCard.addView(divider())
-                    }
-                    content.addView(detailsCard)
-                }
+                content.addView(detailsCard)
             }
 
             val notes = lead.optString("notes").trim()
@@ -2499,6 +2487,116 @@ class MainActivity : AppCompatActivity() {
         setTypeface(typeface, Typeface.BOLD)
         setTextColor(ink)
     }
+
+    private fun humanLeadAttributes(lead: JSONObject): List<Pair<String, String>> {
+        val result = mutableListOf<Pair<String, String>>()
+        val details = lead.optJSONArray("attribute_details")
+        if (details != null) {
+            for (i in 0 until details.length()) {
+                val row = details.optJSONObject(i) ?: continue
+                val label = row.optString("name").trim()
+                val rawValue = row.optString("value").trim()
+                val value = formatLeadAttributeValue(row.optString("field_type"), rawValue)
+                if (label.isNotBlank() && value.isNotBlank()) {
+                    result.add(label to value)
+                }
+            }
+            return result
+        }
+
+        // Backward-compatible fallback for an older backend. Keep it conservative:
+        // never show nested JSON or technical/system-looking keys.
+        val attributes = lead.optJSONObject("attributes") ?: return result
+        val keys = attributes.keys()
+        while (keys.hasNext()) {
+            val key = keys.next()
+            if (!isHumanLeadAttributeKey(key)) continue
+            val raw = attributes.opt(key)
+            if (raw is JSONObject || raw is org.json.JSONArray) continue
+            val value = raw?.toString()?.trim().orEmpty()
+            if (value.isBlank() || value.equals("null", ignoreCase = true)) continue
+            if (looksLikeJson(value)) continue
+            result.add(humanizeAttributeKey(key) to value)
+        }
+        return result
+    }
+
+    private fun formatLeadAttributeValue(fieldType: String, rawValue: String): String {
+        if (rawValue.isBlank() || looksLikeJson(rawValue)) return ""
+        return when (fieldType) {
+            "date" -> try {
+                val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(rawValue)
+                if (parsed == null) rawValue else SimpleDateFormat("d MMM yyyy", Locale.getDefault()).format(parsed)
+            } catch (_: Exception) {
+                rawValue
+            }
+            "datetime" -> formatDate(rawValue)
+            else -> rawValue
+        }
+    }
+
+    private fun looksLikeJson(value: String): Boolean {
+        val trimmed = value.trim()
+        if (!(trimmed.startsWith("{") || trimmed.startsWith("["))) return false
+        return runCatching {
+            if (trimmed.startsWith("{")) JSONObject(trimmed) else org.json.JSONArray(trimmed)
+            true
+        }.getOrDefault(false)
+    }
+
+    private fun isHumanLeadAttributeKey(key: String): Boolean {
+        val normalized = key.trim().lowercase(Locale.US)
+        if (normalized.isBlank() || normalized.startsWith("_") || normalized.endsWith("_id")) return false
+        if (normalized in setOf(
+                "id", "uuid", "created_at", "updated_at", "organization_id",
+                "pipeline_id", "stage_id", "owner_id", "user_id", "booked_at"
+            )) return false
+        return listOf("metadata", "payload", "trace", "internal", "raw_json", "system_")
+            .none { normalized.contains(it) }
+    }
+
+    private fun humanizeAttributeKey(key: String): String =
+        key.replace('_', ' ')
+            .replace('-', ' ')
+            .trim()
+            .split(Regex("\\s+"))
+            .filter { it.isNotBlank() }
+            .joinToString(" ") { word -> word.replaceFirstChar { it.uppercase() } }
+
+    private fun priorityButton(active: Boolean): LinearLayout =
+        LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            contentDescription = if (active) "Remove from priority leads" else "Add to priority leads"
+            val fill = if (active) Color.rgb(255, 247, 224) else Color.rgb(247, 248, 250)
+            val ripple = if (active) Color.rgb(244, 218, 155) else Color.rgb(222, 226, 232)
+            background = RippleDrawable(
+                ColorStateList.valueOf(ripple),
+                roundedStroke(
+                    color = fill,
+                    radius = 15f,
+                    strokeColor = if (active) Color.rgb(239, 205, 121) else Color.rgb(226, 230, 235),
+                ),
+                null,
+            )
+            addView(TextView(this@MainActivity).apply {
+                text = "★"
+                textSize = 23f
+                gravity = Gravity.CENTER
+                setTextColor(
+                    if (active) Color.rgb(224, 154, 25)
+                    else Color.rgb(150, 157, 168)
+                )
+                setPadding(0, 0, dp(7), dp(1))
+            })
+            addView(TextView(this@MainActivity).apply {
+                text = "Priority"
+                textSize = 13f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(if (active) Color.rgb(116, 78, 11) else ink)
+            })
+        }
 
     private fun detailRow(label: String, value: String): LinearLayout =
         LinearLayout(this).apply {

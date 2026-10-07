@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import timedelta
 
@@ -763,6 +764,43 @@ def _mobile_leads(user):
     )
 
 
+def _mobile_attribute_details(lead):
+    definitions = (
+        AttributeDefinition.objects
+        .filter(organization=lead.organization)
+        .exclude(key="booked_at")
+        .order_by("display_order", "created_at")
+    )
+    stored = lead.attributes if isinstance(lead.attributes, dict) else {}
+    details = []
+    for definition in definitions:
+        value = stored.get(definition.key)
+        if value is None or isinstance(value, (dict, list, tuple, set)):
+            continue
+        if isinstance(value, bool):
+            display_value = "Yes" if value else "No"
+        else:
+            display_value = str(value).strip()
+        if not display_value or display_value.casefold() in {"null", "none"}:
+            continue
+        if display_value.startswith(("{", "[")):
+            # Do not expose serialized internal/nested payloads in the human-facing
+            # mobile Lead Information section.
+            try:
+                parsed = json.loads(display_value)
+            except (TypeError, ValueError):
+                parsed = None
+            if isinstance(parsed, (dict, list)):
+                continue
+        details.append({
+            "key": definition.key,
+            "name": definition.name,
+            "field_type": definition.field_type,
+            "value": display_value,
+        })
+    return details
+
+
 def _serialize_mobile_lead(lead):
     reminder = (
         LeadReminder.objects
@@ -932,6 +970,7 @@ class MobileLeadDetailView(APIView):
             .order_by("-ended_at", "-created_at")[:15]
         )
         data = _serialize_mobile_lead(lead)
+        data["attribute_details"] = _mobile_attribute_details(lead)
         data["pipelines"] = [
             {
                 "id": str(pipeline.id),

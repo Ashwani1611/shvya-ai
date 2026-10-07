@@ -14,8 +14,8 @@ android {
         targetSdk = 35
         // Keep versionCode increasing so existing installations update in place.
         // v1.4 standardizes safe areas and the mobile Lead Detail layout.
-        versionCode = 8
-        versionName = "1.4"
+        versionCode = 9
+        versionName = "1.5"
 
         buildConfigField(
             "String",
