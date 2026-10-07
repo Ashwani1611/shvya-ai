@@ -40,6 +40,11 @@
         <div class="sa-stat-note">Labels available for client grouping</div>
     </div>
     <div class="sa-stat-card">
+        <div class="sa-stat-label">IndiaMART setup requests</div>
+        <div class="sa-stat-value">{{ indiamart_pending_count }}</div>
+        <div class="sa-stat-note">Waiting for Superadmin webhook provisioning</div>
+    </div>
+    <div class="sa-stat-card">
         <div class="sa-stat-label">JustDial setup requests</div>
         <div class="sa-stat-value">{{ justdial_pending_count }}</div>
         <div class="sa-stat-note">Waiting for Superadmin webhook provisioning</div>
@@ -93,6 +98,16 @@
                 {% if request.GET.installment_client %}checked{% endif %}
             >
             Installment client
+        </label>
+
+        <label class="sa-filter-check">
+            <input
+                type="checkbox"
+                name="indiamart_setup"
+                value="pending"
+                {% if request.GET.indiamart_setup == "pending" %}checked{% endif %}
+            >
+            IndiaMART setup requested
         </label>
 
         <label class="sa-filter-check">
@@ -173,7 +188,7 @@
                                 <div class="sa-org-avatar" aria-hidden="true">{{ org.name|slice:":1"|upper }}</div>
                                 <div class="min-w-0">
                                     <a href="{% url 'superadmin-organization-detail' organization_id=org.id %}" class="sa-org-link">
-                                        {{ org.name }}{% if org.indiamart_connection.requested_at and not org.indiamart_connection.is_enabled %}<span class="text-xs text-blue-600"> · IndiaMART setup requested</span>{% endif %}
+                                        {{ org.name }}{% if org.indiamart_connection.requested_at and not org.indiamart_connection.generated_at %}<span class="text-xs text-blue-600"> · IndiaMART setup requested</span>{% endif %}
                                     </a>
                                     <div class="sa-org-meta">{{ org.pipeline_count }} pipeline{{ org.pipeline_count|pluralize }}</div>
                                     <div class="mt-1.5 flex max-w-[230px] flex-wrap gap-1">
