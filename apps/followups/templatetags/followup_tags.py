@@ -3,7 +3,6 @@ import re
 from django import template
 
 
-
 register = template.Library()
 
 _SAFE_ATTRIBUTE_KEY = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,63}$")
@@ -13,6 +12,7 @@ _BASE_PLACEHOLDERS = [
     {"token": "{{lead_first_name}}", "label": "First name"},
     {"token": "{{phone}}", "label": "Number"},
     {"token": "{{email}}", "label": "Email"},
+    {"token": "{{lead_source}}", "label": "Lead source"},
     {"token": "{{user_name}}", "label": "User name"},
     {"token": "{{org_name}}", "label": "Organisation"},
     {"token": "{{pipeline_name}}", "label": "Pipeline"},
