@@ -13,3 +13,11 @@ commits = ["ce958008ad56b2f74039d7e5357f7633715db270"]
 paths = ['''^database\.md$''']
 regexTarget = "line"
 regexes = ['''Diagnostic/Operations OAuth authorization codes, access tokens and refresh tokens''']
+
+[[rules.allowlists]]
+description = "Historical Vault model table describing section states; not a credential."
+condition = "AND"
+commits = ["6716efac6116babaa8a3aa4be99b75472a8ae344"]
+paths = ['''^docs/shvya-vault\.md$''']
+regexTarget = "line"
+regexes = ['''Stable section key, empty/filled/unavailable state, completion flag''']

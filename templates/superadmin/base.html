@@ -115,6 +115,10 @@
                 </a>
                 <a href="{% url 'superadmin-platform-email' %}" class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-platform-email' %}is-active{% endif %}"><span class="sa-nav-icon" aria-hidden="true">✉</span><span class="sa-nav-text">Email integration</span></a>
                 {% include "support/partials/staff_nav.html" %}
+                <a href="{% url 'vault-staff-list' %}" title="SHVYA Vault" class="sa-nav-link {% if '/superadmin/vault/' in request.path %}is-active{% endif %}">
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v8m-4-4h8"/></svg>
+                    <span class="sa-nav-text">Vault</span>
+                </a>
             </nav>
 
             {% if organization and request.resolver_match.url_name == 'superadmin-organization-detail' %}

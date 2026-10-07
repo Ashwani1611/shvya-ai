@@ -1,0 +1,26 @@
+{% extends 'vault/client_base.html' %}
+{% block title %}Open your Vault · SHVYA{% endblock %}
+{% block content %}
+<div class="vault-gate-wrap">
+  <section class="vault-gate vault-card">
+    <div class="vault-gate-symbol" aria-hidden="true"><svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="5" width="22" height="22" rx="7"/><circle cx="16" cy="16" r="5"/><path d="M16 8v3m0 10v3m8-8h-3m-10 0H8m4.5-3.5 7 7m-7 0 7-7"/></svg></div>
+    <p class="vault-eyebrow">YOUR BUSINESS. ONE PLACE.</p>
+    <h1>Welcome to your Vault.</h1>
+    <p class="vault-gate-intro">{% if vault_name %}A private space for <strong>{{ vault_name }}</strong> to share everything your SHVYA team needs.{% else %}Your private space to share business knowledge with the SHVYA team.{% endif %}</p>
+    {% if paused %}
+      <div class="vault-alert">This Vault is currently paused. Please contact your SHVYA team to reopen access.</div>
+    {% else %}
+      <form method="post" action="{{ action_url }}" class="vault-form">
+        {% csrf_token %}
+        <label for="vault-access-code">Enter your 6-digit access code</label>
+        <input class="vault-code-input" id="vault-access-code" name="code" type="text" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" minlength="6" autocomplete="one-time-code" placeholder="000000" required autofocus aria-describedby="vault-code-help{% if error %} vault-code-error{% endif %}">
+        {% if error %}<p class="vault-field-error" id="vault-code-error" role="alert">{{ error }}</p>{% endif %}
+        <button class="vault-button vault-button-primary vault-button-full" type="submit">Open my Vault <span aria-hidden="true">→</span></button>
+        <p class="vault-help" id="vault-code-help">Your SHVYA team shared this code with your private link.</p>
+      </form>
+    {% endif %}
+    <div class="vault-gate-foot"><span aria-hidden="true">✓</span> Business details, files and answers — all together.</div>
+  </section>
+  <p class="vault-gate-caption">Powered by SHVYA AI <span>Capture. Automate. Convert.</span></p>
+</div>
+{% endblock %}
