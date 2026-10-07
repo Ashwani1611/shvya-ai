@@ -869,9 +869,10 @@ def _validate_outbound_message_content(
         if message_type not in {
             WhatsAppMessage.MessageType.IMAGE,
             WhatsAppMessage.MessageType.VIDEO,
+            WhatsAppMessage.MessageType.AUDIO,
             WhatsAppMessage.MessageType.DOCUMENT,
         }:
-            raise ValueError("Touchpoint files must be photo, video or document messages.")
+            raise ValueError("Touchpoint files must be photo, video, audio or document messages.")
 
     elif source == "document":
 
