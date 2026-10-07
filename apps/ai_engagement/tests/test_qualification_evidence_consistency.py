@@ -165,3 +165,16 @@ class QualificationEvidenceConsistencyTests(SimpleTestCase):
         update = {**self.updates[3], "evidence": body, "value": "No"}
         self.assertEqual(self.project([update])["qualification_answers"], {update["requirement_id"]: "No"})
 
+
+    def test_greeting_and_file_instructions_cannot_fill_unrelated_goals(self):
+        for body in ("Hello. Do not send any files.", "Hi!", "Please share the product brochure."):
+            self.messages[0]["body"] = body
+            for template in self.updates:
+                with self.subTest(body=body, requirement=template["requirement_id"]):
+                    with self.assertRaisesRegex(ValueError, "valid inbound evidence"):
+                        self.project([{**template, "evidence": body}])
+
+    def test_file_refusal_does_not_hide_a_separate_volunteered_fact(self):
+        self.messages[0]["body"] = "Do not send any files. My main problem is slow replies."
+        result = self.project([{**self.updates[0], "evidence": "My main problem is slow replies"}])
+        self.assertEqual(result["qualification_answers"], {self.updates[0]["requirement_id"]: "Slow replies"})
