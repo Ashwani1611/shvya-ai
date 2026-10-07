@@ -174,7 +174,7 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
         self.assertEqual(recovered.reason_code, "NORMAL_CONVERSATION")
         self.assertEqual(self.provider.generate_text.call_count, 2)
 
-    def test_partial_recovery_closes_old_question_and_keeps_next_goal_pending(self):
+    def test_partial_recovery_asks_only_the_next_unanswered_goal(self):
         self.provider.generate_text.side_effect = [
             AITextResult(json.dumps({"qualification_updates": self.updates[:1]}), "review"),
             AITextResult('{"message":"Thanks for explaining the slow replies."}', "reply-repair"),
@@ -182,12 +182,57 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
         recovered = self.recover(_draft(message="Thanks. " + self.requirements[0]["question"],
                                        next_requirement_id=self.requirements[0]["id"]))
         self.assertEqual(recovered.qualification_updates, self.updates[:1])
-        self.assertIsNone(recovered.next_requirement_id)
+        self.assertEqual(recovered.next_requirement_id, self.requirements[1]["id"])
+        self.assertIn(self.requirements[1]["question"], recovered.message)
+        self.assertNotIn(self.requirements[0]["question"], recovered.message)
+        repair_input = json.loads(self.provider.generate_text.call_args.kwargs["input_text"])
+        self.assertEqual(repair_input["next_question"], self.requirements[1])
         from apps.ai_engagement.services.qualification_state import project_answer_updates
         projected = project_answer_updates(state=self.state, requirements=self.requirements,
             updates=recovered.qualification_updates, messages=self.context.conversation["messages"])
         self.assertFalse(projected["qualification_completed"])
         self.assertEqual(projected["current_requirement_id"], self.requirements[1]["id"])
+
+
+    def test_partial_recovery_cannot_skip_to_a_different_authored_question(self):
+        self.provider.generate_text.side_effect = [
+            AITextResult(json.dumps({"qualification_updates": self.updates[:1]}), "review"),
+            AITextResult(json.dumps({"message": self.requirements[2]["question"]}), "reply-repair"),
+        ]
+        draft = _draft(message=self.requirements[0]["question"], next_requirement_id=self.requirements[0]["id"])
+        self.assertIs(self.recover(draft), draft)
+
+    def test_real_service_partial_recovery_projects_and_asks_the_next_question(self):
+        lead = _SandboxLead(id="lead-1", pk="lead-1", organization_id="org-1", attributes={},
+                            stage=SimpleNamespace(name="New leads"), stage_id=None, pipeline_id=None)
+        def generate(**kwargs):
+            phase = kwargs.get("metadata", {}).get("phase")
+            if phase == "qualification_capture_recovery":
+                return AITextResult(json.dumps({"qualification_updates": self.updates[:1]}), "review")
+            if phase == "qualification_capture_reply_repair":
+                self.assertEqual(json.loads(kwargs["input_text"])["next_question"], self.requirements[1])
+                return AITextResult('{"message":"Thanks for sharing your main problem."}', "reply-repair")
+            if phase == "grounding":
+                payload = json.loads(kwargs["input_text"])
+                self.assertEqual(len(payload["proposed_answer_updates"]), 1)
+                self.assertFalse(payload["backend_state"]["qualification_completed"])
+                self.assertEqual(payload["qualification_question_id"], self.requirements[1]["id"])
+                self.assertIn(self.requirements[1]["question"], payload["reply"])
+                self.assertNotIn(self.requirements[0]["question"], payload["reply"])
+                return AITextResult('{"approved":true,"reason":"approved"}', "grounding")
+            self.assertEqual(phase, "primary")
+            return AITextResult(json.dumps({"should_engage": True, "silence_rule": None,
+                "message": self.requirements[0]["question"], "qualification_updates": [], "crm_actions": [],
+                "file_document_id": None, "next_requirement_id": self.requirements[0]["id"],
+                "reason_code": "NORMAL_CONVERSATION"}), "draft")
+        cache.clear()
+        with patch("apps.ai_engagement.services.ai_provider.OpenAIProvider.generate_text", side_effect=generate), \
+             patch("apps.ai_engagement.graph.evidence.OpenAIProvider", OpenAIProvider):
+            result = EngagementService().engage(organization=self.org, lead=lead, context=self.context)
+        self.assertEqual(result.qualification_updates, self.updates[:1])
+        self.assertEqual(result.next_requirement_id, self.requirements[1]["id"])
+        self.assertIn(self.requirements[1]["question"], result.message)
+        self.assertFalse(result.crm_actions)
 
     def test_failed_or_still_obsolete_rewrite_keeps_original_valid_draft(self):
         for result in (RuntimeError("temporary reply rewrite failure"),
@@ -444,3 +489,4 @@ class FirstTurnCaptureRecoverySandboxTests(TestCase):
                         self.assertEqual(Lead.objects.filter(organization=self.org).count(), 0)
                         self.assertEqual(LeadReminder.objects.filter(lead__organization=self.org).count(), 0)
                         self.assertEqual(AIActionReceipt.objects.filter(organization=self.org).count(), 0)
+
