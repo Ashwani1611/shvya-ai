@@ -330,7 +330,7 @@ class MainActivity : AppCompatActivity() {
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
-        loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "today/") }) { data ->
+        loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "today/?mine=1") }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
             summary.addView(sectionTitle("Today at a glance"))
@@ -597,16 +597,16 @@ class MainActivity : AppCompatActivity() {
     private fun loadTeamPerformance(content: LinearLayout, version: Int) {
         lifecycleScope.launch {
             val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
-            val response = withContext(Dispatchers.IO) {
+            val personalResponse = withContext(Dispatchers.IO) {
                 runCatching {
                     ApiClient(this@MainActivity).authorizedGet(
-                        apiPath + "analytics/?date_from=" + today + "&date_to=" + today
+                        apiPath + "analytics/?mine=1&date_from=" + today + "&date_to=" + today
                     )
                 }.getOrNull()
             }
-            if (version != renderVersion || response?.successful != true) return@launch
-            val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return@launch
-            val stats = data.optJSONObject("stats")
+            if (version != renderVersion || personalResponse?.successful != true) return@launch
+            val personal = runCatching { JSONObject(personalResponse.body) }.getOrNull() ?: return@launch
+            val stats = personal.optJSONObject("stats")
             if (stats != null) {
                 content.addView(space(24))
                 val performance = card()
@@ -627,7 +627,17 @@ class MainActivity : AppCompatActivity() {
                 ).apply { setPadding(0, 0, 0, 0) })
                 content.addView(performance)
             }
-            val agents = data.optJSONArray("agents") ?: return@launch
+
+            val teamResponse = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedGet(
+                        apiPath + "analytics/?date_from=" + today + "&date_to=" + today
+                    )
+                }.getOrNull()
+            }
+            if (version != renderVersion || teamResponse?.successful != true) return@launch
+            val teamData = runCatching { JSONObject(teamResponse.body) }.getOrNull() ?: return@launch
+            val agents = teamData.optJSONArray("agents") ?: return@launch
             if (agents.length() <= 1) return@launch
             content.addView(space(24))
             content.addView(sectionTitle("Team today").apply { textSize = 20f })
