@@ -163,6 +163,14 @@ def send_touchpoint_attachment(request, lead_id, attachment_id):
         return JsonResponse({"error": "Lead number or Touchpoint attachment is unavailable."}, status=400)
     kind = attachment_kind(attachment.original_name)
     if channel == "whatsapp":
+        provider_limit = 5 * 1024 * 1024 if kind == "image" else (
+            16 * 1024 * 1024 if kind in {"audio", "video"} else 25 * 1024 * 1024
+        )
+        if attachment.size > provider_limit:
+            return JsonResponse(
+                {"error": f"The selected {kind} exceeds WhatsApp API's media size limit."},
+                status=400,
+            )
         from apps.channels.tasks import send_whatsapp_message_task
         from services.channels.whatsapp_api_chat_service import is_within_api_24h_window
         from services.channels.whatsapp_service import queue_outbound_message
