@@ -109,16 +109,30 @@ class MainActivity : AppCompatActivity() {
 
     private fun handleLaunchIntent(intent: Intent?) {
         pendingOpenCallId = intent?.getStringExtra("open_call_id").orEmpty()
+        pendingReminderId = intent?.getStringExtra("reminder_id").orEmpty()
+        pendingReminderAction = intent?.getStringExtra("reminder_action").orEmpty()
         if (intent?.getBooleanExtra("post_call_review", false) == true) {
             selectedTab = "calls"
+        }
+        if (intent?.getBooleanExtra("open_followups", false) == true) {
+            selectedTab = "followups"
+            reminderSegment = "today"
         }
     }
 
     private fun openPendingCallAfterRender() {
         val callId = pendingOpenCallId
-        if (callId.isBlank() || !auth.hasSession()) return
-        pendingOpenCallId = ""
-        window.decorView.post { showCallDetail(callId) }
+        if (callId.isNotBlank() && auth.hasSession()) {
+            pendingOpenCallId = ""
+            window.decorView.post { showCallDetail(callId) }
+        }
+        val reminderId = pendingReminderId
+        val reminderAction = pendingReminderAction
+        if (reminderId.isNotBlank() && reminderAction.isNotBlank() && auth.hasSession()) {
+            pendingReminderId = ""
+            pendingReminderAction = ""
+            window.decorView.post { performReminderAction(reminderId, reminderAction) }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -1370,6 +1384,23 @@ class MainActivity : AppCompatActivity() {
         return runCatching { JSONObject(bodyText).optString("detail") }.getOrNull()
             .orEmpty()
             .ifBlank { fallback }
+    }
+
+    private fun performReminderAction(reminderId: String, action: String) {
+        lifecycleScope.launch {
+            val response = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedPost(
+                        apiPath + "reminders/" + reminderId + "/action/",
+                        JSONObject().put("action", action),
+                    )
+                }.getOrNull()
+            }
+            if (response?.successful == true) {
+                toast(if (action == "complete") "Follow-up completed" else "Follow-up snoozed 30 minutes")
+                render()
+            } else toast("Could not update the follow-up.")
+        }
     }
 
     private fun reminderAction(item: JSONObject, action: String, button: View) {
