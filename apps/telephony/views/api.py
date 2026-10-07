@@ -18,6 +18,11 @@ from apps.crm.views.api import get_user_pipelines
 from apps.organizations.access import crm_user_is_authorized
 from services.crm_activity_service import record_reminder_created, record_reminder_completed
 from services.crm.lead_service import create_lead
+from services.crm.lead_transition import (
+    LeadTransitionError,
+    move_lead_to_pipeline_stage,
+    move_lead_to_stage,
+)
 
 from ..models import (
     CallAppRelease,
@@ -109,8 +114,14 @@ def serialize_call(call):
             {
                 "id": str(call.lead_id),
                 "name": call.lead.name,
+                "phone": call.lead.phone,
+                "email": call.lead.email,
                 "pipeline": call.lead.pipeline.name,
+                "pipeline_id": str(call.lead.pipeline_id),
                 "stage": call.lead.stage.name,
+                "stage_id": str(call.lead.stage_id),
+                "source": call.lead.lead_source,
+                "attributes": call.lead.attributes,
             }
             if call.lead_id else None
         ),
@@ -255,6 +266,17 @@ class CallCollectionView(APIView):
 
         if request.query_params.get("mine") == "1":
             qs = qs.filter(user=user)
+        if request.query_params.get("needs_follow_up") == "1":
+            qs = qs.filter(follow_up_required=True)
+        if request.query_params.get("unlinked") == "1":
+            qs = qs.filter(lead__isnull=True)
+        if request.query_params.get("linked") == "1":
+            qs = qs.filter(lead__isnull=False)
+        disposition = str(request.query_params.get("disposition") or "").strip()
+        if disposition == "unclassified":
+            qs = qs.filter(disposition="")
+        elif disposition:
+            qs = qs.filter(disposition=disposition)
         try:
             page = max(1, int(request.query_params.get("page", 1)))
         except (TypeError, ValueError):
@@ -707,3 +729,239 @@ class MobileLeadCollectionView(APIView):
         except DjangoValidationError as exc:
             return _error(exc)
         return Response({"ok": True, "lead_id": str(lead.id)}, status=201)
+
+
+def _mobile_leads(user):
+    return (
+        Lead.objects
+        .filter(
+            organization=user.organization,
+            pipeline__in=get_mobile_pipelines(user),
+        )
+        .select_related("pipeline", "stage")
+    )
+
+
+def _serialize_mobile_lead(lead):
+    reminder = (
+        LeadReminder.objects
+        .filter(lead=lead, status="pending")
+        .order_by("due_at", "id")
+        .first()
+    )
+    last_call = (
+        CallRecord.objects
+        .filter(organization=lead.organization, lead=lead)
+        .order_by("-ended_at", "-created_at")
+        .first()
+    )
+    return {
+        "id": str(lead.id),
+        "name": lead.name,
+        "phone": lead.phone,
+        "email": lead.email,
+        "pipeline": lead.pipeline.name,
+        "pipeline_id": str(lead.pipeline_id),
+        "stage": lead.stage.name,
+        "stage_id": str(lead.stage_id),
+        "source": lead.lead_source,
+        "notes": lead.notes,
+        "attributes": lead.attributes,
+        "created_at": lead.created_at.isoformat(),
+        "updated_at": lead.updated_at.isoformat(),
+        "reminder": (
+            {
+                "id": str(reminder.id),
+                "title": reminder.title,
+                "description": reminder.description,
+                "due_at": reminder.due_at.isoformat(),
+                "overdue": reminder.due_at < timezone.now(),
+            }
+            if reminder else None
+        ),
+        "last_call": (
+            {
+                "id": str(last_call.id),
+                "status": last_call.status,
+                "direction": last_call.direction,
+                "ended_at": last_call.ended_at.isoformat() if last_call.ended_at else None,
+                "talk_duration": format_duration(last_call.talk_duration_seconds),
+                "disposition": last_call.disposition,
+            }
+            if last_call else None
+        ),
+    }
+
+
+class CallDetailView(APIView):
+    def get(self, request, call_id):
+        user = _user(request)
+        call = _call_queryset(user).filter(pk=call_id).first()
+        if call is None:
+            return Response({"detail": "Call not found."}, status=404)
+        history = _call_queryset(user)
+        if call.lead_id:
+            history = history.filter(lead_id=call.lead_id)
+        else:
+            history = history.filter(phone_number=call.phone_number)
+        history = history.exclude(pk=call.pk).order_by("-ended_at", "-created_at")[:10]
+        return Response({
+            "call": serialize_call(call),
+            "history": [serialize_call(item) for item in history],
+            "dispositions": [
+                {
+                    "code": row.code,
+                    "name": row.name,
+                    "category": row.category,
+                }
+                for row in get_call_dispositions(user.organization)
+                if row.is_active
+            ],
+        })
+
+
+class MobileTodayView(APIView):
+    def get(self, request):
+        user = _user(request)
+        reconcile_call_tracking(user)
+        now = timezone.now()
+        today = timezone.localdate()
+        calls = _call_queryset(user).filter(ended_at__date=today)
+        reminders = _reminders(user).filter(status="pending")
+        accessible_leads = _mobile_leads(user)
+        stats = calls.aggregate(
+            total=Count("id"),
+            answered=Count("id", filter=Q(status="answered")),
+            missed=Count("id", filter=Q(status="missed")),
+            outgoing=Count("id", filter=Q(direction="outgoing")),
+            incoming=Count("id", filter=Q(direction="incoming")),
+        )
+        stats.update(
+            followups_due=reminders.filter(
+                due_at__gte=now, due_at__date=today
+            ).count(),
+            overdue=reminders.filter(due_at__lt=now).count(),
+            new_leads=accessible_leads.filter(created_at__date=today).count(),
+            missed_needing_action=calls.filter(
+                status="missed", disposition=""
+            ).count(),
+        )
+        recent_calls = calls.order_by("-ended_at", "-created_at")[:8]
+        due = reminders.order_by("due_at", "id")[:8]
+        return Response({
+            "date": today.isoformat(),
+            "stats": stats,
+            "recent_calls": [serialize_call(item) for item in recent_calls],
+            "reminders": [
+                {
+                    "id": str(row.id),
+                    "lead_id": str(row.lead_id),
+                    "lead_name": row.lead.name,
+                    "phone": row.lead.phone,
+                    "title": row.title,
+                    "description": row.description,
+                    "due_at": row.due_at.isoformat(),
+                    "overdue": row.due_at < now,
+                }
+                for row in due
+            ],
+        })
+
+
+class MobileLeadListView(APIView):
+    def get(self, request):
+        user = _user(request)
+        qs = _mobile_leads(user)
+        query = str(request.query_params.get("q") or "").strip()
+        if query:
+            qs = qs.filter(
+                Q(name__icontains=query)
+                | Q(phone__icontains=query)
+                | Q(email__icontains=query)
+            )
+        pipeline_id = str(request.query_params.get("pipeline_id") or "").strip()
+        if pipeline_id:
+            qs = qs.filter(pipeline_id=pipeline_id)
+        stage_id = str(request.query_params.get("stage_id") or "").strip()
+        if stage_id:
+            qs = qs.filter(stage_id=stage_id)
+        rows = list(qs.order_by("-updated_at")[:100])
+        return Response({
+            "count": qs.count(),
+            "results": [_serialize_mobile_lead(lead) for lead in rows],
+        })
+
+
+class MobileLeadDetailView(APIView):
+    def get(self, request, lead_id):
+        user = _user(request)
+        lead = _mobile_leads(user).filter(pk=lead_id).first()
+        if lead is None:
+            return Response({"detail": "Lead not found."}, status=404)
+        pipelines = list(
+            get_mobile_pipelines(user)
+            .filter(organization=user.organization)
+            .prefetch_related("stages")
+        )
+        recent_calls = list(
+            _call_queryset(user)
+            .filter(lead=lead)
+            .order_by("-ended_at", "-created_at")[:15]
+        )
+        data = _serialize_mobile_lead(lead)
+        data["pipelines"] = [
+            {
+                "id": str(pipeline.id),
+                "name": pipeline.name,
+                "stages": [
+                    {"id": str(stage.id), "name": stage.name}
+                    for stage in sorted(
+                        (stage for stage in pipeline.stages.all() if stage.is_active),
+                        key=lambda stage: (stage.display_order, stage.name),
+                    )
+                ],
+            }
+            for pipeline in pipelines
+        ]
+        data["recent_calls"] = [serialize_call(call) for call in recent_calls]
+        return Response({"lead": data})
+
+    def patch(self, request, lead_id):
+        user = _user(request)
+        lead = _mobile_leads(user).filter(pk=lead_id).first()
+        if lead is None:
+            return Response({"detail": "Lead not found."}, status=404)
+
+        pipeline_id = str(request.data.get("pipeline_id") or lead.pipeline_id)
+        stage_id = str(request.data.get("stage_id") or "").strip()
+        if not stage_id:
+            return Response({"detail": "stage_id is required."}, status=400)
+        pipeline = get_mobile_pipelines(user).filter(
+            organization=user.organization,
+            pk=pipeline_id,
+        ).first()
+        if pipeline is None:
+            return Response({"detail": "Pipeline is not available."}, status=400)
+        stage = Stage.objects.filter(
+            pipeline=pipeline,
+            pk=stage_id,
+            is_active=True,
+        ).first()
+        if stage is None:
+            return Response({"detail": "Stage is not available."}, status=400)
+
+        try:
+            if lead.pipeline_id == pipeline.id:
+                move_lead_to_stage(lead=lead, stage=stage, actor=user)
+            else:
+                move_lead_to_pipeline_stage(
+                    lead=lead,
+                    pipeline=pipeline,
+                    stage=stage,
+                    actor=user,
+                )
+        except LeadTransitionError as exc:
+            return Response({"detail": str(exc)}, status=400)
+
+        lead.refresh_from_db()
+        return Response({"ok": True, "lead": _serialize_mobile_lead(lead)})
