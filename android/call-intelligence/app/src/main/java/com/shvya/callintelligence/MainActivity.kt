@@ -78,6 +78,7 @@ class MainActivity : AppCompatActivity() {
     private var pageNumber = 1
     private var renderVersion = 0
     private var leadFormOpen = false
+    private var leadDetailId = ""
     private val apiPath = "api/v1/call-intelligence/"
 
     override fun onResume() {
@@ -163,44 +164,61 @@ class MainActivity : AppCompatActivity() {
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        if (leadFormOpen) {
-            leadFormOpen = false
-            render()
-        } else {
-            super.onBackPressed()
+        when {
+            leadFormOpen -> {
+                leadFormOpen = false
+                render()
+            }
+            leadDetailId.isNotBlank() -> {
+                leadDetailId = ""
+                render()
+            }
+            else -> super.onBackPressed()
         }
     }
 
     private fun render() {
-        if (!auth.hasSession()) showLogin()
-        else if (leadFormOpen) showLeadForm()
-        else showDashboard()
+        when {
+            !auth.hasSession() -> showLogin()
+            leadFormOpen -> showLeadForm()
+            leadDetailId.isNotBlank() -> showLeadDetailPage(leadDetailId)
+            else -> showDashboard()
+        }
     }
 
     private fun showLogin() {
-        val root = page().apply { setPadding(dp(24), dp(36), dp(24), dp(42)) }
-        root.addView(space(12))
+        val root = page().apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), dp(24), dp(24), dp(28))
+        }
         root.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-            layoutParams = LinearLayout.LayoutParams(dp(64), dp(64)).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(62), dp(62)).apply {
                 gravity = Gravity.CENTER_HORIZONTAL
             }
         })
-        root.addView(space(18))
-        root.addView(kicker("SHVYA CALL INTELLIGENCE").apply { gravity = Gravity.CENTER })
-        root.addView(title("Sign in").apply {
+        root.addView(space(16))
+        root.addView(title("Sign in to SHVYA").apply {
             gravity = Gravity.CENTER
-            textSize = 34f
+            textSize = 30f
+            setPadding(0, 0, 0, 0)
         })
-        root.addView(body("Your calls, CRM leads and follow-ups — in one focused mobile workspace.").apply {
+        root.addView(body("Use your SHVYA work account.").apply {
             gravity = Gravity.CENTER
             textSize = 14f
-            setPadding(dp(12), dp(8), dp(12), 0)
+            setPadding(0, dp(7), 0, 0)
         })
-        root.addView(space(28))
+        root.addView(space(24))
 
-        val card = card().apply { setPadding(dp(22), dp(24), dp(22), dp(24)) }
+        val card = card().apply {
+            setPadding(dp(22), dp(22), dp(22), dp(22))
+            val screenWidth = resources.displayMetrics.widthPixels
+            layoutParams = LinearLayout.LayoutParams(
+                minOf(screenWidth - dp(48), dp(420)),
+                LinearLayout.LayoutParams.WRAP_CONTENT,
+            ).apply { gravity = Gravity.CENTER_HORIZONTAL }
+        }
         val (emailShell, email) = loginTextField(
             hintText = "name@company.com",
             inputTypeValue = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS,
@@ -218,7 +236,7 @@ class MainActivity : AppCompatActivity() {
             val emailValue = email.text.toString().trim()
             val passwordValue = password.text.toString()
             if (emailValue.isBlank() || passwordValue.isBlank()) {
-                message.text = "Enter your work email and password."
+                message.text = "Enter your email and password."
                 message.setTextColor(Color.rgb(196, 58, 54))
                 return@setOnClickListener
             }
@@ -251,24 +269,14 @@ class MainActivity : AppCompatActivity() {
         card.addView(fieldLabel("Work email"))
         card.addView(space(8))
         card.addView(emailShell, LinearLayout.LayoutParams(-1, dp(56)))
-        card.addView(space(18))
+        card.addView(space(16))
         card.addView(fieldLabel("Password"))
         card.addView(space(8))
         card.addView(passwordShell, LinearLayout.LayoutParams(-1, dp(56)))
-        card.addView(space(22))
+        card.addView(space(20))
         card.addView(login, LinearLayout.LayoutParams(-1, dp(54)))
         card.addView(message)
         root.addView(card)
-
-        root.addView(space(18))
-        root.addView(LinearLayout(this).apply {
-            gravity = Gravity.CENTER
-            addView(statusDot(Color.rgb(35, 139, 100)))
-            addView(body("Secure · shvya-ai.com").apply {
-                setPadding(dp(7), 0, 0, 0)
-                textSize = 12f
-            })
-        })
         setPage(root)
     }
 
@@ -2266,8 +2274,17 @@ class MainActivity : AppCompatActivity() {
         }
 
     private fun setPage(content: LinearLayout) {
-        val scroll = ScrollView(this)
-        scroll.addView(content)
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            setBackgroundColor(canvas)
+            addView(content)
+        }
+        ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
         setContentView(scroll)
     }
 
