@@ -229,6 +229,11 @@ urlpatterns = [
         name="docs",
     ),
     path(
+        "docs/<slug:category>/<slug:slug>/",
+        DocumentationView.as_view(),
+        name="docs-article",
+    ),
+    path(
         "book-a-call/",
         BookCallView.as_view(),
         name="book_call",
