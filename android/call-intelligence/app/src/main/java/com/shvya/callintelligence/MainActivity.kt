@@ -132,7 +132,9 @@ class MainActivity : AppCompatActivity() {
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
             setText(auth.email)
             isSingleLine = true
-            setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
+            }
         }
         val (passwordShell, password) = passwordField()
         val message = body("").apply { setPadding(0, dp(12), 0, 0) }
@@ -1151,7 +1153,9 @@ class MainActivity : AppCompatActivity() {
             transformationMethod = PasswordTransformationMethod.getInstance()
             isSingleLine = true
             background = null
-            setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
+            }
         }
         val eye = ImageView(this).apply {
             setImageResource(R.drawable.ic_eye_outline)
