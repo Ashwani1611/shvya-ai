@@ -291,6 +291,8 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
             "Your session at 6 PM is confirmed.",
             "Your appointment for Friday has been successfully booked.",
             "Your trial has been booked.",
+            "You're all set for your trial on 09/10/2026, Friday.",
+            "You are now all set for your free trial.",
         ):
             with self.subTest(text=text):
                 result = self.honest(text, request="Please book a trial.", languages=["English"])
@@ -304,6 +306,12 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
             "Your trial has not been booked.",
             "Your visit is not confirmed.",
             "We have a booking platform for trial sessions.",
+            "You're not all set for your trial yet.",
+            "If you're all set for your trial, bring comfortable clothing.",
+            "Are you all set for your trial?",
+            "You're all set for your trial?",
+            "You're all set for general training exercises.",
+            'The customer said "You are all set for your trial".',
         ):
             with self.subTest(text=text):
                 self.assertEqual(self.honest(text, request="Please help with a trial."), text)

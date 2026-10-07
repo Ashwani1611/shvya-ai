@@ -28,6 +28,8 @@ _ACTION_ASSURANCE = re.compile(
     r"(?:has|have|is|are|was|were)\s+(?:been\s+)?(?:now\s+)?(?:sent|shared|attached|scheduled|booked|confirmed|created)\b|"
     r"\byour\s+(?:trial|visit|session|appointment|booking|demo)\b[^.!?\n]{0,240}?"
     r"\b(?:has|have|is|are|was|were)\s+(?:been\s+)?(?:now\s+)?(?:successfully\s+)?(?:scheduled|booked|confirmed|reserved)\b|"
+    r"^\s*(?![^.!?\n]*\?)you(?:\s+are|['’]re)\s+(?:now\s+)?all\s+set\s+for\s+"
+    r"(?:(?:your|the|a|an|upcoming|free|paid)\s+){0,3}(?:trial|visit|session|appointment|booking|demo)\b|"
     r"\b(?:main|hum|ham|team)\s+(?:ab\s+)?(?:(?:aapko|apko)\s+)?(?:(?:brochure|file|document|guide)\s+)?(?:bhejunga|bhejenge|bhej\s+(?:raha|rahe)|"
     r"(?:call|reminder|file|brochure)\s+.{0,40}?kar\s+(?:diya|di|dunga|denge))\b|"
     r"(?:मैं|हम|टीम)\s*(?:अभी\s*)?(?:भेज(?:ूँगा|ेंगी|ेंगे)|.{0,40}?कर\s*(?:दिया|दूँगा|देंगे))", re.IGNORECASE,
