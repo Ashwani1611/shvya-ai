@@ -1014,11 +1014,17 @@ class MainActivity : AppCompatActivity() {
                 if (lead.optString("source").isNotBlank()) {
                     leadBox.addView(body("Source · " + lead.optString("source").replace('_', ' ')))
                 }
-                leadBox.setOnClickListener { showLeadDetail(lead.optString("id")) }
+                leadBox.setOnClickListener {
+                    dialog.dismiss()
+                    showLeadDetail(lead.optString("id"))
+                }
                 content.addView(leadBox)
                 content.addView(space(8))
                 content.addView(secondaryButton("Move stage").apply {
-                    setOnClickListener { showLeadDetail(lead.optString("id")) }
+                    setOnClickListener {
+                        dialog.dismiss()
+                        showLeadDetail(lead.optString("id"))
+                    }
                 })
             } else {
                 content.addView(body("This number is not linked to a SHVYA CRM lead yet."))
@@ -1124,76 +1130,180 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLeadDetail(leadId: String) {
         if (leadId.isBlank()) return
-        val content = dialogContent()
-        val scroll = ScrollView(this).apply { addView(content) }
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Lead")
-            .setView(scroll)
-            .setNegativeButton("Close", null)
-            .create()
+        leadDetailId = leadId
+        render()
+    }
+
+    private fun showLeadDetailPage(leadId: String) {
+        val version = ++renderVersion
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(canvas)
+        }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(58)
+            setPadding(dp(14), dp(6), dp(14), dp(6))
+            setBackgroundColor(Color.WHITE)
+        }
+        header.addView(quietButton("‹  Back").apply {
+            setOnClickListener {
+                leadDetailId = ""
+                render()
+            }
+        }, LinearLayout.LayoutParams(dp(82), dp(44)))
+        header.addView(sectionTitle("Lead details").apply {
+            gravity = Gravity.CENTER
+            textSize = 17f
+            setPadding(0, 0, 0, 0)
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(View(this), LinearLayout.LayoutParams(dp(82), dp(1)))
+        shell.addView(header)
+        shell.addView(divider())
+
+        val content = page().apply {
+            setPadding(dp(20), dp(22), dp(20), dp(34))
+        }
         content.addView(body("Loading lead…"))
-        dialog.show()
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            addView(content)
+        }
+        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
+            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            insets
+        }
+        setContentView(shell)
+
         lifecycleScope.launch {
             val response = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedGet(apiPath + "leads/" + leadId + "/") }.getOrNull()
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedGet(apiPath + "leads/" + leadId + "/")
+                }.getOrNull()
             }
+            if (version != renderVersion || leadDetailId != leadId || isFinishing) return@launch
             content.removeAllViews()
+
             if (response?.successful != true) {
-                content.addView(body("Could not load this CRM lead."))
+                content.addView(emptyCard(
+                    "Could not load lead",
+                    "Check your connection and try again."
+                ))
+                content.addView(space(12))
+                content.addView(secondaryButton("Retry").apply {
+                    setOnClickListener { showLeadDetailPage(leadId) }
+                })
                 return@launch
             }
-            val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return@launch
-            val lead = data.getJSONObject("lead")
+
+            val payload = runCatching { JSONObject(response.body) }.getOrNull()
+            val lead = payload?.optJSONObject("lead")
+            if (lead == null) {
+                content.addView(emptyCard("Lead unavailable", "SHVYA returned an invalid lead response."))
+                return@launch
+            }
+
             val isFavorite = favoriteLeadIds().contains(leadId)
+            val phone = lead.optString("phone")
+            val email = lead.optString("email")
+            val pipeline = lead.optString("pipeline")
+            val stage = lead.optString("stage")
 
             content.addView(kicker("CRM LEAD"))
-            content.addView(title(lead.optString("name")).apply { textSize = 28f })
-            content.addView(body(lead.optString("phone")))
-            if (lead.optString("email").isNotBlank()) content.addView(body(lead.optString("email")))
+            content.addView(title(lead.optString("name").ifBlank { "Unnamed lead" }).apply {
+                textSize = 30f
+                setPadding(0, dp(6), 0, 0)
+            })
+            content.addView(body(
+                listOf(phone, email).filter { it.isNotBlank() }.joinToString("  ·  ")
+            ).apply { textSize = 14f })
+            content.addView(space(18))
+
+            val statusCard = card()
+            statusCard.addView(body("PIPELINE").apply {
+                textSize = 11f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(muted)
+                setPadding(0, 0, 0, dp(5))
+            })
+            statusCard.addView(sectionTitle(pipeline.ifBlank { "No pipeline" }).apply {
+                textSize = 18f
+                setPadding(0, 0, 0, 0)
+            })
+            statusCard.addView(body(stage.ifBlank { "No stage" }).apply {
+                setTextColor(blue)
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, dp(4), 0, 0)
+            })
+            val source = lead.optString("source").replace('_', ' ').trim()
+            if (source.isNotBlank()) {
+                statusCard.addView(space(10))
+                statusCard.addView(body("Source · " + source.replaceFirstChar { it.uppercase() }).apply {
+                    setPadding(0, 0, 0, 0)
+                })
+            }
+            content.addView(statusCard)
             content.addView(space(12))
-            val stageCard = card()
-            stageCard.addView(sectionTitle(lead.optString("pipeline") + "  ›  " + lead.optString("stage")))
-            stageCard.addView(body("Source · " + lead.optString("source").replace('_', ' ')))
-            content.addView(stageCard)
-            content.addView(space(10))
 
             val contactActions = LinearLayout(this@MainActivity)
-            contactActions.addView(secondaryButton("Call").apply {
-                setOnClickListener { dial(lead.optString("phone")) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
-            contactActions.addView(primaryButton("WhatsApp").apply {
-                setOnClickListener { openWhatsApp(lead.optString("phone")) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            contactActions.addView(primaryButton("Call").apply {
+                isEnabled = phone.isNotBlank()
+                setOnClickListener { dial(phone) }
+            }, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(8) })
+            contactActions.addView(secondaryButton("WhatsApp").apply {
+                isEnabled = phone.isNotBlank()
+                setOnClickListener { openWhatsApp(phone) }
+            }, LinearLayout.LayoutParams(0, dp(50), 1f))
             content.addView(contactActions)
             content.addView(space(8))
-            val leadActions = LinearLayout(this@MainActivity)
-            leadActions.addView(secondaryButton(if (isFavorite) "★ Priority" else "☆ Priority").apply {
-                setOnClickListener {
-                    val nowFavorite = toggleFavoriteLead(leadId)
-                    text = if (nowFavorite) "★ Priority" else "☆ Priority"
-                    toast(if (nowFavorite) "Added to priority leads" else "Removed from priority leads")
-                }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
-            leadActions.addView(secondaryButton("Move stage").apply {
-                setOnClickListener { chooseLeadStage(lead, dialog) }
-            }, LinearLayout.LayoutParams(0, dp(46), 1f))
-            content.addView(leadActions)
 
+            val manageActions = LinearLayout(this@MainActivity)
+            manageActions.addView(secondaryButton("Move stage").apply {
+                setOnClickListener {
+                    chooseLeadStage(lead) {
+                        showLeadDetailPage(leadId)
+                    }
+                }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            manageActions.addView(quietButton(if (isFavorite) "★ Priority" else "☆ Priority").apply {
+                setOnClickListener {
+                    val active = toggleFavoriteLead(leadId)
+                    text = if (active) "★ Priority" else "☆ Priority"
+                    toast(if (active) "Added to priority leads" else "Removed from priority leads")
+                }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            content.addView(manageActions)
+
+            content.addView(space(26))
+            content.addView(sectionTitle("Follow-up").apply { textSize = 19f })
             val reminder = lead.optJSONObject("reminder")
-            content.addView(space(22))
-            content.addView(sectionTitle("Follow-up").apply { textSize = 20f })
+            val followCard = card()
             if (reminder != null) {
-                content.addView(body(
-                    (if (reminder.optBoolean("overdue")) "Overdue · " else "Scheduled · ") +
-                        formatDate(reminder.optString("due_at"))
+                val overdue = reminder.optBoolean("overdue")
+                followCard.addView(sectionTitle(
+                    if (overdue) "Follow-up overdue" else "Follow-up scheduled"
                 ).apply {
-                    setTextColor(if (reminder.optBoolean("overdue")) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
+                    setTextColor(if (overdue) Color.rgb(196, 58, 54) else Color.rgb(35, 139, 100))
+                    setPadding(0, 0, 0, 0)
                 })
-                content.addView(space(8))
+                followCard.addView(body(formatDate(reminder.optString("due_at"))))
+                if (reminder.optString("title").isNotBlank()) {
+                    followCard.addView(body(reminder.optString("title")).apply { setTextColor(ink) })
+                }
+                followCard.addView(space(14))
+            } else {
+                followCard.addView(body("No follow-up is scheduled.").apply {
+                    setPadding(0, 0, 0, dp(12))
+                })
             }
             val followRow = LinearLayout(this@MainActivity)
             followRow.addView(quietButton("1 hour").apply {
-                setOnClickListener { scheduleLeadFollowUp(leadId, System.currentTimeMillis() + 60L * 60L * 1000L) }
+                setOnClickListener {
+                    scheduleLeadFollowUp(leadId, System.currentTimeMillis() + 60L * 60L * 1000L)
+                }
             }, LinearLayout.LayoutParams(0, dp(42), 1f))
             followRow.addView(quietButton("Tomorrow").apply {
                 setOnClickListener { scheduleLeadFollowUp(leadId, tomorrowAtTen()) }
@@ -1201,46 +1311,71 @@ class MainActivity : AppCompatActivity() {
             followRow.addView(quietButton("3 days").apply {
                 setOnClickListener { scheduleLeadFollowUp(leadId, daysFromNowAtTen(3)) }
             }, LinearLayout.LayoutParams(0, dp(42), 1f))
-            content.addView(followRow)
-            content.addView(quietButton("Custom date & time").apply {
-                setOnClickListener { pickFollowUpDate { value -> scheduleLeadFollowUp(leadId, value) } }
+            followCard.addView(followRow)
+            followCard.addView(quietButton("Choose date & time").apply {
+                setOnClickListener {
+                    pickFollowUpDate { value -> scheduleLeadFollowUp(leadId, value) }
+                }
             })
-
-            if (lead.optString("notes").isNotBlank()) {
-                content.addView(space(22))
-                content.addView(sectionTitle("Lead notes").apply { textSize = 20f })
-                content.addView(card().apply {
-                    addView(body(lead.optString("notes")).apply { setTextColor(ink); setPadding(0, 0, 0, 0) })
-                })
-            }
+            content.addView(followCard)
 
             val attributes = lead.optJSONObject("attributes")
-            if (attributes != null && attributes.length() > 0) {
-                content.addView(space(22))
-                content.addView(sectionTitle("Lead details").apply { textSize = 20f })
+            if (attributes != null) {
+                val visible = mutableListOf<Pair<String, String>>()
                 val keys = attributes.keys()
                 while (keys.hasNext()) {
                     val key = keys.next()
-                    val value = attributes.optString(key)
+                    val value = attributes.optString(key).trim()
                     if (value.isNotBlank()) {
-                        content.addView(body(key.replace('_', ' ').replaceFirstChar { it.uppercase() } + " · " + value))
+                        visible.add(
+                            key.replace('_', ' ').replaceFirstChar { it.uppercase() } to value
+                        )
                     }
+                }
+                if (visible.isNotEmpty()) {
+                    content.addView(space(26))
+                    content.addView(sectionTitle("Lead information").apply { textSize = 19f })
+                    val detailsCard = card()
+                    visible.forEachIndexed { index, (label, value) ->
+                        detailsCard.addView(detailRow(label, value))
+                        if (index != visible.lastIndex) detailsCard.addView(divider())
+                    }
+                    content.addView(detailsCard)
                 }
             }
 
+            val notes = lead.optString("notes").trim()
+            if (notes.isNotBlank()) {
+                content.addView(space(26))
+                content.addView(sectionTitle("Notes").apply { textSize = 19f })
+                content.addView(card().apply {
+                    addView(body(notes).apply {
+                        setTextColor(ink)
+                        setPadding(0, 0, 0, 0)
+                    })
+                })
+            }
+
             val calls = lead.optJSONArray("recent_calls") ?: org.json.JSONArray()
-            if (calls.length() > 0) {
-                content.addView(space(22))
-                content.addView(sectionTitle("Call history").apply { textSize = 20f })
+            content.addView(space(26))
+            content.addView(sectionTitle("Call history").apply { textSize = 19f })
+            if (calls.length() == 0) {
+                content.addView(emptyCard("No calls yet", "Calls linked to this lead will appear here."))
+            } else {
+                content.addView(space(10))
                 for (i in 0 until calls.length()) {
                     content.addView(compactCallCard(calls.getJSONObject(i)))
-                    content.addView(space(8))
+                    if (i < calls.length() - 1) content.addView(space(8))
                 }
             }
-            content.addView(space(18))
-            content.addView(quietButton("Open CRM workspace").apply {
+
+            content.addView(space(24))
+            content.addView(quietButton("Open in web CRM").apply {
                 setOnClickListener {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/")))
+                    startActivity(Intent(
+                        Intent.ACTION_VIEW,
+                        Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/")
+                    ))
                 }
             })
         }
@@ -1343,7 +1478,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun chooseLeadStage(lead: JSONObject, parent: AlertDialog) {
+    private fun chooseLeadStage(lead: JSONObject, onMoved: () -> Unit = { render() }) {
         val pipelines = lead.optJSONArray("pipelines") ?: return
         val labels = mutableListOf<String>()
         val pipelineIds = mutableListOf<String>()
@@ -1375,12 +1510,11 @@ class MainActivity : AppCompatActivity() {
                     }
                     if (response?.successful == true) {
                         toast("Lead moved")
-                        parent.dismiss()
-                        render()
+                        onMoved()
                     } else if (shouldQueueOffline(response)) {
                         queueOfflineAction(path, "PATCH", payload, "Move lead")
                         toast("Stage change saved offline · will sync automatically")
-                        parent.dismiss()
+                        onMoved()
                     } else toast(apiError(response?.body, "Could not move this lead."))
                 }
             }
@@ -2347,6 +2481,22 @@ class MainActivity : AppCompatActivity() {
         setTypeface(typeface, Typeface.BOLD)
         setTextColor(ink)
     }
+
+    private fun detailRow(label: String, value: String): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(0, dp(12), 0, dp(12))
+            addView(body(label).apply {
+                textSize = 12f
+                setTypeface(typeface, Typeface.BOLD)
+                setPadding(0, 0, 0, 0)
+            })
+            addView(body(value).apply {
+                textSize = 15f
+                setTextColor(ink)
+                setPadding(0, dp(4), 0, 0)
+            })
+        }
 
     private fun statusLine(label: String, ok: Boolean): TextView =
         TextView(this).apply {
