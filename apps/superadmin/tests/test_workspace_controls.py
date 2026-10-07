@@ -7,6 +7,8 @@ from apps.accounts.session_utils import set_authenticated_user
 from apps.ai_engagement.models import AICreditWallet
 from apps.channels.models import WhatsAppAccount
 from apps.crm.models.pipeline import Pipeline
+from apps.integrations.indiamart_models import IndiaMartConnection
+from apps.integrations.justdial_models import JustDialIntegration
 from apps.organizations.models import Organization, OrganizationTag
 from apps.superadmin.templatetags.workspace_tags import organization_workspace_state
 
@@ -106,6 +108,62 @@ class SuperadminWorkspaceControlsTests(TestCase):
         self.assertIn(str(self.user.id), response["Location"])
         self.user.refresh_from_db()
         self.assertTrue(self.user.check_password("old-password-123"))
+
+    def test_organization_detail_always_shows_marketplace_setup_cards(self):
+        response = self.client.get(
+            reverse(
+                "superadmin-organization-detail",
+                kwargs={"organization_id": self.organization.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Lead source integrations")
+        self.assertContains(response, "Marketplace connections")
+        self.assertContains(response, "IndiaMART")
+        self.assertContains(response, "JustDial")
+        self.assertContains(
+            response,
+            reverse(
+                "superadmin-indiamart",
+                kwargs={"organization_id": self.organization.id},
+            ),
+        )
+        self.assertContains(
+            response,
+            reverse(
+                "superadmin-organization-justdial",
+                kwargs={"organization_id": self.organization.id},
+            ),
+        )
+        self.assertGreaterEqual(
+            response.content.decode("utf-8").count("Not configured"),
+            2,
+        )
+
+    def test_marketplace_cards_surface_setup_request_state(self):
+        from django.utils import timezone
+
+        IndiaMartConnection.objects.create(
+            organization=self.organization,
+            requested_at=timezone.now(),
+        )
+        JustDialIntegration.objects.create(
+            organization=self.organization,
+        )
+
+        response = self.client.get(
+            reverse(
+                "superadmin-organization-detail",
+                kwargs={"organization_id": self.organization.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreaterEqual(
+            response.content.decode("utf-8").count("Setup requested"),
+            2,
+        )
 
     def test_organization_detail_exposes_real_ai_coin_wallet_metrics(self):
         AICreditWallet.objects.create(
