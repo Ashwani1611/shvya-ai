@@ -83,3 +83,43 @@ class LongPlaybookRuntimeTests(SimpleTestCase):
             "lead": {"id": "lead"},
         }, organization_id="org", lead_id="lead")
         self.assertEqual(plan.organization_instructions, extra)
+
+    def test_medium_system_playbook_does_not_expand_each_composition_plan(self):
+        from copy import deepcopy
+
+        raw = "## Rules\n" + "Use approved company information.\n" * 750 + "FINAL_AUTHORED_RULE"
+        self.assertLess(len(raw), 50000)
+        payload = {
+            "organization": {"id": "org", "ai_playbook": raw,
+                "about": "Approved company facts. FINAL_ABOUT_FACT",
+                "bot_languages": "English, Hinglish"},
+            "organization_operating_spec": {"playbook_in_system_instructions": True},
+            "lead": {"id": "lead", "qualification": {
+                "engagement_mode": "qualification",
+                "requirement_states": {"goal": {"status": "unknown"}}}},
+            "next_requirement": {"id": "goal", "question": "What is your goal?"},
+            "grounding": {"sensitive": False},
+        }
+        before = deepcopy(payload)
+        for final in (False, True):
+            with self.subTest(final_composition=final):
+                plan = build_response_plan(payload=payload,
+                    organization_id="org", lead_id="lead", final_composition=final)
+                self.assertLess(len(plan.organization_instructions), 200)
+                self.assertIn("ORGANIZATION OPERATING SPEC", plan.organization_instructions)
+                self.assertEqual(plan.next_question, payload["next_requirement"])
+                self.assertEqual(plan.allowed_languages, ("English", "Hinglish"))
+                self.assertIn("FINAL_ABOUT_FACT", plan.allowed_facts[-1]["content"])
+        self.assertEqual(payload, before)
+        self.assertTrue(payload["organization"]["ai_playbook"].endswith("FINAL_AUTHORED_RULE"))
+
+    def test_medium_standalone_playbook_is_not_replaced_by_a_missing_system_spec(self):
+        raw = "## Rules\n" + "Use approved company information.\n" * 750 + "FINAL_AUTHORED_RULE"
+        for flag in (None, False):
+            with self.subTest(system_spec_flag=flag):
+                plan = build_response_plan(payload={
+                    "organization": {"id": "org", "ai_playbook": raw},
+                    "organization_operating_spec": {"playbook_in_system_instructions": flag},
+                    "lead": {"id": "lead"},
+                }, organization_id="org", lead_id="lead")
+                self.assertEqual(plan.organization_instructions, raw)

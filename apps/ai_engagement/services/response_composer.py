@@ -183,13 +183,14 @@ def build_response_plan(*, payload, organization_id, lead_id, settings=None,
     languages = communication.get("languages") or _languages(str(org.get("bot_languages") or ""))
     instructions = str(communication.get("custom_instructions") or org.get("ai_playbook") or "")
     if (
-        len(instructions) > 50000
-        and not str(communication.get("custom_instructions") or "").strip()
+        not str(communication.get("custom_instructions") or "").strip()
         and (payload.get("organization_operating_spec") or {}).get("playbook_in_system_instructions") is True
     ):
         # This flag is produced by EngagementService._build_input only after
         # the complete, bounded raw Playbook is accepted for system instructions.
-        # Avoid repeating a second large copy in the language-only response plan.
+        # Even medium Playbooks can overflow the combined provider budget when
+        # copied into draft/final plans and schema-repair payloads. The accepted
+        # system spec is authoritative at every size; retain distinct guidance.
         prompt_instructions = "Follow the complete authored AI Playbook in ORGANIZATION OPERATING SPEC in system instructions."
     else:
         prompt_instructions = playbook_prompt_text(instructions)

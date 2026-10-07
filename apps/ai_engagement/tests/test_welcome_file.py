@@ -98,3 +98,75 @@ def test_hinglish_attachment_refusals_override_welcome_selection():
         "Mat bolo ki file bhejna possible nahi hai.",
     ):
         assert not declined_file_request(body, file), body
+
+def test_attachment_refusal_survives_content_questions_and_assistant_offers():
+    from apps.ai_engagement.services.file_sharing import declined_in_conversation
+
+    file = candidate("send product brochure with welcome message")
+    def inbound(text):
+        return {"direction": "inbound", "body": text}
+    history = [inbound("Do not send files."),
+               {"direction": "outbound", "body": "Please send the product brochure."},
+               inbound("What does the brochure say?"),
+               inbound("Is that brochure offer active today?")]
+    assert declined_in_conversation(history, file) is True
+    assert declined_in_conversation(history + [inbound("Please send the price list.")], file) is True
+    for request in ("Please send the product brochure.", "Could you share the brochure?",
+                    "mujhe brochure bhejo please", "Send me the file now."):
+        assert declined_in_conversation(history + [inbound(request)], file) is False
+    assert declined_in_conversation(
+        [inbound("Please send the brochure."), inbound("Koi file mat bhejna."),
+         inbound("Gym kitne baje khulta hai?")], file,
+    ) is True
+    assert declined_in_conversation(
+        [inbound("Do not send product brochure."), inbound("Send me the brochure please.")], file,
+    ) is False
+
+
+def test_file_candidates_filter_prior_refusal_before_selection():
+    from types import SimpleNamespace
+    from unittest.mock import patch
+    from apps.ai_engagement.services.file_sharing import FileSharingService
+
+    from dataclasses import replace
+    from apps.ai_engagement.tests.test_organization_information_alignment import build_context
+
+    base_context = build_context()
+    context = replace(
+        base_context,
+        lead={**base_context.lead, "shared_document_ids": []},
+        knowledge=[],
+        conversation={"message_count": 2, "messages": [
+            {"direction": "inbound", "body": "Do not send product brochure."},
+            {"direction": "inbound", "body": "What does that brochure offer mean?"},
+        ]},
+    )
+    documents = [
+        SimpleNamespace(id=18, name="product brochure", version=1, source_url="",
+                        share_instruction="send product brochure with welcome message"),
+        SimpleNamespace(id=19, name="price list", version=1, source_url="",
+                        share_instruction="send price list only when requested"),
+    ]
+    service = FileSharingService()
+    with patch.object(service, "get_eligible_documents", return_value=documents):
+        files = service.build_file_candidates(organization=SimpleNamespace(), context=context)
+    assert [item["document_id"] for item in files] == [19]
+
+
+def test_omitted_file_review_does_not_call_provider_after_prior_refusal():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    from apps.ai_engagement.services.file_sharing import FileSharingService
+
+    context = SimpleNamespace(as_dict=lambda: {"conversation": {"messages": [
+        {"direction": "inbound", "body": "Do not send files."},
+        {"direction": "inbound", "body": "What does the brochure say?"},
+    ]}})
+    generate = Mock()
+    selected = FileSharingService().review_requested_file(
+        organization=SimpleNamespace(id="org"), lead=SimpleNamespace(id="lead"),
+        context=context, candidates=[candidate("send product brochure with welcome message")],
+        provider=Mock(), generate=generate, welcome_due=True,
+    )
+    assert selected is None
+    generate.assert_not_called()
