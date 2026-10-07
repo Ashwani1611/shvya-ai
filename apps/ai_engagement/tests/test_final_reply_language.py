@@ -121,3 +121,47 @@ class FinalReplyLanguageTests(SimpleTestCase):
             with self.subTest(evidence=evidence):
                 self.assertTrue(_non_answer_evidence(evidence, source))
         self.assertFalse(_non_answer_evidence("20 leads per day", "I receive 20 leads per day, what is the DIY price?"))
+
+    def test_english_brochure_translation_is_retried_without_changing_effects(self):
+        decision = EngagementDecision(should_engage=True,
+            message="The brochure is available in this preview.", file_document_id=18,
+            crm_actions=[{"type": "test_preview"}], qualification_updates=[],
+            reason="ANSWER_ORG_QUESTION", model="test")
+        service = SimpleNamespace(provider=Mock(), _generate_provider_text=Mock(side_effect=[
+            SimpleNamespace(text='{"message":"Here is the product brochure in Hinglish."}'),
+            SimpleNamespace(text='{"message":"Brochure is preview mein available hai."}'),
+            SimpleNamespace(text='{"faithful":true}'),
+        ]))
+        context = SimpleNamespace(organization={"bot_languages": "English, Hinglish"},
+            conversation={"messages": [{"direction": "inbound", "body": "Hinglish mein product brochure bhejo, please."}]})
+        result = finalize_reply_language(service=service, decision=decision, context=context,
+            organization=SimpleNamespace(id=1), lead=SimpleNamespace(id=2))
+        self.assertEqual(result.message, "Brochure is preview mein available hai.")
+        self.assertEqual(result.file_document_id, 18)
+        self.assertEqual(result.crm_actions, decision.crm_actions)
+        self.assertEqual(service._generate_provider_text.call_count, 3)
+        self.assertEqual(service._generate_provider_text.call_args_list[1].kwargs["metadata"]["phase"], "final_reply_language_retry")
+
+    def test_two_english_translations_cannot_pass_as_hinglish(self):
+        decision = EngagementDecision(should_engage=True,
+            message="The brochure is available in this preview.", file_document_id=18,
+            crm_actions=[], qualification_updates=[], reason="ANSWER_ORG_QUESTION", model="test")
+        service = SimpleNamespace(provider=Mock(), _generate_provider_text=Mock(side_effect=[
+            SimpleNamespace(text='{"message":"Here is the product brochure in Hinglish."}'),
+            SimpleNamespace(text='{"message":"Please see the brochure below."}'),
+        ]))
+        context = SimpleNamespace(organization={"bot_languages": "English, Hinglish"},
+            conversation={"messages": [{"direction": "inbound", "body": "Hinglish mein brochure bhejo."}]})
+        with self.assertRaises(EngagementError):
+            finalize_reply_language(service=service, decision=decision, context=context,
+                organization=SimpleNamespace(id=1), lead=SimpleNamespace(id=2))
+        self.assertEqual(service._generate_provider_text.call_count, 2)
+
+    def test_wrong_language_guard_preserves_short_labels_and_romanized_hindi(self):
+        from apps.ai_engagement.services.final_reply_language import _clearly_wrong_language
+        for language in ("hinglish", "de", "pa", "mr", "kn", "hi"):
+            self.assertTrue(_clearly_wrong_language("Here is the requested product brochure.", language))
+            self.assertFalse(_clearly_wrong_language("SHVYA AI", language))
+        self.assertFalse(_clearly_wrong_language("Bilkul, product brochure yahaan available hai.", "hinglish"))
+        self.assertFalse(_clearly_wrong_language("Der DIY-Plan kostet ₹2,999 pro Monat.", "de"))
+

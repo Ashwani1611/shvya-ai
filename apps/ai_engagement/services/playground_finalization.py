@@ -37,6 +37,10 @@ _ACTION_ASSURANCE = re.compile(
 _PREVIEW_WORD = re.compile(r"\b(?:preview|simulated|simulation|sandbox)\b|(?:प्रीव्यू|सिम्युलेट)", re.IGNORECASE)
 _FILE_OBJECT = re.compile(r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b|(?:ब्रोशर|ब्रोशुर|फ़ाइल|फाइल|दस्तावेज़|दस्तावेज)", re.IGNORECASE)
 _CALL_OBJECT = re.compile(r"\b(?:call|callback|handoff|human|appointment|booking|demo)\b|(?:कॉल|हैंडऑफ़)", re.IGNORECASE)
+_FILE_PLACEHOLDER = re.compile(
+    r"\[\s*(?:attach|send|share)\s+(?:(?:the|a|your|our|product)\s+){0,3}"
+    r"(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\s*\]", re.IGNORECASE,
+)
 
 
 def enforce_preview_action_honesty(*, decision, events, files, requested_text="", allowed_languages=()):
@@ -47,9 +51,10 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
     """
     if not decision.should_engage:
         return decision
-    message = str(decision.message or "")
+    original_message = str(decision.message or "")
+    message = _FILE_PLACEHOLDER.sub("", original_message)
     sentences = re.split(r"(?<=[.!?।])\s+(?!\d)|\n+", message)
-    retained, removed = [], False
+    retained, removed = [], message != original_message
     for sentence in sentences:
         # Keep a supported price/business clause when an unsupported promise
         # is appended to it. Currency/grouping commas never match this split.
@@ -231,3 +236,4 @@ def preserve_preview_state(visitor) -> Iterator[None]:
     finally:
         vars(visitor).clear()
         vars(visitor).update(saved)
+
