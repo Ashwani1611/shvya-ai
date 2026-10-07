@@ -1465,16 +1465,25 @@ class MainActivity : AppCompatActivity() {
             button.setOnClickListener {
                 button.isEnabled = false
                 lifecycleScope.launch {
+                    val path = apiPath + "calls/" + call.getString("id") + "/notes/"
+                    val payload = JSONObject()
+                        .put("notes", notes.text.toString().trim())
+                        .put("disposition", call.optString("disposition"))
                     val result = withContext(Dispatchers.IO) {
-                        runCatching {
-                            ApiClient(this@MainActivity).authorizedPatch(
-                                apiPath + "calls/" + call.getString("id") + "/notes/",
-                                JSONObject().put("notes", notes.text.toString().trim()),
-                            )
-                        }.getOrNull()
+                        runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
                     }
-                    if (result?.successful == true) { dialog.dismiss(); toast("Call notes saved to CRM"); render() }
-                    else { button.isEnabled = true; message.text = "Could not save notes. Please retry." }
+                    if (result?.successful == true) {
+                        dialog.dismiss()
+                        toast("Call notes saved to CRM")
+                        render()
+                    } else if (shouldQueueOffline(result)) {
+                        queueOfflineAction(path, "PATCH", payload, "Call notes")
+                        dialog.dismiss()
+                        toast("Note saved offline · will sync automatically")
+                    } else {
+                        button.isEnabled = true
+                        message.text = apiError(result?.body, "Could not save notes. Please retry.")
+                    }
                 }
             }
         }
