@@ -325,8 +325,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showToday(root: LinearLayout, version: Int) {
         root.addView(kicker("TODAY"))
-        root.addView(title("Your day").apply { textSize = 36f })
-        root.addView(body("Calls, follow-ups and leads that need your attention."))
+        root.addView(title("Today").apply { textSize = 34f })
+        root.addView(body("Your calls and follow-ups, focused on what needs attention."))
         root.addView(space(20))
         if (pendingSyncCount > 0) {
             root.addView(syncHealthCard())
@@ -338,21 +338,26 @@ class MainActivity : AppCompatActivity() {
         loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "today/?mine=1") }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
-            summary.addView(sectionTitle("Today at a glance"))
-            summary.addView(body("A focused view of the work that matters now."))
+            summary.addView(sectionTitle(
+                if (stats.optInt("overdue") > 0 || stats.optInt("missed_needing_action") > 0) {
+                    "Needs your attention"
+                } else {
+                    "You're on track"
+                }
+            ))
+            summary.addView(body(
+                if (stats.optInt("overdue") > 0 || stats.optInt("missed_needing_action") > 0) {
+                    "Clear the important items first, then continue with today's calls."
+                } else {
+                    "No urgent call or follow-up issues are waiting right now."
+                }
+            ))
             summary.addView(space(18))
             summary.addView(metricRow(listOf(
                 "Calls" to stats.optInt("total"),
-                "Answered" to stats.optInt("answered"),
-                "Missed" to stats.optInt("missed"),
-                "New leads" to stats.optInt("new_leads"),
-            )))
-            summary.addView(space(16))
-            summary.addView(metricRow(listOf(
+                "Missed" to stats.optInt("missed_needing_action"),
                 "Due" to stats.optInt("followups_due"),
                 "Overdue" to stats.optInt("overdue"),
-                "Needs action" to stats.optInt("missed_needing_action"),
-                "Outgoing" to stats.optInt("outgoing"),
             )))
             content.addView(summary)
             content.addView(space(16))
@@ -411,7 +416,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLeads(root: LinearLayout, version: Int) {
         root.addView(kicker("CRM"))
-        root.addView(title("Leads").apply { textSize = 36f })
+        root.addView(title("Leads").apply { textSize = 34f })
         root.addView(body("Call, message, follow up and move leads without leaving your phone."))
         root.addView(space(22))
 
@@ -667,8 +672,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showCalls(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR WORKSPACE"))
-        root.addView(title("Calls").apply { textSize = 36f })
-        root.addView(body("Every conversation, thoughtfully organized."))
+        root.addView(title("Calls").apply { textSize = 34f })
+        root.addView(body("Find a call, take the next action and keep CRM updated."))
         root.addView(space(26))
 
         val search = field("Search leads or numbers").apply {
@@ -804,8 +809,8 @@ class MainActivity : AppCompatActivity() {
 
     private fun showReminders(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR FOLLOW-UPS"))
-        root.addView(title("Reminders").apply { textSize = 36f })
-        root.addView(body("Every follow-up in your CRM pipelines, in one place."))
+        root.addView(title("Follow-ups").apply { textSize = 34f })
+        root.addView(body("Overdue, due today and upcoming work — clearly separated."))
         root.addView(space(16))
         val segments = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         listOf(
@@ -1636,18 +1641,56 @@ class MainActivity : AppCompatActivity() {
                         else { isEnabled = true; toast("Could not save settings. Please retry.") }
                     }
                 } })
-            } else content.addView(body("Could not load settings. Close and retry when connected."))
-            content.addView(space(18))
-            content.addView(sectionTitle("Phone & account"))
-            content.addView(secondaryButton("Phone permissions").apply { setOnClickListener { permissionLauncher.launch(requiredPermissions()) } })
-            content.addView(secondaryButton("Background access").apply { setOnClickListener { requestBatteryOptimizationExemption() } })
-            content.addView(secondaryButton("Open dashboard").apply { setOnClickListener {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/?section=analytics")))
-            } })
-            content.addView(body("Version " + BuildConfig.VERSION_NAME))
-            content.addView(secondaryButton("Sign out").apply { setOnClickListener {
+            } else content.addView(body("Could not load organization settings. You can still manage this device below."))
+
+            content.addView(space(24))
+            content.addView(sectionTitle("Device & sync"))
+            val deviceCard = card()
+            deviceCard.addView(statusLine("Call access", essentialPermissionsGranted()))
+            deviceCard.addView(statusLine(
+                if (pendingSyncCount == 0) "All activity synced" else pendingSyncCount.toString() + " items waiting to sync",
+                pendingSyncCount == 0,
+            ))
+            deviceCard.addView(space(10))
+            deviceCard.addView(secondaryButton("Sync now").apply {
+                setOnClickListener {
+                    TrackingScheduler.enqueueReconcile(this@MainActivity)
+                    TrackingScheduler.enqueueSync(this@MainActivity)
+                    toast("Sync requested")
+                    refreshLocalSyncHealth()
+                }
+            })
+            content.addView(deviceCard)
+            content.addView(space(10))
+            val deviceActions = LinearLayout(this@MainActivity)
+            deviceActions.addView(quietButton("Permissions").apply {
+                setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
+            }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+            deviceActions.addView(quietButton("Background access").apply {
+                setOnClickListener { requestBatteryOptimizationExemption() }
+            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            content.addView(deviceActions)
+
+            content.addView(space(24))
+            content.addView(sectionTitle("Account"))
+            content.addView(body(auth.email.ifBlank { "Signed in to SHVYA" }).apply {
+                setTextColor(ink)
+                setPadding(0, dp(6), 0, dp(10))
+            })
+            content.addView(secondaryButton("Open web dashboard").apply {
+                setOnClickListener {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(
+                        BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/dashboard/call-intelligence/?section=analytics"
+                    )))
+                }
+            })
+            content.addView(body("App version " + BuildConfig.VERSION_NAME).apply {
+                textSize = 12f
+                setPadding(0, dp(10), 0, dp(6))
+            })
+            content.addView(quietButton("Sign out").apply { setOnClickListener {
                 AlertDialog.Builder(this@MainActivity).setTitle("Sign out?")
-                    .setMessage("Call tracking will stop. Sync any pending calls first.")
+                    .setMessage("Call tracking will stop on this device until you sign in again.")
                     .setNegativeButton("Cancel", null).setPositiveButton("Sign out") { _, _ ->
                         stopService(Intent(this@MainActivity, CallTrackingService::class.java))
                         WorkManager.getInstance(this@MainActivity).cancelAllWork()
@@ -2038,6 +2081,11 @@ class MainActivity : AppCompatActivity() {
                 gravity = Gravity.CENTER
                 minimumHeight = dp(58)
                 contentDescription = label
+                background = if (active) {
+                    rounded(Color.rgb(244, 248, 253), 17f)
+                } else {
+                    rounded(Color.TRANSPARENT, 17f)
+                }
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(drawable)
                     imageTintList = ColorStateList.valueOf(if (active) blue else muted)
