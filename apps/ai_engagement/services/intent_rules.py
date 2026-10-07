@@ -214,6 +214,28 @@ def deterministic_intents(text: str) -> set[Intent]:
         if contains_any(value, terms):
             intents.add(intent)
 
+    # Explicit requests to arrange a phone call or reach human assistance are
+    # actions even when they also contain a product/pricing enquiry. Require an
+    # affirmative request prefix so quoted facts and negated wishes do not gain
+    # a handoff intent merely from mentioning a phone call or human.
+    request_prefix = r"(?:^|[.!?]\s*)(?:(?:please|can you|could you|would you)\s+)"
+    personal_prefix = r"(?:^|[.!?]\s*)i\s+(?:want|need|would like)\s+"
+    if re.search(
+        rf"{request_prefix}(?:please\s+)?(?:arrange|schedule|organize)\s+(?:a\s+)?(?:phone|telephone)\s+call\b",
+        value,
+    ) or re.search(
+        rf"{personal_prefix}(?:a\s+)?(?:phone|telephone)\s+call\b",
+        value,
+    ):
+        intents.add(Intent.CALL_REQUEST)
+    if re.search(
+        rf"(?:{request_prefix}|{personal_prefix}to\s+)"
+        r"(?:connect me (?:to|with)|connect for|speak (?:to|with)|talk (?:to|with))\s+"
+        r"(?:(?:a|an|the)\s+)?(?:human(?: assistance)?|agent|team member|consultant)\b",
+        value,
+    ):
+        intents.add(Intent.HUMAN_REQUEST)
+
     # Natural product-information requests are not always phrased as questions.
     # Keep specific pricing/policy/location/availability intents authoritative,
     # then treat broad "know about / functionality / capabilities" language as
