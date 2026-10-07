@@ -94,7 +94,31 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         auth = AuthStore(this)
         leadFormOpen = savedInstanceState?.getBoolean("lead_form_open") ?: false
+        handleLaunchIntent(intent)
         render()
+        openPendingCallAfterRender()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunchIntent(intent)
+        render()
+        openPendingCallAfterRender()
+    }
+
+    private fun handleLaunchIntent(intent: Intent?) {
+        pendingOpenCallId = intent?.getStringExtra("open_call_id").orEmpty()
+        if (intent?.getBooleanExtra("post_call_review", false) == true) {
+            selectedTab = "calls"
+        }
+    }
+
+    private fun openPendingCallAfterRender() {
+        val callId = pendingOpenCallId
+        if (callId.isBlank() || !auth.hasSession()) return
+        pendingOpenCallId = ""
+        window.decorView.post { showCallDetail(callId) }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
