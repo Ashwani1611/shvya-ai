@@ -22,6 +22,7 @@ object PostCallNotifier {
         contactName: String,
         phoneNumber: String,
         status: String,
+        remoteCallId: String = "",
     ) {
         if (
             Build.VERSION.SDK_INT >= 33 &&
@@ -52,7 +53,17 @@ object PostCallNotifier {
             Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                 putExtra("post_call_review", true)
+                if (remoteCallId.isNotBlank()) {
+                    putExtra("open_call_id", remoteCallId)
+                }
             },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+
+        val callBack = PendingIntent.getActivity(
+            context,
+            (callLogId.hashCode() * 31) + 7,
+            Intent(Intent.ACTION_DIAL, android.net.Uri.fromParts("tel", phoneNumber, null)),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -68,6 +79,8 @@ object PostCallNotifier {
                 )
             )
             .setContentIntent(openApp)
+            .addAction(android.R.drawable.sym_action_call, "Call back", callBack)
+            .addAction(android.R.drawable.ic_menu_view, "Review", openApp)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .build()
