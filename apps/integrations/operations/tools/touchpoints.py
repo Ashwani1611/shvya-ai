@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.db.models import Prefetch
 
 from apps.followups.touchpoint_models import TouchpointCategory, TouchpointReply
+from services.touchpoint_service import validate_reply_placeholders
 from apps.integrations.operations_models import OperationsAuditEvent
 from apps.integrations.operations_policy import (
     CAP_CADENCE_CONFIG_WRITE,
@@ -63,7 +65,7 @@ def list_touchpoints(*, identity, arguments):
     reply_offset, reply_limit = values["reply_offset"], values["reply_limit"]
     # Django implements this sliced prefetch with a per-category window limit;
     # a category with thousands of saved replies cannot produce an unbounded read.
-    reply_qs = reply_qs.order_by("title", "id")[reply_offset:reply_offset + reply_limit + 1]
+    reply_qs = reply_qs.order_by("title", "id").prefetch_related("attachments")[reply_offset:reply_offset + reply_limit + 1]
     category_offset, category_limit = values["category_offset"], values["category_limit"]
     selected = list(category_qs.prefetch_related(
         Prefetch("replies", queryset=reply_qs, to_attr="mcp_replies")
@@ -74,7 +76,10 @@ def list_touchpoints(*, identity, arguments):
         rows.append({
             "category_id": str(category.pk), "category_name": category.name,
             "replies": [{"id": str(reply.pk), "title": reply.title, "body": reply.body,
-                         "active": reply.is_active, "updated_at": reply.updated_at.isoformat()}
+                         "active": reply.is_active, "updated_at": reply.updated_at.isoformat(),
+                         "attachments": [{"id": str(item.pk), "filename": item.original_name,
+                                         "mime_type": item.mime_type, "size": item.size}
+                                        for item in reply.attachments.all()]}
                         for reply in category.mcp_replies[:reply_limit]],
             "reply_offset": reply_offset, "has_more": has_more_replies,
             "next_reply_offset": reply_offset + reply_limit if has_more_replies else None,
@@ -139,6 +144,10 @@ def _touchpoint_proposal(*, organization, arguments):
         raise OperationsToolError("Touchpoint title must be 1-150 characters.")
     if not body or len(body) > 1000:
         raise OperationsToolError("Touchpoint body must be 1-1000 characters.")
+    try:
+        validate_reply_placeholders(organization=organization, body=body)
+    except DjangoValidationError as exc:
+        raise OperationsToolError(" ".join(exc.messages)) from exc
 
     resolved_category_name = category.name if category else category_name
     before = (
