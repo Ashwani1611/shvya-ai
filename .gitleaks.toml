@@ -20,4 +20,4 @@ condition = "AND"
 commits = ["6716efac6116babaa8a3aa4be99b75472a8ae344"]
 paths = ['''^docs/shvya-vault\.md$''']
 regexTarget = "line"
-regexes = ['''^\| `VaultSection` \| Stable section key, empty/filled/unavailable state, completion flag \|$''']
+regexes = ['''Stable section key, empty/filled/unavailable state, completion flag''']
