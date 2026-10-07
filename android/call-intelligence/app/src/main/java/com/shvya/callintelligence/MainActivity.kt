@@ -67,6 +67,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingSyncCount = 0
     private var leadPrefillName = ""
     private var leadPrefillPhone = ""
+    private var pendingOpenCallId = ""
+    private var pendingReminderId = ""
+    private var pendingReminderAction = ""
     private var dateFrom = ""
     private var dateTo = ""
     private var pageNumber = 1
