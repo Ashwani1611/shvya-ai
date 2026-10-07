@@ -165,3 +165,16 @@ class FinalReplyLanguageTests(SimpleTestCase):
         self.assertFalse(_clearly_wrong_language("Bilkul, product brochure yahaan available hai.", "hinglish"))
         self.assertFalse(_clearly_wrong_language("Der DIY-Plan kostet ₹2,999 pro Monat.", "de"))
 
+    def test_natural_german_qualification_answers_preserve_german(self):
+        from apps.ai_engagement.services.intent_rules import detect_language
+        for body in ("Wir verwalten unsere Leads in Google Sheets.",
+                     "Ich habe 30 Leads pro Tag.", "Wir nutzen WhatsApp.",
+                     "Wir haben keine bezahlten Anzeigen."):
+            with self.subTest(body=body):
+                self.assertEqual(detect_language(body), "de")
+                self.assertEqual(requested_language(configured="English, German", messages=[
+                    {"direction": "inbound", "body": "Hallo!"},
+                    {"direction": "inbound", "body": body},
+                ]), "German")
+        self.assertEqual(detect_language("We manage our leads in Google Sheets."), "en")
+

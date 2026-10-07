@@ -141,7 +141,8 @@ def detect_language(text: str) -> str | None:
     if re.search(r"\b(?:kya|hai|mujhe|baat|haan|nahi|hum|karte|karna|karo|kitna|kitne|chala)\b", value):
         return "hinglish"
     german_hits = re.findall(
-        r"\b(?:der|die|das|ist|sind|und|oder|wie|was|wer|ich|nicht|preis|kosten|für)\b",
+        r"\b(?:der|die|das|ist|sind|und|oder|wie|was|wer|ich|nicht|preis|kosten|für|"
+        r"wir|sie|unser|unsere|ihre|habe|haben|verwalten|nutzen|bekommen|täglich|tag|keine|antworten)\b",
         value,
     )
     if len(german_hits) >= 2 or re.search(r"\b(?:hallo|danke|bitte|preis|kosten|kostet|für|nicht)\b", value):
@@ -506,3 +507,4 @@ def requested_action(intents: set[Intent]) -> str | None:
         if intent in intents:
             return action
     return None
+
