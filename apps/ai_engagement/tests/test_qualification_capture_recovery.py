@@ -222,7 +222,8 @@ class CaptureReviewBoundaryTests(SimpleTestCase):
                 return AITextResult('{"approved":true,"reason":"approved"}', "grounding")
             self.assertEqual(phase, "primary")
             return AITextResult(json.dumps({"should_engage": True, "silence_rule": None,
-                "message": self.requirements[0]["question"], "qualification_updates": [], "crm_actions": [],
+                "message": "Thanks for explaining your setup. " + self.requirements[0]["question"],
+                "qualification_updates": [], "crm_actions": [],
                 "file_document_id": None, "next_requirement_id": self.requirements[0]["id"],
                 "reason_code": "NORMAL_CONVERSATION"}), "draft")
         cache.clear()
