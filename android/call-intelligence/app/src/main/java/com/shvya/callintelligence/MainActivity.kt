@@ -606,6 +606,27 @@ class MainActivity : AppCompatActivity() {
             }
             if (version != renderVersion || response?.successful != true) return@launch
             val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return@launch
+            val stats = data.optJSONObject("stats")
+            if (stats != null) {
+                content.addView(space(24))
+                val performance = card()
+                performance.addView(sectionTitle("Performance today").apply { textSize = 20f })
+                performance.addView(body("Your daily calling rhythm and sales follow-through."))
+                performance.addView(space(16))
+                performance.addView(metricRow(listOf(
+                    "Calls" to stats.optInt("total"),
+                    "Answered" to stats.optInt("answered"),
+                    "Follow-ups" to stats.optInt("followups"),
+                    "Overdue" to stats.optInt("overdue"),
+                )))
+                performance.addView(space(14))
+                performance.addView(body(
+                    "Answer rate " + stats.optDouble("answer_rate").toInt() + "% · Talk time " +
+                        formatDurationSeconds(stats.optInt("total_talk")) + " · Conversion " +
+                        stats.optDouble("conversion_rate").toInt() + "%"
+                ).apply { setPadding(0, 0, 0, 0) })
+                content.addView(performance)
+            }
             val agents = data.optJSONArray("agents") ?: return@launch
             if (agents.length() <= 1) return@launch
             content.addView(space(24))
@@ -2061,6 +2082,17 @@ class MainActivity : AppCompatActivity() {
     private fun pickDate(label: String, chosen: (String) -> Unit) {
         val now = Calendar.getInstance()
         DatePickerDialog(this, { _, y, m, d -> chosen(String.format(Locale.US, "%04d-%02d-%02d", y, m + 1, d)) }, now.get(Calendar.YEAR), now.get(Calendar.MONTH), now.get(Calendar.DAY_OF_MONTH)).apply { setTitle(label); show() }
+    }
+
+    private fun formatDurationSeconds(value: Int): String {
+        val seconds = value.coerceAtLeast(0)
+        val hours = seconds / 3600
+        val minutes = (seconds % 3600) / 60
+        return when {
+            hours > 0 -> hours.toString() + "h " + minutes + "m"
+            minutes > 0 -> minutes.toString() + "m"
+            else -> seconds.toString() + "s"
+        }
     }
 
     private fun formatDate(value: String): String = try {
