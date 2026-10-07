@@ -607,12 +607,31 @@ class MainActivity : AppCompatActivity() {
             setOnClickListener { query = ""; dateFrom = ""; dateTo = ""; pageNumber = 1; render() }
         })
         root.addView(filters)
+        root.addView(space(10))
+        val quickFilters = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        listOf(
+            "all" to "All",
+            "missed" to "Missed",
+            "followup" to "Follow-up",
+            "unknown" to "No lead",
+        ).forEach { (key, label) ->
+            quickFilters.addView(quietButton(if (callFilter == key) "•  " + label else label).apply {
+                setOnClickListener { callFilter = key; pageNumber = 1; render() }
+            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+        }
+        root.addView(quickFilters)
         root.addView(space(20))
 
         val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         root.addView(content)
-        val path = apiPath + "calls/?mine=1&page=$pageNumber&q=" + URLEncoder.encode(query, "UTF-8") +
-            "&date_from=$dateFrom&date_to=$dateTo"
+        var path = apiPath + "calls/?mine=1&page=" + pageNumber + "&q=" + URLEncoder.encode(query, "UTF-8") +
+            "&date_from=" + dateFrom + "&date_to=" + dateTo
+        path += when (callFilter) {
+            "missed" -> "&status=missed"
+            "followup" -> "&needs_follow_up=1"
+            "unknown" -> "&unlinked=1"
+            else -> ""
+        }
         loadInto(content, version, { ApiClient(this).authorizedGet(path) }) { data ->
             val stats = data.getJSONObject("stats")
             val summary = card()
@@ -676,6 +695,7 @@ class MainActivity : AppCompatActivity() {
                     setOnClickListener { editCallNotes(call) }
                 }, LinearLayout.LayoutParams(0, dp(48), 1f))
                 row.addView(buttons)
+                row.setOnClickListener { showCallDetail(call.optString("id")) }
                 content.addView(row)
                 content.addView(space(14))
             }
