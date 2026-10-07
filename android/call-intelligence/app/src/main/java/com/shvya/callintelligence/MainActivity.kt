@@ -283,19 +283,31 @@ class MainActivity : AppCompatActivity() {
     private fun showDashboard() {
         val version = ++renderVersion
         val root = page()
-        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL; minimumHeight = dp(56) }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(52)
+        }
         header.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-        }, LinearLayout.LayoutParams(dp(42), dp(42)))
+        }, LinearLayout.LayoutParams(dp(34), dp(34)))
         header.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(12), 0, 0, 0)
-            addView(kicker("SHVYA"))
-            addView(sectionTitle("Call Intelligence").apply { setPadding(0, 0, 0, 0); textSize = 17f })
-        },
-            LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply { setOnClickListener { showSettings() } })
+            setPadding(dp(10), 0, 0, 0)
+            addView(sectionTitle("Call Intelligence").apply {
+                setPadding(0, 0, 0, 0)
+                textSize = 17f
+            })
+            addView(body("SHVYA").apply {
+                textSize = 11f
+                setPadding(0, dp(1), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply {
+            setPadding(dp(12), dp(12), dp(12), dp(12))
+            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
+            setOnClickListener { showSettings() }
+        })
         root.addView(header)
         root.addView(space(20))
 
@@ -1172,7 +1184,7 @@ class MainActivity : AppCompatActivity() {
         }
         shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bars = safeInsets(insets)
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
@@ -1886,7 +1898,7 @@ class MainActivity : AppCompatActivity() {
         footer.addView(submit)
         shell.addView(footer)
         ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bars = safeInsets(insets)
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
@@ -2208,7 +2220,7 @@ class MainActivity : AppCompatActivity() {
         }, LinearLayout.LayoutParams(-1, 0, 1f))
         shell.addView(divider())
         val nav = LinearLayout(this).apply {
-            setPadding(dp(22), dp(7), dp(22), dp(7))
+            setPadding(dp(12), dp(6), dp(12), dp(6))
             setBackgroundColor(Color.WHITE)
         }
         listOf(
@@ -2221,7 +2233,7 @@ class MainActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                minimumHeight = dp(58)
+                minimumHeight = dp(56)
                 contentDescription = label
                 background = if (active) {
                     rounded(Color.rgb(244, 248, 253), 17f)
@@ -2246,7 +2258,7 @@ class MainActivity : AppCompatActivity() {
         }
         shell.addView(nav)
         ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bars = safeInsets(insets)
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
@@ -2400,6 +2412,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun safeInsets(insets: WindowInsetsCompat) =
+        insets.getInsets(
+            WindowInsetsCompat.Type.systemBars() or
+                WindowInsetsCompat.Type.displayCutout()
+        )
+
     private fun page(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -2415,7 +2433,7 @@ class MainActivity : AppCompatActivity() {
             addView(content)
         }
         ViewCompat.setOnApplyWindowInsetsListener(scroll) { view, insets ->
-            val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            val bars = safeInsets(insets)
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
             insets
         }
