@@ -1426,29 +1426,40 @@ class MainActivity : AppCompatActivity() {
 
     private fun performReminderAction(reminderId: String, action: String) {
         lifecycleScope.launch {
+            val path = apiPath + "reminders/" + reminderId + "/action/"
+            val payload = JSONObject().put("action", action)
             val response = withContext(Dispatchers.IO) {
                 runCatching {
-                    ApiClient(this@MainActivity).authorizedPost(
-                        apiPath + "reminders/" + reminderId + "/action/",
-                        JSONObject().put("action", action),
-                    )
+                    ApiClient(this@MainActivity).authorizedPost(path, payload)
                 }.getOrNull()
             }
             if (response?.successful == true) {
                 toast(if (action == "complete") "Follow-up completed" else "Follow-up snoozed 30 minutes")
                 render()
-            } else toast("Could not update the follow-up.")
+            } else if (shouldQueueOffline(response)) {
+                queueOfflineAction(path, "POST", payload, "Follow-up " + action)
+                toast("Follow-up action saved offline · will sync automatically")
+            } else toast(apiError(response?.body, "Could not update the follow-up."))
         }
     }
 
     private fun reminderAction(item: JSONObject, action: String, button: View) {
         button.isEnabled = false
         lifecycleScope.launch {
+            val path = apiPath + "reminders/" + item.getString("id") + "/action/"
+            val payload = JSONObject().put("action", action)
             val response = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPost(apiPath + "reminders/" + item.getString("id") + "/action/", JSONObject().put("action", action)) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
             }
-            if (response?.successful == true) render() else {
-                button.isEnabled = true; toast("Could not update the reminder. Please retry.")
+            if (response?.successful == true) {
+                render()
+            } else if (shouldQueueOffline(response)) {
+                queueOfflineAction(path, "POST", payload, "Follow-up " + action)
+                toast("Saved offline · will sync automatically")
+                render()
+            } else {
+                button.isEnabled = true
+                toast(apiError(response?.body, "Could not update the reminder. Please retry."))
             }
         }
     }
