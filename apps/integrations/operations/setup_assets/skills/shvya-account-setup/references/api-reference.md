@@ -1,6 +1,6 @@
 # Shvya MCP execution reference
 
-Verified from the supplied session tool signatures and local Shvya implementation on 2026-09-24. This is a workflow-oriented map, not a promise that a future connection has every tool. Discover the current exposed schemas with MCP `tools/list` before execution; the authenticated backend registry is authoritative. The session namespace was `mcp__shvya_ai_superadmin__`; tool names below omit this host-specific prefix.
+This native reference is supplemented by the current expanded catalog in mcp-tools.md. Read that file for account creation, lead CRUD/import, channel-specific Cadences, native Vault and production-engine testing. Earlier limitations below apply only to the named legacy envelope, not to newer specialized tools. This is a workflow-oriented map, not a promise that a future connection has every tool. Discover the current exposed schemas with MCP `tools/list` before execution; the authenticated backend registry is authoritative. The session namespace was `mcp__shvya_ai_superadmin__`; tool names below omit this host-specific prefix.
 
 ## Authorization and discovery
 
@@ -26,7 +26,7 @@ Do not assume absent specialized list/get tools exist. The current broad configu
 
 ## Configuration tools and payload fields
 
-Common write envelope omitted below: `dry_run:true`, `reason`, followed only when required by valid approval fields on apply. IDs are UUID strings returned by this tenant, not legacy integers.
+Common write envelope omitted below: `dry_run:true`, `reason`, followed only when required by valid approval fields on apply. Resolve IDs from the current tenant and exact schema. Most CRM IDs are UUIDs; native knowledge document IDs can be integers. Never coerce one entity type into another.
 
 | Operation | Specific arguments | Main capability |
 |---|---|---|
@@ -50,7 +50,7 @@ Common write envelope omitted below: `dry_run:true`, `reason`, followed only whe
 
 Attribute types are `text`, `numeric`, `date`, `datetime`, `option`. Record the returned key separately from the display name. Do not pass legacy `dropdown`, `number`, `key`, `values` or `color_code` to tools that do not accept them. Options must remain compatible with historical values and dependencies. Stage lock flags control protected-name/deactivation behavior. New pipelines create standard stages: read these before adding more.
 
-Messaging `changes` accepts `ai_auto_reply`, `auto_follow_up`, `auto_lead_creation`, `bump_up_count`, `bump_up_messages`, `business_hours_start`, `business_hours_end`, `active_conversation_delay_value`, `active_conversation_delay_unit` (`minutes|hours|days`). This does not expose arbitrary fixed bump-up copy, calendar settings, user invitations, billing, round robin, provider credentials or template submission. Hosted connection returns safe status; QR/session credentials are not exposed through MCP.
+Messaging `changes` accepts `ai_auto_reply`, `auto_follow_up`, `auto_lead_creation`, `bump_up_count`, `bump_up_messages`, `business_hours_start`, `business_hours_end`, `active_conversation_delay_value`, `active_conversation_delay_unit` (`minutes|hours|days`). This messaging-settings envelope does not itself expose unrelated configuration. Discover the separate Calendar and template lifecycle tools in mcp-tools.md. Do not infer user invitations, billing, round robin or provider-secret access. Hosted connection returns safe status; QR/session credentials are not exposed through MCP.
 
 ## Actual Workflow data
 

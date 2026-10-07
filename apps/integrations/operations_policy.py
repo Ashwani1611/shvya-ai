@@ -35,6 +35,22 @@ CAP_CALENDAR_CONFIG_WRITE = "calendar.config.write"
 CAP_INTEGRATION_LIFECYCLE_WRITE = "integration.lifecycle.write"
 CAP_OPERATIONS_TASK_WRITE = "operations.task.write"
 CAP_TEAM_SETTINGS_WRITE = "team.settings.write"
+CAP_ORGANIZATION_CREATE = "organization.create"
+CAP_LEAD_READ = "lead.read"
+CAP_LEAD_CREATE = "lead.create"
+CAP_LEAD_WRITE = "lead.write"
+CAP_LEAD_IMPORT = "lead.import"
+CAP_VAULT_READ = "vault.read"
+CAP_VAULT_WRITE = "vault.write"
+CAP_CHANNEL_GROUP_READ = "channel.group.read"
+CAP_CHANNEL_GROUP_SEND = "channel.group.send"
+CAP_AI_FLOW_TEST_WRITE = "ai.flow_testing.write"
+
+# Platform provisioning can never be delegated by a tenant policy. Group sends
+# always require approval of the exact sender, group and message, even when an
+# organization allows routine configuration edits without a second approval.
+SUPERADMIN_ONLY_CAPABILITIES = frozenset({CAP_ORGANIZATION_CREATE})
+ALWAYS_APPROVAL_CAPABILITIES = frozenset({CAP_CHANNEL_GROUP_SEND, CAP_AI_FLOW_TEST_WRITE})
 
 READ_CAPABILITIES = (
     CAP_ORGANIZATION_READ,
@@ -44,6 +60,9 @@ READ_CAPABILITIES = (
     CAP_SETUP_ARTIFACTS_PREPARE,
     CAP_SETUP_INTAKE_READ,
     CAP_TRACE_CONTENT_READ,
+    CAP_LEAD_READ,
+    CAP_VAULT_READ,
+    CAP_CHANNEL_GROUP_READ,
 )
 WRITE_CAPABILITIES = (
     CAP_LEAD_STAGE_WRITE,
@@ -61,6 +80,13 @@ WRITE_CAPABILITIES = (
     CAP_INTEGRATION_LIFECYCLE_WRITE,
     CAP_OPERATIONS_TASK_WRITE,
     CAP_TEAM_SETTINGS_WRITE,
+    CAP_ORGANIZATION_CREATE,
+    CAP_LEAD_CREATE,
+    CAP_LEAD_WRITE,
+    CAP_LEAD_IMPORT,
+    CAP_VAULT_WRITE,
+    CAP_CHANNEL_GROUP_SEND,
+    CAP_AI_FLOW_TEST_WRITE,
 )
 ALL_CAPABILITIES = READ_CAPABILITIES + WRITE_CAPABILITIES
 
@@ -109,6 +135,16 @@ CAPABILITY_LABELS = {
     CAP_INTEGRATION_LIFECYCLE_WRITE: "Connect, reconnect, test and disconnect integrations",
     CAP_OPERATIONS_TASK_WRITE: "Track onboarding, integration and audit commitments",
     CAP_TEAM_SETTINGS_WRITE: "Configure team responder, ownership, handoff, sender and Co-Pilot settings",
+    CAP_ORGANIZATION_CREATE: "Create customer organizations (SHVYA Superadmin only)",
+    CAP_LEAD_READ: "Read CRM leads and their business details",
+    CAP_LEAD_CREATE: "Create CRM leads without sending welcome messages",
+    CAP_LEAD_WRITE: "Update CRM lead details",
+    CAP_LEAD_IMPORT: "Import reviewed batches of CRM leads",
+    CAP_VAULT_READ: "Read the organization's private SHVYA Vault",
+    CAP_VAULT_WRITE: "Configure the SHVYA Vault and add client-visible material",
+    CAP_CHANNEL_GROUP_READ: "Read hosted WhatsApp support groups",
+    CAP_CHANNEL_GROUP_SEND: "Send specifically approved hosted WhatsApp group messages",
+    CAP_AI_FLOW_TEST_WRITE: "Run isolated AI conversation tests with approved provider budgets",
 }
 
 
@@ -158,7 +194,7 @@ def effective_capabilities(*, role, organization=None):
 
     return expand_capabilities(
         policy.allowed_capabilities
-    )
+    ) - SUPERADMIN_ONLY_CAPABILITIES
 
 
 def capabilities_for_grant(
@@ -181,6 +217,8 @@ def capabilities_for_grant(
 
 
 def approval_required(*, role, organization, capability):
+    if capability in ALWAYS_APPROVAL_CAPABILITIES:
+        return True
     # Superadmin is powerful, but customer-state mutations still require the
     # agent to present an explicit approved=True flag after its dry-run.
     if capability in WRITE_CAPABILITIES and role == ROLE_SUPERADMIN:

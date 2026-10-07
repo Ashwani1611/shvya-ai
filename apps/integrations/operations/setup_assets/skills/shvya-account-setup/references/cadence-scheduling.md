@@ -24,8 +24,10 @@ The exposed Cadence schema has no `before_x_units`, `booked_slot` anchor, arbitr
 
 | Need | Supported path and prerequisite |
 |---|---|
-| Hosted text/media | Explicit `provider:"hosted"` Cadence and a connected tenant-owned Hosted/Coexistence sender; use `add_hosted_whatsapp_step` |
-| API WhatsApp | Explicit `provider:"api"` and matching connected account; `add_cadence_step` with `type:"whatsapp"` and an APPROVED template belonging to that sender |
+| Hosted text/media | Explicit `provider:"hosted"` Cadence and a connected tenant-owned Hosted sender; use `add_hosted_whatsapp_step` |
+| API WhatsApp | `channel:"api"` and exact connected sender through `upsert_channel_cadence`; `add_channel_cadence_step` with `type:"template"` and an APPROVED sender-owned template with bindings. Existing `add_cadence_step` retains its discovered legacy enum. |
+| Coexistence | Explicit `channel:"coexistence"`, exact Coexistence account and approved sender-owned templates/bindings through the channel facade; never use the Hosted path. |
+| Instagram | Explicit `channel:"instagram"` and exact connected account; native text step and allowed CRM placeholders, subject to channel window and eligibility. |
 | Email | `add_cadence_step` with `type:"email"`, subject and body; verify actual email transport readiness |
 | Internal reminder | `add_cadence_step` with `type:"reminder"` and text; no customer message implied |
 | Free-text Workflow WhatsApp | Canonical `message` action; account must match current lead pipeline, transport readiness checked at delivery, API service-window restriction applies |

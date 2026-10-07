@@ -1,6 +1,13 @@
 """Capability-discovery payload shared by MCP and the HTTP endpoint."""
 
-from apps.integrations.operations_policy import approval_required, effective_capabilities
+from apps.integrations.operations_policy import (
+    ROLE_SUPERADMIN, approval_required, effective_capabilities,
+)
+
+SUPERADMIN_ONLY_TOOLS = frozenset({
+    "list_organizations", "select_organization_context", "clear_organization_context",
+    "create_organization_account", "create_vault_workspace",
+})
 
 
 def capability_discovery(*, identity, tools):
@@ -12,13 +19,19 @@ def capability_discovery(*, identity, tools):
     for item in tools:
         name = item.get("name")
         capability = item.get("capability")
-        allowed = capability is None or capability in effective or name == "get_operations_context"
+        requires_write = any(
+            scope.get("type") == "oauth2" and "operations.write" in (scope.get("scopes") or [])
+            for scope in (item.get("securitySchemes") or [])
+        )
+        allowed = (capability is None or capability in effective or name == "get_operations_context")
+        allowed = allowed and (not requires_write or "operations.write" in identity.scopes)
+        allowed = allowed and (name not in SUPERADMIN_ONLY_TOOLS or identity.role == ROLE_SUPERADMIN)
         rows.append({
             "name": name,
             "available": allowed,
             "capability": capability,
-            "approval_required": bool(capability and organization and approval_required(role=identity.role, organization=organization, capability=capability)),
-            "dependencies": ["operations.read"] + (["operations.write"] if any(scope.get("type") == "oauth2" and "operations.write" in (scope.get("scopes") or []) for scope in (item.get("securitySchemes") or [])) else []),
+            "approval_required": bool(capability and approval_required(role=identity.role, organization=organization, capability=capability)),
+            "dependencies": ["operations.read"] + (["operations.write"] if requires_write else []),
             "environment_limitations": [],
         })
     return {
@@ -30,7 +43,6 @@ def capability_discovery(*, identity, tools):
         "tools": rows,
         "unsupported_features": [
             {"name": "Voice Agent", "status": "excluded_from_scope", "reason": "Handled separately."},
-            {"name": "Vault", "status": "excluded_from_scope", "reason": "Handled separately."},
         ],
         "global_dependencies": [
             "get_operations_context before organization work",
@@ -43,6 +55,8 @@ def capability_discovery(*, identity, tools):
         "environment_limitations": [
             "Provider credentials, tokens and secrets are never returned.",
             "Acceptance simulations do not send messages or activate automation.",
-            "Live provider tests are limited to explicit readiness checks exposed by the provider integration.",
+            "AI flow tests use isolated disposable records and production reply logic; outbound transport remains blocked.",
+            "AI flow tests can consume the approved AI provider budget; delivery is not verified by a flow test.",
+            "Hosted WhatsApp group sends require approval of each exact sender, group and message.",
         ],
     }

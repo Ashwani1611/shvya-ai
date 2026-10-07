@@ -1265,6 +1265,11 @@ app.post('/sessions/:sessionId/sync', async (req, res) => {
   return res.status(202).json({ ok: true, status: 'syncing', queued: true });
 });
 
+require('./group-operations').registerGroupOperations(app, {
+  sessions, reconcileClientState, serializedId, withTimeout, idempotentSend, redis,
+  journalRoot: path.join(AUTH_PATH, '_send_requests'),
+});
+
 app.get('/sessions/:sessionId/existing-chats', async (req, res) => {
   const state = sessions.get(req.params.sessionId);
   if (!state) return res.status(404).json({ error: 'Session not found.' });

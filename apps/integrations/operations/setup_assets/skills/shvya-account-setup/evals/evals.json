@@ -32,6 +32,30 @@
       "prompt": "All writes returned success, so mark onboarding complete.",
       "expected_output": "The skill requires read-back and acceptance validation. It does not claim complete until dependency checks, routing, simulations and relevant provider readiness are verified.",
       "result": null
+    },
+    {
+      "id": 6,
+      "prompt": "Set up a new manufacturer with a 100-unit MOQ; import 230 rows and configure API, Coexistence, Hosted and Instagram follow-up.",
+      "expected_output": "Create only the authorized organization, preserve inactive owner setup limit, import bounded idempotent batches with row/duplicate ledger and no implicit messaging, use numeric MOQ and complete phase prompts; resolve exact channel/sender/templates/variables and verify all dependencies.",
+      "result": null
+    },
+    {
+      "id": 7,
+      "prompt": "The source says use five sequences, but I only asked for one DNP Cadence.",
+      "expected_output": "Build the requested single path and its necessary dependencies; do not force unrelated source defaults. Preserve full reference method and source corpus.",
+      "result": null
+    },
+    {
+      "id": 8,
+      "prompt": "A client refuses the required budget and asks for a human.",
+      "expected_output": "Keep budget unresolved, prioritize the authored human/callback path, do not falsely qualify or continue an interrogation; verify actual handoff/suppression behavior.",
+      "result": null
+    },
+    {
+      "id": 9,
+      "prompt": "A pending API template contains {{1}} and a source message uses {lead_name}.",
+      "expected_output": "Do not send or enroll. Wait for approved sender-owned template, configure explicit delivery mappings; use native double-brace fields for text and render missing values.",
+      "result": null
     }
   ]
 }

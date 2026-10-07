@@ -549,6 +549,7 @@ def _organization_validation(organization):
             organization=organization,
             is_active=False,
             leads__isnull=False,
+            leads__is_operations_test=False,
         )
         .distinct()
         .values("id", "name")[:50]

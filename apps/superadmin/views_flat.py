@@ -259,6 +259,7 @@ def org_list_view(request):
         .annotate(
             lead_count=Count(
                 "leads",
+                filter=Q(leads__is_operations_test=False),
                 distinct=True,
             ),
             pipeline_count=Count(
@@ -475,6 +476,7 @@ def organization_detail_view(
         ALL_CAPABILITIES,
         CAPABILITY_LABELS,
         ROLE_ORGANIZATION_ADMIN,
+        SUPERADMIN_ONLY_CAPABILITIES,
         WRITE_CAPABILITIES,
         approval_required,
         expand_capabilities,
@@ -501,6 +503,7 @@ def organization_detail_view(
             ),
         }
         for key in ALL_CAPABILITIES
+        if key not in SUPERADMIN_ONLY_CAPABILITIES
     ]
     active_operations_support = list(
         visible_support_sessions(

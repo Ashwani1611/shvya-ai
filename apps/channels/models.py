@@ -95,6 +95,15 @@ class WhatsAppAccount(models.Model):
     permanent/system-user access_token to authenticate with.
     """
 
+    from apps.integrations.operations_testing_scope import OperationsVisibleAccountManager
+    objects = OperationsVisibleAccountManager()
+    is_operations_test = models.BooleanField(default=False, editable=False)
+
+    def save(self, *args, **kwargs):
+        if self.is_operations_test and (self.is_active or self.access_token or self.phone_number_id or self.display_phone_number):
+            raise ValueError("Operations test accounts must be inactive, credential-free and unroutable.")
+        return super().save(*args, **kwargs)
+
     class ConnectionType(models.TextChoices):
         API = "api", "Connect API"
         coexisted = "hosted", "coexisted Account"
@@ -262,6 +271,9 @@ class WhatsAppMessage(models.Model):
     outbound media messages. The actual meaning and validation
     are handled by the service layer, not by this model.
     """
+
+    from apps.integrations.operations_testing_scope import OperationsVisibleMessageManager
+    objects = OperationsVisibleMessageManager()
 
     class Direction(models.TextChoices):
         INBOUND = "inbound", "Inbound"

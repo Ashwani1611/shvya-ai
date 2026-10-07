@@ -42,7 +42,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
         self.assertEqual(TOOL_CAPABILITIES["disconnect_integration"], "integration.lifecycle.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_commitment"], "operations.task.write")
 
-    def test_discovery_excludes_voice_and_vault(self):
+    def test_discovery_includes_native_vault_scope(self):
         class Actor:
             role = "SHVYA_SUPERADMIN"
             active_organization = None
@@ -52,7 +52,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
 
         payload = capability_discovery(identity=Actor(), tools=[])
         names = {item["name"] for item in payload["unsupported_features"]}
-        self.assertEqual(names, {"Voice Agent", "Vault"})
+        self.assertEqual(names, {"Voice Agent"})
 
     def test_discovery_payload_is_json_serializable(self):
         class Actor:
@@ -64,3 +64,45 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
 
         payload = capability_discovery(identity=Actor(), tools=[{"name": "get_operations_context", "capability": None, "securitySchemes": []}])
         json.dumps(payload)
+
+    def test_discovery_does_not_offer_unscoped_writes(self):
+        class Actor:
+            role = "SHVYA_SUPERADMIN"
+            active_organization = None
+            organization = None
+            granted_capabilities = ["organization.create", "vault.write"]
+            scopes = {"operations.read"}
+
+        tools = [{"name": item["name"], "capability": TOOL_CAPABILITIES.get(item["name"]),
+                  "securitySchemes": item.get("securitySchemes", [])} for item in TOOL_DEFINITIONS]
+        rows = {item["name"]: item for item in capability_discovery(identity=Actor(), tools=tools)["tools"]}
+        self.assertFalse(rows["create_organization_account"]["available"])
+        self.assertFalse(rows["create_vault_workspace"]["available"])
+        # Provisioning still requires approval even before a tenant is selected.
+        self.assertTrue(rows["create_organization_account"]["approval_required"])
+
+    def test_expanded_powers_are_explicitly_granted_and_sensitive_actions_keep_approval(self):
+        from apps.integrations.operations_policy import (
+            DEFAULT_ORG_CAPABILITIES, ALWAYS_APPROVAL_CAPABILITIES,
+            SUPERADMIN_ONLY_CAPABILITIES, approval_required,
+        )
+        expanded = {"organization.create", "lead.read", "lead.create", "lead.write", "lead.import",
+                    "vault.read", "vault.write", "channel.group.read", "channel.group.send", "ai.flow_testing.write"}
+        self.assertFalse(expanded.intersection(DEFAULT_ORG_CAPABILITIES))
+        self.assertIn("organization.create", SUPERADMIN_ONLY_CAPABILITIES)
+        self.assertTrue({"channel.group.send", "ai.flow_testing.write"} <= ALWAYS_APPROVAL_CAPABILITIES)
+        for capability in ALWAYS_APPROVAL_CAPABILITIES:
+            self.assertTrue(approval_required(role="ORGANIZATION_ADMIN", organization=None, capability=capability))
+
+    def test_group_sends_and_billable_tests_cannot_be_hidden_in_configuration_plans(self):
+        from apps.integrations.operations.configuration.common import ALLOWED_PLAN_TOOLS
+        self.assertFalse({"send_hosted_whatsapp_group_message", "run_ai_flow_test_turn",
+                          "create_ai_flow_test_run"}.intersection(ALLOWED_PLAN_TOOLS))
+
+    def test_legacy_facade_preserves_focused_module_import_identity(self):
+        from apps.integrations import operations_tools
+        from apps.integrations.operations.tools import knowledge
+        before = knowledge.__package__
+        operations_tools._sync_facade_overrides()
+        self.assertEqual(knowledge.__package__, before)
+        self.assertEqual(knowledge.__package__, "apps.integrations.operations.tools")

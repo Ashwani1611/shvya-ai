@@ -66,6 +66,9 @@ def create_lead_activity(
     before the mutation is lost.
     """
 
+    if getattr(lead, "is_operations_test", False):
+        return None
+
     if organization is None:
         organization = lead.organization
 

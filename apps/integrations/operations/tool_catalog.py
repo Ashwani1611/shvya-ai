@@ -2,6 +2,26 @@
 
 from copy import deepcopy
 
+from apps.integrations.operations.flow_testing_catalog import (
+    FLOW_TEST_TOOL_CAPABILITIES,
+    flow_testing_tool_definitions,
+)
+from apps.integrations.operations.channel_dashboard_catalog import (
+    CHANNEL_DASHBOARD_CAPABILITIES,
+    channel_dashboard_tool_definitions,
+)
+from apps.integrations.operations.ai_knowledge_catalog import (
+    AI_KNOWLEDGE_TOOL_CAPABILITIES,
+    ai_knowledge_tool_definitions,
+)
+from apps.integrations.operations.vault_catalog import (
+    VAULT_TOOL_CAPABILITIES,
+    vault_tool_definitions,
+)
+from apps.integrations.operations.dashboard_crm_catalog import (
+    DASHBOARD_CRM_TOOL_CAPABILITIES,
+    dashboard_crm_tool_definitions,
+)
 from apps.integrations.operations.setup_catalog import (
     SETUP_TOOL_CAPABILITIES,
     setup_tool_definitions,
@@ -10,11 +30,13 @@ from apps.integrations.operations.extended_catalog import (
     EXTENDED_TOOL_CAPABILITIES,
     extended_tool_definitions,
 )
-from apps.integrations.operations_auth import (
-    OFFLINE_SCOPE,
-    OPERATIONS_READ_SCOPE,
-    OPERATIONS_WRITE_SCOPE,
+from apps.integrations.operations.schema_builders import (
+    OAUTH_READ_SCHEMES as OAUTH_READ_SCHEMES,
+    OAUTH_WRITE_SCHEMES as OAUTH_WRITE_SCHEMES,
+    _tool as _tool,
+    _write_properties as _write_properties,
 )
+from apps.integrations.operations_auth import OPERATIONS_WRITE_SCOPE
 from apps.integrations.operations_policy import (
     CAP_AI_CONFIG_WRITE,
     CAP_ATTRIBUTE_CONFIG_WRITE,
@@ -34,101 +56,6 @@ from apps.integrations.operations_policy import (
 )
 from apps.integrations.operations_tools import DIAGNOSTIC_TOOL_NAMES
 from apps.integrations.views.mcp import TOOL_DEFINITIONS as DIAGNOSTIC_TOOL_DEFINITIONS
-
-
-OAUTH_READ_SCHEMES = [
-    {
-        "type": "oauth2",
-        "scopes": [
-            OPERATIONS_READ_SCOPE,
-            OFFLINE_SCOPE,
-        ],
-    }
-]
-
-OAUTH_WRITE_SCHEMES = [
-    {
-        "type": "oauth2",
-        "scopes": [
-            OPERATIONS_READ_SCOPE,
-            OPERATIONS_WRITE_SCOPE,
-            OFFLINE_SCOPE,
-        ],
-    }
-]
-
-
-def _write_properties(extra=None):
-    properties = {
-        "dry_run": {
-            "type": "boolean",
-            "default": True,
-            "description": "Preview the exact change without applying it.",
-        },
-        "approved": {
-            "type": "boolean",
-            "default": False,
-            "description": "Set true only after the human approved an approval-required dry-run.",
-        },
-        "approval_event_id": {
-            "type": "string",
-            "format": "uuid",
-            "description": (
-                "Immutable dry-run audit event ID returned by SHVYA. Required "
-                "with approved=true when the dry-run said approval_required=true."
-            ),
-        },
-        "reason": {
-            "type": "string",
-            "minLength": 8,
-            "maxLength": 500,
-            "description": "Specific operational reason for the proposed mutation.",
-        },
-    }
-    properties.update(extra or {})
-    return properties
-
-
-def _tool(
-    name,
-    title,
-    description,
-    properties=None,
-    required=None,
-    *,
-    read_only=True,
-    requires_write_scope=None,
-    destructive=False,
-):
-    security_schemes = (
-        OAUTH_WRITE_SCHEMES
-        if (
-            (not read_only)
-            if requires_write_scope is None
-            else requires_write_scope
-        )
-        else OAUTH_READ_SCHEMES
-    )
-    return {
-        "name": name,
-        "title": title,
-        "description": description,
-        "inputSchema": {
-            "type": "object",
-            "properties": properties or {},
-            "required": required or [],
-            "additionalProperties": False,
-        },
-        "annotations": {
-            "readOnlyHint": read_only,
-            "destructiveHint": destructive,
-            "openWorldHint": False,
-        },
-        "securitySchemes": security_schemes,
-        "_meta": {
-            "securitySchemes": deepcopy(security_schemes),
-        },
-    }
 
 
 OWN_TOOL_DEFINITIONS = [
@@ -785,7 +712,14 @@ OWN_TOOL_DEFINITIONS = [
         "list_touchpoints",
         "List Touchpoints",
         "Return organization saved replies grouped by category.",
-        {"include_archived": {"type": "boolean", "default": False}},
+        {
+            "include_archived": {"type": "boolean", "default": False},
+            "category_id": {"type": "string", "format": "uuid"},
+            "category_limit": {"type": "integer", "minimum": 1, "maximum": 20, "default": 20},
+            "category_offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+            "reply_limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 25},
+            "reply_offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+        },
     ),
     _tool(
         "upsert_touchpoint",
@@ -824,7 +758,11 @@ OWN_TOOL_DEFINITIONS = [
         "list_faqs",
         "List FAQs",
         "Return organization FAQs independently from the AI Playbook.",
-        {"active_only": {"type": "boolean", "default": False}},
+        {
+            "active_only": {"type": "boolean", "default": False},
+            "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+            "offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+        },
     ),
     _tool(
         "upsert_faq",
@@ -889,7 +827,8 @@ OWN_TOOL_DEFINITIONS = [
                     "properties": {
                         "filename": {"type": "string", "maxLength": 255},
                         "name": {"type": "string", "maxLength": 255},
-                        "content_base64": {"type": "string"},
+                        "content_base64": {"type": "string", "maxLength": 699052},
+                        "share_instruction": {"type": "string", "maxLength": 12000},
                     },
                     "required": ["filename", "content_base64"],
                     "additionalProperties": False,
@@ -1304,6 +1243,11 @@ OWN_TOOL_DEFINITIONS = [
     ),
 ]
 
+OWN_TOOL_DEFINITIONS.extend(dashboard_crm_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(vault_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(ai_knowledge_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(channel_dashboard_tool_definitions(_tool, _write_properties))
+OWN_TOOL_DEFINITIONS.extend(flow_testing_tool_definitions(_tool, _write_properties))
 OWN_TOOL_DEFINITIONS.extend(setup_tool_definitions(_tool, _write_properties))
 OWN_TOOL_DEFINITIONS.extend(extended_tool_definitions(_tool, _write_properties))
 
@@ -1403,6 +1347,11 @@ TOOL_CAPABILITIES = {
     "get_operations_audit": CAP_AUDIT_READ,
 }
 TOOL_CAPABILITIES.update(EXTENDED_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(DASHBOARD_CRM_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(VAULT_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(AI_KNOWLEDGE_TOOL_CAPABILITIES)
+TOOL_CAPABILITIES.update(CHANNEL_DASHBOARD_CAPABILITIES)
+TOOL_CAPABILITIES.update(FLOW_TEST_TOOL_CAPABILITIES)
 TOOL_CAPABILITIES.update(SETUP_TOOL_CAPABILITIES)
 for _diagnostic_name in DIAGNOSTIC_TOOL_NAMES:
     TOOL_CAPABILITIES[_diagnostic_name] = CAP_DIAGNOSTICS_READ
@@ -1452,6 +1401,8 @@ def _tools_for_identity(identity):
             "list_organizations",
             "select_organization_context",
             "clear_organization_context",
+            "create_organization_account",
+            "create_vault_workspace",
         }:
             continue
         if _tool_requires_write_scope(item) and not has_write_scope:

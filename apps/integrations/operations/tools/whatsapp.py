@@ -473,6 +473,8 @@ def _template_account(*, organization, account_id):
     )
     if account is None:
         raise OperationsToolError("Active WhatsApp account not found in this organization.")
+    if account.connection_type != WhatsAppAccount.ConnectionType.API:
+        raise OperationsToolError("Meta templates require an API or Coexistence account, never a Hosted sender.")
     if account.status != WhatsAppAccount.Status.CONNECTED:
         raise OperationsToolError("The selected WhatsApp account is not connected.")
     if not account.waba_id or not account.phone_number_id or not account.access_token:

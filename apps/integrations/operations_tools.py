@@ -78,6 +78,7 @@ from apps.integrations.operations_models import (
 )
 from apps.integrations.operations_presence import visible_support_sessions
 from apps.integrations.operations_policy import (
+    ALWAYS_APPROVAL_CAPABILITIES,
     CAP_AI_CONFIG_WRITE,
     CAP_AUDIT_READ,
     CAP_ATTRIBUTE_CONFIG_WRITE,
@@ -393,6 +394,10 @@ def _write_gate(
     reason = _reason(arguments, required=True)
 
     if _CONFIGURATION_PLAN_EXECUTION.get():
+        if capability in ALWAYS_APPROVAL_CAPABILITIES:
+            raise OperationsPermissionError(
+                "This operation requires its own explicit approval and cannot be a configuration-plan member."
+            )
         # apply_configuration_plan / rollback_configuration_plan owns the
         # outer approval, drift check, transaction, and audit event. Nested
         # member tools retain tenant/capability validation but do not require
@@ -864,7 +869,9 @@ def _sync_facade_overrides():
         *focused_modules,
     ):
         for name in tuple(module.__dict__):
-            if name in _OPERATIONS_DELEGATED_ENTRYPOINTS:
+            # Module identity is never a facade override. Copying __package__
+            # breaks deferred relative imports after an unrelated read tool.
+            if name.startswith("__") or name in _OPERATIONS_DELEGATED_ENTRYPOINTS:
                 continue
             if name in facade:
                 setattr(module, name, facade[name])

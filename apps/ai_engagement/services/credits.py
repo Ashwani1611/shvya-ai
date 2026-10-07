@@ -345,6 +345,8 @@ class AICreditService:
         estimated_input = cls.estimate_tokens(
             f"{instructions or ''}\n{input_text or ''}"
         )
+        from apps.integrations.operations_testing_budget import conservative_test_input_tokens
+        estimated_input = conservative_test_input_tokens(f"{instructions or ''}\n{input_text or ''}", estimated_input)
         estimated_output = max(
             cls.reserved_output_tokens(),
             cls._positive_int(output_token_limit, 0),
@@ -375,7 +377,8 @@ class AICreditService:
         feature: str = "knowledge_embedding",
         reference_id: str = "",
     ) -> AICreditReservation:
-        estimated_input = sum(cls.estimate_tokens(text) for text in texts)
+        from apps.integrations.operations_testing_budget import conservative_test_input_tokens
+        estimated_input = sum(conservative_test_input_tokens(text, cls.estimate_tokens(text)) for text in texts)
         credits = cls.calculate_charge(
             model=model,
             input_tokens=estimated_input,
@@ -421,6 +424,8 @@ class AICreditService:
                 "for the requested AI operation."
             )
 
+        from apps.integrations.operations_testing_budget import claim_test_reservation, attach_test_reservation
+        test_run = claim_test_reservation(organization_id=organization_id, credits=credits)
         wallet.reserved_credits += credits
         wallet.save(update_fields=["reserved_credits", "updated_at"])
         reservation = AICreditReservation.objects.create(
@@ -435,6 +440,7 @@ class AICreditService:
         )
         from apps.ai_engagement.services.usage_observation import record_reservation
         record_reservation(reservation)
+        attach_test_reservation(test_run, reservation)
         return reservation
 
     @classmethod

@@ -15,7 +15,7 @@
     {
       "name": "shvya-vault",
       "domain": "business",
-      "purpose": "revisioned onboarding evidence and open questions"
+      "purpose": "native client portal materials, overrides, questions, calls and encrypted assets"
     },
     {
       "name": "shvya-industry-designer",
@@ -125,7 +125,17 @@
     {
       "name": "shvya-read-whatsapp-group",
       "domain": "research",
-      "purpose": "supplied WhatsApp group evidence analysis"
+      "purpose": "exact hosted group reads and specifically approved replies"
+    },
+    {
+      "name": "shvya-ai-flow-testing",
+      "domain": "operations",
+      "purpose": "bounded stateful production AI/CRM tests with owned fixtures and no delivery"
+    },
+    {
+      "name": "shvya-account-handover",
+      "domain": "business",
+      "purpose": "verified lead journey and onboarding demonstration guide"
     }
   ]
 }

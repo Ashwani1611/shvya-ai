@@ -1,0 +1,464 @@
+{
+  "schema_version": 1,
+  "namespace": "SHVYA_",
+  "syntax": "{{SHVYA_VARIABLE_NAME}}",
+  "purpose": "Compile-time artifact variables only. These are not a claim that Shvya natively expands tokens or stores global variables.",
+  "rendering": {
+    "substitution": "literal, single-pass",
+    "string_values": "insert unchanged",
+    "structured_values": "JSON serialize",
+    "required_scope": "Only variables actually used by the selected template are required for rendering.",
+    "null_policy": "Keep unbound IDs null in example values; reject null whenever a referenced token is rendered for use.",
+    "runtime_personalization": "Preserve only the nine built-in native runtime keys listed below. This pure authoring service cannot verify custom tenant attribute keys; render those through their authorized native delivery surface.",
+    "default_policy": "No defaults or examples are applied. Every referenced variable must be supplied explicitly, including optional empty SHVYA_EXTRA_RULES.",
+    "unresolved_variables": "Fail render before producing uploadable content."
+  },
+  "variables": [
+    {
+      "name": "SHVYA_COMPANY_NAME",
+      "type": "string",
+      "required": true,
+      "description": "Organization-facing brand/company name; not an organization identifier.",
+      "example": "Shvya AI",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_ASSISTANT_NAME",
+      "type": "string",
+      "required": true,
+      "description": "Disclosed AI assistant name; must agree in Rules and Welcome Message.",
+      "example": "Ria",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_SUPPORTED_LANGUAGES",
+      "type": "string",
+      "required": true,
+      "description": "Comma-separated approved languages for the customer-facing assistant and bot_languages.",
+      "example": "English, Hindi, Hinglish",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_CUSTOMER_TONE",
+      "type": "string",
+      "required": true,
+      "description": "Customer communication tone; does not authorize facts or actions.",
+      "example": "concise, friendly, professional, and suitable for WhatsApp",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_TIMEZONE",
+      "type": "string",
+      "required": true,
+      "description": "IANA default reminder/schedule time zone; explicit customer time zone takes priority.",
+      "example": "Asia/Kolkata",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_COMPANY_ABOUT",
+      "type": "string",
+      "required": true,
+      "description": "Approved factual organization description for changes.about; keep operating instructions in ai_playbook.",
+      "example": "Shvya AI helps businesses manage leads, automate follow-ups, and respond to enquiries more efficiently. Ria is the AI assistant for Shvya AI. This description is limited to the supplied reference; additional product, pricing, integration, availability, policy, and results claims require approved organization information.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_HUMAN_ASSISTANCE_RULES",
+      "type": "string",
+      "required": true,
+      "description": "Complete private human-assistance rules using only approved contacts and sent-message evidence.",
+      "example": "- If the lead explicitly requests a call, callback, demo, human, consultant, specialist, or meeting, prioritize that request over continuing qualification.\n- First assistance contact: Ashwini — 8360156287.\n- Share Gaurav — 9470225755 only after Ashwini’s contact has already been sent and the lead requests further escalation or reports unresolved assistance.\n- Do not share both contacts in the same message.\n- Count a contact as provided only when it appears in an actual sent outbound message.\n- Do not promise that either person will call or is immediately available.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_WELCOME_MESSAGE",
+      "type": "string",
+      "required": true,
+      "description": "Customer copy only, without surrounding tags; sent once at a new conversation. Always use plain text and {{lead_first_name}} in each customer message block.",
+      "example": "Hi {{lead_first_name}}! I’m Ria, the AI assistant for Shvya AI.\n\nWe help businesses manage leads, automate follow-ups, and respond to enquiries more efficiently.\n\nI’d like to understand your current setup with a few quick questions.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_QUESTION_BLOCKS",
+      "type": "string",
+      "required": true,
+      "description": "Complete ordered tagged question_content blocks; no private instructions or mappings inside customer copy. Always use plain text and {{lead_first_name}} in each customer message block.",
+      "example": "<question_content>\n1. What’s your biggest issue with managing or converting leads right now, {{lead_first_name}}?\n\nA) Slow replies\nB) Missed follow-ups\nC) Leads going cold\nD) No proper tracking\n</question_content>\n\n<question_content>\n2. Where do you currently manage your leads, {{lead_first_name}}?\n\nA) WhatsApp\nB) Excel / Google Sheets\nC) CRM\nD) Multiple places\n</question_content>\n\n<question_content>\n3. Approximately how many leads do you receive per day, {{lead_first_name}}?\n\nA) 0–10\nB) 11–30\nC) More than 30\n</question_content>\n\n<question_content>\n4. Are you currently running paid ads, {{lead_first_name}}?\n\nA) Yes\nB) No\n</question_content>",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_QUESTION_NOTES",
+      "type": "string",
+      "required": true,
+      "description": "Private Notes placed after the question blocks; no customer-facing question here.",
+      "example": "- These are four separate questions. Never send the entire questionnaire together.\n- Options belong only to their respective question.\n- Ask a short clarification when necessary; do not repeat every option unnecessarily.\n- If the lead says “sometimes” to Question 4, clarify whether any paid ads are currently active.\n- A refusal or unclear response is not a valid answer.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_ACKNOWLEDGMENT_MESSAGE",
+      "type": "string",
+      "required": true,
+      "description": "Customer completion copy only, no surrounding tags and no promise of an unconfirmed action. Always use plain text and {{lead_first_name}} in each customer message block.",
+      "example": "Thanks, {{lead_first_name}}, for sharing your current setup. If you have any questions about Shvya AI or would like to speak with our team, let me know.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_QUALIFICATION_CRITERIA",
+      "type": "string",
+      "required": true,
+      "description": "Complete explicit eligibility predicates over exact required mapped values; optional fields marked non-blocking.",
+      "example": "1. A lead qualifies only when ALL of these conditions are satisfied:\n\n- BIGGEST PROBLEM has a clear value.\n- LEAD MANAGEMENT TOOL has a clear value.\n- LEADS/D has a clear value.\n- RUNNING ADS has a clear value.\n\n2. The following attributes are optional and must not block qualification:\n\n- PRODUCT\n- BUDGET\n- COMPANY NAME\n- INDUSTRY\n- WEBSITE\n- FOLLOW UPS\n- USING WHATSAPP\n- CRM\n- SOURCE\n\n3. An answered question does not automatically mean its mapped value is valid.\n\nIf any required qualification value is unknown or unclear:\n- Do not qualify the lead.\n- Ask for clarification when appropriate.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_STAGE_SHIFTING_LOGIC",
+      "type": "string",
+      "required": true,
+      "description": "Numbered conditional stage rules with exact active organization-owned target names; no guessed IDs.",
+      "example": "Rule 1 — Qualification:\n- When a lead in New Lead / New Leads satisfies all Qualification Criteria, move the lead to Qualified in the lead’s current pipeline.\n- Do not move to In Conversation during qualification.\n- Do not move a lead from a later stage back to Qualified.\n\nRule 2 — Call or human request:\n- When the lead clearly asks for a call, callback, demo, human, consultant, specialist, or meeting, move the lead to Call Requested in the lead’s current pipeline.\n- Do not require completion of qualification before honoring this request.\n- A declined, hypothetical, or negated request does not satisfy this rule.\n\nRule 3 — Human Intervention Needed:\n- Move the lead to Human Intervention Needed in the lead’s current pipeline when ALL of these are true:\n  - Ashwini — 8360156287 has already been provided in a sent outbound message.\n  - Gaurav — 9470225755 has already been provided in a sent outbound message.\n  - The lead still requests assistance or says the issue remains unresolved.\n\nNotes:\n- Human Intervention Needed takes priority over a repeated Call Requested transition when all escalation conditions are satisfied.\n- An explicit human-assistance request takes priority over ordinary qualification completion.\n- Do not change stages on greetings, acknowledgments, or AI score alone.\n- Do not use a broad stage description to bypass the explicit conditions above.\n- If a destination is missing, inactive, or ambiguous, leave the stage unchanged.\n- No other automatic stage or pipeline transition is authorized by this Playbook.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_ATTRIBUTE_MAPPING_LOGIC",
+      "type": "string",
+      "required": true,
+      "description": "Numbered mappings covering exact attribute names, sources, translation rules, and ambiguity handling.",
+      "example": "Mapping 1:\n- Attribute name: BIGGEST PROBLEM\n- Description: The lead’s stated difficulty managing or converting leads.\n- Source: Qualification Question 1 or an equivalent customer statement.\n- Value rule:\n  - Slow replies → Slow replies\n  - Slow response / late response → Slow replies\n  - Missed follow-ups → Missed follow-ups\n  - Forgetting follow-ups → Missed follow-ups\n  - Leads going cold → Leads going cold\n  - Leads stop responding → Leads going cold\n  - No proper tracking → No proper tracking\n  - Difficulty tracking leads → No proper tracking\n- If multiple problems are stated, preserve them when the field supports multiple values or free text.\n- If the field allows only one option, ask which problem is the main one.\n- Do not silently discard a second stated problem.\n\nMapping 2:\n- Attribute name: LEAD MANAGEMENT TOOL\n- Description: Where the business currently manages its leads.\n- Source: Qualification Question 2 or an equivalent customer statement.\n- Value rule:\n  - WhatsApp → WhatsApp\n  - Excel / Google Sheets → Excel / Sheets\n  - Excel → Excel / Sheets\n  - Google Sheets → Excel / Sheets\n  - CRM → CRM\n  - Zoho / HubSpot / Salesforce → CRM\n  - Multiple places → Multiple places\n  - WhatsApp and Google Sheets → Multiple places\n- More than one clearly stated lead-management system maps to Multiple places.\n- Do not infer the business’s tools from the messaging channel alone.\n\nMapping 3:\n- Attribute name: LEADS/D\n- Description: Approximate daily lead volume.\n- Source: Qualification Question 3 or an equivalent customer statement.\n- Value rule:\n  - 0–10 → 0-10\n  - 11–30 → 10-30\n  - More than 30 → 30+\n  - 0 to 10 leads per day → 0-10\n  - 11 to 30 leads per day → 10-30\n  - More than 30 leads per day → 30+\n- The stored CRM option 10-30 represents the questionnaire’s 11–30 band.\n- Exactly 10 belongs to 0-10; exactly 30 belongs to 10-30.\n- If a number is given directly in response to the daily-volume question, use that daily context.\n- If the time period is otherwise unclear, clarify it.\n- Do not treat monthly volume as daily volume.\n\nMapping 4:\n- Attribute name: RUNNING ADS\n- Description: Whether paid advertising is currently active.\n- Source: Qualification Question 4 or an equivalent customer statement.\n- Value rule:\n  - Yes → Yes\n  - Currently running paid ads → Yes\n  - No → No\n  - Not currently running paid ads → No\n- Mentioning an advertising platform alone does not prove that ads are currently active.\n- Past advertising, planned advertising, and “sometimes” require clarification when current status is unclear.\n\nMapping 5:\n- Attribute name: COMPANY NAME\n- Description: The lead’s business or company name.\n- Source: An explicit customer statement.\n- Value rule: Store the name provided by the lead.\n\nMapping 6:\n- Attribute name: INDUSTRY\n- Description: The business’s industry.\n- Source: An explicit customer statement.\n- Value rule: Use the matching configured CRM option, or the stated industry if the field supports free text.\n- Do not infer industry from the company name alone.\n\nMapping 7:\n- Attribute name: WEBSITE\n- Description: The lead’s business website.\n- Source: A website URL explicitly provided by the lead.\n- Value rule: Store the provided URL.\n- Do not store Shvya AI’s website as the lead’s website.\n\nMapping 8:\n- Attribute name: PRODUCT\n- Description: The product or service the lead is interested in.\n- Source: An explicit customer statement.\n- Value rule: Store only the stated interest using the field’s supported values.\n\nMapping 9:\n- Attribute name: BUDGET\n- Description: Budget explicitly stated by the lead.\n- Source: An explicit customer budget statement.\n- Value rule: Preserve the amount, currency, and period when supported by the field.\n- Clarify missing units if necessary.\n- Never estimate a budget or make it mandatory.\n\nMapping 10:\n- Attribute name: FOLLOW UPS\n- Description: The business’s current follow-up process.\n- Source: Explicit customer statements about their follow-up process.\n- Value rule: Store only the stated information.\n\nMapping 11:\n- Attribute name: USING WHATSAPP\n- Description: Whether the business uses WhatsApp in its operations.\n- Source: An explicit customer statement.\n- Value rule:\n  - Business uses WhatsApp → Yes\n  - Business does not use WhatsApp → No\n- The current conversation occurring on WhatsApp is not sufficient evidence.\n\nMapping 12:\n- Attribute name: CRM\n- Description: The CRM platform currently used by the business.\n- Source: The customer explicitly names their CRM.\n- Value rule: Store the named platform if supported by the field.\n- A generic answer of “CRM” does not establish a platform name.\n\nMapping 13:\n- Attribute name: SOURCE\n- Description: Source information according to this CRM attribute’s configured meaning.\n- Source: Explicit customer information consistent with the attribute description.\n- Value rule: Use only valid configured source values.\n- Do not confuse how the customer discovered Shvya AI with how their own business generates leads.\n- Leave unchanged if its intended meaning or evidence is unclear.\n\nGeneral mapping rules:\n- Use exact existing attribute names and supported field types.\n- Dropdown values must match configured options.\n- Never create new attributes or dropdown options.\n- Never fill missing values with guesses.\n- Do not store unknown, unclear, or not provided as valid qualification answers.\n- Preserve valid existing values unless the customer explicitly corrects them.\n- Capture optional information when volunteered; do not add optional qualification questions.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_REMINDER_CREATION_LOGIC",
+      "type": "string",
+      "required": true,
+      "description": "Numbered reminder rules including explicit timing, time zone, deduplication, opt-out, and success confirmation.",
+      "example": "Reminder 1 — Customer Callback:\n- Create when: The lead explicitly requests a callback and provides or confirms a future date and time.\n- Title: Customer Callback\n- Due time: The customer-agreed date and time.\n- Time zone: Asia/Kolkata, unless the customer explicitly specifies another time zone.\n- Notes: Record the requested callback purpose and timing.\n\nReminder 2 — Shvya AI Follow-up:\n- Create when: The lead explicitly asks for a later follow-up, provides or confirms a future date and time, and is not requesting the same callback covered by Reminder 1.\n- Title: Shvya AI Follow-up\n- Due time: The customer-agreed date and time.\n- Time zone: Asia/Kolkata, unless the customer explicitly specifies another time zone.\n- Notes: Record the relevant factual follow-up context.\n\nNotes:\n- These are internal CRM reminders, not confirmed appointments.\n- Create only one reminder for the same requested event.\n- Check for an existing active reminder before creating another.\n- If the date is unclear, ask for the date.\n- If the time is unclear, ask for the time.\n- Interpret “tomorrow” using the current date and applicable time zone.\n- Clarify past or conflicting times rather than guessing.\n- Do not create reminders merely because qualification is complete or a contact number was shared.\n- Do not create reminders for opted-out or not-interested leads.\n- Do not promise that a team member will call at that time.\n- Confirm that the request was recorded only after reminder creation succeeds.\n- Never send these Notes or internal reminder fields to the lead.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_EXTRA_RULES",
+      "type": "string",
+      "required": false,
+      "description": "Optional private organization-specific rules appended to Rules; must not weaken evidence, authorization, opt-out, or criteria.",
+      "example": "Only the explicit stage rules in this Playbook authorize automated transitions. The applicable default reminder time zone is Asia/Kolkata unless the customer explicitly states another time zone.",
+      "source": "User reference and authored package template",
+      "allow_empty": true,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_PRIMARY_CONTACT_NAME",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time primary contact name. Optional authoring metadata; does not rewrite the full HUMAN_ASSISTANCE_RULES or STAGE_SHIFTING_LOGIC block automatically. Keep those literal blocks consistent when changing contacts.",
+      "example": "Ashwini",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_PRIMARY_CONTACT_PHONE",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time primary contact phone. Optional authoring metadata; does not rewrite the full HUMAN_ASSISTANCE_RULES or STAGE_SHIFTING_LOGIC block automatically. Keep those literal blocks consistent when changing contacts.",
+      "example": "8360156287",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_SECONDARY_CONTACT_NAME",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time secondary contact name. Optional authoring metadata; does not rewrite the full HUMAN_ASSISTANCE_RULES or STAGE_SHIFTING_LOGIC block automatically. Keep those literal blocks consistent when changing contacts.",
+      "example": "Gaurav",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_SECONDARY_CONTACT_PHONE",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time secondary contact phone. Optional authoring metadata; does not rewrite the full HUMAN_ASSISTANCE_RULES or STAGE_SHIFTING_LOGIC block automatically. Keep those literal blocks consistent when changing contacts.",
+      "example": "9470225755",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_ORGANIZATION_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_PIPELINE_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_QUALIFIED_STAGE_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_CALL_REQUESTED_STAGE_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_HUMAN_INTERVENTION_STAGE_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_WHATSAPP_ACCOUNT_ID",
+      "type": "string",
+      "required": false,
+      "description": "Discovered organization-owned identifier. Leave null until matching record is verified.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_PROVIDER",
+      "type": "string",
+      "required": false,
+      "description": "Discovered Shvya Cadence provider: hosted or api. Null until actual account discovery.",
+      "example": null,
+      "source": "Live authorized MCP discovery only",
+      "allow_empty": false,
+      "allow_null": true,
+      "enum": [
+        "hosted",
+        "api"
+      ]
+    },
+    {
+      "name": "SHVYA_DRY_RUN",
+      "type": "boolean",
+      "required": false,
+      "description": "Example preview value true; supply explicitly when used. Controls explicit preview mode; not permission to apply.",
+      "example": true,
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_ENABLE_AUTOMATIONS",
+      "type": "boolean",
+      "required": false,
+      "description": "Example enrollment/Workflow activation value false; supply explicitly when used. Activation requires a reviewed authorized change. This does not control Cadence is_active: always create Cadences active.",
+      "example": false,
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_OPERATION_REASON",
+      "type": "string",
+      "required": false,
+      "description": "Specific truthful operational purpose sent with a mutation/preview.",
+      "example": "Prepare and review the reusable Shvya organization setup; no live mutation is authorized in package-only mode.",
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_APPROVED_FACTS",
+      "type": "array",
+      "required": false,
+      "description": "Portable provenance ledger for approved business facts. Do not treat this list as native Shvya configuration.",
+      "example": [
+        {
+          "fact": "Shvya AI helps businesses manage leads, automate follow-ups, and respond to enquiries more efficiently.",
+          "source": "User-supplied Ria Playbook, Welcome Message",
+          "status": "user_reference"
+        },
+        {
+          "fact": "Ria is the AI assistant for Shvya AI.",
+          "source": "User-supplied Ria Playbook, Rules 1",
+          "status": "user_reference"
+        }
+      ],
+      "source": "User reference and authored package template",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_BUSINESS_CONTEXT",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice business context.",
+      "example": "Shvya AI helps businesses manage leads, automate follow-ups, and respond to enquiries more efficiently. Ria is an AI assistant, never a human representative.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_QUALIFICATION_FLOW",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice qualification flow.",
+      "example": "Only for a lead currently in New Lead or New Leads: ask one question at a time, in order, about the biggest lead-management problem, current lead-management tools, daily lead volume, and whether paid ads are currently active. Skip clear answers already supported by customer evidence and valid CRM mappings. A refusal is unresolved, not a qualified value. Prioritize explicit human-assistance requests. Use the authored AI Playbook for exact options, mappings, criteria, and stage rules.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_APPROVED_KNOWLEDGE",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice approved knowledge.",
+      "example": "Use only approved organization information and connected knowledge sources. The supplied reference supports the broad lead-management description; no prices, integrations, promises, availability, or results have been supplied.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_OUTCOME_MAPPING",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice outcome mapping.",
+      "example": "Report only evidenced conversation outcomes. Shvya backend qualification and CRM contracts determine allowed actions. Do not mark Qualified directly, invent a booking, alter pipelines, or assert a reminder exists without confirmed backend success. Stop/opt-out requests stop qualification and automated follow-up.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_PRONUNCIATION_GUIDE",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice pronunciation guide.",
+      "example": "No pronunciation guide has been supplied. Do not invent phonetic corrections for Shvya, Ria, Ashwini, or Gaurav; request an approved guide during voice setup.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_VOICE_CALL_OBJECTIVE",
+      "type": "string",
+      "required": false,
+      "description": "Approved compile-time voice call objective.",
+      "example": "Answer the lead’s questions using approved Shvya AI information, understand their lead-management setup when qualification applies, and honor human-assistance and opt-out requests.",
+      "source": "User reference; compile-time voice adapter guidance",
+      "allow_empty": false,
+      "allow_null": false
+    },
+    {
+      "name": "SHVYA_NEW_STAGE_ID",
+      "type": "string",
+      "required": false,
+      "description": "Exact discovered organization-owned identifier/key for the conditional-qualification or Workflow illustration; not a shipped Shvya business requirement.",
+      "example": null,
+      "source": "Authorized live MCP schema/catalog discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_INTEREST_ATTRIBUTE_KEY",
+      "type": "string",
+      "required": false,
+      "description": "Exact discovered organization-owned identifier/key for the conditional-qualification or Workflow illustration; not a shipped Shvya business requirement.",
+      "example": null,
+      "source": "Authorized live MCP schema/catalog discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_PREFERRED_TIME_ATTRIBUTE_KEY",
+      "type": "string",
+      "required": false,
+      "description": "Exact discovered organization-owned identifier/key for the conditional-qualification or Workflow illustration; not a shipped Shvya business requirement.",
+      "example": null,
+      "source": "Authorized live MCP schema/catalog discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    },
+    {
+      "name": "SHVYA_PRODUCT_ATTRIBUTE_KEY",
+      "type": "string",
+      "required": false,
+      "description": "Exact discovered organization-owned identifier/key for the conditional-qualification or Workflow illustration; not a shipped Shvya business requirement.",
+      "example": null,
+      "source": "Authorized live MCP schema/catalog discovery only",
+      "allow_empty": false,
+      "allow_null": true
+    }
+  ],
+  "native_runtime_variables": {
+    "syntax": "{{lowercase_key}}",
+    "keys": [
+      "lead_name",
+      "lead_first_name",
+      "phone",
+      "email",
+      "lead_source",
+      "org_name",
+      "user_name",
+      "pipeline_name",
+      "stage_name"
+    ],
+    "custom_keys": "Custom attribute keys are not accepted by the pure setup renderer; discover and validate them through the tenant-safe native placeholder surface.",
+    "verified_source": [
+      "services/followup_service.py::_lead_template_values",
+      "services/channels/template_service.py::available_placeholders",
+      "services/channels/template_service.py::render_template_body"
+    ],
+    "preserve_during_package_render": true
+  }
+}

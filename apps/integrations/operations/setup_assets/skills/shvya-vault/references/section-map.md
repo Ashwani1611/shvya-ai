@@ -1,25 +1,58 @@
-# Intake sections and Shvya destinations
+# SHVYA Vault section map
 
-Destination names below are real exposed MCP capabilities, not automatic mappings. Confirm current allowed capabilities before proposing writes.
+All 15 source section keys exist in the native Vault. The original full classification is preserved below, but its Kraya destination/API column is historical. Use this native destination table and vault-contract.md when acting.
 
-| Key | Capture | Candidate destination / limit |
-|---|---|---|
-| `website` | User-supplied canonical website pages and purpose | `create_knowledge_source` proposal using its discovered schema; never crawl unrelated links automatically |
-| `brochures` | Supplied catalogs, documents and price sheets, source version | `upload_knowledge_document`; `get_knowledge_health` exposes metadata, not file text |
-| `media` | Authorized local media, observed description, intended use | Attachment inventory; current MCP has no general sendable-media library equivalent |
-| `offerings` | Services/products, units, prices, disclosure policy | About through `update_ai_configuration`; factual FAQs through `upsert_faq`; disclosure behavior in AI Playbook |
-| `basics` | Branches, address, phone/email, hours and timezone, verified booking/payment links | About/FAQs; supported WhatsApp hours through `update_messaging_automation_settings` |
-| `faqs` | Real questions, objections and authorized answers | `upsert_faq`; concise reusable copy may also become a `upsert_touchpoint` draft |
-| `team` | Roles, ownership and escalation order; necessary business contacts | AI Playbook and validated Workflow design; no invented user IDs or assignment tool |
-| `qualification` | Definition, disqualifiers, exact questions/options, conditional applicability | `validate_qualification_configuration`, then proposed `upsert_qualification_configuration`; custom attributes use `upsert_attribute_configuration` |
-| `handoff` | Human-request, complaint, readiness, custom-quote triggers and acknowledgment | AI Playbook, real stage AI switches and validated Workflows; do not promise a callback without a working process |
-| `blacklist` | Client-specific prohibited topics, restricted pricing and disclosure rules | AI Playbook behavior; applicable backend policy remains authoritative |
-| `rules` | Persona, tone, language/script, emoji, never-promise rules | `update_ai_configuration` proposal for Playbook and supported languages |
-| `proof` | Approved quotes, attribution, metrics, units, evidence/permission | Facts/FAQs or approved knowledge; do not turn old claims into guarantees |
-| `offers` | Offer eligibility, start/end date and timezone | Factual FAQ/About proposals; expired offers must not remain active copy |
-| `scripts` | Supplied historical calls/chats/email examples | Tone and flow evidence only; historical customer claims are not business policy |
-| `other` | Unclassified facts and questions | Triage before producing configuration |
+| Section | Native downstream proposal |
+|---|---|
+| website | Verified URL knowledge source, ingestion and retrieval check. |
+| brochures | Actual document ingestion; independent sharing permission. |
+| media | Verified asset plus send_when instruction and permitted channel delivery. |
+| offerings | About, FAQ facts and explicit price-disclosure policy. |
+| basics | About/contact/hours with timezone, verified booking/payment links. |
+| faqs | Grounded FAQ records, objections and approved Quick Replies. |
+| team | Actual owner/contact/escalation policy; no invented invitations. |
+| qualification | Native eight-section AI Playbook and described typed attributes. |
+| handoff | Authored human policy, actual stages/AI flags and coordinated suppression. |
+| blacklist | Refusal/escalation and private-topic boundaries in Rules. |
+| rules | Tone, persona disclosure, bot_languages, script and prohibited promises. |
+| proof | Approved attribution and concrete case material, never fabricated claims. |
+| offers | Verified offer, terms, end date and expiry behavior. |
+| scripts | Client-authored copy or tone evidence; preserve original scope and privacy. |
+| other | Classified gaps and miscellaneous client evidence. |
 
-Calls commonly supply qualification, handoff, rules and restrictions; business basics and offerings are often partial. Preserve precise wording where required. Calls mentioning media do not provide the media; record the missing artifact. Supplied URLs can be listed under `website`; do not invent URL slugs.
+# Vault sections ↔ brainstorming call ↔ Kraya
 
-Client-facing exports exclude secrets, customer personal records beyond necessary approved contacts, billing/credit commentary, staff opinions and other organizations. Internal delivery, integration, commercial and KPI notes belong in a separate restricted project artifact, not the intake export. This separation does not create a new Shvya portal or change visibility settings.
+Use the `key` column with `vault.py note --section <key>`. "Call §" is the section of `kraya-account-setup/references/brainstorming-checklist.md` where the fact is usually discussed.
+
+| key | Section (what the client sees) | What belongs here | Call § | Lands in Kraya as |
+|---|---|---|---|---|
+| `website` | Website pages | One URL per key page (home, services, pricing, about, contact) | 11 | `org_info.attachments` type `url` |
+| `brochures` | Brochures, catalogues & price lists | PDF / DOCX / XLSX the team already shares | 11 | `org_info.attachments` type `file` |
+| `media` | Photos & videos the AI can send | Files to send mid-chat + "what it is / when to send it" | 11 | `org_info.sendable_files` (name, type, description) |
+| `offerings` | Products, services & pricing | Full list, prices or ranges, packages, **pricing disclosure choice** (exact / ranges / on call) | 1, 3 | `about` Core Services, FAQs, `pricingDisclosure` rule |
+| `basics` | Business basics | Branches ("one branch only" counts), hours + timezone, phone/email/address, booking and payment links | 1 | `about`, `auto_responder_hours`, Info & Links quick replies |
+| `faqs` | Questions leads ask & objections | Real lead questions, objections in the lead's words, the client's preferred answers | 3, 11 | `POST /faqs/articles`, objection quick replies, sequence copy |
+| `team` | Who handles leads | Names, roles, numbers, who takes which lead type, escalation order | 9 | Spec escalation rules, acknowledgement message |
+| `qualification` | Qualification | What "qualified" means, deal-breakers, the 3–7 questions with options, verbatim wording if required, sales-cycle length | 3 | Spec `## Qualification` + `## Qualification Questions`, custom attributes |
+| `handoff` | When the AI should hand over to a human | Situations that end the AI's turn: upset customer, complaint/refund, custom quote or negotiation, asks for a person, ready to pay; what the AI says while handing over; who takes over | 3, 9 | Spec Edge Cases + escalation rules, acknowledgement message, stages with `ai_switch` off, rules that notify the team |
+| `blacklist` | Topics the AI must never answer | Topics to refuse and flag: prices the client won't quote on chat, legal/medical/financial advice, competitors, internal matters | 1, 3 | `about` Safety & Guardrails + spec Rules (refuse, say the team will help, flag) |
+| `rules` | Tone, language & promises | Tone, emoji yes/no, languages + script, persona name, promises it must never make (dates, results, guarantees, discounts) | 1, 3 | `about` Tone Notes, `bot_languages`, `<client_preferences>`, spec Rules |
+| `proof` | Testimonials & proof | Quotes with name + city/company, case studies, numbers with units | 11 | Sequence proof messages, quick replies |
+| `offers` | Current offers | Offer + end date | 11 | `about`, FAQs (never quote an expired one) |
+| `scripts` | Sales scripts & past chats | Chat exports, call scripts, email templates | 11 | Tone only (Client Profile), nothing stored in Kraya |
+| `other` | Anything else | Whatever doesn't fit; also the default section for questions | — | — |
+
+## What the call usually gives you, by section
+
+- **`qualification`** — almost always. The call is where the ops rep and client agree on what to ask and whom to drop. Write the agreed questions as a numbered list in the client's words.
+- **`rules`** — usually. Tone, language mix and script, persona name, emoji, never-promise items.
+- **`handoff`** — usually. Listen for "then don't ask anything else", "send them to reception", "my team calls": every moment the client says a human takes over.
+- **`blacklist`** — usually. Anything the client says the AI must not answer at all (not just phrase carefully): write the topic and that it should be flagged to the team.
+- **`basics`**, **`offerings`** — often partial. Write what was said, then `ask` for the rest (e.g. exact hours, a price sheet).
+- **`team`** — often names without numbers. Write the names, ask for numbers.
+- **`faqs`**, **`proof`**, **`offers`** — sometimes mentioned in passing. Write one note per section only if there is a concrete fact; do not pad.
+- **`website`**, **`brochures`**, **`media`** — the call rarely gives files. Do not write notes here from a transcript; the client uploads. If the rep pasted links, add them as a note in `website` listing the URLs.
+
+## Not for the Vault
+
+Ops-internal material stays out: pack, credits, billing, KPIs (call §12–13), WhatsApp channel decisions (§8), integrations (§10), and anything about other clients. The client reads every note you write.

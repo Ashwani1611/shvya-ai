@@ -20,6 +20,8 @@ class SetupLibraryTests(SimpleTestCase):
         prompt_names = {item["name"] for item in prompts}
         expected_skills = {
             "shvya-account-setup",
+            "shvya-ai-flow-testing",
+            "shvya-account-handover",
             "shvya-account-review",
             "shvya-vault",
             "shvya-read-whatsapp-group",
@@ -54,8 +56,8 @@ class SetupLibraryTests(SimpleTestCase):
             for item in skill_entries
         }
         self.assertEqual(skill_names, expected_skills)
-        self.assertEqual(len(skill_entries), 25)
-        self.assertEqual(len(prompts), 34)
+        self.assertEqual(len(skill_entries), 27)
+        self.assertEqual(len(prompts), 36)
         self.assertEqual(
             len([
                 item for item in prompts
@@ -108,7 +110,7 @@ class SetupLibraryTests(SimpleTestCase):
         matrix = json.loads(library._read_asset("framework/skill-matrix.json"))
         self.assertEqual(matrix["schema_version"], 1)
         skills = [item["name"] for item in matrix["skills"]]
-        self.assertEqual(len(skills), 25)
+        self.assertEqual(len(skills), 27)
         self.assertEqual(len(skills), len(set(skills)))
 
         required_framework = (
@@ -167,7 +169,9 @@ class SetupLibraryTests(SimpleTestCase):
             self.assertIn(path.suffix, {".json", ".md"})
             if path.suffix == ".json":
                 json.loads(path.read_text())
-            else:
+            elif not entry.get("historical_source"):
+                # Original source text is a provenance snapshot. Its historical
+                # repository links are not operative SHVYA resource references.
                 for link in re.findall(r"\[[^\]]+\]\(([^)]+)\)", path.read_text()):
                     if "://" not in link and not link.startswith("#"):
                         target = (path.parent / link.split("#", 1)[0]).resolve()
@@ -362,5 +366,5 @@ class SetupLibraryTests(SimpleTestCase):
         self.assertEqual(cases["status"], "NOT_MODEL_EXECUTED")
         self.assertTrue(all(case["result"] is None for case in cases["cases"]))
         self.assertNotIn("scripts/", library._read_asset("skills/shvya-vault/SKILL.md"))
-        self.assertIn("upsert_setup_intake_entry", library._read_asset("skills/shvya-vault/SKILL.md"))
+        self.assertIn("upsert_vault_entry", library._read_asset("skills/shvya-vault/references/vault-contract.md"))
         self.assertIn("analyze_setup_group_export", library._read_asset("skills/shvya-read-whatsapp-group/SKILL.md"))

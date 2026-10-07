@@ -4,7 +4,7 @@ The reusable kit separates four layers so one organization's content cannot quie
 
 | Layer | What belongs here | Shvya destination |
 |---|---|---|
-| Setup operator | MCP discovery, allowed capabilities, domain routing, dependency planning, preview/apply/readback, recovery | `shvya-operator`, the 25 top-level domain skills and the specialist setup/review sub-prompts; never customer knowledge |
+| Setup operator | MCP discovery, allowed capabilities, domain routing, dependency planning, preview/apply/readback, recovery | `shvya-operator`, the 27 top-level domain skills and the specialist setup/review sub-prompts; never customer knowledge |
 | Customer behavior | Persona, question flow, criteria, stage/mapping/reminder conditions, confidentiality | `OrgInfo.ai_playbook` via AI Brain |
 | Approved business facts | Company description, supported factual FAQs, products/prices/policies with sources | AI configuration `about`, independent FAQs, knowledge URL/file sources |
 | Customer evidence/state | Actual inbound messages, valid CRM values, current pipeline/stage, outbound sent status, reminders | Shvya's organization-scoped canonical runtime records; not template claims |

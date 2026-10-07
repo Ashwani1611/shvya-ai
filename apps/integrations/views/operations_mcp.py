@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+from contextlib import nullcontext
 from urllib.parse import urlencode, urlparse
 
 from django.db import transaction
@@ -83,9 +84,8 @@ from apps.integrations.operations.request_body import (
     OperationsMCPLargeBodyAuthRequired,
     read_operations_mcp_body,
 )
-from apps.integrations.operations.setup_catalog import SETUP_TOOL_CAPABILITIES
+from apps.integrations.operations.response_policy import sanitize_tool_response
 from apps.integrations.operations.setup_protocol import (
-    SETUP_LIBRARY_TOOL_NAMES,
     SETUP_PROTOCOL_METHODS,
     SetupResourceNotFound,
     execute_setup_protocol,
@@ -112,29 +112,10 @@ SUPPORTED_PROTOCOL_VERSIONS = (
     MODERN_PROTOCOL_VERSION,
     LEGACY_PROTOCOL_VERSION,
 )
-SERVER_INFO = {"name": "shvya-operations", "version": "1.0.0"}
+SERVER_INFO = {"name": "shvya-operations", "version": "1.1.0"}
 logger = logging.getLogger(__name__)
 OAUTH_MAX_BODY_BYTES = 32 * 1024
 OAUTH_MAX_STATE_LENGTH = 1024
-
-TOOL_RESPONSE_TEXT_LIMITS = {
-    # These tools deliberately expose bounded configuration text after secret
-    # redaction. Keep ordinary diagnostics on the sanitizer's 800-char default.
-    "get_ai_configuration": 110000,
-    "get_organization_configuration": 30000,
-    "export_organization_configuration": 250000,
-    "get_configuration_dependency_graph": 120000,
-    "create_configuration_plan": 120000,
-    "import_organization_configuration": 120000,
-    "apply_configuration_plan": 120000,
-    "get_setup_library_resource": 20000,
-    "get_setup_variable_schema": 20000,
-    "render_setup_template": 100000,
-    "analyze_setup_group_export": 65000,
-    "get_setup_intake": 12000,
-    "upsert_setup_intake_entry": 12000,
-    "archive_setup_intake_entry": 12000,
-}
 
 def _oauth_request_too_large(request):
     raw = str(request.META.get("CONTENT_LENGTH") or "").strip()
@@ -1099,6 +1080,7 @@ def _setup_protocol_response(request, *, request_id, method, params, modern):
 @csrf_exempt
 @ratelimit(limit=240, window=60)
 @require_POST
+@transaction.non_atomic_requests
 def operations_mcp(request):
     try:
         raw_body = read_operations_mcp_body(request)
@@ -1313,7 +1295,11 @@ def operations_mcp(request):
             description=sanitize_text(exc, limit=160),
         )
 
-    with transaction.atomic():
+    # A flow turn commits its claim and credit reservations before provider I/O.
+    # Wrapping that operation in an outer transaction would lose durable budget
+    # and replay evidence after a worker crash. All other tools remain atomic.
+    boundary = nullcontext() if tool_name == "run_ai_flow_test_turn" else transaction.atomic()
+    with boundary:
         started = time.perf_counter()
         execution = None
         error_code = ""
@@ -1336,19 +1322,7 @@ def operations_mcp(request):
                 identity=identity,
                 arguments=arguments,
             )
-            if tool_name in SETUP_LIBRARY_TOOL_NAMES:
-                # Immutable, allowlisted repository assets contain no tenant
-                # data. Generic credential heuristics would corrupt their
-                # documented identifiers and example placeholders.
-                safe_data = execution.data
-            else:
-                safe_data = sanitize_data(
-                    execution.data,
-                    text_limit=TOOL_RESPONSE_TEXT_LIMITS.get(tool_name, 800),
-                    list_limit=500 if tool_name == "analyze_setup_group_export" else 100,
-                )
-                if tool_name in SETUP_TOOL_CAPABILITIES and safe_data != execution.data:
-                    safe_data["response_sanitized"] = True
+            safe_data = sanitize_tool_response(tool_name, execution.data)
             result = {
                 "content": [
                     {

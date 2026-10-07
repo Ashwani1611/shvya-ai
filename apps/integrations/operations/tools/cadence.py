@@ -213,6 +213,7 @@ def _step_snapshot(step):
         "template_id": str(step.whatsapp_template_id) if step.whatsapp_template_id else None,
         "email_subject": step.email_subject,
         "email_body": step.email_body,
+        "instagram_body": step.instagram_body,
         "email_attachments": [
             {
                 "name": item.original_name,
@@ -311,6 +312,14 @@ def update_cadence_step(*, identity, arguments):
             raise OperationsToolError("Approved WhatsApp template not found for this Cadence account.")
         after["template_id"] = str(template.id)
         after["title"] = template.name
+    elif step.step_type == FollowupStep.StepType.INSTAGRAM:
+        from apps.integrations.operations.tools.channel_dashboard import _text
+        after["instagram_body"] = _text(
+            organization, data.get("body", step.instagram_body), max_length=1000,
+        )
+        after["title"] = str(data.get("title", step.title) or "Instagram DM").strip()
+        if len(after["title"]) > 255:
+            raise OperationsToolError("Instagram step title must be at most 255 characters.")
     elif step.step_type == FollowupStep.StepType.EMAIL:
         after["title"] = str(data.get("title", step.title) or "").strip()
         after["email_subject"] = str(data.get("subject", step.email_subject) or "").strip()
@@ -402,6 +411,9 @@ def update_cadence_step(*, identity, arguments):
         elif locked_step.step_type == FollowupStep.StepType.WHATSAPP:
             locked_step.whatsapp_template = template
             locked_step.title = template.name
+        elif locked_step.step_type == FollowupStep.StepType.INSTAGRAM:
+            locked_step.instagram_body = after["instagram_body"]
+            locked_step.title = after["title"]
         elif locked_step.step_type == FollowupStep.StepType.EMAIL:
             locked_step.title = after["title"]
             locked_step.email_subject = after["email_subject"]

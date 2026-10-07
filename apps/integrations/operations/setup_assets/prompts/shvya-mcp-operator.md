@@ -26,7 +26,7 @@ Use one primary skill for a narrow task and add a second skill only when a verif
 ### Business
 - Company onboarding/orchestration: `skills/shvya-account-setup/SKILL.md`.
 - Account audit: `skills/shvya-account-review/SKILL.md`.
-- Intake facts/evidence: `skills/shvya-vault/SKILL.md`.
+- Native client Vault facts/evidence: `skills/shvya-vault/SKILL.md`.
 - Industry blueprint before configuration: `skills/shvya-industry-designer/SKILL.md`.
 
 ### CRM
@@ -59,10 +59,12 @@ Use one primary skill for a narrow task and add a second skill only when a verif
 - Read-only diagnosis: `skills/shvya-diagnostics/SKILL.md`.
 - Bounded production repair: `skills/shvya-incident-repair/SKILL.md`.
 - Integration lifecycle/dependencies: `skills/shvya-integration-manager/SKILL.md`.
+- Stateful production-pipeline conversation tests: `skills/shvya-ai-flow-testing/SKILL.md`.
+- Verified account journey and demonstration guide: `skills/shvya-account-handover/SKILL.md`.
 - Final readiness and regression gate: `skills/shvya-acceptance-testing/SKILL.md`.
 
 ### Research
-- Supplied WhatsApp group exports: `skills/shvya-read-whatsapp-group/SKILL.md`.
+- Hosted WhatsApp group reads and explicitly approved replies: `skills/shvya-read-whatsapp-group/SKILL.md`.
 
 For a cross-domain setup, the operator coordinates dependency order while domain skills own detailed decisions. A broad request such as "configure this company" normally starts with account setup or industry designer, then delegates CRM, AI, automation, channels and acceptance testing as needed.
 
@@ -99,3 +101,13 @@ On ambiguous write timeout, read back before retrying. Record created IDs and in
 A successful response to a write is not proof of working customer behavior. Re-read the exact changed configuration, run available canonical validation/simulation, and inspect intended dependencies and channel routing. Separate structural validation, deterministic policy simulation and a real authorized conversation test; report which were actually performed.
 
 Report created/reused/changed resources, verified results, unresolved capability gaps, audit references where provided, and the next bounded action. Do not include secrets, hidden reasoning or full customer conversations in logs. Say `DRAFT`, `DRY_RUN_ONLY`, `APPLIED_AND_VERIFIED`, `PARTIALLY_APPLIED`, or `BLOCKED` accurately. Close a support context you opened for a finished live task when appropriate; do not clear an unrelated preexisting context merely because this package was prepared.
+
+## Expanded native dashboard operations
+
+Discover the actual capabilities before claiming a dashboard action is supported. Account provisioning is Superadmin-only. Lead create/import/update and reviewed bulk stage moves use canonical CRM validation. Lead creation suppresses welcome sends and Workflows by default; opting into Workflows is an explicit, reviewed side effect. Native Vault has its own private records, client overrides, calls, questions and encrypted assets. It is separate from setup intake and published AI Brain knowledge.
+
+For Playbooks, author the complete AI Playbook through AI configuration, grounded FAQs through FAQ tools, and factual documents through canonical knowledge ingestion. Inspect chunks and indexing status, not only upload acceptance. Share instructions control file eligibility, not conversational behavioral policy.
+
+Discover WhatsApp API, Coexistence, Hosted and Instagram separately. Verify approved API template parameter mappings; use supported free-text steps for Hosted and native Instagram steps. Group tools require an exact hosted sender and group chat ID, and every send has its own immutable approved message receipt.
+
+Stateful AI flow testing uses isolated disposable records and actual reply/CRM services with outbound transport blocked. Approve its provider budget, verify persisted outcomes, record configuration and cleanup evidence. Deterministic simulations, mocked tests, flow tests and live message delivery are different evidence levels. Never imply one proves another.

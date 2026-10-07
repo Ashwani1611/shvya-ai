@@ -1,6 +1,6 @@
 # Shvya setup library in Operations MCP
 
-This backend-owned library supplies 25 reusable domain skills, eight setup/review subprompts, an operator prompt, references, typed Shvya authoring variables, generic and Ria examples, and evaluation rubrics. It is served through the existing authenticated Operations MCP, with the same actor, tenant, effective Allowed capabilities and bounded audit boundary. There is no second MCP server, client installer, shell tool or arbitrary filesystem reader.
+This backend-owned library supplies 27 reusable domain skills, eight setup/review subprompts, an operator prompt, references, typed Shvya authoring variables, generic and Ria examples, and evaluation rubrics. It is served through the existing authenticated Operations MCP, with the same actor, tenant, effective Allowed capabilities and bounded audit boundary. There is no second MCP server, client installer, shell tool or arbitrary filesystem reader.
 
 ## Start and retrieve progressively
 
@@ -11,16 +11,16 @@ This backend-owned library supplies 25 reusable domain skills, eight setup/revie
 
 ## Skill architecture
 
-The operator routes a task to the smallest relevant skill instead of loading one oversized setup workflow. The 25 top-level skills are grouped as:
+The operator routes a task to the smallest relevant skill instead of loading one oversized setup workflow. The 27 top-level skills are grouped as:
 
-- **Business:** account setup, account review, intake vault, industry designer.
+- **Business:** account setup, account review, native Vault, industry designer, account handover.
 - **CRM:** CRM architect, qualification, lead repair.
 - **AI:** AI Brain, AI Playbook, knowledge manager, AI debugger.
 - **Automation:** Workflow builder, Cadence builder, automation debugger.
 - **Channels:** channel routing, WhatsApp, Instagram, email.
 - **Calendar and voice:** Calendar, voice-agent preparation.
-- **Operations:** diagnostics, incident repair, integration manager, acceptance testing.
-- **Research:** supplied WhatsApp-group analysis.
+- **Operations:** diagnostics, incident repair, integration manager, acceptance testing, AI flow testing.
+- **Research:** hosted WhatsApp group reading and approved replies; supplied export analysis.
 
 For broad onboarding, `shvya-account-setup` remains the coordinator. Domain skills own detailed decisions and verification. For incidents, diagnose first, repair only the verified producing layer, then run acceptance checks.
 
@@ -31,7 +31,7 @@ Every top-level skill is now paired with:
 - a domain-specific `references/domain-checks.md` covering evidence, false-positive traps, verification and handoffs;
 - a domain-specific `evals/evals.json` with at least five behavioral scenarios.
 
-Read `framework/skill-matrix.json` for the 25-skill routing map. The framework deliberately separates configured state from live/observed behavior, retries from distinct customer impact, and successful writes from verified business outcomes. Evaluation files remain `NOT_MODEL_EXECUTED` until an actual evaluator records results.
+Read `framework/skill-matrix.json` for the 27-skill routing map. The framework deliberately separates configured state from live/observed behavior, retries from distinct customer impact, and successful writes from verified business outcomes. Evaluation files remain `NOT_MODEL_EXECUTED` until an actual evaluator records results.
 
 ## Workflows and backend actions
 
@@ -42,8 +42,11 @@ Read `framework/skill-matrix.json` for the 25-skill routing map. The framework d
 | Domain configuration | CRM, qualification, AI Brain/Playbook/knowledge, Workflow, Cadence, routing, channel and Calendar skills use the current Operations tool catalog |
 | Diagnostics and repair | Read-only diagnosis is separated from bounded incident repair; repairs use dry-run, approval and read-back through the owning domain |
 | Acceptance testing | Structural validators, deterministic simulations and separately authorized provider evidence are reported as different evidence levels |
-| Intake vault | `get_setup_intake`, `upsert_setup_intake_entry`, `archive_setup_intake_entry`; tenant-scoped revisioned evidence with normal write controls |
-| Group requirements | `analyze_setup_group_export`; validates a user-supplied normalized export for the active organization, returns bounded evidence and coverage |
+| Native Vault | `get_vault`, `export_vault`, entry/question/call tools and encrypted asset uploads; preserves client overrides and provenance |
+| Internal intake | `get_setup_intake`, `upsert_setup_intake_entry`, `archive_setup_intake_entry`; separate revisioned operator evidence |
+| AI flow testing | Production AI/CRM logic on owned disposable fixtures, approved budgets and outbound transport blocked |
+| Account handover | Verified lead journey and demonstration guide, with evidence levels and open gaps |
+| Support groups | Exact hosted sender/group reads and individually approved sends; `analyze_setup_group_export` also handles supplied normalized exports |
 | Voice preparation | `render_setup_template` produces policy and call-flow drafts; no provider provisioning, calls or transcript retrieval |
 
 ## Author company content

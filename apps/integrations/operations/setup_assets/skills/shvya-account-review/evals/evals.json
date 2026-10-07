@@ -32,6 +32,18 @@
       "prompt": "The dashboard health score is high, so the account is healthy.",
       "expected_output": "The skill treats the score as one signal only and verifies actual requested outcomes, activation, behavior, unresolved commitments and observed defects before any conclusion.",
       "result": null
+    },
+    {
+      "id": 6,
+      "prompt": "We have 20 Workflows and customers still complain; all API calls returned success.",
+      "expected_output": "Read current and incident evidence, distinguish configured/active/eligible/triggered/delivered, verify producing layer and distinct-lead counts, paginate full content, make no repairs.",
+      "result": null
+    },
+    {
+      "id": 7,
+      "prompt": "The AI quoted a wrong price found in the current FAQ but the incident was last week.",
+      "expected_output": "Preserve timing uncertainty, inspect incident source/trace version and attribution before blaming the model; do not infer current FAQ caused historical behavior.",
+      "result": null
     }
   ]
 }

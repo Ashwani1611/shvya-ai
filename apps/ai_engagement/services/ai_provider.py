@@ -722,6 +722,8 @@ class OpenAIProvider:
         metadata: dict[str, str] | None = None,
         response_schema: dict[str, Any] | None = None,
     ) -> AITextResult:
+        from apps.integrations.operations_testing_budget import enforce_provider_tenant
+        enforce_provider_tenant(metadata)
         instructions = (instructions or "").strip()
         input_text = (input_text or "").strip()
         if not instructions:

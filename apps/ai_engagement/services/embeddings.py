@@ -111,6 +111,10 @@ class EmbeddingService:
                 **self._request_options,
             )
 
+        from apps.integrations.operations_testing_scope import current_test_scope
+        if current_test_scope() is not None:
+            # SDK-internal retries otherwise evade per-call test reservations.
+            return self._client.with_options(max_retries=0, timeout=20.0)
         return self._client
 
     @staticmethod
@@ -143,6 +147,10 @@ class EmbeddingService:
         feature: str,
         reference_id: str,
     ):
+        from apps.integrations.operations_testing_scope import current_test_scope
+        scope = current_test_scope()
+        if scope is not None and str(organization_id or "") != scope.organization_id:
+            raise EmbeddingError("Isolated test embeddings require the manifest organization.")
         if not organization_id:
             return None
         try:

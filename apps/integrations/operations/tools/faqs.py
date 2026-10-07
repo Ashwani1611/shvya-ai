@@ -29,26 +29,29 @@ def list_faqs(*, identity, arguments):
     _require_operations_capability(
         identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ
     )
-    active_only = bool((arguments or {}).get("active_only", False))
+    arguments = arguments or {}
+    if not isinstance(arguments, dict) or set(arguments) - {"active_only", "limit", "offset"}:
+        raise OperationsToolError("Unsupported FAQ list arguments.")
+    active_only = arguments.get("active_only", False)
+    limit, offset = arguments.get("limit", 100), arguments.get("offset", 0)
+    if type(active_only) is not bool:
+        raise OperationsToolError("active_only must be a boolean.")
+    if type(limit) is not int or not 1 <= limit <= 100 or type(offset) is not int or not 0 <= offset <= 1000000:
+        raise OperationsToolError("FAQ limit must be 1-100 and offset 0-1000000.")
+    selected = list(FAQService().list(organization=organization, active_only=active_only)[offset:offset + limit + 1])
     rows = [
-        {
-            "id": str(item.id),
-            "question": item.question,
-            "answer": item.answer,
-            "active": item.is_active,
-            "updated_at": item.updated_at.isoformat(),
-        }
-        for item in FAQService().list(
-            organization=organization,
-            active_only=active_only,
-        )[:100]
+        {"id": str(item.id), "question": item.question, "answer": item.answer,
+         "active": item.is_active, "updated_at": item.updated_at.isoformat()}
+        for item in selected[:limit]
     ]
+    has_more = len(selected) > limit
     return ToolExecution(
-        data={"faqs": rows, "count": len(rows)},
+        data={"faqs": rows, "count": len(rows), "offset": offset, "limit": limit,
+              "has_more": has_more, "next_offset": offset + limit if has_more else None},
         capability=CAP_ORGANIZATION_READ,
         target_type="organization",
         target_id=str(organization.id),
-        audit_summary={"faq_count": len(rows)},
+        audit_summary={"faq_count": len(rows), "has_more": has_more},
     )
 
 
