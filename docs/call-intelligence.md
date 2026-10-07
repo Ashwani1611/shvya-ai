@@ -112,3 +112,13 @@ Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
 - Analysis uses the existing OpenAI provider and organization credit accounting. The Call Intelligence output budget defaults to 2,000 tokens for its full structured result. Existing OpenAI configuration and AI credits are required; no additional credentials are introduced.
 - `apps.telephony.tasks.recover_call_intelligence` runs every minute on the general worker, with batches capped at 100. It repairs historical tracking, queues legacy unanalyzed evidence, and republishes queued/processing jobs stale for five minutes. Provider attempts are capped at three. Broker interruptions preserve saved notes and queued state for recovery.
 - Apply the telephony analysis-state migration and restart web, the general worker and Beat with the same release. Recovery does not transcribe an audio-only recording; notes or a supplied transcript remain necessary evidence.
+
+
+## Production domain migration compatibility
+
+Previously installed APKs may still have `https://dashboard.shvya-ai.com/` compiled
+as their API origin. Production Nginx therefore proxies legacy `/api/` requests
+directly to Django instead of redirecting them. This preserves POST methods and JSON
+request bodies for sign-in, token refresh, device registration and call sync while
+normal browser traffic on the legacy hostname continues to redirect to
+`https://shvya-ai.com/`.
