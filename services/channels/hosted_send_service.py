@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _ALLOWED_EXTENSIONS = {
     WhatsAppMessage.MessageType.IMAGE: {".jpg", ".jpeg", ".png", ".webp", ".gif"},
     WhatsAppMessage.MessageType.VIDEO: {".mp4", ".3gp", ".mov", ".m4v", ".webm"},
+    WhatsAppMessage.MessageType.AUDIO: {".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav"},
     WhatsAppMessage.MessageType.DOCUMENT: {
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv",
     },
