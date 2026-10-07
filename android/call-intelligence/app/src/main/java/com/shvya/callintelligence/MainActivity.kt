@@ -1496,8 +1496,13 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(22), dp(10), dp(22), dp(10))
             setBackgroundColor(Color.WHITE)
         }
-        header.addView(quietButton("‹  Calls").apply {
-            setOnClickListener { leadFormOpen = false; render() }
+        header.addView(quietButton("‹  Back").apply {
+            setOnClickListener {
+                leadFormOpen = false
+                leadPrefillName = ""
+                leadPrefillPhone = ""
+                render()
+            }
         })
         header.addView(sectionTitle("Add lead").apply {
             textSize = 18f; gravity = Gravity.CENTER; setPadding(0, 0, 0, 0)
@@ -1562,8 +1567,11 @@ class MainActivity : AppCompatActivity() {
         val details = card()
         details.addView(sectionTitle("Contact details").apply { textSize = 20f })
         details.addView(space(18))
-        val name = field("Lead name")
-        val phone = field("+91 98765 43210").apply { inputType = InputType.TYPE_CLASS_PHONE }
+        val name = field("Lead name").apply { setText(leadPrefillName) }
+        val phone = field("+91 98765 43210").apply {
+            inputType = InputType.TYPE_CLASS_PHONE
+            setText(leadPrefillPhone)
+        }
         val email = field("Email address").apply { inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS }
         leadField(details, "Name *", name)
         leadField(details, "Phone number *", phone)
@@ -1705,6 +1713,9 @@ class MainActivity : AppCompatActivity() {
                 if (response?.successful == true) {
                     toast("Lead added to CRM")
                     leadFormOpen = false
+                    leadPrefillName = ""
+                    leadPrefillPhone = ""
+                    selectedTab = "leads"
                     render()
                 } else {
                     submit.isEnabled = true
