@@ -430,6 +430,7 @@ INSTALLED_APPS = [
     "apps.accounts",
     "apps.crm",
     "apps.superadmin",
+    "apps.vault.apps.VaultConfig",
 
     # --- Business & AI Feature Apps ---
     "apps.channels",
@@ -794,6 +795,12 @@ STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 
 MEDIA_ROOT = BASE_DIR / "media"
+
+# Vault uploads are encrypted at rest and served only by authorized views.
+# The default uses the existing persistent media mount, never a public URL.
+VAULT_STORAGE_ROOT = config("VAULT_STORAGE_ROOT", default="")
+VAULT_MAX_FILE_BYTES = config("VAULT_MAX_FILE_BYTES", default=25 * 1024 * 1024, cast=int)
+VAULT_CLIENT_SESSION_AGE = 12 * 60 * 60
 
 
 # ---------------------------------------------------------------------------

@@ -15,6 +15,9 @@ from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeV
 
 
 urlpatterns = [
+    path("superadmin/vault/", include("apps.vault.urls_staff")),
+    path("vault/api/agent/", include("apps.vault.urls_agent")),
+    path("vault/", include("apps.vault.urls_client")),
     # Public, signed WhatsApp template CTA actions. Keep these ahead of broad
     # account/dashboard routes; recipients must not need a SHVYA login.
     path("", include("apps.channels.public_cta_urls")),

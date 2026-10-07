@@ -1,0 +1,26 @@
+{% load static %}
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#f6f8fc">
+  <meta name="robots" content="noindex, nofollow, noarchive">
+  <title>{% block title %}Your SHVYA Vault{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'vault/vault.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="vault-client-body">
+  <header class="vault-client-header">
+    <a class="vault-brand" href="{{ workspace_url|default:'#' }}" aria-label="SHVYA Vault home"><img src="{% static 'images/shvya-brand-2026.png' %}" alt="SHVYA AI"><span class="vault-brand-divider"></span><span>Vault</span></a>
+    <span class="vault-private"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></svg>Private workspace</span>
+  </header>
+  <main class="vault-client-main">
+    {% if messages %}<div class="vault-messages" aria-live="polite">{% for message in messages %}<div class="vault-alert {% if 'error' in message.tags %}vault-alert-error{% endif %}">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+  <div class="vault-toast" id="vault-toast" role="status" aria-live="polite" hidden></div>
+  <script src="{% static 'vault/vault.js' %}" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>
