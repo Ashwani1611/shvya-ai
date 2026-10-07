@@ -986,3 +986,37 @@ class MobileLeadDetailView(APIView):
 
         lead.refresh_from_db()
         return Response({"ok": True, "lead": _serialize_mobile_lead(lead)})
+
+    def post(self, request, lead_id):
+        user = _user(request)
+        lead = _mobile_leads(user).filter(pk=lead_id).first()
+        if lead is None:
+            return Response({"detail": "Lead not found."}, status=404)
+
+        due_at = parse_datetime(str(request.data.get("due_at") or "").strip())
+        if due_at is None:
+            return Response({"detail": "due_at must be a valid ISO-8601 timestamp."}, status=400)
+        if timezone.is_naive(due_at):
+            due_at = timezone.make_aware(due_at, timezone.get_current_timezone())
+
+        title = str(request.data.get("title") or "").strip()[:200] or "Lead follow-up"
+        description = str(request.data.get("description") or "").strip()[:2000]
+        with transaction.atomic():
+            reminder = LeadReminder.objects.create(
+                lead=lead,
+                assigned_to=user,
+                title=title,
+                description=description,
+                due_at=due_at,
+                status="pending",
+            )
+            record_reminder_created(lead=lead, actor=user, reminder=reminder)
+            CallRecord.objects.filter(
+                organization=user.organization,
+                lead=lead,
+            ).update(follow_up_required=True, follow_up_at=due_at)
+        return Response({
+            "ok": True,
+            "reminder_id": str(reminder.id),
+            "due_at": reminder.due_at.isoformat(),
+        }, status=201)
