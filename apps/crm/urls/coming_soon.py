@@ -1,7 +1,7 @@
 from django.urls import path
 from django.views.generic import RedirectView
 
-from apps.followups.touchpoint_views import touchpoints
+from apps.followups.touchpoint_views import touchpoints, touchpoint_attachment_download
 from apps.channels import instagram_ui
 from apps.channels.instagram_lead_ui import instagram_link_lead
 from apps.core.coming_soon import coming_soon
@@ -58,6 +58,11 @@ coming_soon_urlpatterns = [
         "cadence/touchpoints/",
         touchpoints,
         name="crm-auto-follow-ups-touchpoints",
+    ),
+    path(
+        "cadence/touchpoints/attachments/<uuid:attachment_id>/",
+        touchpoint_attachment_download,
+        name="crm-touchpoint-attachment-download",
     ),
     # Preserve existing bookmarks from the older Auto Follow-ups routes.
     path(
