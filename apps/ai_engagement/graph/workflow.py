@@ -492,10 +492,12 @@ def _review_draft_decision(state: EngagementGraphState, *, context, decision) ->
     if any(item.get("document_id") == decision.file_document_id for item in refused):
         decision = replace(decision, file_document_id=None)
     welcome_due = _welcome_due_for_context(decision=decision, context=context, lead=state["lead"])
-    decision = replace(decision, file_document_id=reconcile_welcome_document(
+    reconciled_file = reconcile_welcome_document(
         decision.file_document_id, candidates, welcome_due=welcome_due,
         explicit_request=requested, requested_text=state.get("latest_text", ""),
-    ))
+    )
+    if reconciled_file != decision.file_document_id:
+        decision = replace(decision, file_document_id=reconciled_file)
     review_trigger = "explicit_request" if requested else "welcome" if welcome_due else "none"
     review_status = (
         "final_language_only" if _FINAL_LANGUAGE_ONLY.get()
