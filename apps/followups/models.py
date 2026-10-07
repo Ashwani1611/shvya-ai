@@ -430,4 +430,4 @@ class FollowupSenderState(models.Model):
         return f"Follow-up sender — {self.account}"
 
 
-from .touchpoint_models import TouchpointCategory, TouchpointReply  # noqa: E402,F401
+from .touchpoint_models import TouchpointCategory, TouchpointReply, TouchpointAttachment  # noqa: E402,F401
