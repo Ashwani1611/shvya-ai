@@ -75,7 +75,8 @@ class DocumentationPublicRouteTests(SimpleTestCase):
         request = RequestFactory().get(path)
         request.session = {}
         with patch("apps.core.views.get_crm_authenticated_user", return_value=None):
-            response = resolve(path.split("?", 1)[0]).func(request)
+            match = resolve(path.split("?", 1)[0])
+            response = match.func(request, *match.args, **match.kwargs)
             response.render()
         self.assertEqual(response.status_code, 200)
         return response.content.decode()
@@ -112,4 +113,5 @@ class DocumentationPublicRouteTests(SimpleTestCase):
         request.session = {}
         with patch("apps.core.views.get_crm_authenticated_user", return_value=None):
             with self.assertRaises(Http404):
-                resolve("/docs/invalid/no-article/").func(request)
+                match = resolve("/docs/invalid/no-article/")
+                match.func(request, *match.args, **match.kwargs)
