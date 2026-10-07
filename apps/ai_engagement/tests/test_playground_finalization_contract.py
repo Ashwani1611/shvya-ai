@@ -331,6 +331,21 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
                 self.assertEqual(self.honest(text, request="Please help with a trial."), text)
 
 
+    def test_callback_handoff_and_preparation_assurances_are_preview_only(self):
+        for text in (
+            "I will now pass your callback request to Ashwini to assist you further.",
+            "We will prepare to contact you then.",
+            "Our team will connect with you then.",
+        ):
+            with self.subTest(text=text):
+                result = self.honest(text, request="Please call me.")
+                self.assertNotIn(text, result)
+                self.assertIn("no live call or handoff is confirmed", result)
+
+    def test_negative_callback_handoff_is_preserved(self):
+        text = "I will not pass your callback request to our team."
+        self.assertEqual(self.honest(text, request="Do not call me."), text)
+
+
 if __name__ == "__main__":
     unittest.main()
-
