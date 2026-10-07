@@ -1335,10 +1335,7 @@ class MainActivity : AppCompatActivity() {
             if (visibleAttributes.isNotEmpty()) {
                 content.addView(space(26))
                 content.addView(sectionTitle("Lead information").apply { textSize = 19f })
-                content.addView(body("Only the CRM details useful for this lead are shown here.").apply {
-                    textSize = 12f
-                    setPadding(0, dp(3), 0, dp(10))
-                })
+                content.addView(space(10))
                 val detailsCard = card()
                 visibleAttributes.forEachIndexed { index, row ->
                     detailsCard.addView(detailRow(row.first, row.second))
