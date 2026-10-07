@@ -53,6 +53,11 @@ def _deduplicate_operating_spec(payload, source):
     if spec.get("about") and spec.get("about") == organization.get("about"):
         spec.pop("about")
         spec["about_source"] = "organization.about"
+    from apps.ai_engagement.services.playbook import playbook_for_engagement
+    expected_guidance = playbook_for_engagement(source.get("ai_playbook") or "")
+    if organization.get("ai_playbook") == expected_guidance:
+        organization.pop("ai_playbook", None)
+        organization["ai_playbook_source"] = "organization_operating_spec.system_instructions"
     profile = organization.get("ai_profile") or {}
     compiled = profile.get("playbook") or {}
     sections = compiled.get("sections")

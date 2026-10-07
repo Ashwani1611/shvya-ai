@@ -31,6 +31,44 @@ class OperatingSpecDeduplicationTests(SimpleTestCase):
             lead_id=str(context.lead["id"]))
         self.assertTrue(any(context.organization["about"][:30] in str(item) for item in plan.allowed_facts))
 
+    def test_medium_playbook_payload_retains_state_without_duplicate_guidance(self):
+        context = build_context()
+        raw = ("## Rules\n" + "Follow approved business facts.\n" * 900
+               + "MIDDLE_POLICY_MARKER\nTAIL_POLICY_MARKER\n"
+               + "## Qualification Questions\nWhat programme do you want?")
+        context.organization["ai_playbook"] = raw
+        service = EngagementService()
+        payload = json.loads(service._build_input(context=context))
+        instructions = service._build_instructions(context=context)
+        self.assertIn(raw, instructions)
+        self.assertNotIn("MIDDLE_POLICY_MARKER", json.dumps(payload))
+        self.assertNotIn("TAIL_POLICY_MARKER", json.dumps(payload))
+        self.assertNotIn("ai_playbook", payload["organization"])
+        self.assertEqual(payload["organization"]["ai_playbook_source"],
+                         "organization_operating_spec.system_instructions")
+        self.assertIn("qualification", payload["lead"])
+        self.assertEqual(payload["organization"]["about"], context.organization["about"])
+        plan = build_response_plan(payload=payload,
+            organization_id=str(context.organization["id"]), lead_id=str(context.lead["id"]))
+        self.assertIn("complete authored AI Playbook", plan.organization_instructions)
+
+    def test_distinct_input_playbook_is_retained(self):
+        source = {"ai_playbook": "## Rules\nUse approved information."}
+        payload = {"organization_operating_spec": {"playbook_in_system_instructions": True},
+                   "organization": {"ai_playbook": "Distinct backend guidance"}}
+        _deduplicate_operating_spec(payload, source)
+        self.assertEqual(payload["organization"]["ai_playbook"], "Distinct backend guidance")
+        self.assertNotIn("ai_playbook_source", payload["organization"])
+
+    def test_standalone_playbook_guidance_is_retained(self):
+        from apps.ai_engagement.services.playbook import playbook_for_engagement
+        source = {"ai_playbook": "## Rules\nUse approved information."}
+        payload = {"organization_operating_spec": {"playbook_in_system_instructions": False},
+                   "organization": {"ai_playbook": playbook_for_engagement(source["ai_playbook"])}}
+        before = deepcopy(payload)
+        _deduplicate_operating_spec(payload, source)
+        self.assertEqual(payload, before)
+
     def test_distinct_compiled_sections_are_retained(self):
         source = {"ai_playbook": "## Rules\nUse approved information."}
         payload = {"organization_operating_spec": {"playbook_in_system_instructions": True},
