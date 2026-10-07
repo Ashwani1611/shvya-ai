@@ -34,6 +34,8 @@ def placeholder_keys(organization):
 def validate_reply_placeholders(*, organization, body):
     keys = placeholder_keys(organization)
     invalid = sorted({m.group(1) for m in TOKEN.finditer(body or "")} - keys)
+    if "{{" in TOKEN.sub("", body or "") or "}}" in TOKEN.sub("", body or ""):
+        raise ValidationError("Malformed CRM placeholder. Insert a valid field from the picker.")
     if invalid:
         raise ValidationError(
             "Unknown CRM placeholder(s): " + ", ".join(invalid) +
@@ -41,13 +43,13 @@ def validate_reply_placeholders(*, organization, body):
         )
 
 
-def render_touchpoint(*, reply, lead, user=None):
+def render_touchpoint(*, reply, lead, user=None, allowed_keys=None, values=None):
     """Return a per-lead preview plus the missing values, never raw HTML."""
     # Use the same lookup map as Sequence and Meta CRM templates.
     from services.followup_service import _lead_template_values
 
-    keys = placeholder_keys(lead.organization)
-    values = _lead_template_values(lead, user)
+    keys = allowed_keys if allowed_keys is not None else placeholder_keys(lead.organization)
+    values = values if values is not None else _lead_template_values(lead, user)
     missing = set()
 
     def substitute(match):
