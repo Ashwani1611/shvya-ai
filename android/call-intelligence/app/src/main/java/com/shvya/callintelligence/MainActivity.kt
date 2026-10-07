@@ -30,7 +30,9 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.work.WorkManager
 import org.json.JSONObject
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 import java.text.SimpleDateFormat
 import java.net.URLEncoder
 import android.widget.EditText
@@ -45,6 +47,7 @@ import com.shvya.callintelligence.calls.CallTrackingService
 import com.shvya.callintelligence.calls.TrackingScheduler
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
+import com.shvya.callintelligence.data.AppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -56,8 +59,14 @@ class MainActivity : AppCompatActivity() {
     private val canvas = Color.rgb(246, 247, 249)
     private val line = Color.rgb(233, 236, 240)
     private lateinit var auth: AuthStore
-    private var selectedTab = "home"
+    private var selectedTab = "today"
     private var query = ""
+    private var callFilter = "all"
+    private var reminderSegment = "today"
+    private var leadQuery = ""
+    private var pendingSyncCount = 0
+    private var leadPrefillName = ""
+    private var leadPrefillPhone = ""
     private var dateFrom = ""
     private var dateTo = ""
     private var pageNumber = 1
@@ -67,7 +76,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (::auth.isInitialized && auth.hasSession()) render()
+        if (::auth.isInitialized && auth.hasSession()) {
+            refreshLocalSyncHealth()
+            render()
+        }
     }
 
     private val permissionLauncher =
@@ -234,10 +246,13 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
             })
             root.addView(permissionCard)
-        } else if (selectedTab == "reminders") {
-            showReminders(root, version)
         } else {
-            showCalls(root, version)
+            when (selectedTab) {
+                "today" -> showToday(root, version)
+                "followups" -> showReminders(root, version)
+                "leads" -> showLeads(root, version)
+                else -> showCalls(root, version)
+            }
         }
         setDashboardPage(root)
         if (essentialPermissionsGranted()) {
@@ -934,8 +949,12 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(22), dp(7), dp(22), dp(7))
             setBackgroundColor(Color.WHITE)
         }
-        listOf(Triple("home", "Calls", R.drawable.ic_phone_outline),
-            Triple("reminders", "Reminders", R.drawable.ic_bell_outline)).forEach { (key, label, drawable) ->
+        listOf(
+            Triple("today", "Today", R.drawable.ic_home_outline),
+            Triple("calls", "Calls", R.drawable.ic_phone_outline),
+            Triple("followups", "Follow-ups", R.drawable.ic_bell_outline),
+            Triple("leads", "Leads", R.drawable.ic_people_outline),
+        ).forEach { (key, label, drawable) ->
             val active = selectedTab == key
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
