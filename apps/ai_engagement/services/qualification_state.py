@@ -949,6 +949,7 @@ def project_answer_updates(*, state, requirements, updates, messages):
         from apps.ai_engagement.services.qualification_evidence_consistency import contradicts_option_evidence
         if contradicts_option_evidence(
             requirement=by_id[requirement_id], value=value, evidence=evidence, source=source_text,
+            requirements=requirements,
         ):
             raise ValueError("Qualification answer contradicts its inbound evidence.")
 
@@ -1074,3 +1075,4 @@ def persist_answer_updates(*, lead, updates):
     if state.get("qualification_status") == STATUS_COMPLETED:
         _append_history(state, event="qualification_answers_complete")
     return _persist_state(lead, state)
+

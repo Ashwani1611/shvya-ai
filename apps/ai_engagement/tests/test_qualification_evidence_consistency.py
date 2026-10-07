@@ -145,3 +145,23 @@ class QualificationEvidenceConsistencyTests(SimpleTestCase):
         update = {**self.updates[0], "evidence": "langsame Antworten"}
         self.assertEqual(self.project([update])["qualification_answers"],
                          {update["requirement_id"]: "Slow replies"})
+
+    def test_daily_volume_cannot_answer_the_unasked_ads_question(self):
+        for body in ("Ich habe genau 30 Leads pro Tag.", "I receive exactly 30 leads per day."):
+            self.messages[0]["body"] = body
+            for value in ("Yes", "No"):
+                with self.subTest(body=body, value=value):
+                    update = {**self.updates[3], "evidence": body, "value": value}
+                    with self.assertRaisesRegex(ValueError, "contradicts.*evidence"):
+                        self.project([update])
+            volume = {**self.updates[2], "evidence": body, "value": "11–30"}
+            result = self.project([volume])
+            self.assertEqual(result["qualification_answers"], {volume["requirement_id"]: "11–30"})
+            self.assertFalse(result["qualification_completed"])
+
+    def test_volume_and_explicit_ads_status_in_same_clause_remain_valid(self):
+        body = "I receive 30 leads per day and I am not currently running paid ads."
+        self.messages[0]["body"] = body
+        update = {**self.updates[3], "evidence": body, "value": "No"}
+        self.assertEqual(self.project([update])["qualification_answers"], {update["requirement_id"]: "No"})
+
