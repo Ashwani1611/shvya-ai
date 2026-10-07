@@ -4,10 +4,13 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.telephony.TelephonyManager
+import androidx.work.Constraints
+import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.workDataOf
 import com.shvya.callintelligence.net.AuthStore
+import com.shvya.callintelligence.workers.CallerContextWorker
 import com.shvya.callintelligence.workers.ReconcileWorker
 import java.util.concurrent.TimeUnit
 
@@ -23,6 +26,18 @@ class PhoneStateReceiver : BroadcastReceiver() {
             TelephonyManager.EXTRA_STATE_RINGING -> {
                 state.ringingAt = now
                 state.offhookAt = 0L
+                val incoming = intent.getStringExtra(TelephonyManager.EXTRA_INCOMING_NUMBER).orEmpty()
+                if (incoming.isNotBlank()) {
+                    val network = Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+                    WorkManager.getInstance(context).enqueue(
+                        OneTimeWorkRequestBuilder<CallerContextWorker>()
+                            .setConstraints(network)
+                            .setInputData(workDataOf("phone" to incoming))
+                            .build()
+                    )
+                }
             }
             TelephonyManager.EXTRA_STATE_OFFHOOK -> {
                 state.offhookAt = now
