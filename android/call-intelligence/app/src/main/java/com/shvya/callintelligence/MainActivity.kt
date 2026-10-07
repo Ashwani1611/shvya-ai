@@ -261,6 +261,315 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showToday(root: LinearLayout, version: Int) {
+        root.addView(kicker("TODAY"))
+        root.addView(title("Your day").apply { textSize = 36f })
+        root.addView(body("Calls, follow-ups and leads that need your attention."))
+        root.addView(space(20))
+        root.addView(syncHealthCard())
+        root.addView(space(16))
+
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(content)
+        loadInto(content, version, { ApiClient(this).authorizedGet(apiPath + "today/") }) { data ->
+            val stats = data.getJSONObject("stats")
+            val summary = card()
+            summary.addView(sectionTitle("Today at a glance"))
+            summary.addView(body("A focused view of the work that matters now."))
+            summary.addView(space(18))
+            summary.addView(metricRow(listOf(
+                "Calls" to stats.optInt("total"),
+                "Answered" to stats.optInt("answered"),
+                "Missed" to stats.optInt("missed"),
+                "New leads" to stats.optInt("new_leads"),
+            )))
+            summary.addView(space(16))
+            summary.addView(metricRow(listOf(
+                "Due" to stats.optInt("followups_due"),
+                "Overdue" to stats.optInt("overdue"),
+                "Needs action" to stats.optInt("missed_needing_action"),
+                "Outgoing" to stats.optInt("outgoing"),
+            )))
+            content.addView(summary)
+            content.addView(space(16))
+
+            val actions = LinearLayout(this@MainActivity)
+            actions.addView(secondaryButton("Missed calls").apply {
+                setOnClickListener {
+                    selectedTab = "calls"
+                    callFilter = "missed"
+                    pageNumber = 1
+                    render()
+                }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            actions.addView(primaryButton("Follow-ups").apply {
+                setOnClickListener {
+                    selectedTab = "followups"
+                    reminderSegment = "today"
+                    pageNumber = 1
+                    render()
+                }
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            content.addView(actions)
+            content.addView(space(26))
+
+            content.addView(sectionHeader("Recent calls", "See all").apply {
+                setOnClickListener { selectedTab = "calls"; callFilter = "all"; render() }
+            })
+            content.addView(space(12))
+            val calls = data.optJSONArray("recent_calls") ?: org.json.JSONArray()
+            if (calls.length() == 0) {
+                content.addView(emptyCard("No calls today", "Your calls will appear here as they are captured."))
+            } else {
+                for (i in 0 until calls.length()) {
+                    content.addView(compactCallCard(calls.getJSONObject(i)))
+                    content.addView(space(10))
+                }
+            }
+
+            content.addView(space(18))
+            content.addView(sectionHeader("Next follow-ups", "Open").apply {
+                setOnClickListener { selectedTab = "followups"; render() }
+            })
+            content.addView(space(12))
+            val reminders = data.optJSONArray("reminders") ?: org.json.JSONArray()
+            if (reminders.length() == 0) {
+                content.addView(emptyCard("Nothing due", "You are clear for now. New follow-ups will appear here."))
+            } else {
+                for (i in 0 until reminders.length()) {
+                    content.addView(compactReminderCard(reminders.getJSONObject(i)))
+                    content.addView(space(10))
+                }
+            }
+            loadTeamPerformance(content, version)
+        }
+    }
+
+    private fun showLeads(root: LinearLayout, version: Int) {
+        root.addView(kicker("CRM"))
+        root.addView(title("Leads").apply { textSize = 36f })
+        root.addView(body("Call, message, follow up and move leads without leaving your phone."))
+        root.addView(space(22))
+
+        val search = field("Search name, phone or email").apply {
+            setText(leadQuery)
+            isSingleLine = true
+            imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEARCH
+            setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_search_outline, 0, 0, 0)
+            compoundDrawablePadding = dp(10)
+            setOnEditorActionListener { _, _, _ ->
+                leadQuery = text.toString().trim()
+                rememberLeadSearch(leadQuery)
+                pageNumber = 1
+                render()
+                true
+            }
+        }
+        val row = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        row.addView(search, LinearLayout.LayoutParams(0, dp(54), 1f))
+        row.addView(iconAction(R.drawable.ic_plus_outline, "Add lead").apply {
+            setOnClickListener { addLead() }
+        }, LinearLayout.LayoutParams(dp(54), dp(54)).apply { leftMargin = dp(10) })
+        root.addView(row)
+
+        val recent = recentLeadSearches()
+        if (leadQuery.isBlank() && recent.isNotEmpty()) {
+            root.addView(space(10))
+            val recentRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+            recent.take(3).forEach { value ->
+                recentRow.addView(quietButton(value).apply {
+                    setOnClickListener { leadQuery = value; render() }
+                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }
+            root.addView(recentRow)
+        }
+        if (leadQuery.isNotBlank()) {
+            root.addView(quietButton("Clear search").apply {
+                setOnClickListener { leadQuery = ""; render() }
+            })
+        }
+        root.addView(space(18))
+
+        val content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        root.addView(content)
+        val path = apiPath + "leads/list/?q=" + URLEncoder.encode(leadQuery, "UTF-8")
+        loadInto(content, version, { ApiClient(this).authorizedGet(path) }) { data ->
+            val rows = data.optJSONArray("results") ?: org.json.JSONArray()
+            if (rows.length() == 0) {
+                content.addView(emptyCard("No leads found", "Try another search or create a new CRM lead."))
+                return@loadInto
+            }
+            val leads = mutableListOf<JSONObject>()
+            for (i in 0 until rows.length()) leads.add(rows.getJSONObject(i))
+            val favorites = favoriteLeadIds()
+            leads.sortWith(compareByDescending<JSONObject> { favorites.contains(it.optString("id")) }
+                .thenBy { it.optString("name").lowercase(Locale.getDefault()) })
+            leads.forEach { lead ->
+                val leadRow = leadCard(lead, favorites.contains(lead.optString("id")))
+                leadRow.setOnClickListener { showLeadDetail(lead.optString("id")) }
+                content.addView(leadRow)
+                content.addView(space(10))
+            }
+        }
+    }
+
+    private fun compactCallCard(call: JSONObject): LinearLayout = card().apply {
+        val lead = call.optJSONObject("lead")
+        val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
+            .ifBlank { call.optString("phone_number") }
+        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+        val missed = call.optString("status") == "missed"
+        top.addView(iconBadge(
+            R.drawable.ic_phone_outline,
+            if (missed) Color.rgb(204, 79, 65) else blue,
+            if (missed) Color.rgb(255, 238, 235) else Color.rgb(236, 244, 255),
+        ))
+        top.addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle(name).apply {
+                setPadding(0, 0, 0, 0)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(body(
+                call.optString("direction").replaceFirstChar { it.uppercase() } + " · " +
+                    call.optString("status").replace('_', ' ').replaceFirstChar { it.uppercase() } +
+                    " · " + call.optString("talk_duration").ifBlank { formatDate(call.optString("ended_at")) }
+            ).apply { setPadding(0, dp(3), 0, 0) })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+        addView(top)
+        if (lead != null) {
+            addView(space(12))
+            addView(body(lead.optString("pipeline") + "  ›  " + lead.optString("stage")).apply {
+                setTextColor(blue)
+                setPadding(0, 0, 0, 0)
+            })
+        }
+        setOnClickListener { showCallDetail(call.optString("id")) }
+    }
+
+    private fun compactReminderCard(item: JSONObject): LinearLayout = card().apply {
+        val overdue = item.optBoolean("overdue")
+        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+        top.addView(iconBadge(
+            R.drawable.ic_bell_outline,
+            if (overdue) Color.rgb(204, 79, 65) else blue,
+            if (overdue) Color.rgb(255, 238, 235) else Color.rgb(236, 244, 255),
+        ))
+        top.addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle(item.optString("lead_name")).apply { setPadding(0, 0, 0, 0) })
+            addView(body(
+                (if (overdue) "Overdue · " else "") + formatDate(item.optString("due_at"))
+            ).apply {
+                setTextColor(if (overdue) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
+                setPadding(0, dp(3), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+        addView(top)
+        addView(space(12))
+        addView(body(item.optString("title")).apply { setTextColor(ink); setPadding(0, 0, 0, 0) })
+        val leadId = item.optString("lead_id")
+        if (leadId.isNotBlank()) setOnClickListener { showLeadDetail(leadId) }
+    }
+
+    private fun leadCard(lead: JSONObject, favorite: Boolean): LinearLayout = card().apply {
+        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+        top.addView(iconBadge(R.drawable.ic_people_outline, blue, Color.rgb(236, 244, 255)))
+        top.addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle((if (favorite) "★  " else "") + lead.optString("name")).apply {
+                setPadding(0, 0, 0, 0)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+            addView(body(lead.optString("phone")).apply { setPadding(0, dp(3), 0, 0) })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+        addView(top)
+        addView(space(12))
+        addView(body(lead.optString("pipeline") + "  ›  " + lead.optString("stage")).apply {
+            setTextColor(blue)
+            setPadding(0, 0, 0, 0)
+        })
+        val reminder = lead.optJSONObject("reminder")
+        if (reminder != null) {
+            addView(space(8))
+            addView(body(
+                (if (reminder.optBoolean("overdue")) "Overdue · " else "Follow-up · ") +
+                    formatDate(reminder.optString("due_at"))
+            ).apply {
+                setTextColor(if (reminder.optBoolean("overdue")) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
+                setPadding(0, 0, 0, 0)
+            })
+        }
+    }
+
+    private fun syncHealthCard(): LinearLayout = card().apply {
+        val pending = pendingSyncCount
+        addView(sectionTitle(
+            if (pending == 0) "Sync healthy"
+            else pending.toString() + " item" + (if (pending == 1) "" else "s") + " waiting to sync"
+        ))
+        addView(body(
+            if (pending == 0) "Calls are synced with SHVYA CRM."
+            else "Nothing is lost. Pending call activity will sync automatically when connectivity is available."
+        ))
+        addView(space(12))
+        addView(secondaryButton("Sync now").apply {
+            setOnClickListener {
+                TrackingScheduler.enqueueReconcile(this@MainActivity)
+                TrackingScheduler.enqueueSync(this@MainActivity)
+                toast("Sync requested")
+                refreshLocalSyncHealth()
+            }
+        })
+    }
+
+    private fun refreshLocalSyncHealth() {
+        if (!::auth.isInitialized || !auth.hasSession()) return
+        lifecycleScope.launch {
+            val count = withContext(Dispatchers.IO) {
+                runCatching { AppDatabase.get(this@MainActivity).callDao().pendingCount() }.getOrDefault(0)
+            }
+            pendingSyncCount = count
+        }
+    }
+
+    private fun loadTeamPerformance(content: LinearLayout, version: Int) {
+        lifecycleScope.launch {
+            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val response = withContext(Dispatchers.IO) {
+                runCatching {
+                    ApiClient(this@MainActivity).authorizedGet(
+                        apiPath + "analytics/?date_from=" + today + "&date_to=" + today
+                    )
+                }.getOrNull()
+            }
+            if (version != renderVersion || response?.successful != true) return@launch
+            val data = runCatching { JSONObject(response.body) }.getOrNull() ?: return@launch
+            val agents = data.optJSONArray("agents") ?: return@launch
+            if (agents.length() <= 1) return@launch
+            content.addView(space(24))
+            content.addView(sectionTitle("Team today").apply { textSize = 20f })
+            content.addView(body("Calls and follow-up activity across your team."))
+            content.addView(space(10))
+            for (i in 0 until minOf(agents.length(), 8)) {
+                val agent = agents.getJSONObject(i)
+                val row = card()
+                row.addView(sectionTitle(agent.optString("user__name").ifBlank { agent.optString("user__email") }).apply {
+                    setPadding(0, 0, 0, 0)
+                })
+                row.addView(body(
+                    agent.optInt("calls").toString() + " calls · " +
+                        agent.optDouble("answer_rate").toInt() + "% answered · " +
+                        agent.optInt("followups") + " due"
+                ))
+                content.addView(row)
+                content.addView(space(8))
+            }
+        }
+    }
+
     private fun showCalls(root: LinearLayout, version: Int) {
         root.addView(kicker("YOUR WORKSPACE"))
         root.addView(title("Calls").apply { textSize = 36f })
