@@ -12,7 +12,8 @@ android {
         applicationId = "com.shvya.callintelligence"
         minSdk = 23
         targetSdk = 35
-        // Keep the code increasing so existing installations can update in place.
+        // Keep versionCode increasing so existing installations update in place.
+        // v1.4 standardizes safe areas and the mobile Lead Detail layout.
         versionCode = 8
         versionName = "1.4"
 
