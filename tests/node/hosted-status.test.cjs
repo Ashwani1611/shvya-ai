@@ -40,3 +40,20 @@ test('a network failure shows a safe connection error and recovery clears it', a
   assert.equal(recovered.status.textContent, 'Running');
   assert.equal(recovered.error.hidden, true);
 });
+
+test('slow status checks cannot overlap and repaint a newer state out of order', async () => {
+  let finish, update, calls = 0;
+  const error = { textContent: '', classList: { toggle() {} } };
+  const status = { textContent: 'Connecting', dataset: { statusUrl: '/status/' },
+    closest() { return { querySelector() { return error; } }; } };
+  vm.runInNewContext(statusScript, {
+    document: { querySelectorAll() { return [status]; } },
+    fetch() { calls++; return new Promise(resolve => { finish = resolve; }); },
+    setInterval(callback) { update = callback; },
+  });
+  await update(); await update(); assert.equal(calls, 1);
+  finish({ ok: true, json: async () => ({ ok: true, label: 'Running' }) });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(status.textContent, 'Running');
+  update(); assert.equal(calls, 2);
+});

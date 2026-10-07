@@ -9,6 +9,8 @@ that canonical identity.
 
 from __future__ import annotations
 
+import asyncio
+import logging
 import math
 
 from asgiref.sync import async_to_sync
@@ -34,6 +36,8 @@ MAX_CONVERSATIONS = 1000
 MAX_THREAD_MESSAGES = 60
 PAGE_SALT = "hosted-chat-page-v1"
 READ_SALT = "hosted-chat-read-v1"
+REFRESH_PUBLISH_TIMEOUT_SECONDS = 2
+logger = logging.getLogger(__name__)
 
 
 def _payload(message):
@@ -304,14 +308,22 @@ def broadcast_hosted_chat_refresh(*, account_id, reason="message", chat_key=""):
     channel_layer = get_channel_layer()
     if channel_layer is None:
         return
-    async_to_sync(channel_layer.group_send)(
-        _group_name(account_id),
-        {
-            "type": "hosted.refresh",
-            "reason": reason,
-            "chat_key": chat_key or "",
-        },
-    )
+    async def publish():
+        # Like message deltas, optional snapshot notifications must not hold
+        # the gateway's durable callback queue behind an unavailable Redis.
+        await asyncio.wait_for(channel_layer.group_send(
+            _group_name(account_id),
+            {
+                "type": "hosted.refresh",
+                "reason": reason,
+                "chat_key": chat_key or "",
+            },
+        ), timeout=REFRESH_PUBLISH_TIMEOUT_SECONDS)
+
+    try:
+        async_to_sync(publish)()
+    except Exception:
+        logger.exception("Hosted inbox refresh notification failed for account %s", account_id)
 
 
 def queue_hosted_chat_refresh(*, account_id, reason="message", chat_key=""):
@@ -330,6 +342,11 @@ def handle_hosted_gateway_event(*, payload):
     """Run canonical hosted event handling plus identity repair/broadcast."""
     event = str(payload.get("event") or "").strip().lower()
     result = legacy_handle_gateway_event(payload=payload)
+    # The underlying handler validates active session ownership. A callback
+    # rejected by its shard/lease fence must not mutate identity or emit UI
+    # refreshes through this enrichment layer.
+    if result is None:
+        return None
 
     if event == "history_sync":
         last_key = ""
@@ -577,6 +594,7 @@ def build_hosted_chat_snapshot(
                 "is_group": bool(payload.get("isGroup")),
                 "last_message": message.body or message.get_message_type_display(),
                 "last_at": message.created_at,
+                "last_message_id": str(message.pk),
                 "unread": 0,
             }
         else:
@@ -713,6 +731,8 @@ def serialize_hosted_chat_snapshot(snapshot):
                 "status": message.status,
                 "status_label": message.get_status_display(),
                 "created_at": message.created_at.isoformat(),
+                "updated_at": message.updated_at.isoformat(),
+                "is_read": message.is_read,
             }
             for message in snapshot["thread"]
         ],

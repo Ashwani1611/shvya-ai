@@ -8,6 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
 const { deadline } = require('../src/realtime-delivery');
+const { createSessionOperationQueue } = require('../src/session-lifecycle');
 
 // Exercise the same ordered source transformations as the production image.
 const root = path.resolve(__dirname, '..');
@@ -39,6 +40,8 @@ function context(names, overrides = {}) {
     serializedId: value => typeof value === 'string' ? value : value?._serialized || '',
     withTimeout: promise => promise,
     deadline,
+    withSessionOperation: createSessionOperationQueue(),
+    acquireLock: async () => true,
     callback: async () => true,
     resolveLidPhoneMap: async () => new Map(),
     sessions: new Map(), clearTimeout() {},
@@ -106,7 +109,7 @@ test('logout purges an orphaned persisted LocalAuth profile with no live session
   fs.writeFileSync(path.join(profile, 'marker'), 'stale');
 
   const ctx = context(
-    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession'],
+    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession', 'logoutSessionUnlocked'],
     {
       fs,
       path,
@@ -131,7 +134,7 @@ test('logout rejects unsafe session ids before touching the profile filesystem',
   fs.mkdirSync(outside, { recursive: true });
 
   const ctx = context(
-    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession'],
+    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession', 'logoutSessionUnlocked'],
     {
       fs,
       path,

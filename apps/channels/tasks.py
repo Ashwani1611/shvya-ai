@@ -28,6 +28,7 @@ def reconcile_hosted_sessions():
         WhatsAppWebGatewayError,
     )
     from services.channels.hosted_whatsapp_service import handle_gateway_event
+    from services.channels.hosted_send_service import expire_abandoned_hosted_manual_sends
 
     accounts = list(
         WhatsAppAccount.objects.filter(
@@ -54,6 +55,7 @@ def reconcile_hosted_sessions():
         "disconnected": 0,
         "failed": 0,
         "gateway_errors": 0,
+        "expired_manual_sends": expire_abandoned_hosted_manual_sends(),
     }
 
     for account in accounts:

@@ -18,6 +18,11 @@ from apps.channels.providers.whatsapp_web import WhatsAppWebGatewayError
 logger = logging.getLogger(__name__)
 
 _HOSTED_SENDING_STATUS = "sending"
+_CONFIRMED_STATUSES = {
+    WhatsAppMessage.Status.SENT,
+    WhatsAppMessage.Status.DELIVERED,
+    WhatsAppMessage.Status.READ,
+}
 
 
 def _is_manual_hosted_message(message):
@@ -62,11 +67,7 @@ def _set_message_state(message_id, *, status, error=""):
         )
         if message is None:
             return None
-        if message.status in {
-            WhatsAppMessage.Status.SENT,
-            WhatsAppMessage.Status.DELIVERED,
-            WhatsAppMessage.Status.READ,
-        }:
+        if message.status in _CONFIRMED_STATUSES:
             return message
         message.status = status
         message.error = str(error or "")[:1000]
@@ -190,31 +191,44 @@ def send_hosted_whatsapp_message_task(self, message_id, *, immediate=False):
             code = (json.loads(exc.response_body or "{}") or {}).get("code")
         except (ValueError, TypeError, AttributeError):
             code = None
+        # Checking an existing provider request does not consume a new send
+        # attempt. Its deadline is enforced by the transport's persisted
+        # attempted_at, including across task/worker restarts.
+        ack_pending = code == "provider_ack_pending"
         if code in {"provider_outcome_uncertain", "request_payload_conflict"}:
-            _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+            current = _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+            if current and current.status in _CONFIRMED_STATUSES:
+                _cleanup_upload(current)
+                return {"status": "sent", "message_id": str(current.id)}
             _cleanup_upload(message)
             return {"status": "failed", "reason": code, "error": str(exc)}
         if safe_replay or exc.status_code in {404, 409, 425, 429, 503}:
-            if self.request.retries >= self.max_retries:
-                _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+            if not ack_pending and self.request.retries >= self.max_retries:
+                current = _set_message_state(message.id, status=WhatsAppMessage.Status.FAILED, error=exc)
+                if current and current.status in _CONFIRMED_STATUSES:
+                    _cleanup_upload(current)
+                    return {"status": "sent", "message_id": str(current.id)}
                 _cleanup_upload(message)
                 return {"status": "failed", "reason": "provider_retry_limit_reached", "error": str(exc)}
-            _set_message_state(message.id, status=WhatsAppMessage.Status.QUEUED)
+            current = _set_message_state(message.id, status=WhatsAppMessage.Status.QUEUED)
+            if current and current.status in _CONFIRMED_STATUSES:
+                _cleanup_upload(current)
+                return {"status": "sent", "message_id": str(current.id)}
             countdown = _hosted_retry_delay(
                 message_id=message.id, retries=self.request.retries,
-                retry_after=getattr(exc, "retry_after", None),
+                retry_after=15 if ack_pending else getattr(exc, "retry_after", None),
             )
             if exc.status_code == 429:
                 from apps.core.observability import increment
                 increment("messaging.provider_throttled", labels={"provider": "hosted_whatsapp"})
-            if immediate:
+            if immediate or ack_pending:
                 # Celery.retry() in a direct call raises into the HTTP request;
                 # eager apply() can instead retry immediately in a loop. Publish
                 # only an actual provider retry, retaining this row/request ID.
                 try:
                     self.apply_async(
                         args=[str(message.id)], countdown=countdown,
-                        retries=self.request.retries + 1, retry=False,
+                        retries=self.request.retries + (0 if ack_pending else 1), retry=False,
                     )
                 except Exception:
                     logger.exception("Could not schedule Hosted manual retry for %s", message.id)
@@ -248,7 +262,7 @@ def send_hosted_whatsapp_message_task(self, message_id, *, immediate=False):
         # Provider retries keep their existing bounded retry budget. The
         # canonical transport persists a stable request identity so an AI
         # retry reconciles an uncertain send rather than issuing a duplicate.
-        if getattr(exc, "reason", "") == "provider_transient" and isinstance(exc.__cause__, WhatsAppWebGatewayError):
+        if getattr(exc, "reason", "") in {"provider_transient", "provider_ack_pending"} and isinstance(exc.__cause__, WhatsAppWebGatewayError):
             return retry_gateway_error(exc.__cause__, safe_replay=True)
         _set_message_state(message.id, status=WhatsAppMessage.Status.QUEUED)
         available_at = exc.paused_until

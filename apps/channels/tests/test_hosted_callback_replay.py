@@ -6,6 +6,7 @@ from django.urls import reverse
 
 from apps.channels.models import WhatsAppAccount
 from apps.organizations.models import Organization
+from services.channels.hosted_chat_service import handle_hosted_gateway_event
 
 
 class HostedGatewayCallbackReplayTests(TestCase):
@@ -60,6 +61,30 @@ class HostedGatewayCallbackReplayTests(TestCase):
                 self.assertFalse(response.json()["handled"])
                 self.assertTrue(response.json()["retryable"])
         self.assertEqual(handle.call_count, len(cases))
+        _repair.assert_not_called()
+        _sync.assert_not_called()
+
+    @patch("services.channels.hosted_chat_service.queue_hosted_chat_refresh")
+    @patch("services.channels.hosted_chat_service.repair_gateway_message_identity")
+    @patch("services.channels.hosted_chat_service.legacy_handle_gateway_event", return_value=None)
+    def test_rejected_history_event_does_not_run_identity_repairs(self, _handle, repair, refresh):
+        # A stale gateway still has message IDs from before a session moved.
+        # Its failed lease check must also fence the enrichment layer.
+        with patch("services.channels.hosted_chat_service.WhatsAppMessage.objects") as messages:
+            result = handle_hosted_gateway_event(payload={
+                "sessionId": str(self.account.id), "event": "history_sync",
+                "messages": [{"messageId": "stale-history"}],
+            })
+        self.assertIsNone(result)
+        messages.select_related.assert_not_called()
+        repair.assert_not_called()
+        refresh.assert_not_called()
+
+    @patch("apps.channels.hosted_chat_ui.config", return_value="callback-token")
+    def test_callback_requires_json_object(self, _config):
+        for payload in ([], "message", None, 42):
+            with self.subTest(payload=payload):
+                self.assertEqual(self.post(payload).status_code, 400)
 
     @patch("apps.channels.hosted_chat_ui.sync_hosted_contact_names")
     @patch("apps.channels.hosted_chat_ui.repair_content_after_gateway_event")

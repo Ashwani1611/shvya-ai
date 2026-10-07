@@ -193,6 +193,10 @@ class HostedInboxReliabilityTests(TestCase):
         url = reverse("whatsapp-hosted-session-chats-data", args=[self.account.pk])
         response = self.client.get(url, {"chat": self.phone})
         self.assertEqual(response.status_code, 200)
+        item = response.json()["thread"][0]
+        self.assertEqual(item["updated_at"], old.updated_at.isoformat())
+        self.assertFalse(item["is_read"])
+        self.assertEqual(response.json()["conversations"][0]["last_message_id"], str(old.pk))
         old.refresh_from_db()
         self.assertFalse(old.is_read)
         token = response.json()["read_token"]

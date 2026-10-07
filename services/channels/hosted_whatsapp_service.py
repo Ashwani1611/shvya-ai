@@ -762,7 +762,7 @@ def handle_gateway_event(*, payload):
         }.get(status)
         if not mapped:
             return None
-        message = WhatsAppMessage.objects.filter(
+        message = WhatsAppMessage.objects.select_for_update().filter(
             organization=account.organization,
             account=account,
             external_id=external_id,

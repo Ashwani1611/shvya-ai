@@ -219,6 +219,9 @@ CELERY_TASK_ROUTES = {
     "apps.hosted_automation.tasks.process_hosted_ai_engagement_job_task": {
         "queue": "hosted_ai"
     },
+    "apps.channels.hosted_send_tasks.send_hosted_whatsapp_message_task": {
+        "queue": "hosted_ai"
+    },
     "campaigns.prepare": {"queue": "campaigns"},
     "campaigns.send_recipient": {"queue": "campaigns"},
     "campaigns.dispatch": {"queue": "campaigns"},

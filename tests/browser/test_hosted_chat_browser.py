@@ -278,3 +278,18 @@ def test_cancelled_draft_is_removed_by_direct_event(inbox):
     control["delay"] = A
     push(control, {**item, "updated_at": "2026-10-03T00:00:02Z"}, operation="remove")
     expect(bubble).to_have_count(0, timeout=2000)
+
+
+def test_delayed_socket_event_cannot_requeue_message_loaded_as_read(inbox):
+    page, control = inbox
+    item = message(186, body="Already read on recipient phone", direction="outbound",
+                   status="read", updated_at="2026-10-07T00:00:03Z")
+    control["extra"].append(item)
+    page.locator(f'[data-chat-key="{A}"]').click()
+    bubble = page.locator('[data-message-id="message-0186"]')
+    expect(bubble.locator(".bubble-status")).to_have_attribute("title", "Read")
+    control["delay"] = A
+    push(control, {**item, "status": "queued", "updated_at": "2026-10-07T00:00:01Z"})
+    page.wait_for_timeout(200)
+    expect(bubble.locator(".bubble-status")).to_have_attribute("title", "Read")
+    assert control["errors"] == []

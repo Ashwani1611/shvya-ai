@@ -145,7 +145,7 @@ class HostedTransportAcknowledgementTests(SimpleTestCase):
 
         with (
             patch.object(WhatsAppAccount.objects, "select_related") as accounts,
-            patch.object(WhatsAppMessage.objects, "filter", side_effect=scoped_message),
+            patch.object(WhatsAppMessage.objects, "select_for_update", return_value=Mock(filter=scoped_message)),
             patch("apps.channels.hosted_gateway_routing.record_gateway_presence", return_value=True),
         ):
             accounts.return_value.filter.return_value.first.return_value = self.account

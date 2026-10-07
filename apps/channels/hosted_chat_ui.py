@@ -483,6 +483,8 @@ def hosted_gateway_event_view(request):
         data = json.loads(request.body.decode("utf-8") or "{}")
     except (ValueError, UnicodeDecodeError):
         return JsonResponse({"ok": False, "error": "Invalid JSON"}, status=400)
+    if not isinstance(data, dict):
+        return JsonResponse({"ok": False, "error": "Expected a JSON object"}, status=400)
 
     event = str(data.get("event") or "").strip().lower()
     if event == "message" and _gateway_payload_is_hidden(data):
@@ -496,8 +498,11 @@ def hosted_gateway_event_view(request):
 
     try:
         result = handle_hosted_gateway_event(payload=data)
-        repair_content_after_gateway_event(payload=data)
-        sync_hosted_contact_names(payload=data)
+        # Repairs must obey the same ownership fence as persistence. A stale
+        # or temporarily unowned gateway event is retried below, untouched.
+        if result is not None:
+            repair_content_after_gateway_event(payload=data)
+            sync_hosted_contact_names(payload=data)
     except HostedWhatsAppValidationError as exc:
         return JsonResponse({"ok": False, "error": str(exc)}, status=409)
 

@@ -1,6 +1,7 @@
 """Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone as datetime_timezone
 
 from django.db import transaction
@@ -19,6 +20,7 @@ _INSTALLED = False
 _ORIGINAL_SEND = None
 TRANSIENT_AUTOMATION_RETRY_SECONDS = 15
 ACK_WAIT_LIMIT_SECONDS = 300
+logger = logging.getLogger(__name__)
 
 
 def _provider_sent_at(response):
@@ -40,11 +42,16 @@ def _push_chat_refresh(message, reason):
         queue_hosted_chat_refresh,
     )
 
-    queue_hosted_chat_refresh(
-        account_id=message.account_id,
-        reason=reason,
-        chat_key=chat_key_for_message(message),
-    )
+    try:
+        queue_hosted_chat_refresh(
+            account_id=message.account_id,
+            reason=reason,
+            chat_key=chat_key_for_message(message),
+        )
+    except Exception:
+        # Delivery is authoritative in the database. A websocket/broker outage
+        # must not turn an acknowledged send into a failed automation job.
+        logger.exception("Could not publish Hosted delivery state for %s", message.pk)
 
 
 def _mark_send_attempt(message):
@@ -223,9 +230,13 @@ def send_hosted_message(*, message, defer_on_pause=True):
 
         raw_id = response.get("messageId")
         if not raw_id:
-            message.status = WhatsAppMessage.Status.FAILED
-            message.error = "Hosted WhatsApp gateway returned no message id."
-            message.save(update_fields=["status", "error", "updated_at"])
+            if _record_send_error(
+                message, error="Hosted WhatsApp gateway returned no message id.", failed=True,
+            ):
+                provider_confirmed = True
+                finalize_hosted_send(account=account, message=message)
+                _push_chat_refresh(message, "sent")
+                return message
             _push_chat_refresh(message, "failed")
             raise WhatsAppSendError(message.error)
 
@@ -292,7 +303,7 @@ def send_hosted_message(*, message, defer_on_pause=True):
         # gateway/network failures. Keep the exact generated message queued and
         # let the durable automation job retry it shortly instead of marking the
         # conversation permanently failed after one transient provider error.
-        retrying = defer_on_pause and is_automation and transient
+        retrying = defer_on_pause and (is_automation or ack_pending) and transient
         error = (
             f"Temporary Hosted gateway failure; retry scheduled: {exc}"
             if retrying else (
@@ -323,47 +334,31 @@ def send_hosted_message(*, message, defer_on_pause=True):
         if reservation_acquired and not provider_confirmed:
             release_hosted_automation_reservation(account=account)
 
-    existing_payload = (
-        message.raw_payload if isinstance(message.raw_payload, dict) else {}
-    )
-    final_payload = dict(response)
-    for key in (
-        "shvya_ai",
-        "shvya_welcome",
-        "shvya_hosted",
-        "shvya_hosted_request",
-        "shvya_auto_followup",
-        "shvya_workflow",
-        "shvya_sales",
-        "peerKey",
-        "peerPhone",
-        "rawChatId",
-        "chatId",
-        "chatName",
-        "contactName",
-        "isGroup",
-    ):
-        if key in existing_payload:
-            final_payload[key] = existing_payload[key]
-
-    message.status = {
-        "read": WhatsAppMessage.Status.READ,
-        "delivered": WhatsAppMessage.Status.DELIVERED,
-    }.get(response.get("status"), WhatsAppMessage.Status.SENT)
-    message.sent_at = _provider_sent_at(response)
-    message.external_id = f"wweb:{raw_id}"
-    message.raw_payload = final_payload
-    message.error = ""
-    message.save(
-        update_fields=[
-            "status",
-            "external_id",
-            "sent_at",
-            "raw_payload",
-            "error",
-            "updated_at",
-        ]
-    )
+    with transaction.atomic():
+        # A delivered/read callback can commit while the HTTP send is still
+        # awaiting its response. Merge against the locked current row, never
+        # downgrade that receipt or erase the callback's identity/metadata.
+        message.refresh_from_db(from_queryset=WhatsAppMessage.objects.select_for_update().filter(
+            organization_id=message.organization_id, account_id=message.account_id,
+        ))
+        external_id = f"wweb:{raw_id}"
+        if message.external_id and message.external_id != external_id:
+            raise WhatsAppSendError("Hosted provider message identity changed during acknowledgement.")
+        existing_payload = message.raw_payload if isinstance(message.raw_payload, dict) else {}
+        provider_status = {
+            "read": WhatsAppMessage.Status.READ,
+            "delivered": WhatsAppMessage.Status.DELIVERED,
+        }.get(response.get("status"), WhatsAppMessage.Status.SENT)
+        ranks = {"sent": 1, "delivered": 2, "read": 3}
+        if ranks.get(provider_status, 0) >= ranks.get(message.status, 0):
+            message.status = provider_status
+        message.sent_at = _provider_sent_at(response)
+        message.external_id = external_id
+        message.raw_payload = {**existing_payload, **response}
+        message.error = ""
+        message.save(update_fields=[
+            "status", "external_id", "sent_at", "raw_payload", "error", "updated_at",
+        ])
     _push_chat_refresh(message, "sent")
     finalize_hosted_send(account=account, message=message)
 

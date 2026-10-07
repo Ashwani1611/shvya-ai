@@ -42,6 +42,11 @@
       for (const message of incoming) {
         const id = String(message.id || '');
         if (!id || (versions.get(id) || 0) > startedAt) continue;
+        const stamp = String(message.updated_at || '');
+        // Polling can observe a receipt before its delayed socket event. Seed
+        // the same version watermark used by apply(), including initial load.
+        if (stamp && stamps.has(id) && stamp < stamps.get(id)) continue;
+        if (stamp) stamps.set(id, stamp);
         messages.set(id, message);
       }
     }

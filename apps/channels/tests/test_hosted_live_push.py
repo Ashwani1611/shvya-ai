@@ -1,5 +1,6 @@
 """Committed Hosted inbox events; no live WhatsApp traffic."""
 
+import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
@@ -12,6 +13,7 @@ from apps.channels.hosted_consumers import HostedWhatsAppChatConsumer
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
 from apps.organizations.models import Organization
 from services.channels.hosted_chat_realtime import broadcast_committed_message
+from services.channels.hosted_chat_service import broadcast_hosted_chat_refresh
 from services.channels.message_visibility import pending_ai_message_q
 
 
@@ -130,6 +132,30 @@ class HostedLivePushTests(TestCase):
 
 
 class HostedSubscriptionTests(SimpleTestCase):
+    def test_refresh_notification_timeout_cancels_stalled_redis_without_failing_callback(self):
+        cancelled = []
+
+        async def stalled_send(*args):
+            try:
+                await asyncio.Event().wait()
+            finally:
+                cancelled.append(True)
+
+        layer = SimpleNamespace(group_send=AsyncMock(side_effect=stalled_send))
+        with patch("services.channels.hosted_chat_service.get_channel_layer", return_value=layer), \
+                patch("services.channels.hosted_chat_service.REFRESH_PUBLISH_TIMEOUT_SECONDS", 0.01), \
+                self.assertLogs("services.channels.hosted_chat_service", level="ERROR"):
+            broadcast_hosted_chat_refresh(account_id="account")
+        self.assertEqual(cancelled, [True])
+        layer.group_send.assert_awaited_once()
+
+    def test_refresh_redis_failure_does_not_fail_committed_callback(self):
+        layer = SimpleNamespace(group_send=AsyncMock(side_effect=ConnectionError("Redis down")))
+        with patch("services.channels.hosted_chat_service.get_channel_layer", return_value=layer), \
+                self.assertLogs("services.channels.hosted_chat_service", level="ERROR"):
+            broadcast_hosted_chat_refresh(account_id="account")
+        layer.group_send.assert_awaited_once()
+
     def test_subscription_recovers_after_channel_layer_loses_memberships(self):
         async def check():
             layer = InMemoryChannelLayer()

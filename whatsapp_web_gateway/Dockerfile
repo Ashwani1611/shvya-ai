@@ -43,6 +43,9 @@ RUN node scripts/patch-hosted-uploaded-media-send.js
 RUN node scripts/patch-hosted-media-download-and-filter.js
 # Durable live callbacks, disconnected-session recovery, and server-ACK sends.
 RUN node scripts/patch-hosted-realtime-delivery.js
+# Serialize browser/profile lifecycle operations and fence stale QR/startup
+# events so overlapping refresh, restore and logout cannot break ownership.
+RUN node scripts/patch-hosted-session-lifecycle.js
 RUN node --check src/index.js
 
 # npm is required only while assembling node_modules. The production gateway

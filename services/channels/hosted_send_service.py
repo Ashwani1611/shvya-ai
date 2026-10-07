@@ -1,9 +1,14 @@
 """Queue Hosted Account outbound text/media without mixing Meta API transport."""
 
+import logging
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
 from django.core.files.storage import default_storage
+from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 from django.utils.text import get_valid_filename
 
 from apps.channels.models import WhatsAppAccount, WhatsAppMessage
@@ -14,6 +19,7 @@ from services.channels.hosted_whatsapp_service import (
 
 
 MAX_HOSTED_UPLOAD_BYTES = 25 * 1024 * 1024
+logger = logging.getLogger(__name__)
 
 _ALLOWED_EXTENSIONS = {
     WhatsAppMessage.MessageType.IMAGE: {".jpg", ".jpeg", ".png", ".webp", ".gif"},
@@ -22,6 +28,55 @@ _ALLOWED_EXTENSIONS = {
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv",
     },
 }
+
+
+def expire_abandoned_hosted_manual_sends(*, now=None, limit=100):
+    """End abandoned in-flight UI states without repeating a provider send.
+
+    Ten minutes exceeds the upload timeout and the acknowledgement deadline.
+    A later authenticated receipt can still confirm the original message.
+    """
+    cutoff = (now or timezone.now()) - timedelta(minutes=10)
+    candidates = WhatsAppMessage.objects.filter(
+        account__connection_type=WhatsAppAccount.ConnectionType.coexisted,
+        direction=WhatsAppMessage.Direction.OUTBOUND,
+        status="sending",
+        updated_at__lte=cutoff,
+        raw_payload__shvya_hosted__origin="agent",
+    ).exclude(
+        Q(raw_payload__has_key="shvya_ai")
+        | Q(raw_payload__has_key="shvya_welcome")
+        | Q(raw_payload__has_key="shvya_auto_followup")
+        | Q(raw_payload__has_key="shvya_workflow")
+        | Q(raw_payload__has_key="shvya_sales")
+    )
+    identifiers = list(candidates.order_by("updated_at", "pk").values_list(
+        "pk", "organization_id", "account_id",
+    )[:max(1, min(int(limit), 100))])
+    expired = 0
+    for message_id, organization_id, account_id in identifiers:
+        with transaction.atomic():
+            message = candidates.select_for_update(skip_locked=True).filter(
+                pk=message_id, organization_id=organization_id, account_id=account_id,
+            ).first()
+            if message is None:
+                continue
+            message.status = WhatsAppMessage.Status.FAILED
+            message.error = (
+                "Delivery is unconfirmed after the send process was interrupted. "
+                "Check the conversation before sending this message again."
+            )
+            message.save(update_fields=["status", "error", "updated_at"])
+        expired += 1
+        try:
+            from services.channels.hosted_chat_service import chat_key_for_message, queue_hosted_chat_refresh
+
+            queue_hosted_chat_refresh(
+                account_id=message.account_id, reason="failed", chat_key=chat_key_for_message(message),
+            )
+        except Exception:
+            logger.exception("Could not publish interrupted Hosted send for %s", message.pk)
+    return expired
 
 
 def _normalize_recipient(value):

@@ -2,8 +2,10 @@
 
 import json
 import tempfile
+from datetime import timedelta
 from unittest.mock import patch
 
+from django.conf import settings
 from django.contrib.sessions.backends.db import SessionStore
 from django.core.cache import cache
 from django.core.files.storage import default_storage
@@ -11,6 +13,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.test import TransactionTestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from apps.accounts.models import User
 from apps.accounts.session_utils import set_authenticated_user
@@ -226,9 +229,112 @@ class HostedManualImmediateTests(TransactionTestCase):
         message = WhatsAppMessage.objects.get(pk=data["message"]["id"])
         self.assertEqual(message.raw_payload["shvya_hosted_request"]["request_id"], str(message.pk))
         self.assertEqual(self.publish.call_args.kwargs["args"], [str(message.pk)])
-        self.assertEqual(self.publish.call_args.kwargs["retries"], 1)
+        self.assertEqual(self.publish.call_args.kwargs["retries"], 0)
         self.assertFalse(self.publish.call_args.kwargs["retry"])
         self.retry.assert_not_called()
+
+    def test_hosted_retries_use_the_dedicated_hosted_worker_queue(self):
+        self.assertEqual(
+            settings.CELERY_TASK_ROUTES[send_hosted_whatsapp_message_task.name]["queue"],
+            "hosted_ai",
+        )
+
+    def test_ack_checks_continue_until_deadline_without_spending_send_retries(self):
+        self.gateway.send_message.side_effect = WhatsAppWebGatewayError(
+            "Waiting for acknowledgement", status_code=503,
+            response_body=json.dumps({"code": "provider_ack_pending", "messageId": "pending-1"}),
+        )
+        message = self._message()
+        send_hosted_whatsapp_message_task.push_request(retries=3)
+        try:
+            result = send_hosted_whatsapp_message_task.run(str(message.id))
+        finally:
+            send_hosted_whatsapp_message_task.pop_request()
+        message.refresh_from_db()
+        self.assertEqual(result["reason"], "provider_ack_pending")
+        self.assertEqual(message.status, "queued")
+        self.assertEqual(message.external_id, "wweb:pending-1")
+        self.assertEqual(self.publish.call_args.kwargs["retries"], 3)
+        self.assertGreaterEqual(self.publish.call_args.kwargs["countdown"], 15)
+        self.assertLessEqual(self.publish.call_args.kwargs["countdown"], 21)
+        self.retry.assert_not_called()
+
+    def test_manual_ack_checks_stop_after_persisted_deadline(self):
+        message = self._message()
+        message.raw_payload["shvya_hosted_request"] = {
+            "request_id": str(message.pk),
+            "attempted_at": (timezone.now() - timedelta(seconds=301)).isoformat(),
+        }
+        message.save(update_fields=["raw_payload"])
+        self.gateway.send_message.side_effect = WhatsAppWebGatewayError(
+            "Waiting for acknowledgement", status_code=503,
+            response_body=json.dumps({"code": "provider_ack_pending", "messageId": "pending-1"}),
+        )
+        result = send_hosted_whatsapp_message_task.run(str(message.id), immediate=True)
+        message.refresh_from_db()
+        self.assertEqual(result["reason"], "provider_outcome_uncertain")
+        self.assertEqual(message.status, "failed")
+        self.assertTrue(self.gateway.send_message.call_args.kwargs["request_is_retry"])
+        self.publish.assert_not_called()
+
+    def test_provider_response_cannot_downgrade_callback_read_receipt(self):
+        def callback_before_http_response(**kwargs):
+            message = WhatsAppMessage.objects.get(pk=kwargs["request_id"])
+            message.status = "read"
+            message.external_id = "wweb:callback-read"
+            message.raw_payload["lastAck"] = {"status": "read"}
+            message.save(update_fields=["status", "external_id", "raw_payload"])
+            return {"messageId": "callback-read", "status": "sent"}
+
+        self.gateway.send_message.side_effect = callback_before_http_response
+        response = self._post()
+        message = WhatsAppMessage.objects.get(pk=response.json()["message"]["id"])
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(message.status, "read")
+        self.assertEqual(message.raw_payload["lastAck"], {"status": "read"})
+        self.assertEqual(message.raw_payload["shvya_hosted"]["origin"], "agent")
+        self.publish.assert_not_called()
+
+    def test_malformed_http_result_cannot_erase_confirmed_callback_delivery(self):
+        def callback_before_malformed_response(**kwargs):
+            WhatsAppMessage.objects.filter(pk=kwargs["request_id"]).update(
+                status="delivered", external_id="wweb:delivered-before-error",
+            )
+            return {}
+
+        self.gateway.send_message.side_effect = callback_before_malformed_response
+        response = self._post()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["message"]["status"], "delivered")
+        self.publish.assert_not_called()
+
+    def test_realtime_publication_outage_does_not_fail_confirmed_delivery(self):
+        self._patch(
+            "services.channels.hosted_chat_service.queue_hosted_chat_refresh",
+            side_effect=RuntimeError("Realtime broker unavailable"),
+        )
+        response = self._post()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["message"]["status"], "sent")
+        self.publish.assert_not_called()
+
+    def test_ack_winning_task_requeue_does_not_schedule_another_provider_call(self):
+        from services.channels.whatsapp_service import WhatsAppSendError
+
+        message = self._message()
+
+        def callback_then_retry(*, message):
+            WhatsAppMessage.objects.filter(pk=message.pk).update(status="read")
+            raise WhatsAppSendError("Gateway response lost") from WhatsAppWebGatewayError(
+                "Gateway response lost", status_code=503,
+            )
+
+        with patch("services.channels.hosted_whatsapp_transport.send_hosted_message", side_effect=callback_then_retry):
+            result = send_hosted_whatsapp_message_task.run(str(message.id), immediate=True)
+        self.assertEqual(result["status"], "sent")
+        message.refresh_from_db()
+        self.assertEqual(message.status, "read")
+        self.publish.assert_not_called()
 
     def test_provider_throttling_still_honours_retry_after(self):
         error = WhatsAppWebGatewayError("Rate limited", status_code=429)

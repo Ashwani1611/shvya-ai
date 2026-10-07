@@ -49,3 +49,23 @@ test('LID aliases match only the selected conversation', () => {
  assert.equal(matches('+918888888888',{chat_key:'+919999999999',aliases:['42@lid']}),false);
  assert.equal(matches('',{chat_key:''}),false);
 });
+test('a snapshot receipt cannot be downgraded by a delayed socket event', () => {
+ const state=create(), messages=new Map();
+ state.merge(messages,{thread:[msg('m',3,'read')],has_more:false},state.revision(),false);
+ assert.equal(state.apply(messages,event(msg('m',2,'sent'))),false);
+ assert.equal(messages.get('m').status,'read');
+ assert.equal(state.apply(messages,event(msg('m',3,'read'))),false);
+});
+test('older paginated snapshots cannot overwrite a newer snapshot receipt', () => {
+ const state=create(), messages=new Map();
+ state.merge(messages,{thread:[msg('m',3,'read')],has_more:true},state.revision(),false);
+ state.merge(messages,{thread:[msg('m',1,'queued')],has_more:false},state.revision(),true);
+ assert.equal(messages.get('m').status,'read');
+});
+test('same-version snapshot may update bulk read state without losing socket fence', () => {
+ const state=create(), messages=new Map();
+ state.merge(messages,{thread:[{...msg('m',3,'received'),is_read:false}],has_more:false},state.revision(),false);
+ state.merge(messages,{thread:[{...msg('m',3,'received'),is_read:true}],has_more:false},state.revision(),false);
+ assert.equal(messages.get('m').is_read,true);
+ assert.equal(state.apply(messages,event({...msg('m',2,'received'),is_read:false})),false);
+});

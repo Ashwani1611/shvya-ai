@@ -151,17 +151,74 @@
 <script>
 (function(){
  const csrf=document.querySelector('input[name=csrfmiddlewaretoken]').value;
- const modal=id=>document.getElementById(id); const open=id=>modal(id).classList.add('is-open'); const closeAll=()=>document.querySelectorAll('.hosted-modal').forEach(x=>x.classList.remove('is-open'));
+ const modal=id=>document.getElementById(id); const open=id=>modal(id).classList.add('is-open'); const closeAll=()=>{stopQr();document.querySelectorAll('.hosted-modal').forEach(x=>x.classList.remove('is-open'))};
  document.querySelectorAll('.js-close-modal').forEach(b=>b.addEventListener('click',closeAll)); document.querySelectorAll('.hosted-modal').forEach(m=>m.addEventListener('click',e=>{if(e.target===m)closeAll()}));
  document.getElementById('open-create-session')?.addEventListener('click',()=>open('create-session-modal'));
  const post=async(url,data={})=>{const r=await fetch(url,{method:'POST',headers:{'X-CSRFToken':csrf,'Content-Type':'application/json'},body:JSON.stringify(data)});const j=await r.json();if(!r.ok)throw new Error(j.error||'Request failed');return j};
- let activeAccount=null,activeQrUrl=null,activeRefreshUrl=null,qrTimer=null,pollTimer=null,activeQrSeen=false;
- function showQr(account,qrUrl,refreshUrl){activeAccount=account;activeQrUrl=qrUrl;activeRefreshUrl=refreshUrl;activeQrSeen=false;closeAll();open('qr-modal');document.getElementById('qr-image').classList.add('hidden');document.getElementById('qr-loading').classList.remove('hidden');document.getElementById('qr-status').textContent='Connecting';document.getElementById('qr-countdown').textContent='Preparing a secure QR session…';fetchQr();clearInterval(pollTimer);pollTimer=setInterval(fetchQr,2000)}
- async function fetchQr(){if(!activeQrUrl)return;try{const r=await fetch(activeQrUrl,{cache:'no-store'});const j=await r.json();if(!r.ok||!j.ok)throw new Error(j.error||'Unable to load QR code');if(j.label)document.getElementById('qr-status').textContent=j.label;if(j.qr){activeQrSeen=true;const img=document.getElementById('qr-image');img.src=j.qr;img.classList.remove('hidden');document.getElementById('qr-loading').classList.add('hidden');let left=j.expires_in||60;clearInterval(qrTimer);document.getElementById('qr-countdown').textContent=`QR code refreshes in ${left}s`;qrTimer=setInterval(()=>{left=Math.max(0,left-1);document.getElementById('qr-countdown').textContent=`QR code refreshes in ${left}s`},1000)}if(j.status==='running'){clearInterval(pollTimer);clearInterval(qrTimer);document.getElementById('qr-loading').classList.add('hidden');if(activeQrSeen){document.getElementById('qr-status').textContent='Connected';document.getElementById('qr-countdown').textContent='WhatsApp linked successfully.';setTimeout(()=>location.reload(),900)}else{document.getElementById('qr-status').textContent='Already connected';document.getElementById('qr-countdown').textContent='No QR is needed. Log out this session first if you want to link the number again.'}}}catch(e){document.getElementById('qr-loading').classList.add('hidden');document.getElementById('qr-status').textContent=e.message||'Waiting for gateway…'}}
+ let activeQrUrl=null,activeRefreshUrl=null,qrTimer=null,pollTimer=null,reloadTimer=null;
+ let activeQrSeen=false,qrGeneration=0,qrRequest=null;
+ function stopQr(){
+   qrGeneration++;clearTimeout(pollTimer);clearTimeout(reloadTimer);clearInterval(qrTimer);
+   qrRequest?.abort();qrRequest=null;activeQrUrl=null;activeRefreshUrl=null;
+   document.getElementById('refresh-qr').disabled=false;
+ }
+ function hideQr(){clearInterval(qrTimer);const img=document.getElementById('qr-image');img.classList.add('hidden');img.removeAttribute('src')}
+ function showQr(account,qrUrl,refreshUrl){
+   closeAll();activeQrUrl=qrUrl;activeRefreshUrl=refreshUrl;activeQrSeen=false;open('qr-modal');hideQr();
+   document.getElementById('qr-loading').classList.remove('hidden');
+   document.getElementById('qr-status').textContent='Connecting';
+   document.getElementById('qr-countdown').textContent='Preparing a secure QR session…';fetchQr();
+ }
+ async function fetchQr(){
+   if(!activeQrUrl||qrRequest)return;
+   const generation=qrGeneration,controller=new AbortController();qrRequest=controller;
+   const timeout=setTimeout(()=>controller.abort(),12000);let connected=false;
+   try{
+     const r=await fetch(activeQrUrl,{cache:'no-store',signal:controller.signal}),j=await r.json();
+     if(generation!==qrGeneration)return;
+     if(!r.ok||!j.ok)throw new Error(j.error||'Unable to load QR code');
+     document.getElementById('qr-status').textContent=j.error||j.label||'Connecting';
+     if(j.status==='running'){
+       connected=true;hideQr();document.getElementById('qr-loading').classList.add('hidden');
+       document.getElementById('qr-status').textContent=activeQrSeen?'Connected':'Already connected';
+       document.getElementById('qr-countdown').textContent=activeQrSeen?'WhatsApp linked successfully.':'No QR is needed. This WhatsApp session is connected.';
+       if(activeQrSeen)reloadTimer=setTimeout(()=>{if(generation===qrGeneration)location.reload()},900);
+     }else if(j.qr&&Number(j.expires_in??60)>0){
+       activeQrSeen=true;const img=document.getElementById('qr-image');img.src=j.qr;img.classList.remove('hidden');
+       document.getElementById('qr-loading').classList.add('hidden');let left=Math.ceil(Number(j.expires_in??60));
+       clearInterval(qrTimer);document.getElementById('qr-countdown').textContent=`QR code refreshes in ${left}s`;
+       qrTimer=setInterval(()=>{left=Math.max(0,left-1);document.getElementById('qr-countdown').textContent=left?`QR code refreshes in ${left}s`:'QR expired. Waiting for a fresh code…';if(!left)hideQr()},1000);
+     }else{
+       hideQr();document.getElementById('qr-loading').classList.toggle('hidden',['failed','expired','disconnected'].includes(j.status));
+       document.getElementById('qr-countdown').textContent=j.status==='expired'?'QR expired. Select Refresh QR to try again.':'Waiting for the connection…';
+     }
+   }catch(e){
+     if(generation!==qrGeneration)return;
+     document.getElementById('qr-loading').classList.add('hidden');
+     document.getElementById('qr-status').textContent=e.name==='AbortError'?'Connection check timed out. Retrying…':e.message||'Waiting for gateway…';
+   }finally{
+     clearTimeout(timeout);
+     if(generation===qrGeneration){qrRequest=null;if(!connected&&activeQrUrl)pollTimer=setTimeout(fetchQr,2000)}
+   }
+ }
+ async function refreshQr(){
+   const button=document.getElementById('refresh-qr');if(!activeRefreshUrl||button.disabled)return;
+   const generation=++qrGeneration;clearTimeout(pollTimer);clearTimeout(reloadTimer);qrRequest?.abort();
+   const controller=new AbortController();qrRequest=controller;button.disabled=true;hideQr();
+   document.getElementById('qr-loading').classList.remove('hidden');document.getElementById('qr-status').textContent='Refreshing QR…';
+   const timeout=setTimeout(()=>controller.abort(),35000);
+   try{
+     const r=await fetch(activeRefreshUrl,{method:'POST',headers:{'X-CSRFToken':csrf,'Content-Type':'application/json'},body:'{}',signal:controller.signal}),j=await r.json();
+     if(generation!==qrGeneration)return;
+     if(!r.ok||!j.ok)throw new Error(j.error||'Unable to refresh QR code');
+   }catch(e){if(generation===qrGeneration)document.getElementById('qr-status').textContent=e.name==='AbortError'?'QR refresh timed out. Checking the connection…':e.message}
+   finally{clearTimeout(timeout);if(generation===qrGeneration){qrRequest=null;button.disabled=false;pollTimer=setTimeout(fetchQr,1200)}}
+ }
+ window.addEventListener('pagehide',stopQr);
  document.getElementById('create-session-form').addEventListener('submit',async e=>{e.preventDefault();const f=e.currentTarget,err=document.getElementById('create-session-error');err.classList.add('hidden');const fd=new FormData(f);try{const j=await post(f.dataset.url,Object.fromEntries(fd.entries()));const base=location.pathname.replace(/\/$/,'');showQr(j.account_id,`${base}/${j.account_id}/qr/`,`${base}/${j.account_id}/qr/refresh/`)}catch(ex){err.textContent=ex.message;err.classList.remove('hidden')}});
  document.querySelectorAll('.js-get-qr').forEach(b=>b.addEventListener('click',()=>showQr(b.dataset.account,b.dataset.qrUrl,b.dataset.refreshUrl)));
- document.getElementById('refresh-qr').addEventListener('click',async()=>{if(!activeRefreshUrl)return;try{await post(activeRefreshUrl);document.getElementById('qr-image').classList.add('hidden');document.getElementById('qr-loading').classList.remove('hidden');setTimeout(fetchQr,1200)}catch(e){document.getElementById('qr-status').textContent=e.message}});
- document.querySelectorAll('.js-status').forEach(el=>{const detail=el.closest('[data-session-row]').querySelector('.js-status-error');const showError=message=>{detail.textContent=message||'';detail.classList.toggle('hidden',!message)};const update=async()=>{try{const r=await fetch(el.dataset.statusUrl,{cache:'no-store'});const j=await r.json();el.textContent=j.label||(r.ok&&j.ok?'Unknown':'Gateway unavailable');showError(j.error||'')}catch(e){el.textContent='Gateway unavailable';showError('The Hosted connection could not be checked. Try again once the gateway is available.')}};update();setInterval(update,5000)});
+ document.getElementById('refresh-qr').addEventListener('click',refreshQr);
+ document.querySelectorAll('.js-status').forEach(el=>{const detail=el.closest('[data-session-row]').querySelector('.js-status-error');const showError=message=>{detail.textContent=message||'';detail.classList.toggle('hidden',!message)};let checking=false;const update=async()=>{if(checking)return;checking=true;try{const r=await fetch(el.dataset.statusUrl,{cache:'no-store'});const j=await r.json();el.textContent=j.label||(r.ok&&j.ok?'Unknown':'Gateway unavailable');showError(j.error||'')}catch(e){el.textContent='Gateway unavailable';showError('The Hosted connection could not be checked. Try again once the gateway is available.')}finally{checking=false}};update();setInterval(update,5000)});
  document.querySelectorAll('[data-health-card]').forEach(card=>{const toggle=card.querySelector('.js-health-toggle'),total=card.querySelector('[data-health-total]'),windowCount=card.querySelector('[data-health-window]'),progress=card.querySelector('[data-health-progress]'),status=card.querySelector('[data-health-status]');const render=h=>{toggle.checked=!!h.enabled;total.textContent=h.total_messages_sent??0;windowCount.textContent=`${h.window_messages_sent??0}/${h.recommended_limit??250}`;progress.style.width=`${Math.min(100,((h.window_messages_sent||0)/(h.recommended_limit||250))*100)}%`;if(h.paused){const until=new Date(h.paused_until);status.textContent=`Automation paused until ${until.toLocaleString()}`;status.className='font-semibold text-amber-700';progress.className='h-full rounded-full bg-amber-500 transition-all'}else if(!h.enabled){status.textContent='Protection disabled';status.className='font-semibold text-gray-500';progress.className='h-full rounded-full bg-gray-400 transition-all'}else{status.textContent='Messaging limit protection active';status.className='font-semibold text-emerald-700';progress.className='h-full rounded-full bg-emerald-500 transition-all'}};const load=async()=>{try{const r=await fetch(card.dataset.healthUrl),j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to load health');render(j.health)}catch(e){status.textContent=e.message;status.className='font-semibold text-red-600'}};toggle.addEventListener('change',async()=>{toggle.disabled=true;try{const body=new URLSearchParams({enabled:toggle.checked?'1':'0'});const r=await fetch(card.dataset.healthUrl,{method:'POST',headers:{'X-CSRFToken':csrf,'Content-Type':'application/x-www-form-urlencoded'},body}),j=await r.json();if(!r.ok)throw new Error(j.error||'Unable to save health');render(j.health)}catch(e){status.textContent=e.message;status.className='font-semibold text-red-600';toggle.checked=!toggle.checked}finally{toggle.disabled=false}});load();setInterval(load,30000)});
  let queueUrl=null,queueTimer=null,queueLoading=false;
  async function loadQueue(){
