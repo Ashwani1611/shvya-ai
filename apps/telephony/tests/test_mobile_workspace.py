@@ -313,6 +313,29 @@ class MobileWorkspaceTests(TestCase):
         self.assertIn("recent_calls", response.data)
         self.assertIn("reminders", response.data)
 
+    def test_mobile_today_mine_does_not_mix_admin_team_calls(self):
+        own = self.call(status="answered")
+        peer = User.objects.create_user(
+            email="today-peer@example.com",
+            organization=self.org,
+            password="secret123",
+            role=User.Role.AGENT,
+        )
+        other_call = ingest_call_event(
+            user=peer,
+            payload=self.payload(
+                source_call_id="today-peer-call",
+                phone_number="+919811112222",
+                status="missed",
+                talk_duration_seconds=0,
+            ),
+        )["call"]
+        response = self.api().get("/api/v1/call-intelligence/today/", {"mine": "1"})
+        self.assertEqual(response.status_code, 200)
+        ids = [row["id"] for row in response.data["recent_calls"]]
+        self.assertIn(str(own.id), ids)
+        self.assertNotIn(str(other_call.id), ids)
+
     def test_mobile_call_detail_includes_history_and_crm_context(self):
         first = self.call()
         second = self.call(phone_number=first.phone_number)
