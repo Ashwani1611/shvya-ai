@@ -84,6 +84,37 @@ class SyncWorker(
                 shouldRetry = true
             }
         }
+        dao.pendingActions(50).forEach { action ->
+            try {
+                val payload = JSONObject(action.payload)
+                val response = when (action.method.uppercase()) {
+                    "PATCH" -> api.authorizedPatch(action.path, payload)
+                    else -> api.authorizedPost(action.path, payload)
+                }
+                if (response.successful) {
+                    dao.deletePendingAction(action.id)
+                } else {
+                    val retryCount = action.retryCount + 1
+                    val error = ("HTTP " + response.code + " " + response.body).take(1000)
+                    val permanent = response.code in 400..499 &&
+                        response.code !in setOf(401, 403, 408, 429)
+                    if (permanent || retryCount >= 10) {
+                        dao.deletePendingAction(action.id)
+                    } else {
+                        dao.updatePendingAction(action.id, retryCount, error)
+                        shouldRetry = true
+                    }
+                }
+            } catch (exc: Exception) {
+                val retryCount = action.retryCount + 1
+                dao.updatePendingAction(
+                    action.id,
+                    retryCount,
+                    (exc.message ?: exc.javaClass.simpleName).take(1000),
+                )
+                shouldRetry = true
+            }
+        }
         return if (shouldRetry) Result.retry() else Result.success()
     }
 }
