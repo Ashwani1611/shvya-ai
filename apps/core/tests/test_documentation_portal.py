@@ -91,7 +91,7 @@ class DocumentationPublicRouteTests(SimpleTestCase):
     def test_articles_are_independently_shareable(self):
         html = self.render_docs("/docs/operations/support-tickets/")
         self.assertIn("Help &amp; Support tickets", html)
-        self.assertIn("On this page", html)
+        self.assertIn("ON THIS PAGE", html)
         self.assertIn("kb-article-body", html)
         self.assertIn("/dashboard/support-portal/", html)
         self.assertIn("marketing/docs-portal.css", html)
