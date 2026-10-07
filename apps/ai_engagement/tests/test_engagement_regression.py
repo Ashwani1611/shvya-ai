@@ -1,5 +1,4 @@
 from tests.playbook_fixtures import build_ai_playbook, replace_playbook_questions
-from apps.ai_engagement.services.playbook import parse_playbook
 
 import json
 from copy import deepcopy
@@ -146,7 +145,13 @@ class ChannelQualificationRegressionTests(TestCase):
                 self.assertEqual(decision.next_requirement_id, requirements[1]['id'])
                 payload = json.loads(provider.generate_text.call_args.kwargs['input_text'])
                 self.assertEqual(payload['organization']['about'], 'Shvya Test business information')
-                self.assertEqual(parse_playbook(payload['organization']["ai_playbook"])["rules"], 'Be concise and friendly')
+                self.assertNotIn("ai_playbook", payload["organization"])
+                self.assertEqual(payload["organization"]["ai_playbook_source"],
+                                 "organization_operating_spec.system_instructions")
+                instructions = provider.generate_text.call_args.kwargs["instructions"]
+                self.assertIn(build_ai_playbook(questions=source, rules="Be concise and friendly"),
+                              instructions)
+                self.assertEqual(instructions.count("Be concise and friendly"), 1)
 
     def test_api_options_advance_and_finalize_once(self):
         self._advance_option('api')
