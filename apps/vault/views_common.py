@@ -13,7 +13,9 @@ from .sections import SECTIONS
 
 def private_response(response):
     response["Cache-Control"] = "private, no-store, max-age=0"
-    response["Referrer-Policy"] = "no-referrer"
+    # Native HTTPS forms need same-origin Origin/Referer headers for Django CSRF.
+    # Keep private Vault URLs out of referrers sent to external sites.
+    response["Referrer-Policy"] = "same-origin"
     response["X-Content-Type-Options"] = "nosniff"
     response["X-Robots-Tag"] = "noindex, nofollow, noarchive"
     return response
