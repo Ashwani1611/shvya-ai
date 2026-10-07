@@ -217,6 +217,30 @@ class TouchpointPersonalizationFilesTests(TestCase):
         self.assertEqual(queue.call_args.kwargs["lead"].id, self.lead.id)
         send.assert_called_once()
 
+    @patch("apps.channels.tasks.send_whatsapp_message_task.delay")
+    @patch("services.channels.whatsapp_api_chat_service.is_within_api_24h_window", return_value=True)
+    def test_audio_attachment_sends_as_audio_not_generic_document(self, window, delay):
+        uploaded = SimpleUploadedFile(
+            "welcome.ogg", b"OggS\xa0sample audio", content_type="audio/ogg",
+        )
+        response = self.client.post(self.manage, {
+            "action": "save_reply", "category_id": str(self.category.pk),
+            "title": "Voice note", "body": "Hello", "attachments": uploaded,
+        })
+        self.assertEqual(response.status_code, 200, response.content)
+        attachment = TouchpointAttachment.objects.get(reply__category=self.category)
+        self.created_paths.append(attachment.file.name)
+        url = reverse("chat-touchpoint-attachment-send", args=[self.lead.id, attachment.id])
+        response = self.client.post(url, {
+            "channel": "whatsapp", "account": str(self.account.pk),
+        })
+        self.assertEqual(response.status_code, 202, response.content)
+        message = WhatsAppMessage.objects.get(
+            organization=self.org, direction=WhatsAppMessage.Direction.OUTBOUND,
+        )
+        self.assertEqual(message.message_type, WhatsAppMessage.MessageType.AUDIO)
+        delay.assert_called_once()
+
     def test_instagram_shows_download_but_no_unsupported_file_send(self):
         _, attachment = self.make_touchpoint()
         response = self.client.get(self.panel, {"channel": "instagram"})
