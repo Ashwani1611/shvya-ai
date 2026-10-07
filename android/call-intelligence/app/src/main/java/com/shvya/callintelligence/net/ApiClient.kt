@@ -25,25 +25,39 @@ data class ApiResponse(val code: Int, val body: String) {
     val successful: Boolean get() = code in 200..299
 }
 
+data class LoginResult(val successful: Boolean, val message: String = "")
+
 class ApiClient(private val context: Context) {
     private val auth = AuthStore(context)
     private val baseUrl = BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/"
 
-    fun login(email: String, password: String): Boolean {
+    fun login(email: String, password: String): LoginResult {
         val response = request(
             "api/v1/auth/token/",
             JSONObject().put("email", email).put("password", password),
             authorized = false,
         )
-        if (!response.successful) return false
-        val payload = JSONObject(response.body)
+        if (!response.successful) {
+            val detail = runCatching { JSONObject(response.body).optString("detail") }.getOrNull().orEmpty()
+            val message = when (response.code) {
+                400, 401 -> "Email or password is incorrect."
+                403 -> detail.ifBlank { "This account cannot use the SHVYA mobile workspace." }
+                in 500..599 -> "SHVYA is temporarily unavailable. Please try again."
+                else -> detail.ifBlank { "Could not sign in to SHVYA (HTTP " + response.code + ")." }
+            }
+            return LoginResult(false, message)
+        }
+        val payload = runCatching { JSONObject(response.body) }.getOrNull()
+            ?: return LoginResult(false, "SHVYA returned an invalid sign-in response. Please try again.")
         val access = payload.optString("access")
         val refresh = payload.optString("refresh")
-        if (access.isBlank() || refresh.isBlank()) return false
+        if (access.isBlank() || refresh.isBlank()) {
+            return LoginResult(false, "SHVYA could not create a secure mobile session. Please try again.")
+        }
         auth.accessToken = access
         auth.refreshToken = refresh
         auth.email = email
-        return true
+        return LoginResult(true)
     }
 
     fun refresh(): Boolean {

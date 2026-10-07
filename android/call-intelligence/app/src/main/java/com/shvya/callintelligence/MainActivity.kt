@@ -14,6 +14,8 @@ import android.os.Bundle
 import android.os.PowerManager
 import android.provider.Settings
 import android.text.InputType
+import android.text.method.HideReturnsTransformationMethod
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -105,30 +107,39 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLogin() {
-        val root = page()
-        root.addView(space(54))
+        val root = page().apply { setPadding(dp(22), dp(28), dp(22), dp(40)) }
+        root.addView(space(22))
         root.addView(ImageView(this).apply {
             setImageResource(R.drawable.ic_shvya)
             contentDescription = "SHVYA"
-            layoutParams = LinearLayout.LayoutParams(dp(70), dp(70)).apply { gravity = Gravity.CENTER_HORIZONTAL }
+            layoutParams = LinearLayout.LayoutParams(dp(68), dp(68)).apply { gravity = Gravity.CENTER_HORIZONTAL }
         })
-        root.addView(space(26))
-        root.addView(kicker("SHVYA CALL INTELLIGENCE").apply { gravity = Gravity.CENTER })
-        root.addView(title("Welcome back.").apply { gravity = Gravity.CENTER; textSize = 34f })
-        root.addView(body("Your calls and CRM, together in one place.").apply { gravity = Gravity.CENTER })
-        root.addView(space(42))
+        root.addView(space(20))
+        root.addView(kicker("SHVYA MOBILE WORKSPACE").apply { gravity = Gravity.CENTER })
+        root.addView(title("Welcome back").apply { gravity = Gravity.CENTER; textSize = 32f })
+        root.addView(body("Your calls, reminders and CRM context — organized in one secure workspace.").apply {
+            gravity = Gravity.CENTER
+            textSize = 15f
+        })
+        root.addView(space(30))
 
-        val card = card()
-        card.addView(sectionTitle("Sign in").apply { textSize = 22f })
-        card.addView(body("Use your SHVYA work account."))
+        val card = card().apply { setPadding(dp(24), dp(26), dp(24), dp(26)) }
+        card.addView(sectionTitle("Sign in to SHVYA").apply { textSize = 23f })
+        card.addView(body("Use the same work account you use on shvya-ai.com."))
         card.addView(space(24))
-        val email = field("Work email")
-        email.inputType = InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
-        email.setText(auth.email)
-        val password = field("Password")
-        password.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-        val message = body("")
-        val login = primaryButton("Sign in and connect")
+
+        val email = field("name@company.com").apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS
+            setText(auth.email)
+            isSingleLine = true
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setAutofillHints(View.AUTOFILL_HINT_EMAIL_ADDRESS)
+            }
+        }
+        val (passwordShell, password) = passwordField()
+        val message = body("").apply { setPadding(0, dp(12), 0, 0) }
+        val login = primaryButton("Continue to workspace").apply { minHeight = dp(52) }
+
         login.setOnClickListener {
             val emailValue = email.text.toString().trim()
             val passwordValue = password.text.toString()
@@ -138,38 +149,52 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
             login.isEnabled = false
-            login.text = "Connecting…"
+            login.alpha = .72f
+            login.text = "Signing in…"
+            message.text = ""
             lifecycleScope.launch {
-                val ok = withContext(Dispatchers.IO) {
-                    try {
-                        ApiClient(this@MainActivity).login(emailValue, passwordValue)
-                    } catch (_: Exception) {
-                        false
-                    }
+                val result = withContext(Dispatchers.IO) {
+                    runCatching { ApiClient(this@MainActivity).login(emailValue, passwordValue) }
+                        .getOrElse {
+                            com.shvya.callintelligence.net.LoginResult(
+                                false,
+                                "Could not reach the secure SHVYA server. Check your internet connection and try again."
+                            )
+                        }
                 }
-                if (ok) {
+                if (result.successful) {
                     render()
                 } else {
                     login.isEnabled = true
-                    login.text = "Sign in and connect"
-                    message.text = "Could not sign in. Check your credentials and connection."
+                    login.alpha = 1f
+                    login.text = "Continue to workspace"
+                    message.text = result.message
                     message.setTextColor(Color.rgb(210, 45, 40))
                 }
             }
         }
+
         card.addView(fieldLabel("Work email"))
         card.addView(space(8))
         card.addView(email)
         card.addView(space(18))
         card.addView(fieldLabel("Password"))
         card.addView(space(8))
-        card.addView(password)
-        card.addView(space(24))
+        card.addView(passwordShell)
+        card.addView(space(22))
         card.addView(login)
         card.addView(message)
         root.addView(card)
-        root.addView(space(20))
-        root.addView(body("Secure access to your organization's CRM").apply { gravity = Gravity.CENTER })
+
+        root.addView(space(18))
+        root.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER
+            addView(statusDot(Color.rgb(35, 139, 100)))
+            addView(body("Secure connection  ·  shvya-ai.com").apply {
+                setPadding(dp(7), 0, 0, 0)
+                textSize = 12f
+            })
+        })
         setPage(root)
     }
 
@@ -190,7 +215,9 @@ class MainActivity : AppCompatActivity() {
             LinearLayout.LayoutParams(0, -2, 1f))
         header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply { setOnClickListener { showSettings() } })
         root.addView(header)
-        root.addView(space(30))
+        root.addView(space(18))
+        root.addView(workspaceStatusCard())
+        root.addView(space(26))
 
         if (!essentialPermissionsGranted()) {
             val permissionCard = card()
@@ -1070,6 +1097,100 @@ class MainActivity : AppCompatActivity() {
             setTextColor(if (ok) Color.rgb(38, 132, 53) else Color.rgb(125, 125, 130))
             setPadding(0, dp(7), 0, dp(7))
         }
+
+    private fun workspaceStatusCard(): LinearLayout = card().apply {
+        val ready = essentialPermissionsGranted()
+        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+        top.addView(iconBadge(
+            if (ready) R.drawable.ic_phone_outline else R.drawable.ic_settings_outline,
+            if (ready) Color.rgb(35, 139, 100) else blue,
+            if (ready) Color.rgb(235, 248, 242) else Color.rgb(236, 244, 255),
+        ))
+        top.addView(LinearLayout(this@MainActivity).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle(if (ready) "Workspace ready" else "Finish mobile setup").apply {
+                textSize = 18f
+                setPadding(0, 0, 0, 0)
+            })
+            addView(body(auth.email.ifBlank { "Signed in to SHVYA" }).apply {
+                textSize = 12f
+                setPadding(0, dp(3), 0, 0)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+        top.addView(TextView(this@MainActivity).apply {
+            text = if (ready) "Connected" else "Setup"
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(if (ready) Color.rgb(35, 139, 100) else blue)
+            gravity = Gravity.CENTER
+            setPadding(dp(10), 0, dp(10), 0)
+            minHeight = dp(30)
+            background = rounded(
+                if (ready) Color.rgb(235, 248, 242) else Color.rgb(236, 244, 255),
+                15f,
+            )
+        })
+        addView(top)
+        addView(space(16))
+        addView(divider())
+        addView(space(13))
+        addView(body(
+            if (ready) "Calls sync securely in the background. Open Reminders anytime to stay on top of follow-ups."
+            else "Allow phone and call-log access once. SHVYA will then keep your call activity organized automatically."
+        ).apply { setPadding(0, 0, 0, 0) })
+    }
+
+    private fun passwordField(): Pair<LinearLayout, EditText> {
+        val input = EditText(this).apply {
+            hint = "Enter your password"
+            textSize = 15f
+            setTextColor(ink)
+            setHintTextColor(Color.rgb(145, 145, 150))
+            setPadding(dp(16), 0, dp(8), 0)
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+            transformationMethod = PasswordTransformationMethod.getInstance()
+            isSingleLine = true
+            background = null
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
+            }
+        }
+        val eye = ImageView(this).apply {
+            setImageResource(R.drawable.ic_eye_outline)
+            imageTintList = ColorStateList.valueOf(muted)
+            contentDescription = "Show password"
+            setPadding(dp(13), dp(13), dp(13), dp(13))
+            isClickable = true
+            isFocusable = true
+            var visible = false
+            setOnClickListener {
+                visible = !visible
+                input.transformationMethod = if (visible) {
+                    HideReturnsTransformationMethod.getInstance()
+                } else {
+                    PasswordTransformationMethod.getInstance()
+                }
+                setImageResource(if (visible) R.drawable.ic_eye_off_outline else R.drawable.ic_eye_outline)
+                contentDescription = if (visible) "Hide password" else "Show password"
+                input.setSelection(input.text.length)
+            }
+        }
+        val shell = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            background = rounded(Color.rgb(241, 243, 247), 15f)
+            minHeight = dp(54)
+            addView(input, LinearLayout.LayoutParams(0, dp(54), 1f))
+            addView(eye, LinearLayout.LayoutParams(dp(50), dp(54)))
+        }
+        return shell to input
+    }
+
+    private fun statusDot(color: Int): View = View(this).apply {
+        background = rounded(color, 4f)
+        layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
+    }
 
     private fun field(hintText: String): EditText =
         EditText(this).apply {
