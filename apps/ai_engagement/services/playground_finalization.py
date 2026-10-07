@@ -18,9 +18,9 @@ _PREVIEW_ACTION_TYPES = {
     "stage_transition": "pipeline_transition",
 }
 
-_OWN_ACTION = r"\b(?:i|we|they|our\s+team|the\s+team)(?:\s+(?:will|shall|am|are|have|has)|['’](?:ll|m|re|ve))\s+(?:now\s+)?(?:proceed\s+to\s+)?"
+_OWN_ACTION = r"\b(?:i|we|they|our\s+team|the\s+team)(?:\s+(?:will|shall|am|are|have|has)|['’](?:ll|m|re|ve))\s+(?:now\s+)?(?:proceed\s+to\s+)?(?:prepare\s+to\s+)?"
 _FILE_SEND = r"(?:send|sending|sent|share|sharing|shared|attach|attaching|attached)\s+(?:you\s+)?(?:(?:the|a|your|our|product|requested)\s+){0,3}(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b"
-_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:for\s+)?(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo|trial|visit|session)\b(?!\s+(?:platform|software|system|tool|service|feature))|(?:call|contact|connect)\s+you\b|reach\s+out\s+to\s+you\b|pass\s+(?:your|the|this)\s+(?:request|details)\s+to\b|pass\s+it\s+(?:along|on)\b|coordinate\s+with\s+(?:(?:our|the)\s+)?team\s+to\s+(?:schedule|arrange)\b|be\s+in\s+touch\b)"
+_CALL_ACTION = r"(?:(?:schedule|scheduling|scheduled|book|booking|booked|confirm|confirming|confirmed|create|creating|created|arrange|arranging|arranged|set\s+up)\s+(?:for\s+)?(?:(?:the|a|your|requested|follow-up)\s+){0,3}(?:call|callback|reminder|appointment|booking|demo|trial|visit|session)\b(?!\s+(?:platform|software|system|tool|service|feature))|(?:call|contact|connect)\s+(?:with\s+)?you\b|reach\s+out\s+to\s+you\b|pass\s+(?:your|the|this)\s+(?:(?:call|callback|demo|handoff)\s+)?(?:request|details)\s+to\b|pass\s+it\s+(?:along|on)\b|coordinate\s+with\s+(?:(?:our|the)\s+)?team\s+to\s+(?:schedule|arrange)\b|be\s+in\s+touch\b)"
 _ACTION_ASSURANCE = re.compile(
     _OWN_ACTION + r"(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
     r"\b(?:i|we|our\s+team|the\s+team)\s+(?=(?:sent|shared|attached|scheduled|booked|confirmed|created|arranged)\b)(?:" + _FILE_SEND + "|" + _CALL_ACTION + r")|"
@@ -37,6 +37,10 @@ _ACTION_ASSURANCE = re.compile(
 _PREVIEW_WORD = re.compile(r"\b(?:preview|simulated|simulation|sandbox)\b|(?:प्रीव्यू|सिम्युलेट)", re.IGNORECASE)
 _FILE_OBJECT = re.compile(r"\b(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\b|(?:ब्रोशर|ब्रोशुर|फ़ाइल|फाइल|दस्तावेज़|दस्तावेज)", re.IGNORECASE)
 _CALL_OBJECT = re.compile(r"\b(?:call|callback|handoff|human|appointment|booking|demo)\b|(?:कॉल|हैंडऑफ़)", re.IGNORECASE)
+_FILE_PLACEHOLDER = re.compile(
+    r"\[\s*(?:attach|send|share)\s+(?:(?:the|a|your|our|product)\s+){0,3}"
+    r"(?:brochure|catalog(?:ue)?|pdf|file|document|guide)\s*\]", re.IGNORECASE,
+)
 
 
 def enforce_preview_action_honesty(*, decision, events, files, requested_text="", allowed_languages=()):
@@ -47,9 +51,10 @@ def enforce_preview_action_honesty(*, decision, events, files, requested_text=""
     """
     if not decision.should_engage:
         return decision
-    message = str(decision.message or "")
+    original_message = str(decision.message or "")
+    message = _FILE_PLACEHOLDER.sub("", original_message)
     sentences = re.split(r"(?<=[.!?।])\s+(?!\d)|\n+", message)
-    retained, removed = [], False
+    retained, removed = [], message != original_message
     for sentence in sentences:
         # Keep a supported price/business clause when an unsupported promise
         # is appended to it. Currency/grouping commas never match this split.
@@ -231,3 +236,4 @@ def preserve_preview_state(visitor) -> Iterator[None]:
     finally:
         vars(visitor).clear()
         vars(visitor).update(saved)
+

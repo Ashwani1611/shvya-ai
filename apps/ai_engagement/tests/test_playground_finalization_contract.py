@@ -226,6 +226,20 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
         self.assertIn("No document was shared", result)
         self.assertNotIn("document is available", result)
 
+    def test_attachment_placeholder_is_removed_and_only_actual_preview_is_described(self):
+        text = "The DIY plan costs ₹2,999. [Attach product brochure]"
+        result = self.honest(text, files=[{"id": 18}], languages=["English"], request="Share the brochure.")
+        self.assertNotIn("[Attach", result)
+        self.assertIn("The DIY plan costs ₹2,999.", result)
+        self.assertIn("document is available in this preview", result)
+        absent = self.honest(text, languages=["English"], request="Share the brochure.")
+        self.assertNotIn("[Attach", absent)
+        self.assertIn("No document was shared", absent)
+
+    def test_ordinary_markdown_link_is_preserved(self):
+        text = "See [product brochure](https://example.com/brochure)."
+        self.assertEqual(self.honest(text), text)
+
     def test_call_only_does_not_invent_a_file_outcome(self):
         result = self.honest("We will call you tomorrow.", events=[{"type": "reminder", "status": "preview"}], request="Please call me tomorrow.")
         self.assertIn("reminder is shown", result)
@@ -315,6 +329,22 @@ class PlaygroundFinalizationContractTests(unittest.TestCase):
         ):
             with self.subTest(text=text):
                 self.assertEqual(self.honest(text, request="Please help with a trial."), text)
+
+
+    def test_callback_handoff_and_preparation_assurances_are_preview_only(self):
+        for text in (
+            "I will now pass your callback request to Ashwini to assist you further.",
+            "We will prepare to contact you then.",
+            "Our team will connect with you then.",
+        ):
+            with self.subTest(text=text):
+                result = self.honest(text, request="Please call me.")
+                self.assertNotIn(text, result)
+                self.assertIn("no live call or handoff is confirmed", result)
+
+    def test_negative_callback_handoff_is_preserved(self):
+        text = "I will not pass your callback request to our team."
+        self.assertEqual(self.honest(text, request="Do not call me."), text)
 
 
 if __name__ == "__main__":
