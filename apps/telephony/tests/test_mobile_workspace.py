@@ -356,13 +356,15 @@ class MobileWorkspaceTests(TestCase):
             lead=missed.lead,
             assigned_to=self.user,
             title="Call back",
-            due_at=timezone.now() + timedelta(hours=1),
+            # Keep this deterministic around local midnight. A +1 hour reminder
+            # can legitimately belong to tomorrow and should not count as due today.
+            due_at=timezone.now() - timedelta(minutes=5),
         )
         response = self.api().get("/api/v1/call-intelligence/today/")
         self.assertEqual(response.status_code, 200)
         self.assertGreaterEqual(response.data["stats"]["total"], 2)
         self.assertGreaterEqual(response.data["stats"]["missed"], 1)
-        self.assertGreaterEqual(response.data["stats"]["followups_due"], 1)
+        self.assertGreaterEqual(response.data["stats"]["overdue"], 1)
         self.assertIn("recent_calls", response.data)
         self.assertIn("reminders", response.data)
 
