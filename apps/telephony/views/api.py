@@ -571,24 +571,45 @@ def _reminders(user):
 class MobileReminderCollectionView(APIView):
     def get(self, request):
         user = _user(request)
-        qs = _reminders(user).filter(status="pending")
+        base = _reminders(user)
+        pending = base.filter(status="pending")
         now = timezone.now()
         today = timezone.localdate()
-        counts = qs.aggregate(
+        counts = pending.aggregate(
             total=Count("id"), overdue=Count("id", filter=Q(due_at__lt=now)),
             today=Count("id", filter=Q(due_at__gte=now, due_at__date=today)),
             upcoming=Count("id", filter=Q(due_at__date__gt=today)),
         )
+        counts["completed"] = base.filter(status="completed").count()
+
+        status_filter = str(request.query_params.get("status") or "pending").strip()
+        qs = base.filter(status="completed" if status_filter == "completed" else "pending")
+        segment = str(request.query_params.get("segment") or "").strip()
+        if status_filter != "completed":
+            if segment == "overdue":
+                qs = qs.filter(due_at__lt=now)
+            elif segment == "today":
+                qs = qs.filter(due_at__gte=now, due_at__date=today)
+            elif segment == "upcoming":
+                qs = qs.filter(due_at__date__gt=today)
+
         try:
             page = max(1, int(request.query_params.get("page", 1)))
         except (TypeError, ValueError):
             return Response({"detail": "Invalid page."}, status=400)
         start = (page - 1) * 50
-        rows = list(qs.order_by("due_at", "id")[start:start + 51])
+        ordering = ("-completed_at", "-updated_at") if status_filter == "completed" else ("due_at", "id")
+        rows = list(qs.order_by(*ordering)[start:start + 51])
         return Response({"stats": counts, "has_next": len(rows) > 50, "reminders": [{
-            "id": str(row.id), "lead_name": row.lead.name, "phone": row.lead.phone,
-            "title": row.title, "description": row.description,
-            "due_at": row.due_at.isoformat(), "overdue": row.due_at < now,
+            "id": str(row.id),
+            "lead_id": str(row.lead_id),
+            "lead_name": row.lead.name,
+            "phone": row.lead.phone,
+            "title": row.title,
+            "description": row.description,
+            "due_at": row.due_at.isoformat(),
+            "overdue": row.status == "pending" and row.due_at < now,
+            "status": row.status,
         } for row in rows[:50]]})
 
 
