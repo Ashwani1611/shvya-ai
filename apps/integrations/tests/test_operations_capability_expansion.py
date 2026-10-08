@@ -27,6 +27,8 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "run_acceptance_suite",
             "list_commitments",
             "upsert_commitment",
+            "list_sales_templates",
+            "upsert_sales_template_branding",
             "get_team_settings",
             "upsert_team_settings",
         }
@@ -38,6 +40,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             self.assertFalse(schema.get("additionalProperties", True))
 
     def test_production_mutations_advertise_write_capabilities(self):
+        self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_configuration"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["disconnect_integration"], "integration.lifecycle.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_commitment"], "operations.task.write")
