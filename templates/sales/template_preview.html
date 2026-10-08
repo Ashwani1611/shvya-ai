@@ -1,4 +1,6 @@
-{% load static %}<!doctype html><html><head><meta charset="utf-8">
+{% load static %}<!doctype html><html><head>
+    <link rel="icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}?v=20261008-2">
+    <link rel="shortcut icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}?v=20261008-2"><meta charset="utf-8">
 <link rel="stylesheet" href="{% static 'css/shvya_sales.css' %}">
 <style>body{margin:0;padding:18px;background:#fff;font:14px/1.6 Arial,sans-serif;color:#1d1d1f;overflow-wrap:anywhere}header{border-bottom:3px solid {{ presentation.accent_color }};padding-bottom:16px;margin-bottom:24px}header img{max-width:180px;max-height:72px;object-fit:contain;display:block;margin-bottom:12px}.signature{max-width:180px;max-height:80px;object-fit:contain;margin-top:24px}footer{border-top:1px solid #ddd;margin-top:24px;padding-top:12px;color:#666}table{width:100%;border-collapse:collapse}td,th{padding:8px;border-bottom:1px solid #eee;text-align:left}</style>
 </head><body><header>{% if presentation.logo_url %}<img src="{{ presentation.logo_url }}" alt="Company logo">{% endif %}<strong>{{ presentation.header_text|default:document.organization.name }}</strong><div>{{ document.document_number }}</div></header>
