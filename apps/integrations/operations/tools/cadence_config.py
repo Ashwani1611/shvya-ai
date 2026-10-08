@@ -416,6 +416,15 @@ def upsert_cadence_configuration(*, identity, arguments):
                         "Run a fresh dry-run."
                     )
                 account = sequence.whatsapp_account
+                if account is None and data.get("whatsapp_account_id"):
+                    account = WhatsAppAccount.objects.filter(
+                        pk=_uuid(data["whatsapp_account_id"], field="whatsapp_account_id"),
+                        organization=organization,
+                        connection_type=WhatsAppAccount.ConnectionType.coexisted,
+                        is_active=True,
+                    ).defer("access_token").first()
+                    if account is None:
+                        raise OperationsApprovalRequired("Requested Hosted sender is unavailable. Run a fresh dry-run.")
                 locked_provider = (
                     "api"
                     if account is not None and account.connection_type
@@ -505,9 +514,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                     "name": sequence.name,
                     "description": sequence.description,
                     "provider": provider,
-                    "whatsapp_account_id": str(
-                        sequence.whatsapp_account_id
-                    ),
+                    "whatsapp_account_id": str(sequence.whatsapp_account_id) if sequence.whatsapp_account_id else None,
                     "is_active": sequence.is_active,
                 }
                 if sequence is not None
