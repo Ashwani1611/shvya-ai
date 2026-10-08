@@ -34,7 +34,7 @@ def panel_html(identifier=A):
         get_lead_source_display="WhatsApp API",
         created_at=datetime.now(timezone.utc),
     )
-    replies = [NS(id=A, title="Welcome", body="Hello! How can we help?")]
+    replies = [NS(id=A, title="Welcome", body="Hello! How can we help?", personalized_body="Hello! How can we help?", missing_placeholders=[], attachments=NS(all=lambda: []))]
     context = {
         "active_lead": lead,
         "channel": "whatsapp",
