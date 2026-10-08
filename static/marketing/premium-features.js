@@ -1,22 +1,205 @@
 (() => {
   'use strict';
   const features = {
-    crm: ['CUSTOMER CONTEXT', 'Every lead. The whole story.', 'Bring contacts, conversations, notes and pipeline stages together. Pick up the relationship without piecing it back together.', ['NEW ENQUIRY|Website enquiry|Interested in a product demo|New lead','QUALIFIED|WhatsApp conversation|Requirements captured|Ready for a call','FOLLOW-UP|Proposal shared|Next action in one place|Reminder set'], 'Contacts · Lead timeline · Notes · Pipeline stages'],
-    sales: ['YOUR DAILY WORKSPACE','Start with what needs you.','Bring your sales work into focus with Sales Desk, so the team can move from customer context to a useful next action.', ['CONTEXT|Review the lead|See the conversation so far|Sales Desk','PRIORITY|Plan the next step|Keep your sales work focused|Team action','FOLLOW THROUGH|Continue the conversation|Work with the customer story|Connected CRM'], 'Sales workspace · Customer context · Team follow-through'],
-    playbooks: ['AI PLAYBOOK','Make it sound like you.','Shape AI engagement with your business information, languages, qualification requirements, instructions and knowledge sources.', ['AI SETUP|Your business context|Describe your offering and audience|Your voice','KNOWLEDGE|Documents and URLs|Give AI relevant source material|Your knowledge','FAQ|Answers that matter|Prepare common customer questions|Your expertise'], 'AI Setup · Qualification · Engagement instructions · Documents · URLs · FAQs'],
-    cadence: ['FOLLOW-UP SEQUENCES','Keep the conversation moving.','Create ordered WhatsApp, email and call-reminder steps. Choose when each step should run and reuse the sequence.', ['STEP 01|Start the conversation|WhatsApp · Immediately|Message','STEP 02|Share useful details|Email · After 1 day|Follow-up','STEP 03|Make a personal call|Call reminder · After 2 days|Team action'], 'Sequences are available. Touchpoints is an upcoming feature. Timing shown is an example.'],
-    workflows: ['RULES & ACTIONS','Give repeatable work a trigger.','Organize event-driven sales actions with workflows, keeping your process connected to what happens in the CRM.', ['TRIGGER|Something changes|Start from a CRM event|Event','CONDITION|Check the context|Match the rules you set|Rule','ACTION|Move work forward|Apply the configured next step|Workflow'], 'Event-driven automation · Rules · Configured actions'],
-    insights: ['SALES VISIBILITY','See the pattern behind the pipeline.','Use Insights to understand sales activity and give the team a clearer view of its customer work.', ['PIPELINE|See progress|Review where opportunities stand|Visibility','ACTIVITY|Understand the work|Review sales activity|Context','REVIEW|Plan the next move|Use the view to guide your team|Decision'], 'Sales analytics · Reporting · Team visibility'],
-    whatsapp: ['CONNECTED CONVERSATIONS','Keep WhatsApp in the customer story.','Connect business numbers and manage chats, templates and broadcasts alongside your CRM. Available options depend on your connected account.', ['CONNECT|Business numbers|Link your WhatsApp Business account|Connection','CONVERSE|Customer chats|Keep messages and lead context close|Chats','REACH OUT|Templates & broadcasts|Manage business messaging|Messaging'], 'Connect API · Connected Numbers · Chats · Templates · Broadcasts · Hosted Account (when enabled)'],
-    instagram: ['SOCIAL CONVERSATIONS','Make the DM part of the journey.','Connect Instagram professional messaging and keep customer conversations within your sales workspace.', ['CONNECT|Instagram account|Connect professional messaging|Account','REPLY|Customer DMs|Continue the conversation|Chats','CONTEXT|Sales workspace|Keep your team closer to the enquiry|Connected'], 'Connect Instagram · Chats'],
-    connect: ['YOUR CONNECTED STACK','Bring your tools into the flow.','Use Connect Hub to manage integrations and connect lead sources and business tools to your sales workflow.', ['SOURCES|Bring leads in|Connect supported lead sources|Capture','CONNECTIONS|Business tools|Manage available integrations|Connect','DATA FLOW|APIs & webhooks|Configure supported data flows|Integrate'], 'Integrations · Connections · APIs · Webhooks. Call Scheduler and Call Tracker are upcoming.'],
-    teams: ['PEOPLE & WORK','One workspace for your team.','Manage team members so your sales workspace reflects the people moving customer conversations forward.', ['PEOPLE|Team members|Organize your sales team|Members','WORKSPACE|Shared context|Bring people into the CRM|Collaboration','CUSTOMERS|Follow-through|Keep the conversation moving|Teamwork'], 'Teams · Members · Shared sales workspace'],
-    support: ['HELP & SUPPORT','Find your next step.','Explore SHVYA documentation and request a guided sales session for your business.', ['DOCS|Product guides|Understand your sales workspace|Documentation','SESSION|Book a call|Discuss your sales process|Guidance','WORKFLOWS|Learn the essentials|Explore cadence and playbooks|Resources'], 'Read the documentation or book a sales session.']
+    "crm": [
+      "CUSTOMER CONTEXT",
+      "Every lead. The whole story.",
+      "Keep contacts, conversations, custom attributes, notes, pipelines and reminders together. Bring a full lead history into the next customer conversation.",
+      [
+        "CAPTURE|Bring enquiries together|Manage customer records and import leads|Contacts",
+        "ORGANIZE|Pipelines and stages|Track progress with custom attributes|CRM",
+        "FOLLOW THROUGH|Never lose the context|Use timelines, notes and reminders|Activity"
+      ],
+      "Contacts · Pipelines · Custom fields · Imports · Bulk actions · Reminders",
+      "/docs/crm-leads/overview/"
+    ],
+    "sales": [
+      "YOUR DAILY WORKSPACE",
+      "Know what needs attention.",
+      "Use Sales Desk to review lead context and recent activity, focus the next action and keep your sales team moving with a shared customer story.",
+      [
+        "REVIEW|See the full picture|Open the conversation and CRM context|Lead",
+        "PRIORITIZE|Find the next move|Keep important follow-through visible|Focus",
+        "HAND OFF|Stay in sync|Continue with the right team member|Team"
+      ],
+      "Sales Desk · Customer context · Actionable follow-through",
+      "/docs/crm-leads/sales-desk/"
+    ],
+    "calendar": [
+      "MEETINGS & BOOKINGS",
+      "Make the next meeting easy.",
+      "Publish booking pages, configure available slots and manage appointments in calendar views. Connected Google Calendar can help reconcile busy time.",
+      [
+        "INVITE|Share a booking page|Let customers choose an available slot|Booking",
+        "SCHEDULE|Work around availability|Use notice, capacity and time-zone rules|Calendar",
+        "FOLLOW UP|Keep plans connected|Review appointments and configured reminders|CRM"
+      ],
+      "Booking pages · Day/week/month calendar · Rescheduling · Google sync when connected",
+      "/docs/sales-calendar/calendar/"
+    ],
+    "calls": [
+      "CALL INTELLIGENCE",
+      "Turn phone activity into context.",
+      "Connect the Android Call Intelligence companion to the CRM. Review call logs, related leads, outcomes, notes and follow-up activity.",
+      [
+        "CAPTURE|Sync Android calls|Link supported SIM call activity to leads|Calls",
+        "REVIEW|Understand the outcome|See call details, notes and dispositions|Context",
+        "FOLLOW UP|Carry the next action|Track follow-up tasks and call activity|CRM"
+      ],
+      "Android companion · Call logs · Lead linking · Notes · Dispositions · Analytics",
+      "/docs/operations/call-intelligence/"
+    ],
+    "documents": [
+      "SHVYA SALES",
+      "From proposal to payment.",
+      "Prepare CRM-linked quotations, agreements and invoices. Generate PDFs, send through configured channels and manage available payment and post-sale actions.",
+      [
+        "PREPARE|Quotation or agreement|Use sales templates and revision history|Document",
+        "SEND|Professional PDFs|Share through supported email or WhatsApp|Delivery",
+        "CLOSE|Invoice and payments|Track eligible payments, credit notes and refunds|Sales"
+      ],
+      "Quotations · Agreements · Invoices · PDF · Delivery tracking · Payments",
+      "/docs/sales-calendar/sales-overview/"
+    ],
+    "playbooks": [
+      "AI PLAYBOOKS",
+      "Your business. Your AI voice.",
+      "Shape AI behaviour with business context, approved answers, qualification questions, knowledge URLs and files, plus language instructions. Test before going live.",
+      [
+        "SET UP|Explain your business|Products, services and customer needs|Context",
+        "GROUND|Add trusted knowledge|FAQs, links and supporting documents|Sources",
+        "REHEARSE|Try the AI Sandbox|Review sample replies and qualification flow|Testing"
+      ],
+      "AI Brain · FAQs · Knowledge sources · Qualification · Languages · Sandbox",
+      "/docs/ai-automation/ai-brain/"
+    ],
+    "engagement": [
+      "AI ENGAGEMENT",
+      "Helpful answers, guided by context.",
+      "Configure AI-assisted conversations across supported WhatsApp and Instagram connections. Guide qualification, capture responses and escalate to your team when appropriate.",
+      [
+        "RESPOND|Use approved context|Answer enquiries with the configured Playbook|Reply",
+        "QUALIFY|Capture what matters|Ask questions and save eligible CRM attributes|Lead",
+        "HAND OFF|Keep people involved|Route next steps through configured rules|Team"
+      ],
+      "AI replies · Qualification · CRM updates · Language settings · Human handoff",
+      "/docs/ai-automation/qualification/"
+    ],
+    "cadence": [
+      "CADENCE & TOUCHPOINTS",
+      "Stay in touch, with purpose.",
+      "Build ordered WhatsApp, Instagram, email and call-reminder sequences. Reuse Touchpoints with CRM attribute placeholders and file attachments.",
+      [
+        "SEQUENCES|Plan each step|Set timing and supported delivery channels|Cadence",
+        "TOUCHPOINTS|Personalize a reply|Use saved CRM placeholders and attachments|Reusable",
+        "FOLLOW THROUGH|Keep the next step clear|Review message and reminder activity|Team"
+      ],
+      "Sequences · Touchpoints · CRM placeholders · Attachments · Reminder steps",
+      "/docs/ai-automation/quick-replies/"
+    ],
+    "workflows": [
+      "WORKFLOWS",
+      "Make your rules work for you.",
+      "Connect CRM events to your configured conditions and actions. Use execution history to review what ran, what was skipped and what needs attention.",
+      [
+        "TRIGGER|A lead changes|Start from an eligible CRM event|Event",
+        "CHECK|Apply your conditions|Match the configured rules|Logic",
+        "ACT|Run the next step|Review action and execution history|Workflow"
+      ],
+      "Event triggers · Conditional logic · Configured actions · Execution history",
+      "/docs/ai-automation/workflows/"
+    ],
+    "insights": [
+      "INSIGHTS",
+      "See the work behind the numbers.",
+      "Review pipeline and sales activity trends. Where messaging data is available, use campaign and template delivery evidence to understand follow-through.",
+      [
+        "PIPELINES|Spot movement|Understand lead stage progress|CRM",
+        "ACTIVITY|Review engagement|Bring follow-up work into focus|Team",
+        "MESSAGING|Examine results|Inspect eligible campaign and template metrics|Metrics"
+      ],
+      "CRM reports · Activity analytics · Messaging metrics where available",
+      "/docs/ai-automation/insights/"
+    ],
+    "whatsapp": [
+      "WHATSAPP",
+      "Stay close to every conversation.",
+      "Use supported Cloud API, Coexistence or enabled Hosted connections to manage customer chats, approved templates and bulk campaigns alongside CRM context.",
+      [
+        "CONNECT|Choose the right connection|API, Coexistence or Hosted when enabled|Channel",
+        "CONVERSE|See customer messages|Work with CRM-linked chats and replies|Inbox",
+        "CAMPAIGNS|Reach eligible leads|Use approved templates and delivery receipts|WhatsApp"
+      ],
+      "Connected numbers · Chats · Templates · Bulk campaigns · 24-hour window rules",
+      "/docs/messaging-channels/overview/"
+    ],
+    "instagram": [
+      "INSTAGRAM",
+      "Turn a DM into a customer story.",
+      "Connect professional Instagram messaging, respond to enquiries and link conversations to CRM leads. You can capture a phone number later if the customer provides one.",
+      [
+        "CONNECT|Professional account|Authorize Instagram messaging access|Connection",
+        "CONVERSE|Manage enquiries|Work from the Instagram DM inbox|DMs",
+        "CAPTURE|Link the customer|Create or connect a CRM lead as appropriate|CRM"
+      ],
+      "Instagram connection · DM inbox · Lead association · CRM context",
+      "/docs/messaging-channels/instagram/"
+    ],
+    "connect": [
+      "CONNECT HUB",
+      "Bring your tools together.",
+      "Connect supported lead sources and business systems, including JustDial, IndiaMART, Meta Lead Ads, Google Sheets and email. Configure APIs or webhooks for eligible integrations.",
+      [
+        "LEADS|Capture external enquiries|JustDial, IndiaMART and Meta Lead Forms|Sources",
+        "SYNC|Work with your data|Google Sheets and connected email|Connections",
+        "EXTEND|Build on SHVYA|Organization API and webhook options|Integration"
+      ],
+      "Lead sources · Google Sheets · Meta · Email · SHVYA API · Webhooks",
+      "/docs/connect-hub/overview/"
+    ],
+    "vault": [
+      "CLIENT ONBOARDING",
+      "Give every client a place to start.",
+      "A staff-managed private Vault link lets clients contribute business notes, links and files. Setup information is reviewed before any live AI or CRM changes.",
+      [
+        "INVITE|Private client workspace|Share an access-controlled setup page|Vault",
+        "COLLECT|Gather what matters|Brochures, answers, notes and resources|Sources",
+        "REVIEW|Build with confidence|Staff review the setup draft before changes|Onboarding"
+      ],
+      "SHVYA Vault · Private links · Client uploads · Staff review · Not a CRM sidebar module",
+      "/docs/operations/shvya-vault/"
+    ],
+    "teams": [
+      "TEAMS",
+      "People, roles and responsibility.",
+      "Organize team members and support their work with CRM-scoped access, lead ownership and shared customer history.",
+      [
+        "PEOPLE|Manage your team|Keep members and roles organized|Users",
+        "OWNERSHIP|Route the right lead|Work with allowed pipelines and assignees|Access",
+        "COLLABORATE|Share the context|Keep customer activity connected|Team"
+      ],
+      "Team members · Roles · Pipeline access · Lead ownership",
+      "/docs/operations/teams/"
+    ],
+    "support": [
+      "HELP & SUPPORT",
+      "Support that stays on record.",
+      "Open organization-scoped support tickets, track their status and exchange replies with SHVYA Ops. Product guides help with common setup and troubleshooting tasks.",
+      [
+        "RAISE|Create a support ticket|Describe the issue and useful context|Ticket",
+        "TRACK|Follow the conversation|Check replies and ticket status|Updates",
+        "LEARN|Find setup guidance|Use product docs and troubleshooting guides|Docs"
+      ],
+      "Ticket portal · Status and reply history · SHVYA Ops · Documentation",
+      "/docs/operations/support-tickets/"
+    ]
   };
   const tabs = [...document.querySelectorAll('[data-feature]')];
   function selectFeature(button) {
     tabs.forEach(tab => {tab.setAttribute('aria-selected', String(tab === button)); tab.tabIndex = tab === button ? 0 : -1;});
-    const [label,title,description,columns,note] = features[button.dataset.feature];
+    const data = features[button.dataset.feature];
+    if (!data) return;
+    const [label,title,description,columns,note,guideUrl] = data;
     document.getElementById('feature-panel').setAttribute('aria-labelledby',button.id);
     document.getElementById('panel-kicker').textContent=label;
     document.getElementById('panel-title').textContent=title;
@@ -31,6 +214,7 @@
       box.append(caption,card);demo.append(box);
     });
     document.getElementById('panel-note').textContent=note;
+    document.getElementById('panel-guide').setAttribute('href', guideUrl);
   }
   function keyboardTabs(items,activate) {
     items.forEach((button,index)=>{
@@ -41,7 +225,7 @@
         if(['ArrowUp','ArrowLeft'].includes(event.key)) next=(index+items.length-1)%items.length;
         if(event.key==='Home') next=0;
         if(event.key==='End') next=items.length-1;
-        if(next!==undefined){event.preventDefault();activate(items[next]);items[next].focus();}
+        if(next!==undefined){event.preventDefault();activate(items[next]);items[next].focus();items[next].scrollIntoView({block:'nearest',inline:'nearest'});}
       });
     });
   }
