@@ -254,7 +254,7 @@ def add_hosted_whatsapp_step(
 ):
     from services.followup_service import _validate_schedule
 
-    if sequence.instagram_account_id or sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if sequence.instagram_account_id or (sequence.whatsapp_account_id is not None and sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE):
         raise HostedAutomationError("Use WhatsApp is available only for Hosted Account sequences.")
     title = str(title or "").strip()
     body = str(body or "").strip()
@@ -308,7 +308,7 @@ def add_hosted_whatsapp_step(
 
 @transaction.atomic
 def update_hosted_whatsapp_step(*, step, title, body, attachment=None, remove_attachment=False):
-    if step.sequence.instagram_account_id or step.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if step.sequence.instagram_account_id or (step.sequence.whatsapp_account_id is not None and step.sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE):
         raise HostedAutomationError("This is not a Hosted Account WhatsApp step.")
     title = str(title or "").strip()
     body = str(body or "").strip()
@@ -342,7 +342,7 @@ def update_hosted_whatsapp_step(*, step, title, body, attachment=None, remove_at
 
 
 def duplicate_hosted_configs(*, source_sequence, copied_sequence):
-    if source_sequence.instagram_account_id or source_sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE:
+    if source_sequence.instagram_account_id or (source_sequence.whatsapp_account_id is not None and source_sequence.whatsapp_account.connection_type != HOSTED_CONNECTION_TYPE):
         return copied_sequence
     source_steps = list(source_sequence.steps.order_by("position", "created_at"))
     copied_steps = list(copied_sequence.steps.order_by("position", "created_at"))
