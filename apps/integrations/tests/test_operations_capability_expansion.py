@@ -57,6 +57,24 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
         names = {item["name"] for item in payload["unsupported_features"]}
         self.assertEqual(names, {"Voice Agent"})
 
+    def test_discovery_explains_new_permission_missing_from_old_oauth_grant(self):
+        class Actor:
+            role = "SHVYA_SUPERADMIN"
+            active_organization = None
+            organization = None
+            granted_capabilities = ["organization.read"]
+            scopes = {"operations.read", "operations.write"}
+
+        tools = [{
+            "name": "upsert_sales_template_branding",
+            "capability": "sales.template.write",
+            "securitySchemes": [{"type": "oauth2", "scopes": ["operations.write"]}],
+        }]
+        result = capability_discovery(identity=Actor(), tools=tools)
+        self.assertTrue(result["oauth_reauthorization_required"])
+        self.assertIn("sales.template.write", result["missing_oauth_grants"])
+        self.assertEqual(result["tools"][0]["unavailable_reason"], "oauth_reauthorization_required")
+
     def test_discovery_payload_is_json_serializable(self):
         class Actor:
             role = "SHVYA_SUPERADMIN"
