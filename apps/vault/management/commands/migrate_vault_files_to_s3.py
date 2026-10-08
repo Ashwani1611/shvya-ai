@@ -13,7 +13,10 @@ from apps.vault.storage import private_storage
 
 def digest(fileobj):
     h = hashlib.sha256()
-    for chunk in fileobj.chunks(chunk_size=1024 * 1024):
+    while True:
+        chunk = fileobj.read(1024 * 1024)
+        if not chunk:
+            break
         h.update(chunk)
     return h.hexdigest()
 
