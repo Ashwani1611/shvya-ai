@@ -19,6 +19,41 @@ shows 16 sections, including a separate **Past chats** section. SHVYA implements
 the supplied document and screenshots' 15-section schema, keeping sales scripts
 and past chats together under `scripts`.
 
+## Private S3 storage (production)
+
+When production has `USE_S3_STORAGE=True`, encrypted Vault uploads use the
+existing private S3 bucket/credentials and media prefix. Their object keys live
+under `<AWS_S3_MEDIA_PREFIX>/vault-encrypted/<vault-id>/<random-id>`.
+S3 objects hold application-encrypted ciphertext; S3 server-side AES256
+encryption is enabled by the existing default storage settings. Vault downloads
+still go through SHVYA's authorized views (no directly exposed S3 URL).
+
+When S3 is disabled, the legacy private `VAULT_STORAGE_ROOT` (or
+`MEDIA_ROOT/.vault-encrypted`) remains the backend. With S3 enabled, new
+uploads go to S3, while existing local files are readable as a migration fallback.
+This fallback depends on the old persistent media mount being present; it is not a
+substitute for migration.
+
+Copy the old encrypted files on the production host (with the original persistent
+media volume mounted) **after** deploying the S3-enabled application:
+
+```bash
+docker compose exec -T web python manage.py migrate_vault_files_to_s3
+docker compose exec -T web python manage.py migrate_vault_files_to_s3 --apply
+```
+
+The command checks every database-referenced file; uploads raw ciphertext without
+decrypting it; verifies uploaded content with SHA-256; and leaves local originals
+untouched for rollback. It exits with an error if any referenced file is absent
+from both S3 and the local storage path. Do not delete local copies or remove
+the persistent media mount before verifying all entries, backups, and download
+behavior through the staff and client portals. Check the same path works from
+every web replica. Preserve `SECRET_KEY` (and relevant fallback keys), the
+PostgreSQL database, and S3 bucket versions in disaster-recovery backups.
+
+The normal `Vault.storage_quota_bytes` (2 GiB default) is an organization
+allowance, not disk reserved up-front; this migration does not change quotas.
+
 ## Architecture and boundaries
 
 ```mermaid
