@@ -81,8 +81,15 @@
                   </span>
                 {% endif %}
 
+                {% for capability in option.capabilities %}
+                  {% if capability.key == "sales.template.write" %}
+                    <span style="display:block;margin-top:12px;padding:11px 13px;border-radius:12px;border:1px solid #a7d8b8;background:#f0fdf4;color:#166534;font-size:13px;line-height:1.5;">
+                      <strong>Sales template access included</strong> — this new authorization grants the external AI permission to manage Sales template branding and layout metadata{% if capability.approval_required %}, subject to SHVYA approval{% endif %}.
+                    </span>
+                  {% endif %}
+                {% endfor %}
                 <span style="display:block;margin-top:10px;">
-                  <span style="display:block;font-size:11px;font-weight:800;letter-spacing:.07em;color:#94a3b8;">EFFECTIVE SHVYA CAPABILITIES</span>
+                  <span style="display:block;font-size:11px;font-weight:800;letter-spacing:.07em;color:#94a3b8;">CAPABILITIES INCLUDED IN THIS NEW GRANT</span>
                   <span style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
                     {% for capability in option.capabilities %}
                       <span style="display:inline-flex;align-items:center;border:1px solid #e2e8f0;border-radius:999px;padding:5px 8px;background:#fff;color:#475569;font-size:11px;">
