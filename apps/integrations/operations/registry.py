@@ -63,6 +63,7 @@ from apps.integrations.operations.tools.calendar import (
     reschedule_booking_operation,
     update_booking_status,
     upsert_calendar_configuration,
+    upsert_calendar_reminder,
     validate_calendar_configuration,
     verify_booking,
 )
@@ -128,6 +129,7 @@ EXTENDED_HANDLERS = {
     "create_calendar_page": create_calendar_page,
     "validate_calendar_configuration": validate_calendar_configuration,
     "upsert_calendar_configuration": upsert_calendar_configuration,
+    "upsert_calendar_reminder": upsert_calendar_reminder,
     "verify_booking": verify_booking,
     "update_booking_status": update_booking_status,
     "reschedule_booking": reschedule_booking_operation,

@@ -9,6 +9,10 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
+from django.urls import reverse
+from django.conf import settings
+from apps.accounts.models import User
+from apps.crm.models import Pipeline, Stage
 from django.utils import timezone
 
 from apps.integrations.operations_models import OperationsAuditEvent
@@ -34,6 +38,7 @@ from apps.shvya_calendar.models import (
     CalendarPage,
     CalendarReminderDelivery,
     CalendarReminderSequence,
+    CalendarReminderStep,
     GoogleCalendarConnection,
 )
 
@@ -71,6 +76,15 @@ def _page_snapshot(page):
         ]
     return {
         "id": str(page.id),
+        "public_path": reverse("shvya_calendar_public:page", kwargs={"public_id": page.public_id, "slug": page.slug}),
+        "public_url": str(getattr(settings, "SUPPORT_PUBLIC_BASE_URL", "") or "https://shvya-ai.com").rstrip("/") + reverse("shvya_calendar_public:page", kwargs={"public_id": page.public_id, "slug": page.slug}),
+        "logo_url": page.logo_url,
+        "has_uploaded_logo": bool(page.logo_file),
+        "accent_color": page.accent_color,
+        "intro_title": page.intro_title,
+        "intro_description": page.intro_description,
+        "session_title": page.session_title,
+        "custom_meeting_link": page.custom_meeting_link,
         "name": page.name,
         "slug": page.slug,
         "status": page.status,
@@ -154,7 +168,7 @@ def validate_calendar_configuration(*, identity, arguments):
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
-    allowed = {"status", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}
+    allowed = {"status", "name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "host_id", "pipeline_id", "stage_id", "custom_meeting_link", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}
     unknown = sorted(set(changes) - allowed)
     if unknown:
         raise OperationsToolError("Unsupported Calendar fields: " + ", ".join(unknown))
@@ -168,7 +182,22 @@ def _calendar_changes(page, changes):
             raise OperationsToolError("timezone must be a valid IANA timezone name.")
         if key == "availability" and not isinstance(value, dict):
             raise OperationsToolError("availability must be a weekday object.")
-        if key not in {"status", "timezone", "availability", "meeting_location"}:
+        if key in {"name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "custom_meeting_link"}:
+            if not isinstance(value, str):
+                raise OperationsToolError(f"{key} must be text.")
+            if key == "slug":
+                if page.status == CalendarPage.Status.PUBLISHED:
+                    raise OperationsToolError("Unpublish the page before changing its public slug.")
+                if slugify(value) != value or not value or len(value) > 120:
+                    raise OperationsToolError("slug must be a valid lowercase slug of at most 120 characters.")
+            if key == "name" and (not value.strip() or len(value) > 120):
+                raise OperationsToolError("Calendar page name must be 1-120 characters.")
+            if key == "logo_url" and value and not value.startswith("https://"):
+                raise OperationsToolError("logo_url must be an HTTPS URL.")
+        if key in {"host_id", "pipeline_id", "stage_id"}:
+            if value is not None:
+                value = str(_uuid(value, field=key))
+        if key not in {"status", "timezone", "availability", "meeting_location", "name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "custom_meeting_link", "host_id", "pipeline_id", "stage_id"}:
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise OperationsToolError(f"{key} must be a positive integer.")
         after[key] = deepcopy(value)
@@ -267,13 +296,85 @@ def upsert_calendar_configuration(*, identity, arguments):
         locked = CalendarPage.objects.select_for_update().get(pk=page.pk, organization=organization)
         locked_after = _calendar_changes(locked, (arguments or {}).get("changes"))
         _ensure_approved_proposal_unchanged(arguments=arguments, proposal={"page_id": str(locked.id), "before": _page_snapshot(locked), "after": locked_after})
-        for key in (set(locked_after) & {"status", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}):
-            if key in (arguments or {}).get("changes", {}):
-                setattr(locked, key, (arguments or {})["changes"][key])
+        for key, value in (arguments or {}).get("changes", {}).items():
+            if key == "host_id" and value is not None and not User.objects.filter(pk=_uuid(value, field=key), organization=organization, is_active=True).exists():
+                raise OperationsToolError("Host must be an active user in this organization.")
+            if key == "pipeline_id" and value is not None and not Pipeline.objects.filter(pk=_uuid(value, field=key), organization=organization).exists():
+                raise OperationsToolError("Pipeline must belong to this organization.")
+            if key == "stage_id" and value is not None and not Stage.objects.filter(pk=_uuid(value, field=key), pipeline__organization=organization).exists():
+                raise OperationsToolError("Stage must belong to this organization.")
+            setattr(locked, key, value)
         locked.full_clean()
         locked.save()
         result = _page_snapshot(locked)
     return ToolExecution(data={"status": "UPDATED", "page": result, "verification": "passed"}, capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id), reason=reason, audit_summary={"verification": "passed"})
+
+
+
+def upsert_calendar_reminder(*, identity, arguments):
+    """Author a reminder without sending messages or creating bookings."""
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(identity=identity, organization=organization,
+        capability=CAP_CALENDAR_CONFIG_WRITE, tool_name="upsert_calendar_reminder", arguments=arguments)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page is required.")
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be an object.")
+    allowed = {"channel", "name", "subject", "body", "timing_mode", "offset_minutes", "specific_time", "enabled"}
+    if set(data) - allowed:
+        raise OperationsToolError("Unsupported reminder fields.")
+    existing_id = (arguments or {}).get("step_id")
+    step = CalendarReminderStep.objects.filter(pk=_uuid(existing_id, field="step_id"), sequence__page=page).first() if existing_id else None
+    if existing_id and step is None:
+        raise OperationsToolError("Reminder not found on this page.")
+    channel = data.get("channel", step.channel if step else None)
+    timing = data.get("timing_mode", step.timing_mode if step else "before")
+    if channel not in CalendarReminderStep.Channel.values or timing not in CalendarReminderStep.TimingMode.values:
+        raise OperationsToolError("Invalid reminder channel or timing_mode.")
+    name = data.get("name", step.name if step else "")
+    subject = data.get("subject", step.subject if step else "")
+    body = data.get("body", step.body if step else "")
+    enabled = data.get("enabled", step.enabled if step else True)
+    offset = data.get("offset_minutes", step.offset_minutes if step else -120)
+    raw_time = data.get("specific_time", step.specific_time.isoformat() if step and step.specific_time else None)
+    if not all(isinstance(v, str) for v in (name, subject, body)) or not name.strip() or len(name) > 255 or len(subject) > 180 or len(body) > 10000:
+        raise OperationsToolError("Invalid reminder name, subject or body.")
+    if not isinstance(enabled, bool) or isinstance(offset, bool) or not isinstance(offset, int):
+        raise OperationsToolError("Invalid reminder enabled or offset_minutes.")
+    if timing == "before" and offset >= 0:
+        raise OperationsToolError("A before-slot reminder must use a negative offset_minutes.")
+    try:
+        at = datetime.strptime(raw_time, "%H:%M").time() if isinstance(raw_time, str) and raw_time else None
+    except ValueError as exc:
+        raise OperationsToolError("specific_time must use HH:MM.") from exc
+    if timing == "specific_time" and at is None:
+        raise OperationsToolError("specific_time is required.")
+    before = None if step is None else {"id": str(step.id), "channel": step.channel, "name": step.name, "subject": step.subject, "body": step.body, "timing_mode": step.timing_mode, "offset_minutes": step.offset_minutes, "specific_time": step.specific_time.isoformat() if step.specific_time else None, "enabled": step.enabled}
+    after = {"channel": channel, "name": name.strip(), "subject": subject, "body": body, "timing_mode": timing, "offset_minutes": offset, "specific_time": at.isoformat() if at else None, "enabled": enabled}
+    proposal = {"page_id": str(page.id), "step_id": str(step.id) if step else None, "before": before, "after": after}
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(data={"status": "DRY_RUN", "proposal": proposal,
+            "approval_required": approval_required(role=identity.role, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE),
+            "messages_sent": 0}, capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+            reason=reason, outcome=OperationsAuditEvent.Outcome.DRY_RUN, audit_summary={"proposal_digest": _proposal_digest(proposal)})
+    with transaction.atomic():
+        sequence, _ = CalendarReminderSequence.objects.get_or_create(page=page)
+        if step:
+            step = CalendarReminderStep.objects.select_for_update().get(pk=step.id, sequence=sequence)
+        else:
+            order = sequence.steps.order_by("-display_order").values_list("display_order", flat=True).first()
+            step = CalendarReminderStep(sequence=sequence, display_order=(order + 1 if order is not None else 0))
+        step.channel, step.name, step.subject, step.body = channel, name.strip(), subject, body
+        step.timing_mode, step.offset_minutes, step.specific_time, step.enabled = timing, offset, at, enabled
+        step.full_clean()
+        step.save()
+    return ToolExecution(data={"status": "UPDATED" if existing_id else "CREATED", "step_id": str(step.id),
+        "verification": "passed", "messages_sent": 0}, capability=CAP_CALENDAR_CONFIG_WRITE,
+        target_type="calendar_reminder", target_id=str(step.id), reason=reason, audit_summary={"verification": "passed"})
 
 
 def verify_booking(*, identity, arguments):
