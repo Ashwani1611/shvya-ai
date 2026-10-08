@@ -219,6 +219,7 @@ def create_sequence(
     description,
     whatsapp_account=None,
     provider="api",
+    allow_unbound_draft=False,
 ):
     name = (name or "").strip()
     description = (description or "").strip()
@@ -270,7 +271,7 @@ def create_sequence(
                 .order_by("business_name", "display_phone_number")
                 .first()
             )
-            if not whatsapp_account:
+            if not whatsapp_account and not allow_unbound_draft:
                 raise FollowupError(
                     "Add at least one Hosted WhatsApp account before creating a WhatsApp sequence."
                 )
@@ -283,6 +284,7 @@ def create_sequence(
         description=description,
         whatsapp_account=whatsapp_account,
         instagram_account=instagram_account,
+        is_active=not (provider == "hosted" and whatsapp_account is None),
     )
 
 
