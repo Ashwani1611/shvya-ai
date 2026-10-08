@@ -283,7 +283,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             )
         provider = existing_provider
     else:
-        provider = str(data.get("provider") or "api").strip()
+        provider = str(data.get("provider") or ("api" if data.get("whatsapp_account_id") else "hosted")).strip()
 
     if provider not in {"api", "hosted"}:
         raise OperationsToolError("Cadence provider must be api or hosted.")
@@ -301,7 +301,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 )
             account = account_query.defer("access_token").first()
         if provider == "api" and account is None:
-            raise OperationsToolError("An active connected WhatsApp API account is required.")
+            raise OperationsToolError("A connected WhatsApp API sender is required for API Cadences. For a senderless draft use provider=hosted and is_active=false.")
         if account is not None and provider == "api" and account.connection_type != WhatsAppAccount.ConnectionType.API:
             raise OperationsToolError("The selected account is not a WhatsApp API account.")
         if provider == "hosted":
