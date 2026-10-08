@@ -71,7 +71,7 @@ class FollowupSequence(models.Model):
         ordering = ["-updated_at"]
         constraints = [
             models.CheckConstraint(
-                condition=(Q(whatsapp_account__isnull=False, instagram_account__isnull=True) | Q(whatsapp_account__isnull=True, instagram_account__isnull=False)),
+                condition=(Q(whatsapp_account__isnull=False, instagram_account__isnull=True) | Q(whatsapp_account__isnull=True, instagram_account__isnull=False) | Q(whatsapp_account__isnull=True, instagram_account__isnull=True, is_active=False)),
                 name="fu_seq_exactly_one_channel",
             ),
             models.UniqueConstraint(
