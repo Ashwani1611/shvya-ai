@@ -77,6 +77,7 @@ from apps.integrations.operations.tools.onboarding import (
     prepare_account_onboarding,
 )
 from apps.integrations.operations.tools.traces import get_production_trace
+from apps.integrations.operations.tools.sales_branding import list_sales_templates, upsert_sales_template_branding
 from apps.integrations.operations.tools.team_settings import get_team_settings, upsert_team_settings
 
 
@@ -137,6 +138,8 @@ EXTENDED_HANDLERS = {
     "run_acceptance_suite": run_acceptance_suite,
     "list_commitments": list_commitments,
     "upsert_commitment": upsert_commitment,
+    "list_sales_templates": list_sales_templates,
+    "upsert_sales_template_branding": upsert_sales_template_branding,
     "get_team_settings": get_team_settings,
     "upsert_team_settings": upsert_team_settings,
 }
