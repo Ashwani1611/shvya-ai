@@ -15,6 +15,7 @@ def capability_discovery(*, identity, tools):
     live = set(effective_capabilities(role=identity.role, organization=organization))
     granted = set(identity.granted_capabilities)
     effective = live & granted
+    missing_oauth_grants = sorted(live - granted)
     rows = []
     for item in tools:
         name = item.get("name")
@@ -30,6 +31,17 @@ def capability_discovery(*, identity, tools):
             "name": name,
             "available": allowed,
             "capability": capability,
+            "unavailable_reason": (
+                "oauth_reauthorization_required"
+                if capability in live and capability not in granted
+                else "organization_policy_denied"
+                if capability and capability not in live
+                else "operations_write_scope_missing"
+                if requires_write and "operations.write" not in identity.scopes
+                else "superadmin_role_required"
+                if name in SUPERADMIN_ONLY_TOOLS and identity.role != ROLE_SUPERADMIN
+                else None
+            ),
             "approval_required": bool(capability and approval_required(role=identity.role, organization=organization, capability=capability)),
             "dependencies": ["operations.read"] + (["operations.write"] if requires_write else []),
             "environment_limitations": [],
@@ -40,6 +52,14 @@ def capability_discovery(*, identity, tools):
         "oauth_scopes": sorted(identity.scopes),
         "granted_capabilities": sorted(granted),
         "effective_capabilities": sorted(effective),
+        "missing_oauth_grants": missing_oauth_grants,
+        "oauth_reauthorization_required": bool(missing_oauth_grants),
+        "oauth_reauthorization_instructions": (
+            "Re-authorize the existing SHVYA MCP connection through OAuth to approve newly enabled permissions. "
+            "If the client has no re-authorize action, disconnect and reconnect. "
+            "Refreshing the token alone intentionally does not expand the existing grant."
+            if missing_oauth_grants else None
+        ),
         "tools": rows,
         "unsupported_features": [
             {"name": "Voice Agent", "status": "excluded_from_scope", "reason": "Handled separately."},
