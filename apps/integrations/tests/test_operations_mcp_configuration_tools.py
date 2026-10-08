@@ -175,6 +175,46 @@ class OperationsMCPConfigurationToolsTests(TestCase):
         self.assertEqual(response.status_code, 200)
         return response.json()["result"]["tools"]
 
+    def test_unbound_hosted_cadence_draft_and_sender_binding(self):
+        self.cadence.delete()
+        self.account.delete()
+        payload = {
+            "data": {
+                "name": "MCP Draft Without Sender",
+                "provider": "hosted",
+                "is_active": False,
+            },
+            "reason": "Prepare hosted follow-up before sender onboarding",
+        }
+        preview = self._call("upsert_cadence_configuration", payload)
+        self.assertEqual(preview["status"], "DRY_RUN")
+        self.assertIsNone(preview["cadence"]["whatsapp_account_id"])
+        created = self._call("upsert_cadence_configuration", {
+            **payload, "dry_run": False, "approved": True,
+        })
+        self.assertEqual(created["status"], "FIXED")
+        sequence = FollowupSequence.objects.get(name="MCP Draft Without Sender")
+        self.assertFalse(sequence.is_active)
+        self.assertIsNone(sequence.whatsapp_account_id)
+        account = WhatsAppAccount.objects.create(
+            organization=self.organization,
+            connection_type=WhatsAppAccount.ConnectionType.coexisted,
+            business_name="Connected Later",
+            phone_number_id="+919999999992",
+            display_phone_number="+919999999992",
+            status=WhatsAppAccount.Status.CONNECTED,
+            is_active=True,
+        )
+        updated = self._call("upsert_cadence_configuration", {
+            "cadence_id": str(sequence.pk),
+            "data": {"whatsapp_account_id": str(account.pk), "is_active": False},
+            "reason": "Bind hosted sender after account onboarding",
+            "dry_run": False, "approved": True,
+        })
+        self.assertEqual(updated["status"], "FIXED")
+        sequence.refresh_from_db()
+        self.assertEqual(sequence.whatsapp_account_id, account.pk)
+
     def test_p0_tools_are_discoverable_with_typed_workflow_discovery(self):
         tools = {item["name"]: item for item in self._tools()}
         expected = {
