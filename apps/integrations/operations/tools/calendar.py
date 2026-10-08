@@ -7,6 +7,8 @@ from datetime import datetime, timezone as dt_timezone
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
+from django.core.exceptions import ValidationError
+from django.utils.text import slugify
 from django.utils import timezone
 
 from apps.integrations.operations_models import OperationsAuditEvent
@@ -171,6 +173,82 @@ def _calendar_changes(page, changes):
                 raise OperationsToolError(f"{key} must be a positive integer.")
         after[key] = deepcopy(value)
     return after
+
+
+def create_calendar_page(*, identity, arguments):
+    """Create an unpublished, tenant-owned booking page with an auditable proposal."""
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity,
+        organization=organization,
+        capability=CAP_CALENDAR_CONFIG_WRITE,
+        tool_name="create_calendar_page",
+        arguments=arguments,
+    )
+    name = (arguments or {}).get("name")
+    if not isinstance(name, str) or not name.strip() or len(name.strip()) > 120:
+        raise OperationsToolError("name must be 1-120 characters.")
+    name = name.strip()
+    raw_slug = (arguments or {}).get("slug")
+    if raw_slug is not None and (not isinstance(raw_slug, str) or not raw_slug.strip()):
+        raise OperationsToolError("slug must be a non-empty string.")
+    slug = slugify(raw_slug if raw_slug is not None else name)
+    if not slug or len(slug) > 120:
+        raise OperationsToolError("Provide a valid slug of at most 120 characters.")
+    if CalendarPage.objects.filter(organization=organization, slug=slug).exists():
+        raise OperationsToolError("A Calendar page with this slug already exists in this organization.")
+    page_type = (arguments or {}).get("page_type", CalendarPage.PageType.BOOKING)
+    if page_type not in {choice[0] for choice in CalendarPage.PageType.choices}:
+        raise OperationsToolError("Unsupported Calendar page type.")
+    proposal = {
+        "organization_id": str(organization.id),
+        "name": name,
+        "slug": slug,
+        "page_type": page_type,
+        "status": CalendarPage.Status.DRAFT,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(
+            data={
+                "status": "DRY_RUN",
+                "page": proposal,
+                "approval_required": approval_required(
+                    role=identity.role, organization=organization,
+                    capability=CAP_CALENDAR_CONFIG_WRITE,
+                ),
+                "outbound_messages": 0,
+            },
+            capability=CAP_CALENDAR_CONFIG_WRITE,
+            target_type="calendar_page",
+            reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={"proposal_digest": _proposal_digest(proposal)},
+        )
+    with transaction.atomic():
+        if CalendarPage.objects.filter(organization=organization, slug=slug).exists():
+            raise OperationsToolError("A Calendar page with this slug already exists in this organization.")
+        page = CalendarPage(
+            organization=organization,
+            name=name,
+            slug=slug,
+            page_type=page_type,
+            status=CalendarPage.Status.DRAFT,
+        )
+        try:
+            page.full_clean()
+            page.save()
+        except ValidationError as exc:
+            raise OperationsToolError(f"Invalid Calendar page: {exc}") from exc
+    return ToolExecution(
+        data={"status": "CREATED", "page": _page_snapshot(page), "verification": "passed", "outbound_messages": 0},
+        capability=CAP_CALENDAR_CONFIG_WRITE,
+        target_type="calendar_page",
+        target_id=str(page.id),
+        reason=reason,
+        audit_summary={"verification": "passed"},
+    )
 
 
 def upsert_calendar_configuration(*, identity, arguments):
