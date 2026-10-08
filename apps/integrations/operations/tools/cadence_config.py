@@ -236,7 +236,7 @@ def upsert_cadence_configuration(*, identity, arguments):
     ).strip()
     is_active = data.get(
         "is_active",
-        sequence.is_active if sequence is not None else True,
+        sequence.is_active if sequence is not None else False,
     )
     if not isinstance(is_active, bool):
         raise OperationsToolError("Cadence is_active must be true or false.")
@@ -257,7 +257,7 @@ def upsert_cadence_configuration(*, identity, arguments):
     if sequence is not None:
         existing_provider = (
             "api"
-            if account.connection_type == WhatsAppAccount.ConnectionType.API
+            if account is not None and account.connection_type == WhatsAppAccount.ConnectionType.API
             else "hosted"
         )
         requested_provider = data.get("provider")
@@ -273,6 +273,7 @@ def upsert_cadence_configuration(*, identity, arguments):
         requested_account_id = data.get("whatsapp_account_id")
         if (
             requested_account_id is not None
+            and sequence.whatsapp_account_id is not None
             and str(requested_account_id).strip() != str(sequence.whatsapp_account_id)
         ):
             raise OperationsPermissionError(
@@ -286,7 +287,7 @@ def upsert_cadence_configuration(*, identity, arguments):
 
     if provider not in {"api", "hosted"}:
         raise OperationsToolError("Cadence provider must be api or hosted.")
-    if sequence is None:
+    if sequence is None or (sequence.whatsapp_account_id is None and data.get("whatsapp_account_id")):
         account_id = data.get("whatsapp_account_id")
         if account_id:
             account_query = WhatsAppAccount.objects.filter(
@@ -326,10 +327,11 @@ def upsert_cadence_configuration(*, identity, arguments):
                     )
                     .first()
                 )
-            if account is None:
-                raise OperationsToolError(
-                    "Add at least one Hosted/Coexistence WhatsApp account before creating this Cadence."
-                )
+            if account is None and is_active:
+                raise OperationsToolError("An unbound Hosted Cadence must remain inactive until a sender is connected.")
+
+    if account is None and is_active:
+        raise OperationsToolError("A Cadence cannot be activated without a bound WhatsApp sender.")
 
     cadence_before = (
         {
@@ -337,7 +339,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             "name": sequence.name,
             "description": sequence.description,
             "provider": provider,
-            "whatsapp_account_id": str(sequence.whatsapp_account_id),
+            "whatsapp_account_id": str(sequence.whatsapp_account_id) if sequence.whatsapp_account_id else None,
             "is_active": sequence.is_active,
         }
         if sequence is not None
@@ -416,7 +418,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 account = sequence.whatsapp_account
                 locked_provider = (
                     "api"
-                    if account.connection_type
+                    if account is not None and account.connection_type
                     == WhatsAppAccount.ConnectionType.API
                     else "hosted"
                 )
@@ -480,11 +482,11 @@ def upsert_cadence_configuration(*, identity, arguments):
                             )
                             .first()
                         )
-                    if account is None:
-                        raise OperationsApprovalRequired(
-                            "No active Hosted/Coexistence account is available. "
-                            "Run a fresh dry-run."
-                        )
+                    if account is None and is_active:
+                        raise OperationsApprovalRequired("A Hosted sender is required before activation. Run a fresh dry-run.")
+
+            if account is None and is_active:
+                raise OperationsApprovalRequired("Cannot activate an unbound Cadence.")
 
             duplicate = FollowupSequence.objects.filter(
                 organization=organization,
@@ -543,6 +545,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                     description=description,
                     whatsapp_account=account,
                     provider=provider,
+                    allow_unbound_draft=(provider == "hosted" and account is None),
                 )
             else:
                 sequence = update_sequence(
@@ -550,6 +553,10 @@ def upsert_cadence_configuration(*, identity, arguments):
                     name=name,
                     description=description,
                 )
+
+            if sequence.whatsapp_account_id is None and account is not None:
+                sequence.whatsapp_account = account
+                sequence.save(update_fields=["whatsapp_account", "updated_at"])
 
             if sequence.is_active != is_active:
                 sequence.is_active = is_active
@@ -559,7 +566,7 @@ def upsert_cadence_configuration(*, identity, arguments):
             if (
                 sequence.name != name
                 or sequence.description != description
-                or sequence.whatsapp_account_id != account.id
+                or sequence.whatsapp_account_id != (account.id if account else None)
                 or sequence.is_active != is_active
             ):
                 raise OperationsToolError(
@@ -582,6 +589,7 @@ def upsert_cadence_configuration(*, identity, arguments):
                 "name": sequence.name,
                 "step_count": sequence.steps.count(),
                 "is_active": sequence.is_active,
+                "requires_sender_connection": sequence.whatsapp_account_id is None,
             },
             "verification": "passed",
         },
