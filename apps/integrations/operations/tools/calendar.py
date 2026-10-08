@@ -9,6 +9,10 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.core.exceptions import ValidationError
 from django.utils.text import slugify
+from django.urls import reverse
+from django.conf import settings
+from apps.accounts.models import User
+from apps.crm.models import Pipeline, Stage
 from django.utils import timezone
 
 from apps.integrations.operations_models import OperationsAuditEvent
@@ -34,6 +38,7 @@ from apps.shvya_calendar.models import (
     CalendarPage,
     CalendarReminderDelivery,
     CalendarReminderSequence,
+    CalendarReminderStep,
     GoogleCalendarConnection,
 )
 
@@ -71,6 +76,15 @@ def _page_snapshot(page):
         ]
     return {
         "id": str(page.id),
+        "public_path": reverse("shvya_calendar_public:page", kwargs={"public_id": page.public_id, "slug": page.slug}),
+        "public_url": str(getattr(settings, "SUPPORT_PUBLIC_BASE_URL", "") or "https://shvya-ai.com").rstrip("/") + reverse("shvya_calendar_public:page", kwargs={"public_id": page.public_id, "slug": page.slug}),
+        "logo_url": page.logo_url,
+        "has_uploaded_logo": bool(page.logo_file),
+        "accent_color": page.accent_color,
+        "intro_title": page.intro_title,
+        "intro_description": page.intro_description,
+        "session_title": page.session_title,
+        "custom_meeting_link": page.custom_meeting_link,
         "name": page.name,
         "slug": page.slug,
         "status": page.status,
@@ -154,7 +168,7 @@ def validate_calendar_configuration(*, identity, arguments):
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
-    allowed = {"status", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}
+    allowed = {"status", "name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "host_id", "pipeline_id", "stage_id", "custom_meeting_link", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}
     unknown = sorted(set(changes) - allowed)
     if unknown:
         raise OperationsToolError("Unsupported Calendar fields: " + ", ".join(unknown))
@@ -168,7 +182,22 @@ def _calendar_changes(page, changes):
             raise OperationsToolError("timezone must be a valid IANA timezone name.")
         if key == "availability" and not isinstance(value, dict):
             raise OperationsToolError("availability must be a weekday object.")
-        if key not in {"status", "timezone", "availability", "meeting_location"}:
+        if key in {"name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "custom_meeting_link"}:
+            if not isinstance(value, str):
+                raise OperationsToolError(f"{key} must be text.")
+            if key == "slug":
+                if page.status == CalendarPage.Status.PUBLISHED:
+                    raise OperationsToolError("Unpublish the page before changing its public slug.")
+                if slugify(value) != value or not value or len(value) > 120:
+                    raise OperationsToolError("slug must be a valid lowercase slug of at most 120 characters.")
+            if key == "name" and (not value.strip() or len(value) > 120):
+                raise OperationsToolError("Calendar page name must be 1-120 characters.")
+            if key == "logo_url" and value and not value.startswith("https://"):
+                raise OperationsToolError("logo_url must be an HTTPS URL.")
+        if key in {"host_id", "pipeline_id", "stage_id"}:
+            if value is not None:
+                value = str(_uuid(value, field=key))
+        if key not in {"status", "timezone", "availability", "meeting_location", "name", "slug", "logo_url", "accent_color", "intro_title", "intro_description", "session_title", "custom_meeting_link", "host_id", "pipeline_id", "stage_id"}:
             if isinstance(value, bool) or not isinstance(value, int) or value < 1:
                 raise OperationsToolError(f"{key} must be a positive integer.")
         after[key] = deepcopy(value)
@@ -267,9 +296,14 @@ def upsert_calendar_configuration(*, identity, arguments):
         locked = CalendarPage.objects.select_for_update().get(pk=page.pk, organization=organization)
         locked_after = _calendar_changes(locked, (arguments or {}).get("changes"))
         _ensure_approved_proposal_unchanged(arguments=arguments, proposal={"page_id": str(locked.id), "before": _page_snapshot(locked), "after": locked_after})
-        for key in (set(locked_after) & {"status", "timezone", "availability", "slot_duration_minutes", "bookable_days", "minimum_notice_minutes", "max_slots_per_day", "bookings_per_slot", "meeting_location"}):
-            if key in (arguments or {}).get("changes", {}):
-                setattr(locked, key, (arguments or {})["changes"][key])
+        for key, value in (arguments or {}).get("changes", {}).items():
+            if key == "host_id" and value is not None and not User.objects.filter(pk=_uuid(value, field=key), organization=organization, is_active=True).exists():
+                raise OperationsToolError("Host must be an active user in this organization.")
+            if key == "pipeline_id" and value is not None and not Pipeline.objects.filter(pk=_uuid(value, field=key), organization=organization).exists():
+                raise OperationsToolError("Pipeline must belong to this organization.")
+            if key == "stage_id" and value is not None and not Stage.objects.filter(pk=_uuid(value, field=key), pipeline__organization=organization).exists():
+                raise OperationsToolError("Stage must belong to this organization.")
+            setattr(locked, key, value)
         locked.full_clean()
         locked.save()
         result = _page_snapshot(locked)
