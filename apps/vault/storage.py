@@ -15,6 +15,7 @@ from django.conf import settings
 from django.core.exceptions import SuspiciousFileOperation
 from django.core.files.base import ContentFile
 from django.core.files.storage import FileSystemStorage
+from django.utils.functional import cached_property
 from django.utils.deconstruct import deconstructible
 
 MAGIC = b"SHVYA-VAULT-ENCRYPTED-1\n"
@@ -37,6 +38,21 @@ class VaultPrivateStorage(FileSystemStorage):
     def __init__(self):
         super().__init__(base_url=None, file_permissions_mode=0o600, directory_permissions_mode=0o700)
 
+    @cached_property
+    def s3_backend(self):
+        """Reuse the active private S3 settings and credentials, with an isolated prefix."""
+        if not getattr(settings, "USE_S3_STORAGE", False):
+            return None
+        from storages.backends.s3 import S3Storage
+
+        options = dict(settings.STORAGES["default"]["OPTIONS"])
+        options["location"] = (
+            options.get("location", "").strip("/") + "/vault-encrypted"
+        ).strip("/")
+        options["file_overwrite"] = False
+        options["querystring_auth"] = True
+        return S3Storage(**options)
+
     @property
     def base_location(self):
         return str(vault_root())
@@ -49,12 +65,20 @@ class VaultPrivateStorage(FileSystemStorage):
         payload = content.read(MAX_PLAINTEXT + 1)
         if len(payload) > MAX_PLAINTEXT:
             raise SuspiciousFileOperation("Vault file exceeds the storage limit.")
-        return super()._save(name, ContentFile(MAGIC + file_cipher().encrypt(payload)))
+        backend = self.s3_backend or super()
+        return backend._save(name, ContentFile(MAGIC + file_cipher().encrypt(payload)))
 
     def _open(self, name, mode="rb"):
         if mode not in {"r", "rb"}:
             raise ValueError("Vault files are immutable.")
-        with super()._open(name, "rb") as stored:
+        backend = self.s3_backend
+        # Older uploads remain readable during migration. Never turn an S3
+        # permission/network error into a silent local-storage fallback.
+        if backend is not None and backend.exists(name):
+            stored_file = backend._open(name, "rb")
+        else:
+            stored_file = super()._open(name, "rb")
+        with stored_file as stored:
             encrypted = stored.read(2 * MAX_PLAINTEXT + 1)
         if not encrypted.startswith(MAGIC) or len(encrypted) > 2 * MAX_PLAINTEXT:
             raise SuspiciousFileOperation("Invalid encrypted Vault file.")
@@ -65,6 +89,17 @@ class VaultPrivateStorage(FileSystemStorage):
         if len(payload) > MAX_PLAINTEXT:
             raise SuspiciousFileOperation("Vault file exceeds the storage limit.")
         return ContentFile(payload, name=name)
+
+    def exists(self, name):
+        backend = self.s3_backend
+        return bool((backend is not None and backend.exists(name)) or super().exists(name))
+
+    def delete(self, name):
+        backend = self.s3_backend
+        if backend is not None:
+            backend.delete(name)
+        # Legacy local copies can be deleted after the database transaction.
+        super().delete(name)
 
     def size(self, name):
         with self._open(name) as content:
