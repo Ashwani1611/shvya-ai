@@ -310,6 +310,73 @@ def upsert_calendar_configuration(*, identity, arguments):
     return ToolExecution(data={"status": "UPDATED", "page": result, "verification": "passed"}, capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id), reason=reason, audit_summary={"verification": "passed"})
 
 
+
+def upsert_calendar_reminder(*, identity, arguments):
+    """Author a reminder without sending messages or creating bookings."""
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(identity=identity, organization=organization,
+        capability=CAP_CALENDAR_CONFIG_WRITE, tool_name="upsert_calendar_reminder", arguments=arguments)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page is required.")
+    data = (arguments or {}).get("data")
+    if not isinstance(data, dict):
+        raise OperationsToolError("data must be an object.")
+    allowed = {"channel", "name", "subject", "body", "timing_mode", "offset_minutes", "specific_time", "enabled"}
+    if set(data) - allowed:
+        raise OperationsToolError("Unsupported reminder fields.")
+    existing_id = (arguments or {}).get("step_id")
+    step = CalendarReminderStep.objects.filter(pk=_uuid(existing_id, field="step_id"), sequence__page=page).first() if existing_id else None
+    if existing_id and step is None:
+        raise OperationsToolError("Reminder not found on this page.")
+    channel = data.get("channel", step.channel if step else None)
+    timing = data.get("timing_mode", step.timing_mode if step else "before")
+    if channel not in CalendarReminderStep.Channel.values or timing not in CalendarReminderStep.TimingMode.values:
+        raise OperationsToolError("Invalid reminder channel or timing_mode.")
+    name = data.get("name", step.name if step else "")
+    subject = data.get("subject", step.subject if step else "")
+    body = data.get("body", step.body if step else "")
+    enabled = data.get("enabled", step.enabled if step else True)
+    offset = data.get("offset_minutes", step.offset_minutes if step else -120)
+    raw_time = data.get("specific_time", step.specific_time.isoformat() if step and step.specific_time else None)
+    if not all(isinstance(v, str) for v in (name, subject, body)) or not name.strip() or len(name) > 255 or len(subject) > 180 or len(body) > 10000:
+        raise OperationsToolError("Invalid reminder name, subject or body.")
+    if not isinstance(enabled, bool) or isinstance(offset, bool) or not isinstance(offset, int):
+        raise OperationsToolError("Invalid reminder enabled or offset_minutes.")
+    if timing == "before" and offset >= 0:
+        raise OperationsToolError("A before-slot reminder must use a negative offset_minutes.")
+    try:
+        at = datetime.strptime(raw_time, "%H:%M").time() if isinstance(raw_time, str) and raw_time else None
+    except ValueError as exc:
+        raise OperationsToolError("specific_time must use HH:MM.") from exc
+    if timing == "specific_time" and at is None:
+        raise OperationsToolError("specific_time is required.")
+    before = None if step is None else {"id": str(step.id), "channel": step.channel, "name": step.name, "subject": step.subject, "body": step.body, "timing_mode": step.timing_mode, "offset_minutes": step.offset_minutes, "specific_time": step.specific_time.isoformat() if step.specific_time else None, "enabled": step.enabled}
+    after = {"channel": channel, "name": name.strip(), "subject": subject, "body": body, "timing_mode": timing, "offset_minutes": offset, "specific_time": at.isoformat() if at else None, "enabled": enabled}
+    proposal = {"page_id": str(page.id), "step_id": str(step.id) if step else None, "before": before, "after": after}
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(data={"status": "DRY_RUN", "proposal": proposal,
+            "approval_required": approval_required(role=identity.role, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE),
+            "messages_sent": 0}, capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+            reason=reason, outcome=OperationsAuditEvent.Outcome.DRY_RUN, audit_summary={"proposal_digest": _proposal_digest(proposal)})
+    with transaction.atomic():
+        sequence, _ = CalendarReminderSequence.objects.get_or_create(page=page)
+        if step:
+            step = CalendarReminderStep.objects.select_for_update().get(pk=step.id, sequence=sequence)
+        else:
+            order = sequence.steps.order_by("-display_order").values_list("display_order", flat=True).first()
+            step = CalendarReminderStep(sequence=sequence, display_order=(order + 1 if order is not None else 0))
+        step.channel, step.name, step.subject, step.body = channel, name.strip(), subject, body
+        step.timing_mode, step.offset_minutes, step.specific_time, step.enabled = timing, offset, at, enabled
+        step.full_clean()
+        step.save()
+    return ToolExecution(data={"status": "UPDATED" if existing_id else "CREATED", "step_id": str(step.id),
+        "verification": "passed", "messages_sent": 0}, capability=CAP_CALENDAR_CONFIG_WRITE,
+        target_type="calendar_reminder", target_id=str(step.id), reason=reason, audit_summary={"verification": "passed"})
+
+
 def verify_booking(*, identity, arguments):
     organization = _organization_for(identity)
     _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
