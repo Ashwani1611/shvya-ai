@@ -2,8 +2,6 @@ import re
 
 from django import template
 
-from apps.crm.models import Lead
-
 
 register = template.Library()
 
@@ -14,6 +12,7 @@ _BASE_PLACEHOLDERS = [
     {"token": "{{lead_first_name}}", "label": "First name"},
     {"token": "{{phone}}", "label": "Number"},
     {"token": "{{email}}", "label": "Email"},
+    {"token": "{{lead_source}}", "label": "Lead source"},
     {"token": "{{user_name}}", "label": "User name"},
     {"token": "{{org_name}}", "label": "Organisation"},
     {"token": "{{pipeline_name}}", "label": "Pipeline"},
@@ -28,19 +27,15 @@ def followup_placeholders(organization):
     if not organization:
         return placeholders
 
-    attribute_keys = set()
-    attribute_rows = (
-        Lead.objects.filter(organization=organization)
-        .order_by("-updated_at")
-        .values_list("attributes", flat=True)[:500]
-    )
-    for attributes in attribute_rows:
-        if not isinstance(attributes, dict):
-            continue
-        for key in attributes:
-            key = str(key).strip()
-            if _SAFE_ATTRIBUTE_KEY.match(key):
-                attribute_keys.add(key)
+    # Use configured fields, not a sample of recent leads: a newly created
+    # attribute must be available before its first value is collected.
+    from services.channels.template_service import available_placeholders
+    attribute_keys = {
+        str(item["key"]).strip()
+        for item in available_placeholders(organization=organization)
+        if item.get("source") == "lead_attribute"
+        and _SAFE_ATTRIBUTE_KEY.fullmatch(str(item.get("key") or "").strip())
+    }
 
     reserved_tokens = {item["token"] for item in placeholders}
     for key in sorted(attribute_keys, key=str.lower):

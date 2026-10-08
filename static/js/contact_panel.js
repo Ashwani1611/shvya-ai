@@ -145,7 +145,28 @@
     const copy=e.target.closest('[data-copy-phone]');if(copy){try{await navigator.clipboard.writeText(copy.dataset.copyPhone);feedback(host,'Phone copied.');}catch(_){feedback(host,'Unable to copy phone.',true);}}
     if(e.target.closest('[data-panel-retry]'))load(host,true);
     const ai=e.target.closest('[data-ai-url]');if(ai&&!ai.disabled){ai.disabled=true;const data=new FormData();data.set('enabled',ai.getAttribute('aria-checked')==='true'?'0':'1');try{const r=await post(ai.dataset.aiUrl,data);ai.setAttribute('aria-checked',String(r.enabled));}catch(error){feedback(host,error.message,true);}finally{ai.disabled=false;}}
-    const reply=e.target.closest('[data-insert-reply]');if(reply){const input=document.getElementById('message-body');if(!input||input.disabled){feedback(host,'This conversation is not currently available for replies.',true);return;}const body=reply.closest('[data-reply]').querySelector('[data-reply-body]').textContent;input.value=input.value?input.value+(input.tagName==='TEXTAREA'?'\n':' ')+body:body;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();feedback(host,'Reply added. Review it in the message box and send.');}
+    const sendFile=e.target.closest('[data-send-touchpoint-file]');
+    if(sendFile){
+      if(sendFile.disabled)return;
+      if(!await flush()){feedback(host,'Save this lead’s pending changes before sending a file.',true);return;}
+      sendFile.disabled=true;
+      const originalLabel=sendFile.textContent;
+      sendFile.textContent='Sending…';
+      const data=new FormData();
+      data.set('channel',sendFile.dataset.fileChannel||'');
+      data.set('account',sendFile.dataset.fileAccount||'');
+      try{
+        const result=await post(sendFile.dataset.fileUrl,data);
+        feedback(host,result.status==='sent'?'File sent.':'File accepted for delivery. Check the conversation for status.');
+        if(window.shvyaWhatsAppNavigate)await window.shvyaWhatsAppNavigate(location.href,false,false);
+      }catch(error){
+        feedback(host,error.message||'Could not send Touchpoint file.',true);
+      }finally{
+        sendFile.disabled=false;
+        sendFile.textContent=originalLabel;
+      }
+    }
+    const reply=e.target.closest('[data-insert-reply]');if(reply){const input=document.getElementById('message-body');if(!input||input.disabled){feedback(host,'This conversation is not currently available for replies.',true);return;}const body=reply.closest('[data-reply]').querySelector('[data-reply-body]').textContent;input.value=input.value?input.value+(input.tagName==='TEXTAREA'?'\n':' ')+body:body;input.dispatchEvent(new Event('input',{bubbles:true}));input.focus();feedback(host,reply.closest('[data-reply]').querySelector('[data-missing-values]')?.textContent.trim()||'Personalized reply added. Review it in the message box and send.');}
   });
   document.addEventListener('submit',async e=>{
     const form=e.target,host=form.closest('[data-contact-host]');if(!host)return;

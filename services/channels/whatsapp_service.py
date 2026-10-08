@@ -846,15 +846,35 @@ def _validate_outbound_message_content(
         "document",
         "url",
         "media_id",
+        "touchpoint",
     }:
         raise ValueError(
             (
                 "Media messages require source to be one of "
-                "document, url, or media_id."
+                "document, url, media_id, or touchpoint."
             )
         )
 
-    if source == "document":
+    if source == "touchpoint":
+        # Reference an existing private tenant-owned attachment, never a client
+        # supplied arbitrary file path or public URL.
+        from uuid import UUID
+
+        try:
+            media_payload["attachment_id"] = str(UUID(
+                str(media_payload.get("attachment_id") or "")
+            ))
+        except (TypeError, ValueError):
+            raise ValueError("A valid Touchpoint attachment ID is required.") from None
+        if message_type not in {
+            WhatsAppMessage.MessageType.IMAGE,
+            WhatsAppMessage.MessageType.VIDEO,
+            WhatsAppMessage.MessageType.AUDIO,
+            WhatsAppMessage.MessageType.DOCUMENT,
+        }:
+            raise ValueError("Touchpoint files must be photo, video, audio or document messages.")
+
+    elif source == "document":
 
         document_id = media_payload.get(
             "document_id"
@@ -1008,6 +1028,49 @@ def _send_outbound_media_message(
     if media_type == WhatsAppMessage.MessageType.TEXT:
         raise ValueError(
             "_send_outbound_media_message cannot send text content."
+        )
+
+    # ========================================================
+    # TENANT-OWNED SAVED TOUCHPOINT FILE
+    # ========================================================
+
+    if source == "touchpoint":
+        from apps.followups.touchpoint_models import TouchpointAttachment
+        from services.touchpoint_service import attachment_kind
+
+        attachment = (
+            TouchpointAttachment.objects.select_related("reply__category")
+            .filter(
+                pk=payload["attachment_id"],
+                reply__category__organization=message.organization,
+                reply__is_active=True,
+            )
+            .first()
+        )
+        if not attachment or not attachment.file:
+            raise WhatsAppSendError("The Touchpoint file was removed or is no longer available.")
+        kind = attachment_kind(attachment.original_name)
+        if kind != media_type:
+            raise WhatsAppSendError("The Touchpoint file type does not match the outgoing message.")
+
+        attachment.file.open("rb")
+        try:
+            upload_response = client.upload_media(
+                file_obj=attachment.file.file,
+                filename=attachment.original_name,
+                mime_type=attachment.mime_type,
+            )
+        finally:
+            attachment.file.close()
+        media_id = upload_response.get("id")
+        if not media_id:
+            raise WhatsAppSendError("Meta did not return a Touchpoint media ID.")
+        return client.send_media_message(
+            to=message.to_number,
+            media_type=media_type,
+            media_id=media_id,
+            caption=message.body or None,
+            filename=attachment.original_name if kind == "document" else None,
         )
 
     # ========================================================

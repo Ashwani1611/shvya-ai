@@ -24,6 +24,7 @@ logger = logging.getLogger(__name__)
 _ALLOWED_EXTENSIONS = {
     WhatsAppMessage.MessageType.IMAGE: {".jpg", ".jpeg", ".png", ".webp", ".gif"},
     WhatsAppMessage.MessageType.VIDEO: {".mp4", ".3gp", ".mov", ".m4v", ".webm"},
+    WhatsAppMessage.MessageType.AUDIO: {".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav"},
     WhatsAppMessage.MessageType.DOCUMENT: {
         ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx", ".txt", ".csv",
     },
@@ -111,6 +112,8 @@ def _validate_upload(uploaded_file, message_type):
         raise HostedWhatsAppValidationError("Selected photo is not a valid image file.")
     if message_type == WhatsAppMessage.MessageType.VIDEO and not mime_type.startswith("video/"):
         raise HostedWhatsAppValidationError("Selected video is not a valid video file.")
+    if message_type == WhatsAppMessage.MessageType.AUDIO and not mime_type.startswith("audio/"):
+        raise HostedWhatsAppValidationError("Selected audio is not a valid audio file.")
     if not mime_type:
         mime_type = "application/octet-stream"
 
