@@ -35,6 +35,7 @@ CAP_CALENDAR_CONFIG_WRITE = "calendar.config.write"
 CAP_INTEGRATION_LIFECYCLE_WRITE = "integration.lifecycle.write"
 CAP_OPERATIONS_TASK_WRITE = "operations.task.write"
 CAP_TEAM_SETTINGS_WRITE = "team.settings.write"
+CAP_SALES_TEMPLATE_WRITE = "sales.template.write"
 CAP_ORGANIZATION_CREATE = "organization.create"
 CAP_LEAD_READ = "lead.read"
 CAP_LEAD_CREATE = "lead.create"
@@ -80,6 +81,7 @@ WRITE_CAPABILITIES = (
     CAP_INTEGRATION_LIFECYCLE_WRITE,
     CAP_OPERATIONS_TASK_WRITE,
     CAP_TEAM_SETTINGS_WRITE,
+    CAP_SALES_TEMPLATE_WRITE,
     CAP_ORGANIZATION_CREATE,
     CAP_LEAD_CREATE,
     CAP_LEAD_WRITE,
@@ -135,6 +137,7 @@ CAPABILITY_LABELS = {
     CAP_INTEGRATION_LIFECYCLE_WRITE: "Connect, reconnect, test and disconnect integrations",
     CAP_OPERATIONS_TASK_WRITE: "Track onboarding, integration and audit commitments",
     CAP_TEAM_SETTINGS_WRITE: "Configure team responder, ownership, handoff, sender and Co-Pilot settings",
+    CAP_SALES_TEMPLATE_WRITE: "Manage Sales template branding and layout metadata",
     CAP_ORGANIZATION_CREATE: "Create customer organizations (SHVYA Superadmin only)",
     CAP_LEAD_READ: "Read CRM leads and their business details",
     CAP_LEAD_CREATE: "Create CRM leads without sending welcome messages",
