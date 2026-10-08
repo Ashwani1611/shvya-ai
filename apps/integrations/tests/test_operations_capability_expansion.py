@@ -15,6 +15,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "get_production_trace",
             "get_calendar_configuration",
             "validate_calendar_configuration",
+            "create_calendar_page",
             "upsert_calendar_configuration",
             "verify_booking",
             "update_booking_status",
@@ -38,9 +39,15 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             self.assertFalse(schema.get("additionalProperties", True))
 
     def test_production_mutations_advertise_write_capabilities(self):
+        self.assertEqual(TOOL_CAPABILITIES["create_calendar_page"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_configuration"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["disconnect_integration"], "integration.lifecycle.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_commitment"], "operations.task.write")
+
+    def test_calendar_creation_requires_name_and_reason(self):
+        schema = TOOL_INPUT_SCHEMAS["create_calendar_page"]
+        self.assertTrue({"name", "reason"} <= set(schema["required"]))
+        self.assertEqual(schema["properties"]["page_type"]["default"], "booking")
 
     def test_discovery_includes_native_vault_scope(self):
         class Actor:
