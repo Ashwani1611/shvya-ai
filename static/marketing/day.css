@@ -227,3 +227,15 @@ body.marketing-site{background:var(--background);color:var(--foreground);font-fa
   body.marketing-site,.premium-features{background:#fff;color:#111}
   .hero h1 em,.premium-features :is(h1,h2) em{background:none;-webkit-text-fill-color:#111}
 }
+
+/* Match the expanded features catalogue to the selected light appearance. */
+.premium-features .p-feature-menu{background:#eff3f8;border-color:#d9e1ec}
+.premium-features .p-menu-header{color:#47617a}
+.premium-features .p-menu-header strong{color:#26639a}
+.premium-features .p-feature-menu .p-tabs{background:#eff3f8;scrollbar-color:#98b7d1 transparent}
+.premium-features .p-tabs-group{color:#58738e}
+.premium-features .p-menu-hint{border-color:#d8e0ea;color:#5c768e}
+.premium-features .p-feature-guide{color:#225eab;border-color:#8baedf}
+.premium-features .p-feature-guide:hover{color:#143e79;border-color:#225eab}
+.premium-features .p-feature-guide:focus-visible{outline-color:#0066cc}
+.premium-features .p-feature-fineprint{color:#647789}
