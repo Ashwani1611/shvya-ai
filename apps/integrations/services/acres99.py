@@ -97,6 +97,11 @@ def parse_pull_xml(raw):
     for row in rows:
         detail = row.find("QryDtl")
         contact = row.find("CntctDtl")
+        # The 99acres Pull specification uses an empty <Resp> when there
+        # are zero enquiries. Do not treat this as a failed lead: doing
+        # so would permanently prevent the successful cursor advance.
+        if detail is None and contact is None and not len(row) and not (row.text or "").strip():
+            continue
         if detail is None or contact is None:
             parsed.append({"query_id": ""})
             continue

@@ -79,6 +79,13 @@ class Acres99XmlTests(SimpleTestCase):
         self.assertEqual(row["product_id"], "LIST-12")
         self.assertEqual(row["phone"], "9811111111")
 
+    def test_empty_success_response_has_no_enquiries(self):
+        self.assertEqual(
+            parse_pull_xml(b'<Xml ActionStatus="true"><Resp /></Xml>'),
+            [],
+        )
+        self.assertEqual(parse_pull_xml(b'<Xml ActionStatus="true"><Resp>  </Resp></Xml>'), [])
+
     def test_pull_error_code_is_handled_without_exposing_provider_message(self):
         with self.assertRaises(Acres99ProtocolError) as exc:
             parse_pull_xml(b'<Xml ActionStatus="false"><ErrorDetail><Code>ERROR-0001</Code>'
@@ -286,6 +293,18 @@ class Acres99IntegrationTests(TestCase):
         connection.refresh_from_db()
         self.assertIsNotNone(connection.sync_cursor)
         self.assertEqual(connection.poll_hour_count, 1)
+
+    def test_empty_pull_window_advances_cursor(self):
+        connection = self.provision(mode="pull")
+        with patch("apps.integrations.services.acres99.requests.post", return_value=Mock(
+            status_code=200, content=b'<Xml ActionStatus="true"><Resp /></Xml>',
+        )):
+            result = sync_connection(connection.pk, manual=True)
+        self.assertEqual(result["status"], "synced")
+        self.assertEqual(result["imported"], 0)
+        connection.refresh_from_db()
+        self.assertIsNotNone(connection.sync_cursor)
+        self.assertEqual(Acres99Receipt.objects.count(), 0)
 
     def test_pull_retries_whole_window_after_unprocessable_query(self):
         connection = self.provision(mode="pull")
