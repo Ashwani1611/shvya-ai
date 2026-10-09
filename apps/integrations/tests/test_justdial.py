@@ -148,7 +148,7 @@ class JustDialIntegrationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"CREATED")
+        self.assertEqual(response.content, b"SUCCESS")
         lead = Lead.objects.get(
             organization=self.organization,
             phone="+919876543210",
@@ -194,7 +194,7 @@ class JustDialIntegrationTests(TestCase):
 
         self.assertEqual(first.status_code, 200)
         self.assertEqual(second.status_code, 200)
-        self.assertEqual(second.content, b"UPDATED")
+        self.assertEqual(second.content, b"SUCCESS")
         self.assertEqual(
             Lead.objects.filter(organization=self.organization).count(),
             1,
@@ -230,7 +230,7 @@ class JustDialIntegrationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"CREATED")
+        self.assertEqual(response.content, b"SUCCESS")
         self.assertTrue(
             Lead.objects.filter(
                 organization=self.organization,
@@ -322,3 +322,187 @@ class JustDialIntegrationTests(TestCase):
             {"mobile": "9876543210"},
         )
         self.assertEqual(response.status_code, 404)
+
+    def test_justdial_postman_contract_creates_lead_with_complete_fields(self):
+        """Exercise the provider POST schema using synthetic contact details."""
+        integration = self.provision()
+        url = reverse(
+            "justdial-webhook",
+            kwargs={"token": integration.webhook_token},
+        )
+        payload = {
+            "leadid": "JD-SYNTHETIC-12345",
+            "leadtype": "category",
+            "prefix": "",
+            "name": "Messaging",
+            "mobile": "9876543210",
+            "phone": "",
+            "email": "jd-test@example.com",
+            "date": "2026-10-08",
+            "category": "Generator Dealer",
+            "area": "Ghatkopar West",
+            "city": "Mumbai",
+            "brancharea": "Apollo Bunder",
+            "dncmobile": 0,
+            "dncphone": 0,
+            "company": "Example Generator Dealers",
+            "pincode": "0",
+            "time": "13:10:11",
+            "branchpin": "400001",
+            "parentid": "PK-DEMO-123",
+            "state": "Maharashtra",
+        }
+        with patch("services.crm.lead_service._schedule_new_lead_welcome") as welcome:
+            response = self.client.post(url, payload, content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"SUCCESS")
+        lead = Lead.objects.get(organization=self.organization, phone="+919876543210")
+        self.assertEqual(lead.name, "Messaging")
+        self.assertEqual(lead.email, "jd-test@example.com")
+        self.assertEqual(lead.lead_source, "justdial")
+        self.assertEqual(lead.pipeline_id, self.pipeline.pk)
+        self.assertEqual(lead.stage_id, self.stage.pk)
+        for key, value in {
+            "justdial_lead_id": "JD-SYNTHETIC-12345",
+            "justdial_lead_type": "category",
+            "justdial_category": "Generator Dealer",
+            "justdial_area": "Ghatkopar West",
+            "justdial_city": "Mumbai",
+            "justdial_state": "Maharashtra",
+            "justdial_branch_area": "Apollo Bunder",
+            "justdial_company": "Example Generator Dealers",
+            "justdial_pincode": "0",
+            "justdial_inquiry_date": "2026-10-08",
+            "justdial_inquiry_time": "13:10:11",
+            "justdial_parent_id": "PK-DEMO-123",
+            "justdial_branch_pin": "400001",
+            "justdial_dnc_mobile": "0",
+            "justdial_dnc_phone": "0",
+        }.items():
+            self.assertEqual(lead.attributes[key], value, key)
+        welcome.assert_not_called()
+        event = JustDialLeadEvent.objects.get(integration=integration)
+        self.assertEqual(event.method, "POST")
+        self.assertEqual(event.status, JustDialLeadEvent.Status.CREATED)
+
+    def test_duplicate_leadid_acknowledged_without_reverting_qualified_lead(self):
+        integration = self.provision()
+        url = reverse("justdial-webhook", kwargs={"token": integration.webhook_token})
+        payload = {
+            "leadid": "JD-RETRY-1",
+            "name": "Asha",
+            "mobile": "9812345678",
+            "city": "Mumbai",
+        }
+        first = self.client.post(url, payload, content_type="application/json")
+        self.assertEqual(first.content, b"SUCCESS")
+        lead = Lead.objects.get(organization=self.organization, phone="+919812345678")
+        qualified = self.pipeline.stages.filter(name="Qualified").first()
+        if qualified is None:
+            qualified = Stage.objects.create(
+                pipeline=self.pipeline,
+                name="Qualified",
+                display_order=99,
+            )
+        lead.stage = qualified
+        lead.save()
+
+        second = self.client.post(
+            url,
+            {**payload, "name": "Different Name", "city": "Delhi"},
+            content_type="application/json",
+        )
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(second.content, b"SUCCESS")
+        lead.refresh_from_db()
+        self.assertEqual(lead.name, "Asha")
+        self.assertEqual(lead.stage_id, qualified.id)
+        self.assertEqual(lead.attributes["justdial_city"], "Mumbai")
+        self.assertEqual(Lead.objects.filter(organization=self.organization).count(), 1)
+        self.assertEqual(
+            JustDialLeadEvent.objects.filter(
+                integration=integration, status=JustDialLeadEvent.Status.IGNORED
+            ).count(),
+            1,
+        )
+
+    def test_new_enquiry_for_existing_contact_preserves_stage_and_original_name(self):
+        integration = self.provision()
+        later = self.pipeline.stages.filter(name="Qualified").first()
+        if later is None:
+            later = Stage.objects.create(
+                pipeline=self.pipeline, name="Qualified", display_order=99
+            )
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=later,
+            name="Customer-provided name",
+            phone="+919876543210",
+            email="existing@example.com",
+            lead_source="external_api",
+        )
+        url = reverse("justdial-webhook", kwargs={"token": integration.webhook_token})
+        response = self.client.post(
+            url,
+            {
+                "leadid": "JD-NEW-ENQUIRY",
+                "mobile": "9876543210",
+                "name": "Messaging",
+                "email": "justdial@example.com",
+                "state": "Delhi",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.content, b"SUCCESS")
+        lead.refresh_from_db()
+        self.assertEqual(lead.stage_id, later.id)
+        self.assertEqual(lead.name, "Customer-provided name")
+        self.assertEqual(lead.email, "existing@example.com")
+        self.assertEqual(lead.lead_source, "external_api")
+        self.assertEqual(lead.attributes["justdial_state"], "Delhi")
+
+    def test_post_uses_fallback_phone_when_mobile_is_missing_or_invalid(self):
+        integration = self.provision()
+        url = reverse("justdial-webhook", kwargs={"token": integration.webhook_token})
+        response = self.client.post(
+            url,
+            {
+                "leadid": "JD-PHONE-FALLBACK",
+                "name": "Fallback",
+                "mobile": "not-a-number",
+                "phone": "9876543210",
+            },
+            content_type="application/json",
+        )
+        self.assertEqual(response.content, b"SUCCESS")
+        self.assertTrue(
+            Lead.objects.filter(
+                organization=self.organization, phone="+919876543210"
+            ).exists()
+        )
+
+    def test_oversized_post_is_rejected_without_creating_lead(self):
+        integration = self.provision()
+        url = reverse("justdial-webhook", kwargs={"token": integration.webhook_token})
+        response = self.client.post(
+            url,
+            {"leadid": "JD-TOO-LARGE", "mobile": "9876543210", "extra": "x" * 263000},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 413)
+        self.assertFalse(Lead.objects.filter(organization=self.organization).exists())
+
+    def test_paused_connection_returns_retryable_status_not_success(self):
+        integration = self.provision()
+        url = reverse("justdial-webhook", kwargs={"token": integration.webhook_token})
+        integration.is_enabled = False
+        integration.save(update_fields=["is_enabled"])
+        response = self.client.post(
+            url,
+            {"leadid": "JD-PAUSED", "mobile": "9876543210"},
+            content_type="application/json",
+        )
+        self.assertEqual(response.status_code, 503)
+        self.assertNotEqual(response.content, b"SUCCESS")
+        self.assertFalse(Lead.objects.filter(organization=self.organization).exists())

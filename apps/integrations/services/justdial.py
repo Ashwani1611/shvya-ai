@@ -5,10 +5,11 @@ from typing import Any
 
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
+from django.db import transaction
 from django.db.models import F
 from django.utils import timezone
 
-from apps.crm.models import AttributeDefinition
+from apps.crm.models import AttributeDefinition, Lead
 from apps.integrations.justdial_models import JustDialIntegration, JustDialLeadEvent
 from services.crm.lead_service import DuplicateLeadError, upsert_lead
 
@@ -35,6 +36,7 @@ JUSTDIAL_ATTRIBUTE_DEFINITIONS = (
     ("JustDial Prefix", "justdial_prefix"),
     ("JustDial Category", "justdial_category"),
     ("JustDial City", "justdial_city"),
+    ("JustDial State", "justdial_state"),
     ("JustDial Area", "justdial_area"),
     ("JustDial Branch Area", "justdial_branch_area"),
     ("JustDial Company", "justdial_company"),
@@ -66,6 +68,7 @@ FIELD_ALIASES = {
     "prefix": ("prefix",),
     "category": ("category", "categoryname", "category_name", "product", "service"),
     "city": ("city",),
+    "state": ("state", "statename", "state_name"),
     "area": ("area", "locality"),
     "branch_area": ("brancharea", "branch_area"),
     "company": ("company", "companyname", "company_name"),
@@ -147,9 +150,20 @@ def normalize_justdial_phone(value: Any, *, default_country_code: str = "91") ->
     elif len(digits) == 11 and digits.startswith("0"):
         digits = f"{country_digits}{digits[-10:]}"
 
-    if len(digits) < 8:
+    # E.164 supports at most 15 digits; reject placeholder and malformed numbers.
+    if not 8 <= len(digits) <= 15:
         return ""
     return f"+{digits}"
+
+
+def _normalized_inbound_phone(payload: dict[str, Any]) -> str:
+    """Try mobile first, then the other phone aliases if a value is unusable."""
+    values = {_normalise_key(key): _string_value(value) for key, value in payload.items()}
+    for alias in FIELD_ALIASES["phone"]:
+        phone = normalize_justdial_phone(values.get(_normalise_key(alias), ""))
+        if phone:
+            return phone
+    return ""
 
 
 def normalize_justdial_email(value: Any) -> str:
@@ -196,6 +210,7 @@ def _lead_attributes(payload: dict[str, Any]) -> dict[str, str]:
         "justdial_prefix": _lookup(payload, "prefix"),
         "justdial_category": _lookup(payload, "category"),
         "justdial_city": _lookup(payload, "city"),
+        "justdial_state": _lookup(payload, "state"),
         "justdial_area": _lookup(payload, "area"),
         "justdial_branch_area": _lookup(payload, "branch_area"),
         "justdial_company": _lookup(payload, "company"),
@@ -233,7 +248,7 @@ def _record_event(
     updates = {
         "received_count": F("received_count") + 1,
         "last_received_at": timezone.now(),
-        "last_error": str(error_message or "")[:500],
+        "last_error": (str(error_message or "")[:500] if status == JustDialLeadEvent.Status.FAILED else ""),
     }
     if status == JustDialLeadEvent.Status.CREATED:
         updates["created_count"] = F("created_count") + 1
@@ -265,17 +280,35 @@ def record_justdial_failure(
     )
 
 
+class JustDialRoutingError(Exception):
+    """The configured organization/pipeline/stage cannot accept leads."""
+
+
+def _validate_routing(integration: JustDialIntegration) -> None:
+    if (
+        not integration.is_provisioned
+        or not integration.organization.is_active
+        or not integration.pipeline.is_active
+        or not integration.stage.is_active
+        or integration.pipeline.organization_id != integration.organization_id
+        or integration.stage.pipeline_id != integration.pipeline_id
+    ):
+        raise JustDialRoutingError(
+            "JustDial destination is not an active stage in this organization."
+        )
+
+
 def process_justdial_lead(
     *,
     integration: JustDialIntegration,
     payload: Any,
-    method: str = "GET",
+    method: str = "POST",
 ):
-    """Create/update one CRM lead from a JustDial push.
+    """Ingest one JustDial push and return (event, lead, created).
 
-    Returns (event, lead, created). Payload validation problems are represented
-    as FAILED events and raised as Django ValidationError so the webhook can
-    return a non-2xx response instead of silently discarding a lead.
+    Successful lead IDs are durable idempotency keys: the event record acts as
+    the receipt, including after a lead is deleted. A row lock on the owning
+    integration serializes concurrent pushes for the same organization.
     """
     cleaned = clean_payload(payload)
     if not integration.is_enabled or not integration.is_provisioned:
@@ -288,7 +321,7 @@ def process_justdial_lead(
         )
         return event, None, False
 
-    phone = normalize_justdial_phone(_lookup(cleaned, "phone"))
+    phone = _normalized_inbound_phone(cleaned)
     if not phone:
         message = "JustDial payload did not contain a CRM-compatible phone number."
         _record_event(
@@ -303,55 +336,133 @@ def process_justdial_lead(
     name = _lookup(cleaned, "name") or "JustDial Lead"
     email = normalize_justdial_email(_lookup(cleaned, "email"))
     attributes = _lead_attributes(cleaned)
+    external_id = _lookup(cleaned, "lead_id")[:160]
 
     try:
-        _ensure_justdial_attribute_definitions(integration.organization)
-        try:
-            lead, created = upsert_lead(
-                organization=integration.organization,
-                pipeline=integration.pipeline,
-                stage=integration.stage,
-                name=name[:150],
-                phone=phone,
-                email=email,
-                attributes=attributes,
-                lead_source="justdial",
-                # A marketplace lead is not itself an inbound WhatsApp session.
-                # Never auto-send the CRM welcome merely because JustDial pushed it.
-                send_welcome=False,
+        with transaction.atomic():
+            # Ensure rotation, disable and replay checks operate on a single,
+            # current integration configuration rather than a stale snapshot.
+            integration = (
+                JustDialIntegration.objects.select_for_update(of=("self",))
+                .select_related("organization", "pipeline", "stage")
+                .get(pk=integration.pk)
             )
-        except DuplicateLeadError:
-            lead, created = upsert_lead(
-                organization=integration.organization,
-                pipeline=integration.pipeline,
-                stage=integration.stage,
-                name=name[:150],
-                phone=phone,
-                email=email,
-                attributes=attributes,
-                lead_source="justdial",
-                send_welcome=False,
+            if not integration.is_enabled or not integration.is_provisioned:
+                event = _record_event(
+                    integration=integration,
+                    payload=cleaned,
+                    method=method,
+                    status=JustDialLeadEvent.Status.IGNORED,
+                    error_message="JustDial integration is not enabled.",
+                )
+                return event, None, False
+            _validate_routing(integration)
+
+            if external_id:
+                receipt = (
+                    JustDialLeadEvent.objects.filter(
+                        integration=integration,
+                        external_lead_id=external_id,
+                        status__in=(
+                            JustDialLeadEvent.Status.CREATED,
+                            JustDialLeadEvent.Status.UPDATED,
+                        ),
+                    )
+                    .select_related("lead")
+                    .first()
+                )
+                if receipt is not None:
+                    event = _record_event(
+                        integration=integration,
+                        payload=cleaned,
+                        method=method,
+                        status=JustDialLeadEvent.Status.IGNORED,
+                        lead=receipt.lead,
+                        error_message="Duplicate JustDial lead ID.",
+                    )
+                    return event, receipt.lead, False
+
+            _ensure_justdial_attribute_definitions(integration.organization)
+            existing = (
+                Lead.objects.select_for_update()
+                .filter(organization=integration.organization, phone=phone)
+                .first()
             )
-    except ValidationError as exc:
-        _record_event(
+
+            # New enquiries for an existing contact must not reset a Qualified
+            # or human-managed lead to the configured incoming stage.
+            # Also preserve names/emails originating from another source.
+            destination_pipeline = None if existing else integration.pipeline
+            destination_stage = None if existing else integration.stage
+            safe_name = (
+                existing.name
+                if existing and existing.lead_source != "justdial"
+                else name if name != "JustDial Lead" or not existing else existing.name
+            )
+            safe_email = (
+                existing.email
+                if existing and existing.lead_source != "justdial" and existing.email
+                else email
+            )
+            try:
+                lead, created = upsert_lead(
+                    organization=integration.organization,
+                    pipeline=destination_pipeline,
+                    stage=destination_stage,
+                    name=safe_name[:150],
+                    phone=phone,
+                    email=safe_email,
+                    attributes=attributes,
+                    lead_source="justdial",
+                    send_welcome=False,
+                )
+            except DuplicateLeadError:
+                # A different lead source may have created this phone between
+                # our lookup and the upsert; retry without changing its route.
+                existing = Lead.objects.filter(
+                    organization=integration.organization,
+                    phone=phone,
+                ).first()
+                lead, created = upsert_lead(
+                    organization=integration.organization,
+                    pipeline=None if existing else integration.pipeline,
+                    stage=None if existing else integration.stage,
+                    name=(
+                        existing.name
+                        if existing and existing.lead_source != "justdial"
+                        else name
+                    )[:150],
+                    phone=phone,
+                    email=(
+                        existing.email
+                        if existing and existing.lead_source != "justdial" and existing.email
+                        else email
+                    ),
+                    attributes=attributes,
+                    lead_source="justdial",
+                    send_welcome=False,
+                )
+
+            status = (
+                JustDialLeadEvent.Status.CREATED
+                if created
+                else JustDialLeadEvent.Status.UPDATED
+            )
+            event = _record_event(
+                integration=integration,
+                payload=cleaned,
+                method=method,
+                status=status,
+                lead=lead,
+            )
+            return event, lead, created
+    except (ValidationError, JustDialRoutingError) as exc:
+        # Record after the atomic block rolls back; otherwise even the failure
+        # event would disappear with the unsuccessful CRM transaction.
+        record_justdial_failure(
             integration=integration,
             payload=cleaned,
             method=method,
-            status=JustDialLeadEvent.Status.FAILED,
             error_message=str(exc),
         )
         raise
-
-    status = (
-        JustDialLeadEvent.Status.CREATED
-        if created
-        else JustDialLeadEvent.Status.UPDATED
-    )
-    event = _record_event(
-        integration=integration,
-        payload=cleaned,
-        method=method,
-        status=status,
-        lead=lead,
-    )
-    return event, lead, created
