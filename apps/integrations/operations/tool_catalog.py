@@ -1251,6 +1251,26 @@ OWN_TOOL_DEFINITIONS.extend(flow_testing_tool_definitions(_tool, _write_properti
 OWN_TOOL_DEFINITIONS.extend(setup_tool_definitions(_tool, _write_properties))
 OWN_TOOL_DEFINITIONS.extend(extended_tool_definitions(_tool, _write_properties))
 
+# Place commonly requested Sales/Vault tools near the top of large MCP catalogs.
+# This is presentation ordering only: the same authorization and capability
+# checks still govern tools/list and tools/call for each identity.
+_PRIORITY_TOOL_NAMES = (
+    "list_sales_templates",
+    "attach_vault_asset_to_sales_template",
+    "upload_sales_template_asset",
+    "upsert_sales_template_branding",
+    "export_vault",
+    "get_vault_asset",
+)
+_priority = {name: index for index, name in enumerate(_PRIORITY_TOOL_NAMES)}
+_front = [item for item in OWN_TOOL_DEFINITIONS if item["name"] in _priority]
+_front.sort(key=lambda item: _priority[item["name"]])
+OWN_TOOL_DEFINITIONS = (
+    OWN_TOOL_DEFINITIONS[:4]
+    + _front
+    + [item for item in OWN_TOOL_DEFINITIONS[4:] if item["name"] not in _priority]
+)
+
 DIAGNOSTIC_DEFINITIONS = []
 for definition in DIAGNOSTIC_TOOL_DEFINITIONS:
     if definition["name"] not in DIAGNOSTIC_TOOL_NAMES:
