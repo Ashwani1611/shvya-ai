@@ -165,6 +165,75 @@ def validate_calendar_configuration(*, identity, arguments):
     )
 
 
+
+def get_calendar_available_slots(*, identity, arguments):
+    """Read real native availability, including booking occupancy and provider busy time."""
+    from datetime import date
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    raw_day = (arguments or {}).get("date")
+    try:
+        day = date.fromisoformat(raw_day)
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("date must use YYYY-MM-DD.") from exc
+    try:
+        slots = available_slots(page=page, local_date=day)
+    except (ValidationError, ValueError) as exc:
+        raise OperationsToolError(f"Cannot calculate Calendar availability: {exc}") from exc
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "date": day.isoformat(), "timezone": page.timezone,
+            "page_status": page.status,
+            "slots": [{"start": slot["start"].isoformat(), "end": slot["end"].isoformat(),
+                       "label": slot["label"]} for slot in slots],
+            "slot_count": len(slots),
+            "google_calendar_connection_present": GoogleCalendarConnection.objects.filter(
+                organization=organization, is_active=True,
+            ).exists(),
+            "booking_created": False,
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+def get_calendar_setup_readiness(*, identity, arguments):
+    """Readiness evidence only; never claim a successful live booking or outbound delivery."""
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        return ToolExecution(
+            data={"ready": False, "page": None, "checks": _configuration_checks(organization),
+                  "real_booking_verified": False, "outbound_delivery_verified": False},
+            capability=CAP_ORGANIZATION_READ, target_type="organization", target_id=str(organization.id),
+        )
+    checks = [check for check in _configuration_checks(organization)
+              if check.get("page_id") in (None, str(page.id))]
+    sequence = CalendarReminderSequence.objects.filter(page=page).first()
+    active_reminders = sequence.steps.filter(enabled=True).count() if sequence else 0
+    if page.status != CalendarPage.Status.PUBLISHED:
+        checks.append({"code": "page_not_published", "severity": "error",
+                       "page_id": str(page.id), "message": "Page is not published."})
+    return ToolExecution(
+        data={
+            "ready": not any(check["severity"] == "error" for check in checks),
+            "page": _page_snapshot(page),
+            "checks": checks,
+            "active_reminder_steps": active_reminders,
+            "google_calendar_connection_present": GoogleCalendarConnection.objects.filter(
+                organization=organization, is_active=True,
+            ).exists(),
+            "real_booking_verified": False,
+            "outbound_delivery_verified": False,
+            "verification_level": "configuration_only",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
