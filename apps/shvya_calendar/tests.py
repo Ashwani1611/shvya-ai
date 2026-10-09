@@ -1167,3 +1167,61 @@ class ShvyaCalendarServiceTests(TestCase):
             1,
         )
         mocked_create_event.assert_called_once()
+
+    @patch("apps.shvya_calendar.booking_services.schedule_booking_reminders")
+    @patch("apps.shvya_calendar.booking_services.create_booking_event")
+    @patch("apps.shvya_calendar.booking_services.available_slots")
+    def test_isolated_booking_acceptance_creates_one_row_without_external_effects(
+        self, mocked_slots, mocked_google, mocked_reminders,
+    ):
+        """Exercise the real booking transaction within Django's rolled-back test DB."""
+        lead = Lead.objects.create(
+            organization=self.organization,
+            pipeline=self.pipeline,
+            stage=self.stage,
+            name="Isolated Booking Test",
+            phone="+918222222222",
+            lead_source="shvya_calendar",
+        )
+        submission = CalendarSubmission.objects.create(
+            organization=self.organization,
+            page=self.page,
+            page_version=self.version,
+            lead=lead,
+            status=CalendarSubmission.Status.LEAD_CREATED,
+            submitted_data={},
+            normalized_data={"name": lead.name, "mobile": lead.phone},
+        )
+        # PHONE meeting does not require a provider event. Both possible
+        # external side-effect integrations are patched and explicitly asserted.
+        self.page.meeting_location = CalendarPage.MeetingLocation.PHONE
+        self.page.host = None
+        self.page.save(update_fields=["meeting_location", "host", "updated_at"])
+        slot_start = (timezone.now() + timedelta(days=2)).replace(second=0, microsecond=0)
+        mocked_slots.return_value = [{
+            "start": slot_start,
+            "end": slot_start + timedelta(minutes=self.page.slot_duration_minutes),
+            "label": "Test slot",
+        }]
+
+        booking = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+        repeated = book_slot(
+            page=self.page,
+            submission=submission,
+            slot_start_iso=slot_start.isoformat(),
+        )
+
+        self.assertEqual(booking.id, repeated.id)
+        self.assertEqual(booking.organization_id, self.organization.id)
+        self.assertEqual(booking.lead_id, lead.id)
+        self.assertEqual(booking.page_id, self.page.id)
+        self.assertEqual(
+            CalendarBooking.objects.filter(submission=submission).count(), 1
+        )
+        mocked_google.assert_not_called()
+        mocked_reminders.assert_called_once()
+
