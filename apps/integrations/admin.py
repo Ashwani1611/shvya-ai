@@ -4,6 +4,9 @@ from apps.integrations.models import (
     EmailConfiguration,
     JustDialIntegration,
     JustDialLeadEvent,
+    Acres99Integration,
+    Acres99Receipt,
+    Acres99Event,
     MetaLeadForm,
     MetaLeadPage,
     WebhookConfiguration,
@@ -158,3 +161,30 @@ class JustDialLeadEventAdmin(admin.ModelAdmin):
         "error_message",
         "created_at",
     )
+
+
+@admin.register(Acres99Integration)
+class Acres99IntegrationAdmin(admin.ModelAdmin):
+    list_display = ("organization", "mode", "pipeline", "stage", "is_enabled", "last_received_at", "last_synced_at")
+    list_filter = ("mode", "is_enabled")
+    search_fields = ("organization__name",)
+    readonly_fields = ("webhook_token", "encrypted_username", "encrypted_password", "sync_cursor",
+                       "last_poll_at", "last_received_at", "last_synced_at", "last_error",
+                       "received_count", "created_count", "linked_count", "failed_count",
+                       "poll_hour_start", "poll_hour_count", "requested_at", "provisioned_at",
+                       "created_at", "updated_at")
+
+
+@admin.register(Acres99Receipt)
+class Acres99ReceiptAdmin(admin.ModelAdmin):
+    list_display = ("integration", "external_query_id", "direction", "property_id", "received_at")
+    search_fields = ("external_query_id", "property_id", "integration__organization__name")
+    readonly_fields = ("integration", "external_query_id", "direction", "property_id", "lead", "received_at")
+
+
+@admin.register(Acres99Event)
+class Acres99EventAdmin(admin.ModelAdmin):
+    list_display = ("integration", "external_query_id", "direction", "status", "created_at")
+    list_filter = ("direction", "status")
+    search_fields = ("external_query_id", "integration__organization__name")
+    readonly_fields = ("integration", "external_query_id", "direction", "status", "lead", "error_code", "created_at")

@@ -90,6 +90,13 @@ CONNECT_HUB_GROUPS = [
                 "url_name": "crm-connect-hub-indiamart",
                 "description": "Receive IndiaMART leads directly in your Shvya CRM.",
             },
+            {
+                "slug": "99acres",
+                "name": "99acres",
+                "icon": "ti-building-community",
+                "url_name": "crm-connect-hub-99acres",
+                "description": "Capture property enquiries from 99acres by Push webhook or scheduled Pull.",
+            },
         ],
     },
     {
