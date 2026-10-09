@@ -30,6 +30,10 @@ The dashboard and Windows computer-control service are **not prerequisites** for
 6. Confirm cancellation suppresses pending reminders and verify provider synchronization after state changes.
 7. Separate configuration readiness from a real booking acceptance test.
 
+## Acceptance test boundary
+
+The isolated Django booking regression test exercises the actual `book_slot` transaction in the test database, with Google event creation and reminder scheduling mocked. It is **not** a live production MCP tool or a successful customer booking proof. Do not create synthetic leads/submissions or book customer slots in production merely to validate a page. For live acceptance, require an explicitly authorized test organization and a separate no-send integration environment.
+
 ## Guardrails
 
 Do not invent slots from a diary or external calendar not connected to the organization. Do not mark a booking confirmed merely because a requested time is syntactically valid.
