@@ -18,6 +18,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "get_calendar_setup_readiness",
             "inspect_calendar_public_link",
             "probe_calendar_public_https",
+            "upload_calendar_logo",
             "get_calendar_delivery_evidence",
             "validate_calendar_configuration",
             "create_calendar_page",
@@ -55,6 +56,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
     def test_production_mutations_advertise_write_capabilities(self):
         self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
         self.assertEqual(TOOL_CAPABILITIES["create_calendar_page"], "calendar.config.write")
+        self.assertEqual(TOOL_CAPABILITIES["upload_calendar_logo"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_reminder"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_configuration"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["disconnect_integration"], "integration.lifecycle.write")
