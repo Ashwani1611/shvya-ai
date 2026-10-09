@@ -376,9 +376,9 @@ def upload_calendar_logo(*, identity, arguments):
         raise OperationsToolError("image_base64 is not valid base64.") from exc
     if not raw or len(raw) > 2 * 1024 * 1024:
         raise OperationsToolError("Image must be between 1 byte and 2 MB.")
-    if raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
         extension = "png"
-    elif raw.startswith(b"\\xff\\xd8\\xff"):
+    elif raw.startswith(b"\xff\xd8\xff"):
         extension = "jpg"
     elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
         extension = "webp"
