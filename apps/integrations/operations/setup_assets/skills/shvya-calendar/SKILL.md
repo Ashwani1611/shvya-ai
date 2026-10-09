@@ -7,6 +7,18 @@ description: Configure, validate and troubleshoot Shvya Calendar booking pages, 
 
 Own booking configuration and booking-state operations exposed through Operations MCP.
 
+## Native MCP first: complete page setup
+
+The dashboard and Windows computer-control service are **not prerequisites** for booking-page creation. For a selected tenant, use the live tool catalog and verify that `calendar.config.write` is **effective**, not merely allowed by policy. When missing, report the precise missing OAuth grant and request fresh authorization; never claim that a browser connection is required. An older deployed MCP may still lack tools even when this skill documents them.
+
+1. Call `get_capability_discovery`, then `get_calendar_configuration`. Select the correct organization explicitly and check effective permissions.
+2. If no page exists, call `create_calendar_page` (name, optional slug and type, reason, dry_run). Inspect the proposal/required approval, execute only when authorized, then read back the created draft page ID.
+3. Use `upsert_calendar_configuration` to set name, branding (`logo_url` must be an existing HTTPS image asset; direct binary uploads are not supported here), accent color, timezone, availability, duration, notice, capacity, CRM pipeline/stage and host. Slug changes require a draft/unpublished page. Check that IDs belong to the selected tenant. Set `status=published` only after validating required fields and approval.
+4. For each configured email/WhatsApp reminder, use `upsert_calendar_reminder`; a reminder definition does **not** prove transport delivery. Read back configuration and inspect `validate_calendar_configuration` warnings after authoring.
+5. Return the actual `public_url` from `get_calendar_configuration` or the mutation response. Do not guess a URL from a slug. This is URL construction, not an HTTP availability test.
+6. For existing bookings use `verify_booking` for booking status, provider synchronization and recorded reminder-delivery state. Do **not** describe configuration validation as a completed real-world acceptance booking. A real customer booking and provider delivery need separate authorized end-to-end testing and evidence.
+7. If no Google Calendar connection is configured, state that external provider busy-time synchronization cannot be verified; native SHVYA availability can still be configured. Do not invent connected accounts or claim provider delivery.
+
 ## Workflow
 
 1. Verify tenant and read `get_calendar_configuration` plus relevant integration lifecycle/health.
