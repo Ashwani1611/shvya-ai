@@ -60,6 +60,8 @@ from apps.integrations.operations.tools.workflows import (
 from apps.integrations.operations.tools.calendar import (
     create_calendar_page,
     get_calendar_configuration,
+    get_calendar_available_slots,
+    get_calendar_setup_readiness,
     reschedule_booking_operation,
     update_booking_status,
     upsert_calendar_configuration,
@@ -126,6 +128,8 @@ EXTENDED_HANDLERS = {
     "simulate_workflow": simulate_workflow,
     "simulate_cadence": simulate_cadence,
     "get_calendar_configuration": get_calendar_configuration,
+    "get_calendar_available_slots": get_calendar_available_slots,
+    "get_calendar_setup_readiness": get_calendar_setup_readiness,
     "create_calendar_page": create_calendar_page,
     "validate_calendar_configuration": validate_calendar_configuration,
     "upsert_calendar_configuration": upsert_calendar_configuration,
