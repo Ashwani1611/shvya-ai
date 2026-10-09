@@ -438,6 +438,58 @@ def upload_calendar_logo(*, identity, arguments):
     )
 
 
+
+def validate_calendar_booking_acceptance(*, identity, arguments):
+    """Non-mutating preflight of real slot constraints; not a completed booking."""
+    from datetime import date
+    from apps.shvya_calendar.booking_services import _has_google_sync
+
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page not found in this organization.")
+    raw_date = (arguments or {}).get("date")
+    try:
+        local_day = date.fromisoformat(raw_date)
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("date must use YYYY-MM-DD.") from exc
+    checks = []
+    def record(code, passed, message):
+        checks.append({"code": code, "passed": bool(passed), "message": message})
+    record("page_published", page.status == CalendarPage.Status.PUBLISHED,
+           "Booking page must be published.")
+    record("crm_pipeline", bool(page.pipeline_id), "Booking page must have a CRM pipeline.")
+    record("crm_stage", bool(page.stage_id), "Booking page must have a CRM stage.")
+    record("slot_configuration", page.slot_duration_minutes >= 5 and page.bookings_per_slot >= 1,
+           "Slot duration must be at least five minutes and capacity positive.")
+    record("google_sync_required", True,
+           "Google event synchronization is expected." if _has_google_sync(page)
+           else "Google event synchronization is not configured; native booking may still work.")
+    try:
+        slots = available_slots(page=page, local_date=local_day)
+        record("bookable_slots", bool(slots), "At least one date-specific bookable slot is needed.")
+    except (ValidationError, ValueError) as exc:
+        slots = []
+        record("bookable_slots", False, f"Cannot calculate available slots: {exc}")
+    sequence = CalendarReminderSequence.objects.filter(page=page).first()
+    count = sequence.steps.filter(enabled=True).count() if sequence else 0
+    record("reminders_configured", count > 0, "At least one enabled reminder is recommended.")
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "date": local_day.isoformat(),
+            "checks": checks,
+            "preflight_passed": all(item["passed"] for item in checks if item["code"] != "reminders_configured"),
+            "slot_count": len(slots),
+            "example_slot_start": slots[0]["start"].isoformat() if slots else None,
+            "real_booking_created": False, "lead_created": False,
+            "provider_event_created": False, "reminders_sent": False,
+            "evidence_level": "non_mutating_booking_preflight",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
