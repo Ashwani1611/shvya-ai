@@ -384,6 +384,18 @@ def upload_calendar_logo(*, identity, arguments):
         extension = "webp"
     else:
         raise OperationsToolError("Only PNG, JPEG and WebP image files are supported.")
+    # Decode and verify the complete image before it is persisted. Reject oversized pixels.
+    from io import BytesIO
+    from PIL import Image, UnidentifiedImageError
+    try:
+        with Image.open(BytesIO(raw)) as image:
+            if image.width * image.height > 16_000_000:
+                raise OperationsToolError("Logo image dimensions are too large.")
+            if image.format not in {"PNG", "JPEG", "WEBP"}:
+                raise OperationsToolError("Unsupported encoded image format.")
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise OperationsToolError("Image data is invalid or damaged.") from exc
     digest = hashlib.sha256(raw).hexdigest()
     proposal = {"page_id": str(page.id), "image_sha256": digest,
                 "byte_count": len(raw), "extension": extension,
