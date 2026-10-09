@@ -38,6 +38,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "upsert_commitment",
             "list_sales_templates",
             "upsert_sales_template_branding",
+            "upload_sales_template_asset",
             "get_team_settings",
             "upsert_team_settings",
         }
@@ -56,6 +57,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
 
     def test_production_mutations_advertise_write_capabilities(self):
         self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
+        self.assertEqual(TOOL_CAPABILITIES["upload_sales_template_asset"], "sales.template.write")
         self.assertEqual(TOOL_CAPABILITIES["create_calendar_page"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upload_calendar_logo"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_reminder"], "calendar.config.write")
