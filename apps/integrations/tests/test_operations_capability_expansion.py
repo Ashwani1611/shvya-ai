@@ -19,6 +19,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "inspect_calendar_public_link",
             "probe_calendar_public_https",
             "upload_calendar_logo",
+            "validate_calendar_booking_acceptance",
             "get_calendar_delivery_evidence",
             "validate_calendar_configuration",
             "create_calendar_page",
@@ -48,7 +49,7 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             self.assertFalse(schema.get("additionalProperties", True))
 
     def test_calendar_read_tools_do_not_grant_write_capabilities(self):
-        for name in ("get_calendar_available_slots", "get_calendar_setup_readiness", "inspect_calendar_public_link", "get_calendar_delivery_evidence", "probe_calendar_public_https"):
+        for name in ("get_calendar_available_slots", "get_calendar_setup_readiness", "inspect_calendar_public_link", "get_calendar_delivery_evidence", "probe_calendar_public_https", "validate_calendar_booking_acceptance"):
             self.assertEqual(TOOL_CAPABILITIES[name], "organization.read")
             self.assertFalse(TOOL_INPUT_SCHEMAS[name].get("additionalProperties", True))
         self.assertEqual(TOOL_INPUT_SCHEMAS["get_calendar_available_slots"]["required"], ["page_id", "date"])
