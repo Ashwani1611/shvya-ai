@@ -14,6 +14,13 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "get_capability_discovery",
             "get_production_trace",
             "get_calendar_configuration",
+            "get_calendar_available_slots",
+            "get_calendar_setup_readiness",
+            "inspect_calendar_public_link",
+            "probe_calendar_public_https",
+            "upload_calendar_logo",
+            "validate_calendar_booking_acceptance",
+            "get_calendar_delivery_evidence",
             "validate_calendar_configuration",
             "create_calendar_page",
             "upsert_calendar_configuration",
@@ -41,9 +48,16 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             self.assertEqual(schema["type"], "object")
             self.assertFalse(schema.get("additionalProperties", True))
 
+    def test_calendar_read_tools_do_not_grant_write_capabilities(self):
+        for name in ("get_calendar_available_slots", "get_calendar_setup_readiness", "inspect_calendar_public_link", "get_calendar_delivery_evidence", "probe_calendar_public_https", "validate_calendar_booking_acceptance"):
+            self.assertEqual(TOOL_CAPABILITIES[name], "organization.read")
+            self.assertFalse(TOOL_INPUT_SCHEMAS[name].get("additionalProperties", True))
+        self.assertEqual(TOOL_INPUT_SCHEMAS["get_calendar_available_slots"]["required"], ["page_id", "date"])
+
     def test_production_mutations_advertise_write_capabilities(self):
         self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
         self.assertEqual(TOOL_CAPABILITIES["create_calendar_page"], "calendar.config.write")
+        self.assertEqual(TOOL_CAPABILITIES["upload_calendar_logo"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_reminder"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["upsert_calendar_configuration"], "calendar.config.write")
         self.assertEqual(TOOL_CAPABILITIES["disconnect_integration"], "integration.lifecycle.write")

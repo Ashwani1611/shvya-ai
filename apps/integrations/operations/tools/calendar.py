@@ -165,6 +165,331 @@ def validate_calendar_configuration(*, identity, arguments):
     )
 
 
+
+def get_calendar_available_slots(*, identity, arguments):
+    """Read real native availability, including booking occupancy and provider busy time."""
+    from datetime import date
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    raw_day = (arguments or {}).get("date")
+    try:
+        day = date.fromisoformat(raw_day)
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("date must use YYYY-MM-DD.") from exc
+    try:
+        slots = available_slots(page=page, local_date=day)
+    except (ValidationError, ValueError) as exc:
+        raise OperationsToolError(f"Cannot calculate Calendar availability: {exc}") from exc
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "date": day.isoformat(), "timezone": page.timezone,
+            "page_status": page.status,
+            "slots": [{"start": slot["start"].isoformat(), "end": slot["end"].isoformat(),
+                       "label": slot["label"]} for slot in slots],
+            "slot_count": len(slots),
+            "google_calendar_connection_present": GoogleCalendarConnection.objects.filter(
+                organization=organization, is_active=True,
+            ).exists(),
+            "booking_created": False,
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+def get_calendar_setup_readiness(*, identity, arguments):
+    """Readiness evidence only; never claim a successful live booking or outbound delivery."""
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        return ToolExecution(
+            data={"ready": False, "page": None, "checks": _configuration_checks(organization),
+                  "real_booking_verified": False, "outbound_delivery_verified": False},
+            capability=CAP_ORGANIZATION_READ, target_type="organization", target_id=str(organization.id),
+        )
+    checks = [check for check in _configuration_checks(organization)
+              if check.get("page_id") in (None, str(page.id))]
+    sequence = CalendarReminderSequence.objects.filter(page=page).first()
+    active_reminders = sequence.steps.filter(enabled=True).count() if sequence else 0
+    if page.status != CalendarPage.Status.PUBLISHED:
+        checks.append({"code": "page_not_published", "severity": "error",
+                       "page_id": str(page.id), "message": "Page is not published."})
+    return ToolExecution(
+        data={
+            "ready": not any(check["severity"] == "error" for check in checks),
+            "page": _page_snapshot(page),
+            "checks": checks,
+            "active_reminder_steps": active_reminders,
+            "google_calendar_connection_present": GoogleCalendarConnection.objects.filter(
+                organization=organization, is_active=True,
+            ).exists(),
+            "real_booking_verified": False,
+            "outbound_delivery_verified": False,
+            "verification_level": "configuration_only",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+
+def inspect_calendar_public_link(*, identity, arguments):
+    """Check published state and Django route resolution without issuing an HTTP request."""
+    from django.urls import resolve, Resolver404
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    snapshot = _page_snapshot(page)
+    try:
+        match = resolve(snapshot["public_path"])
+        route_resolves = match.view_name == "shvya_calendar_public:page"
+    except Resolver404:
+        route_resolves = False
+    return ToolExecution(
+        data={"page_id": str(page.id), "public_url": snapshot["public_url"],
+              "public_path": snapshot["public_path"],
+              "published": page.status == CalendarPage.Status.PUBLISHED,
+              "route_resolves": route_resolves,
+              "public_http_test_performed": False,
+              "external_reachability_verified": False,
+              "evidence_level": "database_and_local_route"},
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+
+def probe_calendar_public_https(*, identity, arguments):
+    """Bounded external GET against a trusted SHVYA booking URL; no redirects or arbitrary hosts."""
+    import urllib.error
+    import urllib.request
+    from urllib.parse import urlsplit
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    snapshot = _page_snapshot(page)
+    url = snapshot["public_url"]
+    target = urlsplit(url)
+    approved_hosts = {"shvya-ai.com", "www.shvya-ai.com", "dashboard.shvya-ai.com"}
+    if (target.scheme != "https" or target.hostname not in approved_hosts
+            or target.username or target.password or target.port is not None
+            or target.query or target.fragment):
+        raise OperationsToolError("Public HTTPS probe is restricted to approved SHVYA hosts.")
+    if target.path != snapshot["public_path"]:
+        raise OperationsToolError("Public HTTPS path does not match the canonical Calendar route.")
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "SHVYA-Calendar-MCP-Health/1.0", "Accept": "text/html"},
+        method="GET",
+    )
+    status_code = None
+    error = None
+    try:
+        with opener.open(request, timeout=4) as response:
+            status_code = response.status
+            response.read(1024)
+    except urllib.error.HTTPError as exc:
+        status_code = exc.code
+        error = "HTTP status indicates that the page could not be served."
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        error = type(exc).__name__
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "public_url": url,
+            "published": page.status == CalendarPage.Status.PUBLISHED,
+            "http_test_performed": True, "status_code": status_code,
+            "reachable": status_code == 200,
+            "error": error,
+            "redirects_followed": False,
+            "booking_created": False, "recipient_delivery_verified": False,
+            "evidence_level": "external_http_response",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+def get_calendar_delivery_evidence(*, identity, arguments):
+    """Return database-backed reminder delivery evidence for one tenant-owned booking."""
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    booking = CalendarBooking.objects.filter(
+        pk=_uuid((arguments or {}).get("booking_id"), field="booking_id"),
+        organization=organization,
+    ).first()
+    if booking is None:
+        raise OperationsToolError("Booking not found in this organization.")
+    deliveries = CalendarReminderDelivery.objects.filter(
+        booking=booking,
+    ).select_related("step").order_by("due_at", "id")
+    evidence = [{
+        "delivery_id": str(item.id),
+        "channel": item.step.channel,
+        "status": item.status,
+        "due_at": item.due_at.isoformat(),
+        "sent_at": item.sent_at.isoformat() if item.sent_at else None,
+        "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+        "error": item.error[:500],
+    } for item in deliveries]
+    return ToolExecution(
+        data={"booking_id": str(booking.id), "booking_status": booking.status,
+              "delivery_records": evidence, "delivery_record_count": len(evidence),
+              "sent_record_count": sum(item["status"] == CalendarReminderDelivery.Status.SENT for item in evidence),
+              "recipient_receipt_verified": False,
+              "external_transport_probe_performed": False,
+              "evidence_level": "recorded_delivery_state"},
+        capability=CAP_ORGANIZATION_READ, target_type="booking", target_id=str(booking.id),
+    )
+
+
+
+def upload_calendar_logo(*, identity, arguments):
+    """Upload an approved PNG/JPEG/WebP through the page's configured Django storage."""
+    import base64
+    import binascii
+    import hashlib
+    from django.core.files.base import ContentFile
+
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE,
+        tool_name="upload_calendar_logo", arguments=arguments,
+    )
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page not found in this organization.")
+    payload = (arguments or {}).get("image_base64")
+    if not isinstance(payload, str) or not payload or len(payload) > 2_800_000:
+        raise OperationsToolError("image_base64 must encode an image no larger than 2 MB.")
+    try:
+        raw = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise OperationsToolError("image_base64 is not valid base64.") from exc
+    if not raw or len(raw) > 2 * 1024 * 1024:
+        raise OperationsToolError("Image must be between 1 byte and 2 MB.")
+    if raw.startswith(b"\x89PNG\r\n\x1a\n"):
+        extension = "png"
+    elif raw.startswith(b"\xff\xd8\xff"):
+        extension = "jpg"
+    elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        extension = "webp"
+    else:
+        raise OperationsToolError("Only PNG, JPEG and WebP image files are supported.")
+    # Decode and verify the complete image before it is persisted. Reject oversized pixels.
+    from io import BytesIO
+    from PIL import Image, UnidentifiedImageError
+    try:
+        with Image.open(BytesIO(raw)) as image:
+            if image.width * image.height > 16_000_000:
+                raise OperationsToolError("Logo image dimensions are too large.")
+            if image.format not in {"PNG", "JPEG", "WEBP"}:
+                raise OperationsToolError("Unsupported encoded image format.")
+            image.verify()
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise OperationsToolError("Image data is invalid or damaged.") from exc
+    digest = hashlib.sha256(raw).hexdigest()
+    proposal = {"page_id": str(page.id), "image_sha256": digest,
+                "byte_count": len(raw), "extension": extension,
+                "previous_logo": page.logo_file.name if page.logo_file else None}
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(
+            data={"status": "DRY_RUN", "proposal": proposal, "outbound_messages": 0,
+                  "approval_required": approval_required(
+                      role=identity.role, organization=organization,
+                      capability=CAP_CALENDAR_CONFIG_WRITE)},
+            capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+            reason=reason, outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={"proposal_digest": _proposal_digest(proposal)},
+        )
+    # Full-clean before storing to reduce orphan objects if the page is invalid.
+    page.full_clean()
+    previous_name = page.logo_file.name if page.logo_file else ""
+    filename = f"mcp-logo-{digest[:16]}.{extension}"
+    page.logo_file.save(filename, ContentFile(raw), save=False)
+    page.logo_url = ""
+    try:
+        page.full_clean()
+        page.save(update_fields=["logo_file", "logo_url", "updated_at"])
+    except Exception:
+        page.logo_file.storage.delete(page.logo_file.name)
+        raise
+    if previous_name and previous_name != page.logo_file.name:
+        transaction.on_commit(
+            lambda storage=page.logo_file.storage, name=previous_name: storage.delete(name)
+        )
+    return ToolExecution(
+        data={"status": "UPDATED", "page_id": str(page.id),
+              "logo_stored": bool(page.logo_file), "image_sha256": digest,
+              "byte_count": len(raw), "storage_backend": type(page.logo_file.storage).__name__,
+              "verification": "storage_write_completed", "outbound_messages": 0},
+        capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+        reason=reason, audit_summary={"image_sha256": digest, "byte_count": len(raw)},
+    )
+
+
+
+def validate_calendar_booking_acceptance(*, identity, arguments):
+    """Non-mutating preflight of real slot constraints; not a completed booking."""
+    from datetime import date
+    from apps.shvya_calendar.booking_services import _has_google_sync
+
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page not found in this organization.")
+    raw_date = (arguments or {}).get("date")
+    try:
+        local_day = date.fromisoformat(raw_date)
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("date must use YYYY-MM-DD.") from exc
+    checks = []
+    def record(code, passed, message):
+        checks.append({"code": code, "passed": bool(passed), "message": message})
+    record("page_published", page.status == CalendarPage.Status.PUBLISHED,
+           "Booking page must be published.")
+    record("crm_pipeline", bool(page.pipeline_id), "Booking page must have a CRM pipeline.")
+    record("crm_stage", bool(page.stage_id), "Booking page must have a CRM stage.")
+    record("slot_configuration", page.slot_duration_minutes >= 5 and page.bookings_per_slot >= 1,
+           "Slot duration must be at least five minutes and capacity positive.")
+    record("google_sync_required", True,
+           "Google event synchronization is expected." if _has_google_sync(page)
+           else "Google event synchronization is not configured; native booking may still work.")
+    try:
+        slots = available_slots(page=page, local_date=local_day)
+        record("bookable_slots", bool(slots), "At least one date-specific bookable slot is needed.")
+    except (ValidationError, ValueError) as exc:
+        slots = []
+        record("bookable_slots", False, f"Cannot calculate available slots: {exc}")
+    sequence = CalendarReminderSequence.objects.filter(page=page).first()
+    count = sequence.steps.filter(enabled=True).count() if sequence else 0
+    record("reminders_configured", count > 0, "At least one enabled reminder is recommended.")
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "date": local_day.isoformat(),
+            "checks": checks,
+            "preflight_passed": all(item["passed"] for item in checks if item["code"] != "reminders_configured"),
+            "slot_count": len(slots),
+            "example_slot_start": slots[0]["start"].isoformat() if slots else None,
+            "real_booking_created": False, "lead_created": False,
+            "provider_event_created": False, "reminders_sent": False,
+            "evidence_level": "non_mutating_booking_preflight",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
@@ -285,7 +610,7 @@ def upsert_calendar_configuration(*, identity, arguments):
     dry_run, reason = _write_gate(identity=identity, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE, tool_name="upsert_calendar_configuration", arguments=arguments)
     page = _page_for(organization, (arguments or {}).get("page_id"))
     if page is None:
-        raise OperationsToolError("Create a Calendar page in the SHVYA dashboard before configuring it through Operations.")
+        raise OperationsToolError("No Calendar page exists for this organization. Use create_calendar_page through Operations MCP first, then upsert_calendar_configuration to configure and publish it.")
     after = _calendar_changes(page, (arguments or {}).get("changes"))
     proposal = {"page_id": str(page.id), "before": _page_snapshot(page), "after": after}
     if not dry_run:
