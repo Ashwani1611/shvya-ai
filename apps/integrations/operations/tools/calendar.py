@@ -285,7 +285,7 @@ def upsert_calendar_configuration(*, identity, arguments):
     dry_run, reason = _write_gate(identity=identity, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE, tool_name="upsert_calendar_configuration", arguments=arguments)
     page = _page_for(organization, (arguments or {}).get("page_id"))
     if page is None:
-        raise OperationsToolError("Create a Calendar page in the SHVYA dashboard before configuring it through Operations.")
+        raise OperationsToolError("No Calendar page exists for this organization. Use create_calendar_page through Operations MCP first, then upsert_calendar_configuration to configure and publish it.")
     after = _calendar_changes(page, (arguments or {}).get("changes"))
     proposal = {"page_id": str(page.id), "before": _page_snapshot(page), "after": after}
     if not dry_run:
