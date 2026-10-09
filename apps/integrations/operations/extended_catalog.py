@@ -39,6 +39,7 @@ def extended_tool_definitions(tool, write_properties):
         tool("run_acceptance_suite", "Run no-send acceptance suite", "Exercise qualification, multilingual, refusal, pricing, handoff, opt-out, Cadence, Workflow and delivery readiness without provider calls."),
         tool("list_commitments", "List operational commitments", "Return follow-up commitments from onboarding, integrations, audits and acceptance blockers.", {"status": {"type": "string", "enum": ["open", "in_progress", "blocked", "completed", "cancelled"]}}),
         tool("upsert_commitment", "Track operational commitment", "Dry-run or create/update an operational task record; it cannot send or activate automation.", w({"commitment_id": {"type": "string", "format": "uuid"}, "data": {"type": "object"}}), ["data", "reason"], read_only=False),
+        tool("attach_vault_asset_to_sales_template", "Copy private Vault image into Sales template", "Select a tenant-owned Vault file entry and securely copy its validated image into a Sales template logo/signature, without public URLs or document sends.", w({"template_id": {"type":"string","format":"uuid"}, "vault_entry_id": {"type":"string","format":"uuid"}, "asset_type": {"type":"string","enum":["logo","signature"]}}), ["template_id","vault_entry_id","asset_type","reason"], read_only=False),
         tool("upload_sales_template_asset", "Upload Sales template logo or signature", "Upload validated base64 PNG/JPEG/WebP asset through configured file storage for one organization-owned template; dry-run and approval required.", w({"template_id": {"type": "string", "format": "uuid"}, "asset_type": {"type": "string", "enum": ["logo", "signature"]}, "image_base64": {"type": "string", "maxLength": 7000000}}), ["template_id", "asset_type", "image_base64", "reason"], read_only=False),
         tool("list_sales_templates", "List Sales templates", "List organization-owned Sales templates and branding states."),
         tool("upsert_sales_template_branding", "Configure Sales template branding", "Dry-run or set branding fields and HTTPS image asset URLs on an existing organization-owned Sales template. Does not send documents.", w({"template_id": {"type":"string","format":"uuid"}, "changes": {"type":"object","additionalProperties":False,"properties":{"logo_url":{"type":"string","maxLength":2048},"signature_url":{"type":"string","maxLength":2048},"accent_color":{"type":"string","pattern":"^#[0-9A-Fa-f]{6}$"},"header_text":{"type":"string","maxLength":255},"footer_text":{"type":"string","maxLength":4000}}}}), ["template_id","changes","reason"], read_only=False),
@@ -76,6 +77,7 @@ EXTENDED_TOOL_CAPABILITIES = {
     "list_sales_templates": CAP_ORGANIZATION_READ,
     "upsert_sales_template_branding": CAP_SALES_TEMPLATE_WRITE,
     "upload_sales_template_asset": CAP_SALES_TEMPLATE_WRITE,
+    "attach_vault_asset_to_sales_template": CAP_SALES_TEMPLATE_WRITE,
     "get_team_settings": CAP_ORGANIZATION_READ,
     "upsert_team_settings": CAP_TEAM_SETTINGS_WRITE,
 }

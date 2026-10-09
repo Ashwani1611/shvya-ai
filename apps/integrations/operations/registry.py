@@ -86,7 +86,7 @@ from apps.integrations.operations.tools.onboarding import (
     prepare_account_onboarding,
 )
 from apps.integrations.operations.tools.traces import get_production_trace
-from apps.integrations.operations.tools.sales_branding import list_sales_templates, upsert_sales_template_branding, upload_sales_template_asset
+from apps.integrations.operations.tools.sales_branding import list_sales_templates, upsert_sales_template_branding, upload_sales_template_asset, attach_vault_asset_to_sales_template
 from apps.integrations.operations.tools.team_settings import get_team_settings, upsert_team_settings
 
 
@@ -159,6 +159,7 @@ EXTENDED_HANDLERS = {
     "list_sales_templates": list_sales_templates,
     "upsert_sales_template_branding": upsert_sales_template_branding,
     "upload_sales_template_asset": upload_sales_template_asset,
+    "attach_vault_asset_to_sales_template": attach_vault_asset_to_sales_template,
     "get_team_settings": get_team_settings,
     "upsert_team_settings": upsert_team_settings,
 }
