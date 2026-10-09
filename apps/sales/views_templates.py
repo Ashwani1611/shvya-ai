@@ -55,6 +55,7 @@ from apps.sales.services import (
 from .views_documents import _document_type, _organization
 
 
+@crm_login_required
 def sales_template_list_view(request):
     if not is_sales_admin(request.crm_user):
         return HttpResponseForbidden(
