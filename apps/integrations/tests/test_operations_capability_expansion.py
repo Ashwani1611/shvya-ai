@@ -56,6 +56,27 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             self.assertFalse(TOOL_INPUT_SCHEMAS[name].get("additionalProperties", True))
         self.assertEqual(TOOL_INPUT_SCHEMAS["get_calendar_available_slots"]["required"], ["page_id", "date"])
 
+    def test_sales_vault_operations_appear_early_for_authorized_superadmin(self):
+        from apps.integrations.operations.tool_catalog import (
+            TOOL_DEFINITIONS, _tools_for_identity,
+        )
+
+        class Actor:
+            role = "SHVYA_SUPERADMIN"
+            scopes = {"operations.read", "operations.write"}
+            granted_capabilities = [
+                "sales.template.write", "organization.read", "vault.read",
+            ]
+            active_organization = None
+
+        listed = [item["name"] for item in _tools_for_identity(Actor())]
+        self.assertIn("attach_vault_asset_to_sales_template", listed)
+        self.assertLess(listed.index("attach_vault_asset_to_sales_template"), 12)
+        self.assertIn("upload_sales_template_asset", listed)
+        self.assertIn("list_sales_templates", listed)
+        all_names = [item["name"] for item in TOOL_DEFINITIONS]
+        self.assertEqual(len(all_names), len(set(all_names)))
+
     def test_production_mutations_advertise_write_capabilities(self):
         self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
         self.assertEqual(TOOL_CAPABILITIES["upload_sales_template_asset"], "sales.template.write")
