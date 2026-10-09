@@ -1,10 +1,10 @@
 # JustDial → SHVYA CRM integration
 
-Last researched: 7 October 2026
+Last updated: 9 October 2026
 
 ## What is verified
 
-SHVYA could not locate a public, official JustDial developer/API specification that defines a stable lead-push schema or a self-service webhook configuration screen.
+SHVYA could not locate a public, official JustDial developer/API specification that defines a universal lead-push schema or a self-service webhook configuration screen. On 9 October 2026, a provider-facing Postman test was supplied showing an application/json POST request with leadid, name, mobile, state and related fields, acknowledged by the receiver with plain text SUCCESS. This example establishes an additional supported account-specific contract; it is not proof that a test reached SHVYA.
 
 The official JustDial support surfaces that are publicly discoverable are:
 
@@ -37,15 +37,15 @@ These sources support the provider-push webhook architecture used by SHVYA. They
 4. A SHVYA Superadmin opens the organization in /superadmin/ and chooses the destination pipeline and stage.
 5. Only the Superadmin can click Generate webhook URL or Rotate webhook URL.
 6. SHVYA creates an organization-scoped URL such as https://shvya-ai.com/webhooks/justdial/<opaque-token>/.
-7. The organization shares that exact URL with its JustDial account manager/support team and asks them to configure the CRM lead push using GET.
+7. The organization shares that exact URL with its JustDial account manager/support team and asks them to configure the CRM lead push using JSON POST or GET, following the contract supplied for that advertiser account.
 8. The first live JustDial enquiry is validated in SHVYA's event log.
 9. Successful events create or update CRM leads with source JustDial.
 
 ## Supported inbound methods
 
-Canonical: GET query parameters.
+Supported methods: **POST application/json** (verified against the supplied Postman payload), **GET query parameters** (used by the LeadSquared connector), and **POST application/x-www-form-urlencoded**.
 
-For operational compatibility SHVYA also accepts form-encoded POST and JSON POST. This tolerance is intentionally server-side. It does not change the instruction sent to JustDial: configure the callback using GET unless JustDial provides an account-specific specification stating otherwise.
+The method may vary by advertiser/connector configuration. Give JustDial the private URL generated for the correct SHVYA organization and tell them which method to use. Successful creates, updates and duplicate lead-ID retries return HTTP 200 and the exact plain-text body `SUCCESS`. SHVYA records the actual created/updated/ignored outcome in the event log. Invalid data returns a non-2xx response, not a false success. A paused or unconfigured connection returns HTTP 503 rather than silently acknowledging a discarded lead; actual retry behavior depends on JustDial's advertiser-account delivery policy. The webhook enforces a 256 KiB POST body limit.
 
 ## Field handling
 
@@ -60,7 +60,7 @@ Because no public official JustDial schema was found, SHVYA uses conservative al
 | Category | category, categoryname, product, service |
 | Lead type | leadtype, lead_type, enquirytype |
 | Prefix | prefix |
-| Location | city, area, locality, brancharea, pincode, branchpin |
+| Location | city, state, area, locality, brancharea, pincode, branchpin |
 | Company | company, companyname |
 | Date/time | date, enquirydate, time, enquirytime |
 | Parent ID | parentid, parent_id |
@@ -71,11 +71,13 @@ Unknown fields remain available in the ingestion event payload for troubleshooti
 
 JustDial is India-focused, so a 10-digit number without a country code is normalized to +91XXXXXXXXXX. International numbers that already include a country code are preserved as +<digits>.
 
-SHVYA's existing organization + phone uniqueness rule is used for deduplication: the first event creates a lead; later events with the same normalized phone update the same lead; every push still creates a JustDial event-log record.
+SHVYA normalizes Indian mobile numbers as +91XXXXXXXXXX and rejects numbers longer than the E.164 limit. A second usable phone field is tried if mobile is empty or invalid.
+
+Successful `leadid` values are idempotency keys within a single SHVYA JustDial connection: retries are acknowledged but do not reapply changes to a CRM lead, even if the lead has since been deleted. Another enquiry with a new `leadid` and the same normalized phone updates the existing lead's JustDial attributes instead of creating a duplicate, without resetting its current pipeline/stage. Existing leads that originated outside JustDial keep their name, email and original lead-source attribution. The event log records every received push, including duplicate retries.
 
 ## CRM attributes
 
-SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_prefix, justdial_category, justdial_city, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, justdial_parent_id, justdial_branch_pin, justdial_dnc_mobile, and justdial_dnc_phone.
+SHVYA creates/uses these organization-scoped attributes when data is present: justdial_lead_id, justdial_lead_type, justdial_prefix, justdial_category, justdial_city, justdial_state, justdial_area, justdial_branch_area, justdial_company, justdial_pincode, justdial_inquiry_date, justdial_inquiry_time, justdial_parent_id, justdial_branch_pin, justdial_dnc_mobile, and justdial_dnc_phone.
 
 ## Messaging safety
 
@@ -98,8 +100,41 @@ A JustDial marketplace enquiry creates/updates a CRM lead, but it is not treated
 
 Ask the JustDial account manager/support team:
 
-> Please enable CRM/API lead push for our JustDial advertiser account. Configure the following callback using the GET method and send one test enquiry after activation. Please also share the account-specific field/payload specification if available.
+> Please enable CRM/API lead push for our JustDial advertiser account. Configure our SHVYA callback with POST application/json using the supplied lead payload (or GET if that is what our account supports). Send one test enquiry after activation, and share the response status and body.
 
 Then provide the Superadmin-generated SHVYA URL.
 
 After the test enquiry: confirm the event appears in Superadmin → Organization → JustDial; confirm the lead is in the configured pipeline/stage; confirm phone normalization and key field mapping; compare the received payload with any JustDial-provided field specification; adjust aliases only if the real account payload differs; then keep the integration enabled.
+## Provider POST sample and validation
+
+Send the provider the *actual* organization-specific URL from Superadmin → Organization → JustDial (not the `api.kraya-ai.com` endpoint in the comparison example). The callback path is `https://shvya-ai.com/webhooks/justdial/<private-uuid>/` and the token must not be disclosed publicly.
+
+```http
+POST /webhooks/justdial/<private-uuid>/ HTTP/1.1
+Content-Type: application/json
+
+{
+  "leadid": "JD-SYNTHETIC-12345",
+  "leadtype": "category",
+  "name": "Messaging",
+  "mobile": "9876543210",
+  "email": "jd-test@example.com",
+  "date": "2026-10-08",
+  "category": "Generator Dealer",
+  "area": "Ghatkopar West",
+  "city": "Mumbai",
+  "state": "Maharashtra",
+  "brancharea": "Apollo Bunder",
+  "dncmobile": 0,
+  "dncphone": 0,
+  "company": "Example Generator Dealers",
+  "pincode": "0",
+  "time": "13:10:11",
+  "branchpin": "400001",
+  "parentid": "PK-DEMO-123"
+}
+```
+
+Expected acknowledgement: **HTTP 200** with response body `SUCCESS`.
+
+Expected CRM result: source JustDial, phone `+919876543210`, name Messaging, email `jd-test@example.com`, destination configured by SHVYA Superadmin, and individual JustDial attributes including state Maharashtra. These are synthetic demonstration contact details; the original provider sample used different contact information. The receipt and result must be confirmed in the SHVYA organization event log and the corresponding CRM lead; a third-party `SUCCESS` response cannot prove SHVYA delivery. Do not resend real customer contact data until the correct organization and URL have been verified.

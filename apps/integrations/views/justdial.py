@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.justdial_models import JustDialIntegration
 from apps.integrations.services.justdial import (
+    JustDialRoutingError,
     process_justdial_lead,
     record_justdial_failure,
 )
@@ -99,10 +100,9 @@ def justdial_connect_view(request):
 def justdial_webhook_view(request, token):
     """Receive a JustDial lead push.
 
-    JustDial CRM connectors are commonly provisioned as provider-side GET
-    callbacks. SHVYA treats GET as canonical while also accepting form-encoded
-    and JSON POST payloads so provider/account configurations can be migrated
-    without changing the CRM ingestion contract.
+    JustDial account configurations can deliver GET parameters, form POST or
+    JSON POST. The provided JustDial/Postman contract uses application/json
+    POST and expects a plain-text SUCCESS acknowledgement.
     """
     integration = (
         JustDialIntegration.objects.select_related(
@@ -115,6 +115,10 @@ def justdial_webhook_view(request, token):
     )
     if integration is None:
         return HttpResponse("NOT_FOUND", status=404)
+
+    # Bound webhook request bodies; do not parse oversized provider payloads.
+    if request.method == "POST" and len(request.body) > 262144:
+        return HttpResponse("PAYLOAD_TOO_LARGE", status=413)
 
     try:
         payload = _request_payload(request)
@@ -129,6 +133,8 @@ def justdial_webhook_view(request, token):
         )
     except ValidationError:
         return HttpResponse("INVALID_LEAD", status=422)
+    except JustDialRoutingError:
+        return HttpResponse("ROUTING_UNAVAILABLE", status=503)
     except Exception as exc:
         logger.exception(
             "Unexpected JustDial webhook failure for integration %s",
@@ -148,10 +154,16 @@ def justdial_webhook_view(request, token):
             )
         return HttpResponse("RETRY", status=500)
 
-    if event.status == event.Status.IGNORED:
-        return HttpResponse("IGNORED", status=200)
-
-    return HttpResponse(
-        "CREATED" if created and lead is not None else "UPDATED",
-        status=200,
-    )
+    # Keep event statuses (created, updated, ignored) in SHVYA diagnostics,
+    # while acknowledging accepted provider submissions exactly as the
+    # supplied JustDial Postman contract demonstrates.
+    if (
+        event.status == event.Status.IGNORED
+        and event.error_message != "Duplicate JustDial lead ID."
+    ):
+        # Paused/unconfigured intake must not acknowledge a lead as accepted.
+        response = HttpResponse("INTAKE_PAUSED", content_type="text/plain", status=503)
+    else:
+        response = HttpResponse("SUCCESS", content_type="text/plain", status=200)
+    response["Cache-Control"] = "no-store"
+    return response
