@@ -130,6 +130,7 @@ class Lead(models.Model):
             ("shvya_calendar", "SHVYA Calendar"),
             ("phone_call", "Phone Call"),
             ("justdial", "JustDial"),
+            ("99acres", "99acres"),
         ],
         default="system",
     )

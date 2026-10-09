@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}99acres · Connect Hub · SHVYA AI{% endblock %}
+{% block header %}Connect Hub{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/acres99.css' %}">{% endblock %}
+{% block content %}
+<main class="a99-page">
+    <a href="{% url 'crm-connect-hub' %}" class="a99-back"><i class="ti ti-arrow-left"></i> All integrations</a>
+    <section class="a99-hero">
+        <div class="a99-hero-grid">
+            <div>
+                <div class="a99-eyebrow"><span class="a99-eyebrow-dot"></span> CONNECT HUB / REAL ESTATE</div>
+                <div class="a99-brandline"><span class="a99-mark" aria-hidden="true">99</span><span class="a99-partner">99acres <span class="a99-partner-x">×</span> SHVYA</span></div>
+                <h1>Your property enquiries.<br><span>One intelligent workspace.</span></h1>
+                <p class="a99-lead">Bring 99acres buyer enquiries into SHVYA CRM. Keep every property reference, protect existing lead stages, and manage each connection from one secure place.</p>
+                <div class="a99-status {% if integration.is_enabled %}is-on{% elif integration %}is-waiting{% endif %}">
+                    <span class="a99-status-dot"></span>
+                    {% if integration.connection_state == 'active' %}Connected · enquiry activity detected
+                    {% elif integration.connection_state == 'ready' %}Enabled · awaiting enquiries
+                    {% elif integration.provisioned_at %}Integration paused
+                    {% elif integration %}Setup requested
+                    {% else %}Not connected{% endif %}
+                </div>
+            </div>
+            <div class="a99-hero-aside" aria-label="Integration illustration">
+                <div class="a99-float a99-float-top"><span class="a99-float-icon"><i class="ti ti-home"></i></span><span><strong>Property enquiry</strong><small>From 99acres</small></span><i class="ti ti-check a99-check"></i></div>
+                <div class="a99-float-mid"><span class="a99-flowline"></span><i class="ti ti-arrow-down"></i><span class="a99-flowline"></span></div>
+                <div class="a99-float a99-float-bottom"><span class="a99-float-icon purple"><i class="ti ti-sparkles"></i></span><span><strong>SHVYA CRM</strong><small>Enquiry captured</small></span><span class="a99-greenpulse"></span></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="a99-metrics" aria-label="99acres connection activity">
+        <div class="a99-stat"><span>Enquiries received</span><strong>{{ integration.received_count|default:"0" }}</strong><small>Successfully imported</small></div>
+        <div class="a99-stat"><span>New CRM leads</span><strong>{{ integration.created_count|default:"0" }}</strong><small>New contacts</small></div>
+        <div class="a99-stat"><span>Existing contacts</span><strong>{{ integration.linked_count|default:"0" }}</strong><small>New property interest</small></div>
+        <div class="a99-stat"><span>Import failures</span><strong class="{% if integration.failed_count %}a99-danger{% endif %}">{{ integration.failed_count|default:"0" }}</strong><small>Review diagnostics</small></div>
+    </section>
+
+    <div class="a99-layout">
+        <div class="a99-mainstack">
+            <section class="a99-card">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">CONNECTION</p><h2>How leads arrive</h2><p>99acres offers two documented XML exchange methods.</p></div><span class="a99-icon-bubble"><i class="ti ti-arrows-transfer-down"></i></span></div>
+                <div class="a99-methods">
+                    <div class="a99-method {% if integration.mode == 'push' or integration.mode == 'both' %}selected{% endif %}">
+                        <div class="a99-method-title"><span class="a99-method-icon"><i class="ti ti-webhook"></i></span><div><strong>Push API</strong><small>99acres → SHVYA</small></div><span class="a99-method-pill">Webhook</span></div>
+                        <p>99acres sends batches of buyer enquiries to your unique organization endpoint. Successful query IDs are acknowledged individually.</p>
+                    </div>
+                    <div class="a99-method {% if integration.mode == 'pull' or integration.mode == 'both' %}selected{% endif %}">
+                        <div class="a99-method-title"><span class="a99-method-icon"><i class="ti ti-refresh"></i></span><div><strong>Pull API</strong><small>SHVYA → 99acres</small></div><span class="a99-method-pill">Scheduled</span></div>
+                        <p>SHVYA requests enquiries using securely stored account credentials. Scheduled polling respects the documented 6 requests/hour limit.</p>
+                    </div>
+                </div>
+                <div class="a99-footnote"><i class="ti ti-info-circle"></i><span>99acres controls Push delivery timing. Their supplied document describes hourly batches; the actual cadence depends on your provider account.</span></div>
+            </section>
+
+            <section class="a99-card">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">ACTIVITY</p><h2>Recent enquiries</h2><p>Submission history for this organization only.</p></div><span class="a99-icon-bubble"><i class="ti ti-clock"></i></span></div>
+                {% if recent_events %}
+                <div class="a99-events">
+                    {% for event in recent_events %}
+                    <div class="a99-event">
+                        <div class="a99-event-icon {% if event.status == 'failed' %}error{% elif event.status == 'duplicate' %}muted{% endif %}"><i class="ti {% if event.status == 'failed' %}ti-alert-triangle{% elif event.status == 'duplicate' %}ti-copy{% else %}ti-check{% endif %}"></i></div>
+                        <div class="a99-event-body">
+                            <strong>{% if event.lead %}{{ event.lead.name }}{% elif event.external_query_id %}Enquiry {{ event.external_query_id }}{% else %}99acres enquiry{% endif %}</strong>
+                            <small>{{ event.get_status_display }} · {{ event.get_direction_display }} {% if event.external_query_id %}· {{ event.external_query_id }}{% endif %}</small>
+                        </div>
+                        <time datetime="{{ event.created_at|date:'c' }}">{{ event.created_at|date:"d M, H:i" }}</time>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="a99-empty"><span><i class="ti ti-inbox"></i></span><strong>No enquiries yet</strong><p>When 99acres starts delivering lead data, your activity will appear here.</p></div>
+                {% endif %}
+            </section>
+        </div>
+
+        <aside class="a99-sidestack">
+            <section class="a99-card a99-setup">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">YOUR ACCOUNT</p><h2>Connection details</h2></div><span class="a99-icon-bubble"><i class="ti ti-shield-lock"></i></span></div>
+                {% if not integration %}
+                    <p class="a99-muted">Request activation. A SHVYA Superadmin will configure your organization, webhook, and CRM routing.</p>
+                    <form method="post">{% csrf_token %}<button name="action" value="request_setup" class="a99-primary" type="submit">Request 99acres setup <i class="ti ti-arrow-right"></i></button></form>
+                {% elif not integration.provisioned_at and not integration.is_enabled %}
+                    <div class="a99-connection-note"><i class="ti ti-clock-hour-3"></i><div><strong>Setup requested</strong><p>SHVYA is preparing this integration. Your team does not need to generate tokens or handle API credentials.</p></div></div>
+                    <p class="a99-mini">Requested {{ integration.requested_at|date:"d M Y, H:i" }}</p>
+                {% else %}
+                    <div class="a99-key-values">
+                        <div><span>Connection method</span><strong>{{ integration.get_mode_display }}</strong></div>
+                        <div><span>Pipeline</span><strong>{{ integration.pipeline.name|default:"Not configured" }}</strong></div>
+                        <div><span>Stage</span><strong>{{ integration.stage.name|default:"Not configured" }}</strong></div>
+                        <div><span>Pull credentials</span><strong>{% if integration.has_credentials %}Stored securely{% else %}Not configured{% endif %}</strong></div>
+                        <div><span>Pull endpoint token</span><strong>{% if integration.has_provider_token %}Stored securely{% else %}Not configured{% endif %}</strong></div>
+                        <div><span>Last imported</span><strong>{% if integration.last_received_at %}{{ integration.last_received_at|date:"d M Y, H:i" }}{% else %}Awaiting enquiries{% endif %}</strong></div>
+                    </div>
+                    {% if webhook_url and integration.mode != 'pull' %}
+                    <div class="a99-webhook">
+                        <label for="a99-webhook">Your private webhook URL</label>
+                        <div class="a99-copyrow">
+                            <input type="text" value="{{ webhook_url }}" id="a99-webhook" readonly spellcheck="false" autocomplete="off" aria-label="99acres private webhook URL">
+                            <button class="a99-copy" type="button" id="a99-copy" aria-label="Copy webhook URL"><i class="ti ti-copy"></i></button>
+                        </div>
+                        <small>Share this with your 99acres account manager. Treat the URL as a secret.</small>
+                    </div>
+                    {% endif %}
+                    {% if integration.is_enabled and integration.mode != 'push' %}
+                    <form method="post" class="a99-sync-form">{% csrf_token %}<button class="a99-secondary" name="action" value="sync_now" type="submit"><i class="ti ti-refresh"></i> Queue Pull sync</button></form>
+                    {% endif %}
+                {% endif %}
+            </section>
+            <section class="a99-card a99-help">
+                <div class="a99-help-icon"><i class="ti ti-lock-check"></i></div>
+                <h3>Built for safe imports.</h3>
+                <p>Every unique enquiry is tracked. Existing customers retain their name, current pipeline and stage. Contact details never appear in sync diagnostics.</p>
+                <ul>
+                    <li><i class="ti ti-check"></i> Secure organization isolation</li>
+                    <li><i class="ti ti-check"></i> Duplicate query protection</li>
+                    <li><i class="ti ti-check"></i> Property context on every enquiry</li>
+                </ul>
+            </section>
+            {% if integration.last_error %}
+            <section class="a99-error" role="status"><i class="ti ti-alert-circle"></i><div><strong>Needs attention</strong><p>{{ integration.last_error }}</p></div></section>
+            {% endif %}
+        </aside>
+    </div>
+</main>
+<script>
+(function () {
+    const button = document.getElementById('a99-copy');
+    const input = document.getElementById('a99-webhook');
+    if (!button || !input) return;
+    button.addEventListener('click', async function () {
+        try {
+            await navigator.clipboard.writeText(input.value);
+            button.setAttribute('aria-label', 'Copied');
+            button.innerHTML = '<i class="ti ti-check"></i>';
+        } catch (e) {
+            input.focus();
+            input.select();
+            document.execCommand('copy');
+        }
+    });
+})();
+</script>
+{% endblock %}

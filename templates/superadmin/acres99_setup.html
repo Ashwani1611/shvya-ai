@@ -1,0 +1,134 @@
+{% extends "superadmin/base.html" %}
+{% load static %}
+{% block title %}99acres · {{ organization.name }} · SHVYA{% endblock %}
+{% block extra_head %}{{ block.super }}<link rel="stylesheet" href="{% static 'css/acres99.css' %}">{% endblock %}
+{% block content %}
+<main class="a99-page a99-admin">
+    <a href="{% url 'superadmin-organization-detail' organization.id %}" class="a99-back"><i class="ti ti-arrow-left"></i> {{ organization.name }} / Integrations</a>
+    <div class="a99-admin-heading">
+        <div><div class="a99-eyebrow"><span class="a99-eyebrow-dot"></span> SHVYA SUPERADMIN</div><h1><span class="a99-mark a99-smallmark">99</span> 99acres provisioning</h1><p>Private XML webhook, encrypted account credentials, and lead routing for {{ organization.name }}.</p></div>
+        <div class="a99-status {% if integration.is_enabled %}is-on{% elif integration %}is-waiting{% endif %}"><span class="a99-status-dot"></span>{% if integration.is_enabled %}Enabled{% elif integration.provisioned_at %}Paused{% elif integration %}Setup requested{% else %}Not configured{% endif %}</div>
+    </div>
+    <div class="a99-layout">
+        <div class="a99-mainstack">
+            <section class="a99-card">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">SECURE CONFIGURATION</p><h2>Provision connection</h2><p>Only SHVYA Superadmin can save credentials, route leads, or rotate the webhook.</p></div><span class="a99-icon-bubble"><i class="ti ti-settings-2"></i></span></div>
+                <form method="post" class="a99-form">
+                    {% csrf_token %}
+                    <div class="a99-form-grid">
+                        <div class="a99-field a99-wide">
+                            <label for="a99-mode">Connection method</label>
+                            <select name="mode" id="a99-mode">
+                                <option value="push" {% if not integration or integration.mode == 'push' %}selected{% endif %}>Push · 99acres sends XML</option>
+                                <option value="pull" {% if integration.mode == 'pull' %}selected{% endif %}>Pull · SHVYA polls 99acres</option>
+                                <option value="both" {% if integration.mode == 'both' %}selected{% endif %}>Both · Push + Pull</option>
+                            </select>
+                            <small>Pull is limited to six API requests/hour and a 30-day historical window.</small>
+                        </div>
+                        <div class="a99-field">
+                            <label for="a99-pipeline">Destination pipeline</label>
+                            <select name="pipeline_id" id="a99-pipeline" required>
+                                <option value="">Select a pipeline</option>
+                                {% for pipeline in pipelines %}
+                                <option value="{{ pipeline.id }}" {% if integration.pipeline_id == pipeline.id %}selected{% endif %}>{{ pipeline.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="a99-field">
+                            <label for="a99-stage">First stage</label>
+                            <select name="stage_id" id="a99-stage" required>
+                                <option value="">Select a stage</option>
+                                {% for pipeline in pipelines %}{% for stage in pipeline.stages.all %}{% if stage.is_active %}
+                                <option data-pipeline="{{ pipeline.id }}" value="{{ stage.id }}" {% if integration.stage_id == stage.id %}selected{% endif %}>{{ stage.name }}</option>
+                                {% endif %}{% endfor %}{% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="a99-form-divider"><span>Pull API credentials</span><span class="a99-credential-state">{% if integration.has_credentials %}<i class="ti ti-lock-check"></i> Encrypted credentials saved{% else %}Not yet configured{% endif %}</span></div>
+                    <p class="a99-muted">Required for Pull or Both. Supply the unique token embedded in the 99acres Pull API URL (the segment before <code>/uid/</code>). All values are encrypted. Leave blank to preserve existing values.</p>
+                    <div class="a99-form-grid">
+                        <div class="a99-field a99-wide"><label for="a99-provider-token">Provider API endpoint token</label><input name="provider_token" id="a99-provider-token" type="password" autocomplete="new-password" placeholder="{% if integration.has_provider_token %}Already stored — leave blank to keep{% else %}Ask 99acres account manager{% endif %}"></div>
+                        <div class="a99-field"><label for="a99-username">99acres username</label><input name="account_username" id="a99-username" type="text" autocomplete="off" placeholder="Account username" maxlength="200"></div>
+                        <div class="a99-field"><label for="a99-password">99acres password</label><input name="account_password" id="a99-password" type="password" autocomplete="new-password" placeholder="Account password"></div>
+                    </div>
+                    <div class="a99-form-bottom">
+                        <label class="a99-toggle"><input type="checkbox" name="is_enabled" {% if integration.is_enabled %}checked{% endif %}><span>Enable integration</span></label>
+                        <div class="a99-form-actions">
+                            <button class="a99-secondary" type="submit" name="action" value="save"><i class="ti ti-device-floppy"></i> Save settings</button>
+                            {% if integration.webhook_token %}
+                            <button class="a99-warn" type="submit" name="action" value="rotate" onclick="return confirm('Rotate webhook token? The old 99acres URL will stop working.')"><i class="ti ti-refresh"></i> Rotate webhook</button>
+                            {% else %}
+                            <button class="a99-primary a99-primary-inline" type="submit" name="action" value="generate"><i class="ti ti-shield-check"></i> Generate &amp; activate</button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </form>
+            </section>
+            <section class="a99-card">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">IMPORT HEALTH</p><h2>Recent lead events</h2><p>Per-enquiry outcomes, with no contact information stored in diagnostics.</p></div><span class="a99-icon-bubble"><i class="ti ti-activity"></i></span></div>
+                {% if recent_events %}
+                <div class="a99-events">{% for event in recent_events %}
+                    <div class="a99-event"><div class="a99-event-icon {% if event.status == 'failed' %}error{% elif event.status == 'duplicate' %}muted{% endif %}"><i class="ti {% if event.status == 'failed' %}ti-alert-triangle{% else %}ti-check{% endif %}"></i></div>
+                        <div class="a99-event-body"><strong>Enquiry {{ event.external_query_id|default:"Not supplied" }}</strong><small>{{ event.get_status_display }} · {{ event.get_direction_display }} {% if event.error_code %}· {{ event.error_code }}{% endif %}</small></div>
+                        <time>{{ event.created_at|date:"d M, H:i" }}</time>
+                    </div>{% endfor %}</div>
+                {% else %}<div class="a99-empty"><span><i class="ti ti-inbox"></i></span><strong>No enquiries yet</strong><p>Provider delivery and sync outcomes will appear here.</p></div>{% endif %}
+            </section>
+        </div>
+        <aside class="a99-sidestack">
+            <section class="a99-card a99-setup">
+                <div class="a99-card-head"><div><p class="a99-section-kicker">CONNECTION</p><h2>Provisioning details</h2></div><span class="a99-icon-bubble"><i class="ti ti-key"></i></span></div>
+                <div class="a99-key-values">
+                    <div><span>Organization</span><strong>{{ organization.name }}</strong></div>
+                    <div><span>Method</span><strong>{{ integration.get_mode_display|default:"Push" }}</strong></div>
+                    <div><span>Account password</span><strong>{% if integration.has_credentials %}Encrypted &amp; stored{% else %}Not configured{% endif %}</strong></div>
+                    <div><span>Pull endpoint token</span><strong>{% if integration.has_provider_token %}Encrypted &amp; stored{% else %}Not configured{% endif %}</strong></div>
+                    <div><span>Last Push/Pull import</span><strong>{% if integration.last_received_at %}{{ integration.last_received_at|date:"d M, H:i" }}{% else %}None{% endif %}</strong></div>
+                    <div><span>Last successful Pull</span><strong>{% if integration.last_synced_at %}{{ integration.last_synced_at|date:"d M, H:i" }}{% else %}None{% endif %}</strong></div>
+                </div>
+                {% if webhook_url %}
+                <div class="a99-webhook"><label for="a99-webhook">Private Push webhook</label><div class="a99-copyrow"><input value="{{ webhook_url }}" type="text" id="a99-webhook" readonly spellcheck="false"><button class="a99-copy" type="button" id="a99-copy" aria-label="Copy webhook URL"><i class="ti ti-copy"></i></button></div><small>Share securely with the assigned 99acres account manager.</small></div>
+                {% endif %}
+                {% if integration %}
+                <div class="a99-admin-controls">
+                    {% if integration.is_enabled and integration.mode != 'push' %}
+                    <form method="post">{% csrf_token %}<button class="a99-secondary a99-full" type="submit" name="action" value="sync_now"><i class="ti ti-refresh"></i> Queue Pull sync</button></form>
+                    {% endif %}
+                    {% if integration.is_enabled %}
+                    <form method="post">{% csrf_token %}<button class="a99-softdanger a99-full" type="submit" name="action" value="disable"><i class="ti ti-player-pause"></i> Pause integration</button></form>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% if integration.last_error %}<div class="a99-error"><i class="ti ti-alert-circle"></i><div><strong>Latest error</strong><p>{{ integration.last_error }}</p></div></div>{% endif %}
+            </section>
+            <section class="a99-card a99-help"><div class="a99-help-icon"><i class="ti ti-shield-check"></i></div><h3>Deployment checklist</h3><ul><li><i class="ti ti-check"></i> Choose a valid organization pipeline and stage</li><li><i class="ti ti-check"></i> Register the URL with 99acres for Push</li><li><i class="ti ti-check"></i> Confirm Pull username/password and API access</li><li><i class="ti ti-check"></i> Verify first live enquiry and provider acknowledgement</li></ul><p>XML failure-response behavior and live API eligibility still require confirmation with 99acres.</p></section>
+        </aside>
+    </div>
+</main>
+<script>
+(function () {
+    const pipeline = document.getElementById('a99-pipeline');
+    const stage = document.getElementById('a99-stage');
+    function filterStages() {
+        if (!pipeline || !stage) return;
+        let selectionValid = false;
+        [...stage.options].forEach(function (option) {
+            if (!option.value) return;
+            const match = option.dataset.pipeline === pipeline.value;
+            option.hidden = !match;
+            option.disabled = !match;
+            if (match && option.selected) selectionValid = true;
+        });
+        if (!selectionValid) stage.value = '';
+    }
+    if (pipeline) pipeline.addEventListener('change', filterStages);
+    filterStages();
+    const button = document.getElementById('a99-copy');
+    const input = document.getElementById('a99-webhook');
+    if (button && input) button.addEventListener('click', async function () {
+        try { await navigator.clipboard.writeText(input.value); button.innerHTML = '<i class="ti ti-check"></i>'; }
+        catch (e) { input.select(); document.execCommand('copy'); }
+    });
+})();
+</script>
+{% endblock %}

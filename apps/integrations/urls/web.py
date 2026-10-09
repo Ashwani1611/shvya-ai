@@ -1,4 +1,5 @@
 from apps.integrations.views.indiamart import indiamart_view, indiamart_ingest_view
+from apps.integrations.views.acres99 import acres99_connect_view, acres99_push_view
 from django.urls import path
 from django.views.generic import RedirectView
 
@@ -26,6 +27,7 @@ from apps.integrations.views.webhook import webhook_view
 
 urlpatterns = [
     path("connect-hub/indiamart/webhook/<uuid:token>/", indiamart_ingest_view, name="indiamart-ingest"),
+    path("connect-hub/99acres/webhook/<uuid:token>/", acres99_push_view, name="acres99-webhook"),
     path(
         "connect-hub/",
         connect_hub_view,
@@ -101,6 +103,11 @@ urlpatterns = [
         "connect-hub/indiamart/",
         indiamart_view,
         name="crm-connect-hub-indiamart",
+    ),
+    path(
+        "connect-hub/99acres/",
+        acres99_connect_view,
+        name="crm-connect-hub-99acres",
     ),
     path(
         "integrations-hub/",

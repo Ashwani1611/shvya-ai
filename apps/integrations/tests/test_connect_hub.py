@@ -19,6 +19,7 @@ class ConnectHubURLTests(SimpleTestCase):
             "crm-connect-hub-razorpay": "/dashboard/connect-hub/razorpay/",
             "crm-connect-hub-justdial": "/dashboard/connect-hub/justdial/",
             "crm-connect-hub-indiamart": "/dashboard/connect-hub/indiamart/",
+            "crm-connect-hub-99acres": "/dashboard/connect-hub/99acres/",
             "crm-integrations-hub": "/dashboard/integrations-hub/",
         }
 
@@ -47,5 +48,6 @@ class ConnectHubURLTests(SimpleTestCase):
                 "RazorPay",
                 "JustDial",
                 "IndiaMART",
+                "99acres",
             },
         )

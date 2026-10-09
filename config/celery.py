@@ -33,6 +33,7 @@ app.conf.beat_schedule = {
         "task": "apps.telephony.tasks.recover_call_intelligence", "schedule": 60.0,
     },
     "meta-conversions-outbox": {"task": "integrations.recover_meta_conversions", "schedule": 30.0},
+    "99acres-pull-every-15-minutes": {"task": "integrations.dispatch_acres99_sync", "schedule": 900.0},
     "signup-verification-delivery": {"task": "accounts.deliver_signup_verifications", "schedule": 60.0},
     "cleanup-deleted-organizations": {"task": "organizations.cleanup_deleted", "schedule": 60.0},
     "recover-api-ai-every-10-seconds": {"task": "ai.recover_api_engagement", "schedule": 10.0},

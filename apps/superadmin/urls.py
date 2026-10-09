@@ -1,5 +1,6 @@
 from .model_routing_views import organization_model_routing_update_view
 from .justdial_views import organization_justdial_view
+from .acres99_views import organization_acres99_view
 from .platform_email import platform_email_view
 from django.urls import path
 from .bac_views import bac_list
@@ -48,6 +49,7 @@ from apps.integrations.views.indiamart import indiamart_setup_view
 
 urlpatterns = [
     path("organization/<uuid:organization_id>/indiamart/", indiamart_setup_view, name="superadmin-indiamart"),
+    path("organization/<uuid:organization_id>/99acres/", organization_acres99_view, name="superadmin-organization-99acres"),
     path("organization/<uuid:organization_id>/ai-model-routing/", organization_model_routing_update_view, name="superadmin-organization-model-routing-update"),
     path("email/", platform_email_view, name="superadmin-platform-email"),
     path("tags/", organization_tag_manage_view, name="superadmin-tags"),

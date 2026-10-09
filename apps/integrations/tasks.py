@@ -202,3 +202,30 @@ def deliver_meta_conversion_task(delivery_id):
 def recover_meta_conversions_task():
     from apps.integrations.services.meta_conversions_delivery import recover_due_events
     return recover_due_events()
+
+
+@shared_task(name="integrations.sync_acres99_connection", acks_late=True)
+def sync_acres99_connection_task(integration_id, manual=False):
+    """One bounded Pull run; provider errors are stored without retries or secrets."""
+    from apps.integrations.services.acres99 import sync_connection
+    return sync_connection(integration_id, manual=manual)
+
+
+@shared_task(name="integrations.dispatch_acres99_sync")
+def dispatch_acres99_sync_task():
+    """Queue only due connections. Per-tenant rolling hourly limits are also DB-enforced."""
+    from datetime import timedelta
+    from django.db.models import Q
+    from apps.integrations.acres99_models import Acres99Integration
+
+    due = timezone.now() - timedelta(minutes=15)
+    connections = Acres99Integration.objects.filter(
+        is_enabled=True,
+        mode__in=[Acres99Integration.Mode.PULL, Acres99Integration.Mode.BOTH],
+        organization__is_active=True,
+    ).filter(Q(last_poll_at__lte=due) | Q(last_poll_at__isnull=True)).values_list("id", flat=True)[:300]
+    submitted = 0
+    for integration_id in connections:
+        sync_acres99_connection_task.delay(str(integration_id))
+        submitted += 1
+    return {"queued": submitted}
