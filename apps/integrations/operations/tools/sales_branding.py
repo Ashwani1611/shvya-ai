@@ -91,3 +91,87 @@ def upsert_sales_template_branding(*, identity, arguments):
     return ToolExecution(data={"status": "UPDATED", "template": result, "verification": "passed", "documents_sent": 0},
         capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template", target_id=str(pk),
         reason=reason, audit_summary={"verification": "passed"})
+
+
+def upload_sales_template_asset(*, identity, arguments):
+    """Attach an actual image to a Sales template via the normal storage backend."""
+    import base64
+    import binascii
+    import hashlib
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from apps.sales.document_services import validate_brand_asset
+
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity, organization=organization, capability=CAP_SALES_TEMPLATE_WRITE,
+        tool_name="upload_sales_template_asset", arguments=arguments,
+    )
+    template_id = _uuid((arguments or {}).get("template_id"), field="template_id")
+    template = SalesTemplate.objects.filter(pk=template_id, organization=organization).first()
+    if template is None:
+        raise OperationsToolError("Sales template not found in this organization.")
+    asset_type = (arguments or {}).get("asset_type")
+    if asset_type not in ("logo", "signature"):
+        raise OperationsToolError("asset_type must be logo or signature.")
+    payload = (arguments or {}).get("image_base64")
+    if not isinstance(payload, str) or not payload or len(payload) > 7_000_000:
+        raise OperationsToolError("image_base64 must be a base64 image no larger than 5 MB.")
+    try:
+        content = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise OperationsToolError("Invalid base64 image.") from exc
+    # Use exactly the same image validation as the Sales dashboard.
+    upload = SimpleUploadedFile(f"{asset_type}.png", content, content_type="application/octet-stream")
+    try:
+        upload = validate_brand_asset(upload, label=asset_type.title())
+    except ValidationError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    digest = hashlib.sha256(content).hexdigest()
+    field = f"{asset_type}_file"
+    url_field = f"{asset_type}_url"
+    proposal = {
+        "template_id": str(template_id), "asset_type": asset_type,
+        "sha256": digest, "bytes": len(content),
+        "previous_file": getattr(template, field).name or None,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(
+            data={"status": "DRY_RUN", "proposal": proposal,
+                  "approval_required": approval_required(
+                      role=identity.role, organization=organization, capability=CAP_SALES_TEMPLATE_WRITE),
+                  "documents_sent": 0},
+            capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template", target_id=str(template_id),
+            reason=reason, outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={"proposal_digest": _proposal_digest(proposal)},
+        )
+    with transaction.atomic():
+        locked = SalesTemplate.objects.select_for_update().get(pk=template_id, organization=organization)
+        locked_proposal = {
+            **proposal, "previous_file": getattr(locked, field).name or None,
+        }
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=locked_proposal)
+        previous = getattr(locked, field)
+        previous_name = previous.name or ""
+        asset_field = getattr(locked, field)
+        asset_field.save(f"{digest[:20]}-{upload.name}", upload, save=False)
+        setattr(locked, url_field, "")
+        try:
+            locked.full_clean()
+            locked.save(update_fields=[field, url_field, "updated_at"])
+        except Exception:
+            asset_field.storage.delete(asset_field.name)
+            raise
+        if previous_name and previous_name != asset_field.name:
+            transaction.on_commit(
+                lambda storage=asset_field.storage, name=previous_name: storage.delete(name)
+            )
+    return ToolExecution(
+        data={"status": "UPDATED", "template": _snapshot(locked),
+              "asset_type": asset_type, "sha256": digest,
+              "stored": True, "storage_backend": type(asset_field.storage).__name__,
+              "documents_sent": 0},
+        capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template", target_id=str(template_id),
+        reason=reason, audit_summary={"asset_type": asset_type, "sha256": digest},
+    )
