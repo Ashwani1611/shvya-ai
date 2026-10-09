@@ -14,6 +14,8 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             "get_capability_discovery",
             "get_production_trace",
             "get_calendar_configuration",
+            "get_calendar_available_slots",
+            "get_calendar_setup_readiness",
             "validate_calendar_configuration",
             "create_calendar_page",
             "upsert_calendar_configuration",
@@ -40,6 +42,12 @@ class OperationsCapabilityExpansionContractTests(SimpleTestCase):
             schema = TOOL_INPUT_SCHEMAS[name]
             self.assertEqual(schema["type"], "object")
             self.assertFalse(schema.get("additionalProperties", True))
+
+    def test_calendar_read_tools_do_not_grant_write_capabilities(self):
+        for name in ("get_calendar_available_slots", "get_calendar_setup_readiness"):
+            self.assertEqual(TOOL_CAPABILITIES[name], "organization.read")
+            self.assertFalse(TOOL_INPUT_SCHEMAS[name].get("additionalProperties", True))
+        self.assertEqual(TOOL_INPUT_SCHEMAS["get_calendar_available_slots"]["required"], ["page_id", "date"])
 
     def test_production_mutations_advertise_write_capabilities(self):
         self.assertEqual(TOOL_CAPABILITIES["upsert_sales_template_branding"], "sales.template.write")
