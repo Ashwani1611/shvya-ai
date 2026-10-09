@@ -175,3 +175,88 @@ def upload_sales_template_asset(*, identity, arguments):
         capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template", target_id=str(template_id),
         reason=reason, audit_summary={"asset_type": asset_type, "sha256": digest},
     )
+
+
+def attach_vault_asset_to_sales_template(*, identity, arguments):
+    """Copy a tenant-owned private Vault image into Sales template storage."""
+    import hashlib
+    from pathlib import Path
+    from django.core.files.uploadedfile import SimpleUploadedFile
+    from apps.sales.document_services import validate_brand_asset
+    from apps.vault.models import VaultEntry
+
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity, organization=organization,
+        capability=CAP_SALES_TEMPLATE_WRITE,
+        tool_name="attach_vault_asset_to_sales_template", arguments=arguments,
+    )
+    template_id = _uuid((arguments or {}).get("template_id"), field="template_id")
+    entry_id = _uuid((arguments or {}).get("vault_entry_id"), field="vault_entry_id")
+    asset_type = (arguments or {}).get("asset_type")
+    if asset_type not in {"logo", "signature"}:
+        raise OperationsToolError("asset_type must be logo or signature.")
+    template = SalesTemplate.objects.filter(pk=template_id, organization=organization).first()
+    entry = VaultEntry.objects.filter(pk=entry_id, vault__organization=organization, kind=VaultEntry.Kind.FILE).first()
+    if template is None or entry is None or not entry.file:
+        raise OperationsToolError("Sales template or private Vault image not found in this organization.")
+    if entry.file_size > 5 * 1024 * 1024:
+        raise OperationsToolError("Vault image is larger than the 5 MB Sales limit.")
+    try:
+        with entry.file.open("rb") as stream:
+            content = stream.read(5 * 1024 * 1024 + 1)
+    except (OSError, ValueError) as exc:
+        raise OperationsToolError("Unable to access private Vault image storage.") from exc
+    if len(content) > 5 * 1024 * 1024:
+        raise OperationsToolError("Vault image exceeds the Sales asset limit.")
+    upload = SimpleUploadedFile(Path(entry.file_name or entry.file.name).name, content)
+    try:
+        upload = validate_brand_asset(upload, label=asset_type.title())
+    except ValidationError as exc:
+        raise OperationsToolError(str(exc)) from exc
+    digest = hashlib.sha256(content).hexdigest()
+    field = f"{asset_type}_file"
+    url_field = f"{asset_type}_url"
+    proposal = {
+        "template_id": str(template_id), "vault_entry_id": str(entry_id),
+        "asset_type": asset_type, "sha256": digest,
+        "byte_count": len(content),
+        "previous_file": getattr(template, field).name or None,
+    }
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(
+            data={"status": "DRY_RUN", "proposal": proposal, "documents_sent": 0,
+                  "approval_required": approval_required(
+                      role=identity.role, organization=organization,
+                      capability=CAP_SALES_TEMPLATE_WRITE)},
+            capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template",
+            target_id=str(template_id), reason=reason,
+            outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={"proposal_digest": _proposal_digest(proposal)},
+        )
+    with transaction.atomic():
+        locked = SalesTemplate.objects.select_for_update().get(pk=template_id, organization=organization)
+        locked_proposal = {**proposal, "previous_file": getattr(locked, field).name or None}
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=locked_proposal)
+        current_file = getattr(locked, field)
+        previous_name = current_file.name or ""
+        current_file.save(f"{digest[:20]}-{upload.name}", upload, save=False)
+        setattr(locked, url_field, "")
+        try:
+            locked.full_clean()
+            locked.save(update_fields=[field, url_field, "updated_at"])
+        except Exception:
+            current_file.storage.delete(current_file.name)
+            raise
+        if previous_name and previous_name != current_file.name:
+            transaction.on_commit(lambda storage=current_file.storage, name=previous_name: storage.delete(name))
+    return ToolExecution(
+        data={"status": "UPDATED", "template": _snapshot(locked),
+              "source": "private_vault_copy", "vault_entry_id": str(entry_id),
+              "asset_type": asset_type, "sha256": digest, "documents_sent": 0},
+        capability=CAP_SALES_TEMPLATE_WRITE, target_type="sales_template",
+        target_id=str(template_id), reason=reason,
+        audit_summary={"source": "vault", "vault_entry_id": str(entry_id), "sha256": digest},
+    )
