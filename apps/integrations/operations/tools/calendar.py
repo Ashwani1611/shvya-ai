@@ -234,6 +234,66 @@ def get_calendar_setup_readiness(*, identity, arguments):
     )
 
 
+
+def inspect_calendar_public_link(*, identity, arguments):
+    """Check published state and Django route resolution without issuing an HTTP request."""
+    from django.urls import resolve, Resolver404
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    snapshot = _page_snapshot(page)
+    try:
+        match = resolve(snapshot["public_path"])
+        route_resolves = match.view_name == "shvya_calendar_public:page"
+    except Resolver404:
+        route_resolves = False
+    return ToolExecution(
+        data={"page_id": str(page.id), "public_url": snapshot["public_url"],
+              "public_path": snapshot["public_path"],
+              "published": page.status == CalendarPage.Status.PUBLISHED,
+              "route_resolves": route_resolves,
+              "public_http_test_performed": False,
+              "external_reachability_verified": False,
+              "evidence_level": "database_and_local_route"},
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
+def get_calendar_delivery_evidence(*, identity, arguments):
+    """Return database-backed reminder delivery evidence for one tenant-owned booking."""
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    booking = CalendarBooking.objects.filter(
+        pk=_uuid((arguments or {}).get("booking_id"), field="booking_id"),
+        organization=organization,
+    ).first()
+    if booking is None:
+        raise OperationsToolError("Booking not found in this organization.")
+    deliveries = CalendarReminderDelivery.objects.filter(
+        booking=booking,
+    ).select_related("step").order_by("due_at", "id")
+    evidence = [{
+        "delivery_id": str(item.id),
+        "channel": item.step.channel,
+        "status": item.status,
+        "due_at": item.due_at.isoformat(),
+        "sent_at": item.sent_at.isoformat() if item.sent_at else None,
+        "completed_at": item.completed_at.isoformat() if item.completed_at else None,
+        "error": item.error[:500],
+    } for item in deliveries]
+    return ToolExecution(
+        data={"booking_id": str(booking.id), "booking_status": booking.status,
+              "delivery_records": evidence, "delivery_record_count": len(evidence),
+              "sent_record_count": sum(item["status"] == CalendarReminderDelivery.Status.SENT for item in evidence),
+              "recipient_receipt_verified": False,
+              "external_transport_probe_performed": False,
+              "evidence_level": "recorded_delivery_state"},
+        capability=CAP_ORGANIZATION_READ, target_type="booking", target_id=str(booking.id),
+    )
+
+
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
