@@ -223,7 +223,7 @@ def ingest_query(integration, row, *, direction):
     if direction not in {"push", "pull"}:
         raise ValidationError("Invalid source direction.")
     with transaction.atomic():
-        connection = Acres99Integration.objects.select_for_update().select_related(
+        connection = Acres99Integration.objects.select_for_update(of=("self",)).select_related(
             "organization", "pipeline", "stage",
         ).get(pk=integration.pk)
         if not _route_ok(connection):
@@ -320,7 +320,7 @@ def sync_connection(integration_id, *, manual=False):
     """
     now = timezone.now()
     with transaction.atomic():
-        connection = Acres99Integration.objects.select_for_update().select_related(
+        connection = Acres99Integration.objects.select_for_update(of=("self",)).select_related(
             "organization", "pipeline", "stage",
         ).get(pk=integration_id)
         if not _route_ok(connection) or connection.mode not in {

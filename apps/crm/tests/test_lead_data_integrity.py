@@ -217,6 +217,10 @@ class LeadDataIntegrityTests(TestCase):
                 ("sales.salesdocument", "lead"),
                 # Enquiry tombstones survive; pre_delete erases buyer payloads.
                 ("integrations.indiamartreceipt", "lead"),
+                # 99acres receipts and minimal audit events remain as
+                # privacy-safe deduplication evidence after CRM lead deletion.
+                ("integrations.acres99receipt", "lead"),
+                ("integrations.acres99event", "lead"),
             },
         )
         self.assertTrue(
