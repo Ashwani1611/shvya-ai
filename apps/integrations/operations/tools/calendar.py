@@ -351,6 +351,81 @@ def get_calendar_delivery_evidence(*, identity, arguments):
     )
 
 
+
+def upload_calendar_logo(*, identity, arguments):
+    """Upload an approved PNG/JPEG/WebP through the page's configured Django storage."""
+    import base64
+    import binascii
+    import hashlib
+    from django.core.files.base import ContentFile
+
+    organization = _organization_for(identity)
+    dry_run, reason = _write_gate(
+        identity=identity, organization=organization, capability=CAP_CALENDAR_CONFIG_WRITE,
+        tool_name="upload_calendar_logo", arguments=arguments,
+    )
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("Calendar page not found in this organization.")
+    payload = (arguments or {}).get("image_base64")
+    if not isinstance(payload, str) or not payload or len(payload) > 2_800_000:
+        raise OperationsToolError("image_base64 must encode an image no larger than 2 MB.")
+    try:
+        raw = base64.b64decode(payload, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise OperationsToolError("image_base64 is not valid base64.") from exc
+    if not raw or len(raw) > 2 * 1024 * 1024:
+        raise OperationsToolError("Image must be between 1 byte and 2 MB.")
+    if raw.startswith(b"\\x89PNG\\r\\n\\x1a\\n"):
+        extension = "png"
+    elif raw.startswith(b"\\xff\\xd8\\xff"):
+        extension = "jpg"
+    elif raw.startswith(b"RIFF") and raw[8:12] == b"WEBP":
+        extension = "webp"
+    else:
+        raise OperationsToolError("Only PNG, JPEG and WebP image files are supported.")
+    digest = hashlib.sha256(raw).hexdigest()
+    proposal = {"page_id": str(page.id), "image_sha256": digest,
+                "byte_count": len(raw), "extension": extension,
+                "previous_logo": page.logo_file.name if page.logo_file else None}
+    if not dry_run:
+        _ensure_approved_proposal_unchanged(arguments=arguments, proposal=proposal)
+    if dry_run:
+        return ToolExecution(
+            data={"status": "DRY_RUN", "proposal": proposal, "outbound_messages": 0,
+                  "approval_required": approval_required(
+                      role=identity.role, organization=organization,
+                      capability=CAP_CALENDAR_CONFIG_WRITE)},
+            capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+            reason=reason, outcome=OperationsAuditEvent.Outcome.DRY_RUN,
+            audit_summary={"proposal_digest": _proposal_digest(proposal)},
+        )
+    # Full-clean before storing to reduce orphan objects if the page is invalid.
+    page.full_clean()
+    previous_name = page.logo_file.name if page.logo_file else ""
+    filename = f"mcp-logo-{digest[:16]}.{extension}"
+    page.logo_file.save(filename, ContentFile(raw), save=False)
+    page.logo_url = ""
+    try:
+        page.full_clean()
+        page.save(update_fields=["logo_file", "logo_url", "updated_at"])
+    except Exception:
+        page.logo_file.storage.delete(page.logo_file.name)
+        raise
+    if previous_name and previous_name != page.logo_file.name:
+        transaction.on_commit(
+            lambda storage=page.logo_file.storage, name=previous_name: storage.delete(name)
+        )
+    return ToolExecution(
+        data={"status": "UPDATED", "page_id": str(page.id),
+              "logo_stored": bool(page.logo_file), "image_sha256": digest,
+              "byte_count": len(raw), "storage_backend": type(page.logo_file.storage).__name__,
+              "verification": "storage_write_completed", "outbound_messages": 0},
+        capability=CAP_CALENDAR_CONFIG_WRITE, target_type="calendar_page", target_id=str(page.id),
+        reason=reason, audit_summary={"image_sha256": digest, "byte_count": len(raw)},
+    )
+
+
 def _calendar_changes(page, changes):
     if not isinstance(changes, dict) or not changes:
         raise OperationsToolError("changes must be a non-empty object.")
