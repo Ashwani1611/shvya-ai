@@ -261,6 +261,63 @@ def inspect_calendar_public_link(*, identity, arguments):
     )
 
 
+
+def probe_calendar_public_https(*, identity, arguments):
+    """Bounded external GET against a trusted SHVYA booking URL; no redirects or arbitrary hosts."""
+    import urllib.error
+    import urllib.request
+    from urllib.parse import urlsplit
+    organization = _organization_for(identity)
+    _require_operations_capability(identity=identity, organization=organization, capability=CAP_ORGANIZATION_READ)
+    page = _page_for(organization, (arguments or {}).get("page_id"))
+    if page is None:
+        raise OperationsToolError("No Calendar page exists for this organization.")
+    snapshot = _page_snapshot(page)
+    url = snapshot["public_url"]
+    target = urlsplit(url)
+    approved_hosts = {"shvya-ai.com", "www.shvya-ai.com", "dashboard.shvya-ai.com"}
+    if (target.scheme != "https" or target.hostname not in approved_hosts
+            or target.username or target.password or target.port is not None
+            or target.query or target.fragment):
+        raise OperationsToolError("Public HTTPS probe is restricted to approved SHVYA hosts.")
+    if target.path != snapshot["public_path"]:
+        raise OperationsToolError("Public HTTPS path does not match the canonical Calendar route.")
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, request, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(urllib.request.ProxyHandler({}), _NoRedirect())
+    request = urllib.request.Request(
+        url, headers={"User-Agent": "SHVYA-Calendar-MCP-Health/1.0", "Accept": "text/html"},
+        method="GET",
+    )
+    status_code = None
+    error = None
+    try:
+        with opener.open(request, timeout=4) as response:
+            status_code = response.status
+            response.read(1024)
+    except urllib.error.HTTPError as exc:
+        status_code = exc.code
+        error = "HTTP status indicates that the page could not be served."
+    except (urllib.error.URLError, TimeoutError, OSError) as exc:
+        error = type(exc).__name__
+    return ToolExecution(
+        data={
+            "page_id": str(page.id), "public_url": url,
+            "published": page.status == CalendarPage.Status.PUBLISHED,
+            "http_test_performed": True, "status_code": status_code,
+            "reachable": status_code == 200,
+            "error": error,
+            "redirects_followed": False,
+            "booking_created": False, "recipient_delivery_verified": False,
+            "evidence_level": "external_http_response",
+        },
+        capability=CAP_ORGANIZATION_READ, target_type="calendar_page", target_id=str(page.id),
+    )
+
+
 def get_calendar_delivery_evidence(*, identity, arguments):
     """Return database-backed reminder delivery evidence for one tenant-owned booking."""
     organization = _organization_for(identity)
