@@ -264,6 +264,19 @@ class Acres99IntegrationTests(TestCase):
         self.assertEqual(retry.status_code, 200)
         self.assertEqual(Acres99Receipt.objects.count(), 2)
 
+    def test_lead_deletion_preserves_minimal_receipt_and_removes_contact_reference(self):
+        connection = self.provision()
+        self.assertEqual(self.push(connection, [enquiry()]).status_code, 200)
+        lead = Lead.objects.get(organization=self.organization)
+        lead.delete()
+        receipt = Acres99Receipt.objects.get(integration=connection)
+        event = Acres99Event.objects.get(integration=connection, status="created")
+        self.assertIsNone(receipt.lead_id)
+        self.assertIsNone(event.lead_id)
+        self.assertEqual(receipt.external_query_id, "ACRES-1")
+        self.assertEqual(receipt.property_id, "LIST-1")
+        self.assertFalse(Lead.objects.filter(organization=self.organization).exists())
+
     def test_unknown_and_paused_tokens_cannot_create_leads(self):
         connection = self.provision()
         self.assertEqual(self.client.post(
