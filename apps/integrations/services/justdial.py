@@ -343,7 +343,7 @@ def process_justdial_lead(
             # Ensure rotation, disable and replay checks operate on a single,
             # current integration configuration rather than a stale snapshot.
             integration = (
-                JustDialIntegration.objects.select_for_update()
+                JustDialIntegration.objects.select_for_update(of=("self",))
                 .select_related("organization", "pipeline", "stage")
                 .get(pk=integration.pk)
             )
