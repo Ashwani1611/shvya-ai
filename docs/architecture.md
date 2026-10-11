@@ -77,3 +77,7 @@ The current product uses Django templates, HTMX/JavaScript and shared static ass
 - [`operations-mcp.md`](./operations-mcp.md) — external AI operations boundary.
 - [`architecture-boundaries.md`](./architecture-boundaries.md) — service ownership, Operations facade rules, AI patch ceiling and the safe `apps.channels` rename plan.
 - [`shvya-sales.md`](./shvya-sales.md), [`shvya-calendar-workspace.md`](./shvya-calendar-workspace.md), [`call-intelligence.md`](./call-intelligence.md) — current business workspaces.
+
+### Account handover rendering boundary
+
+The Operations-owned handover renderer converts a strict caller-supplied document model into Markdown and self-contained printable HTML. It performs no provider calls, persistence, business configuration mutation or snapshot authentication. The existing actor/tenant/capability boundary wraps it; structure validation cannot upgrade evidence readiness. The specialist gathers canonical configuration and Vault evidence first. See [account handover](account-handover.md).
