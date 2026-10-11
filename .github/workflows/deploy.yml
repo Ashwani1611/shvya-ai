@@ -397,6 +397,9 @@ jobs:
               exit 1
             fi
 
+            echo "Publishing the verified Android download to Call Intelligence..."
+            docker compose exec -T web python manage.py publish_android_release
+
             echo "Current service status:"
             docker compose ps
 

@@ -35,6 +35,7 @@
       {% if release %}
         Android · v{{ release.version_name }} · Min Android {{ release.min_android_sdk }}
         {% if release.sha256 %}<span>· SHA-256 verified</span>{% endif %}
+        {% if release.release_notes %}<span>{{ release.release_notes }}</span>{% endif %}
       {% else %}
         Android · Internal employee app · Direct SHVYA sync
       {% endif %}
