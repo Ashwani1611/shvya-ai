@@ -12,6 +12,7 @@ import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.shvya.callintelligence.net.AuthStore
 import com.shvya.callintelligence.workers.HeartbeatWorker
 import com.shvya.callintelligence.workers.ReconcileWorker
 import com.shvya.callintelligence.workers.ReminderWorker
@@ -20,6 +21,7 @@ import java.util.concurrent.TimeUnit
 
 object TrackingScheduler {
     fun activate(context: Context) {
+        if (!AuthStore(context).canTrack()) return
         ensureBaseline(context)
         scheduleRecurring(context)
         enqueueReconcile(context)
@@ -32,6 +34,7 @@ object TrackingScheduler {
     }
 
     fun scheduleRecurring(context: Context) {
+        if (!AuthStore(context).canTrack()) return
         WorkManager.getInstance(context).enqueueUniquePeriodicWork(
             "shvya-call-reconcile",
             ExistingPeriodicWorkPolicy.UPDATE,
@@ -64,12 +67,14 @@ object TrackingScheduler {
     }
 
     fun enqueueReconcile(context: Context) {
+        if (!AuthStore(context).canTrack()) return
         WorkManager.getInstance(context).enqueue(
             OneTimeWorkRequestBuilder<ReconcileWorker>().build()
         )
     }
 
     fun enqueueSync(context: Context) {
+        if (!AuthStore(context).canTrack()) return
         val network = Constraints.Builder()
             .setRequiredNetworkType(NetworkType.CONNECTED)
             .build()
@@ -81,7 +86,11 @@ object TrackingScheduler {
     }
 
     fun ensureBaseline(context: Context) {
-        val state = TrackingState(context)
+        val auth = AuthStore(context)
+        if (!auth.canTrack()) return
+        val session = auth.readSession()
+        val accountId = auth.accountId(session) ?: return
+        val state = TrackingState(context, accountId, session.generation)
         if (state.lastCallLogId >= 0) return
         if (
             ContextCompat.checkSelfPermission(

@@ -1,9 +1,20 @@
 package com.shvya.callintelligence.calls
 
 import android.content.Context
+import com.shvya.callintelligence.data.AppDatabase
+import com.shvya.callintelligence.net.AuthStore
 
-class TrackingState(context: Context) {
-    private val prefs = context.getSharedPreferences("shvya_call_tracking", Context.MODE_PRIVATE)
+class TrackingState(
+    context: Context,
+    accountId: String = requireNotNull(AuthStore(context).accountId()) {
+        "Sign in before tracking calls"
+    },
+    sessionGeneration: String = AuthStore(context).readSession().generation,
+) {
+    private val prefs = context.getSharedPreferences(
+        AppDatabase.trackingPreferencesName(accountId, sessionGeneration),
+        Context.MODE_PRIVATE,
+    )
 
     var lastCallLogId: Long
         get() = prefs.getLong("last_call_log_id", -1L)

@@ -81,8 +81,9 @@ Additional mobile API behavior:
 - `POST /api/v1/call-intelligence/leads/` accepts name, phone, email, notes,
   the selected pipeline/stage and validated custom attributes. Existing leads
   are not overwritten by this creation path.
-- The Android app displays version 1.0 with version code 4 so installed internal
-  builds can upgrade from earlier lower version codes.
+- The Android app version is 1.6 (version code 10). Installation over an existing
+  build also requires the same signing certificate; a higher version code alone
+  does not make differently signed APKs compatible.
 
 Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
 
@@ -122,3 +123,40 @@ directly to Django instead of redirecting them. This preserves POST methods and 
 request bodies for sign-in, token refresh, device registration and call sync while
 normal browser traffic on the legacy hostname continues to redirect to
 `https://shvya-ai.com/`.
+
+## Android session and sync recovery (v1.6)
+
+- Sync, Reminders and Refresh retain the signed-in workspace when a request fails.
+  A disconnected device pauses call capture/upload and displays an explicit
+  reconnect message. It does not delete the login. Device revocation remains
+  enforced by the server; reconnect only succeeds after an administrator restores
+  access.
+- Access-token refresh is serialized across foreground requests and background
+  workers. Waiting requests reuse the rotated pair. Late responses from an earlier
+  login cannot overwrite the current session. Network errors, throttling, server
+  failures and malformed token responses preserve the stored session; a rejected
+  refresh token prompts the user to sign in again.
+- Local call queues and tracking checkpoints are isolated by account. On upgrade,
+  the existing signed-in account retains its legacy queue. A legacy queue with no
+  identifiable signed-in owner is preserved but not uploaded by a later account.
+- Registration, event upload and heartbeat return the same explicit
+  `403 device_removed` response for a revoked device belonging to the caller.
+  Unknown devices and devices belonging to another user remain undisclosed.
+- The native workspace uses a consistent type scale, contact avatars, quick call
+  actions, reminder segments, explicit sync status, and responsive metric cards.
+  Returning from a dialer or permission screen no longer needlessly rebuilds an
+  open form.
+
+Android verification runs with:
+
+```bash
+gradle -p android/call-intelligence testReleaseUnitTest lintRelease assembleRelease
+pytest apps/telephony/tests/test_mobile_authentication.py
+```
+
+The APK workflow saves the APK, checksum, unit-test results and lint report.
+Before distributing to existing devices, verify the signing certificate matches
+the installed build. Physical-device acceptance should include Sync, Reminders,
+Refresh, an expired token, a temporary loss of connectivity, return from the
+dialer, and administrator disconnection/reconnection. Emulator/build results do
+not establish real SIM capture or notification delivery on every device vendor.

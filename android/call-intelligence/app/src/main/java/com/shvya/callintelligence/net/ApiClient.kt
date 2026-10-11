@@ -11,6 +11,7 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import com.shvya.callintelligence.BuildConfig
 import com.shvya.callintelligence.data.LocalCall
+import com.shvya.callintelligence.data.AppDatabase
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -21,24 +22,24 @@ import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
-data class ApiResponse(val code: Int, val body: String) {
-    val successful: Boolean get() = code in 200..299
-}
-
 data class LoginResult(val successful: Boolean, val message: String = "")
 
-class ApiClient(private val context: Context) {
+class ApiClient(private val context: Context, private val expectedSession: SessionTokens? = null) {
     private val auth = AuthStore(context)
     private val baseUrl = BuildConfig.SHVYA_BASE_URL.trimEnd('/') + "/"
 
     fun login(email: String, password: String): LoginResult {
+        if (!AppDatabase.accountStorageReady) {
+            return LoginResult(false, "Could not prepare secure local storage. Restart the app and try again.")
+        }
+        val initialGeneration = auth.readSession().generation
         val response = request(
             "api/v1/auth/token/",
             JSONObject().put("email", email).put("password", password),
             authorized = false,
         )
         if (!response.successful) {
-            val detail = runCatching { JSONObject(response.body).optString("detail") }.getOrNull().orEmpty()
+            val detail = response.detailMessage()
             val message = when (response.code) {
                 400, 401 -> "Email or password is incorrect."
                 403 -> detail.ifBlank { "This account cannot use the SHVYA mobile workspace." }
@@ -47,35 +48,41 @@ class ApiClient(private val context: Context) {
             }
             return LoginResult(false, message)
         }
-        val payload = runCatching { JSONObject(response.body) }.getOrNull()
+        val payload = TokenPayload.parse(response.body, requireRefresh = true)
             ?: return LoginResult(false, "SHVYA returned an invalid sign-in response. Please try again.")
-        val access = payload.optString("access")
-        val refresh = payload.optString("refresh")
-        if (access.isBlank() || refresh.isBlank()) {
+        val access = payload.access
+        val refresh = payload.refresh
+        if (auth.accountId(SessionTokens(access, refresh, initialGeneration)) == null) {
             return LoginResult(false, "SHVYA could not create a secure mobile session. Please try again.")
         }
-        auth.accessToken = access
-        auth.refreshToken = refresh
-        auth.email = email
+        if (!auth.saveLogin(access, refresh, email, initialGeneration)) {
+            return LoginResult(false, "Your account changed while signing in. Please try again.")
+        }
         return LoginResult(true)
     }
 
     fun refresh(): Boolean {
-        val refreshToken = auth.refreshToken
-        if (refreshToken.isBlank()) return false
-        val response = request(
-            "api/v1/auth/token/refresh/",
-            JSONObject().put("refresh", refreshToken),
-            authorized = false,
-        )
-        if (!response.successful) return false
-        val payload = JSONObject(response.body)
-        val access = payload.optString("access")
-        if (access.isBlank()) return false
-        auth.accessToken = access
-        val rotated = payload.optString("refresh")
-        if (rotated.isNotBlank()) auth.refreshToken = rotated
-        return true
+        return refreshSession(auth.readSession()) is RefreshOutcome.Ready
+    }
+
+    private fun refreshSession(session: SessionTokens): RefreshOutcome {
+        val outcome = SessionRefreshCoordinator(auth) { refreshToken ->
+            val response = request(
+                "api/v1/auth/token/refresh/",
+                JSONObject().put("refresh", refreshToken),
+                authorized = false,
+            )
+            val payload = TokenPayload.parse(response.body, requireRefresh = false)
+            TokenRefreshReply(
+                response.code,
+                payload?.access.orEmpty(),
+                payload?.refresh.orEmpty(),
+            )
+        }.refresh(session)
+        if (outcome is RefreshOutcome.SignInRequired && auth.readSession().generation == session.generation) {
+            stopTracking()
+        }
+        return outcome
     }
 
     fun registerDevice(): ApiResponse {
@@ -89,7 +96,10 @@ class ApiClient(private val context: Context) {
             .put("app_version", packageInfo.versionName ?: "")
             .put("permissions", permissionSnapshot())
             .put("battery_optimization_ignored", false)
-        return authorizedPost("api/v1/call-intelligence/devices/register/", payload)
+        val session = auth.readSession()
+        return authorizedPost("api/v1/call-intelligence/devices/register/", payload).also { response ->
+            if (response.successful) auth.setDeviceBlocked(session, false)
+        }
     }
 
     fun heartbeat(batteryOptimizationIgnored: Boolean): ApiResponse {
@@ -138,16 +148,50 @@ class ApiClient(private val context: Context) {
     fun authorizedPost(path: String, payload: JSONObject): ApiResponse = authorizedRequest(path, payload, "POST")
 
     private fun authorizedRequest(path: String, payload: JSONObject, method: String): ApiResponse {
-        var response = request(path, payload, authorized = true, method = method)
-        if (response.code == 401 && refresh()) {
-            response = request(path, payload, authorized = true, method = method)
+        val session = auth.readSession()
+        if (expectedSession != null && expectedSession.generation != session.generation) return sessionChangedResponse()
+        if (session.access.isBlank() || auth.sessionRequiresSignIn) {
+            return ApiResponse(401, "{\"code\":\"sign_in_required\",\"detail\":\"Sign in again to continue.\"}")
         }
-        if (response.code == 403 && response.body.contains("device_removed")) {
-            auth.clear()
-            context.stopService(Intent(context, CallTrackingService::class.java))
-            WorkManager.getInstance(context).cancelAllWork()
+        if (auth.deviceBlocked && (path.endsWith("events/") || path.endsWith("devices/heartbeat/"))) {
+            return ApiResponse(403, "{\"code\":\"device_removed\",\"detail\":\"This device has been disconnected.\"}")
+        }
+        var response = request(path, payload, authorized = true, method = method, accessToken = session.access)
+        if (response.code == 401) {
+            when (val outcome = refreshSession(session)) {
+                is RefreshOutcome.Ready -> {
+                    response = request(
+                        path, payload, authorized = true, method = method, accessToken = outcome.session.access,
+                    )
+                    if (SessionRefreshCoordinator(auth) { error("No further refresh") }
+                            .rejectUnauthorizedRetry(outcome.session, response.code)) {
+                        stopTracking()
+                    }
+                }
+                is RefreshOutcome.Unavailable -> return ApiResponse(
+                    outcome.code,
+                    "{\"detail\":\"Could not renew the connection. Please try again.\"}",
+                )
+                is RefreshOutcome.SessionChanged -> return sessionChangedResponse()
+                is RefreshOutcome.SignInRequired -> return ApiResponse(
+                    401, "{\"code\":\"sign_in_required\",\"detail\":\"Your session has expired. Sign in again.\"}",
+                )
+            }
+        }
+        if (auth.readSession().generation != session.generation) return sessionChangedResponse()
+        if (response.deviceRemoved && auth.setDeviceBlocked(session, true)) {
+            stopTracking()
         }
         return response
+    }
+
+    private fun sessionChangedResponse() = ApiResponse(
+        409, "{\"code\":\"session_changed\",\"detail\":\"Your account changed. Refresh this screen.\"}",
+    )
+
+    private fun stopTracking() {
+        context.stopService(Intent(context, CallTrackingService::class.java))
+        WorkManager.getInstance(context).cancelAllWork()
     }
 
     fun deviceId(): String =
@@ -170,19 +214,26 @@ class ApiClient(private val context: Context) {
             )
     }
 
-    private fun request(path: String, payload: JSONObject, authorized: Boolean, method: String = "POST"): ApiResponse {
+    private fun request(
+        path: String,
+        payload: JSONObject,
+        authorized: Boolean,
+        method: String = "POST",
+        accessToken: String = "",
+    ): ApiResponse {
         val connection = (URL(baseUrl + path.trimStart('/')).openConnection() as HttpURLConnection)
         return try {
             connection.requestMethod = method
+            // Never follow a sign-in/proxy redirect with a bearer credential or a write payload.
+            connection.instanceFollowRedirects = false
             connection.connectTimeout = 15000
             connection.readTimeout = 20000
             connection.doOutput = method != "GET"
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Accept", "application/json")
             if (authorized) {
-                val token = auth.accessToken
-                if (token.isNotBlank()) {
-                    connection.setRequestProperty("Authorization", "Bearer " + token)
+                if (accessToken.isNotBlank()) {
+                    connection.setRequestProperty("Authorization", "Bearer " + accessToken)
                 }
             }
             if (method != "GET") connection.outputStream.use { stream ->

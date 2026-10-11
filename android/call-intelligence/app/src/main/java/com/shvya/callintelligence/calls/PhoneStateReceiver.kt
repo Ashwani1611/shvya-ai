@@ -16,9 +16,12 @@ import java.util.concurrent.TimeUnit
 
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (!AuthStore(context).hasSession()) return
+        val auth = AuthStore(context)
+        if (!auth.canTrack()) return
+        val session = auth.readSession()
+        val accountId = auth.accountId(session) ?: return
         val phoneState = intent.getStringExtra(TelephonyManager.EXTRA_STATE) ?: return
-        val state = TrackingState(context)
+        val state = TrackingState(context, accountId, session.generation)
         if (phoneState == state.lastPhoneState) return
 
         val now = System.currentTimeMillis()

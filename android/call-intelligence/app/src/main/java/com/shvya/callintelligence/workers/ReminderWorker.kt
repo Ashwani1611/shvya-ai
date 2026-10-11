@@ -25,7 +25,9 @@ class ReminderWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        if (!AuthStore(applicationContext).hasSession()) return Result.success()
+        val auth = AuthStore(applicationContext)
+        if (!auth.canTrack()) return Result.success()
+        val session = auth.readSession()
         if (
             Build.VERSION.SDK_INT >= 33 &&
             ContextCompat.checkSelfPermission(
@@ -35,7 +37,7 @@ class ReminderWorker(
         ) return Result.success()
 
         val response = try {
-            ApiClient(applicationContext).authorizedGet(
+            ApiClient(applicationContext, session).authorizedGet(
                 "api/v1/call-intelligence/reminders/?page=1"
             )
         } catch (_: Exception) {
@@ -44,6 +46,7 @@ class ReminderWorker(
         if (!response.successful) {
             return if (response.code in setOf(401, 403)) Result.success() else Result.retry()
         }
+        if (!auth.canTrack() || auth.readSession().generation != session.generation) return Result.success()
 
         val payload = runCatching { JSONObject(response.body) }.getOrNull() ?: return Result.success()
         val rows = payload.optJSONArray("reminders") ?: return Result.success()
@@ -54,6 +57,7 @@ class ReminderWorker(
             Context.MODE_PRIVATE,
         )
         for (i in 0 until rows.length()) {
+            if (!auth.canTrack() || auth.readSession().generation != session.generation) return Result.success()
             val item = rows.optJSONObject(i) ?: continue
             val dueAt = item.optString("due_at")
             val dueMillis = parseIso(dueAt) ?: continue

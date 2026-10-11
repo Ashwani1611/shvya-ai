@@ -7,7 +7,7 @@ import com.shvya.callintelligence.net.AuthStore
 
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (!AuthStore(context).hasSession()) return
+        if (!AuthStore(context).canTrack()) return
         TrackingScheduler.scheduleRecurring(context)
         TrackingScheduler.enqueueReconcile(context)
         TrackingScheduler.enqueueSync(context)
