@@ -24,6 +24,7 @@ SECTION_TITLES = {
     "open_questions": "Open questions for the setup team",
     "not_covered": "Not covered in this demo",
 }
+TEMPLATE_VERSION = "account-handover-v1"
 MAX_INPUT_CHARS = 250000
 MAX_OUTPUT_CHARS = 1000000
 MAX_CHUNK_CHARS = 20000
@@ -432,6 +433,7 @@ def render_handover(document, *, organization_id, organization_name, format="htm
     return {
         "organization_id": organization_id,
         "schema_version": 1,
+        "template_version": TEMPLATE_VERSION,
         "format": format,
         "mime_type": "text/html" if format == "html" else "text/markdown",
         "suggested_filename": "account-handover-" + organization_id + (".html" if format == "html" else ".md"),
