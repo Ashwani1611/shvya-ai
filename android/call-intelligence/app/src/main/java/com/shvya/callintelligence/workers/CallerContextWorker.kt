@@ -23,13 +23,17 @@ class CallerContextWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        if (!AuthStore(applicationContext).hasSession()) return Result.success()
+        val auth = AuthStore(applicationContext)
+        if (!auth.canTrack()) return Result.success()
+        val session = auth.readSession()
+        val eventSession = inputData.getString("session_generation").orEmpty()
+        if (eventSession.isNotBlank() && eventSession != session.generation) return Result.success()
         val phone = inputData.getString("phone").orEmpty()
         val digits = phone.filter { it.isDigit() }
         if (digits.length < 6) return Result.success()
         val query = digits.takeLast(minOf(10, digits.length))
         val response = try {
-            ApiClient(applicationContext).authorizedGet(
+            ApiClient(applicationContext, session).authorizedGet(
                 "api/v1/call-intelligence/leads/list/?q=" +
                     URLEncoder.encode(query, "UTF-8")
             )
@@ -48,7 +52,7 @@ class CallerContextWorker(
                 break
             }
         }
-        if (lead != null) notifyLead(lead)
+        if (lead != null && auth.canTrack() && auth.readSession().generation == session.generation) notifyLead(lead)
         return Result.success()
     }
 

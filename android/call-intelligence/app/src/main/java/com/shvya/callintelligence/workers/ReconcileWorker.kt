@@ -18,8 +18,14 @@ class ReconcileWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        if (!AuthStore(applicationContext).hasSession()) return Result.success()
-        val state = TrackingState(applicationContext)
+        val auth = AuthStore(applicationContext)
+        if (!auth.canTrack()) return Result.success()
+        val session = auth.readSession()
+        val eventSession = inputData.getString("session_generation").orEmpty()
+        if (eventSession.isNotBlank() && eventSession != session.generation) return Result.success()
+        val sessionGeneration = session.generation
+        val accountId = auth.accountId(session) ?: return Result.success()
+        val state = TrackingState(applicationContext, accountId, sessionGeneration)
         val reader = CallLogReader(applicationContext)
         var baseline = state.lastCallLogId
         if (baseline < 0) {
@@ -31,15 +37,18 @@ class ReconcileWorker(
         val rows = reader.readAfter(baseline)
         if (rows.isEmpty()) return Result.success()
 
-        val dao = AppDatabase.get(applicationContext).callDao()
+        val dao = AppDatabase.get(applicationContext, accountId).callDao()
         val latestId = rows.last().callLogId
         val sessionEndedAt = inputData.getLong("session_ended_at", 0L)
         val sessionOffhookAt = inputData.getLong("session_offhook_at", 0L)
         val sessionRingMs = inputData.getLong("session_ring_ms", 0L)
 
         rows.forEach { row ->
-            state.lastCallLogId = max(state.lastCallLogId, row.callLogId)
-            if (row.phoneNumber.isBlank()) return@forEach
+            if (!auth.canTrack() || auth.readSession().generation != sessionGeneration) return Result.success()
+            if (row.phoneNumber.isBlank()) {
+                state.lastCallLogId = max(state.lastCallLogId, row.callLogId)
+                return@forEach
+            }
 
             val isLatestSession = row.callLogId == latestId && sessionEndedAt > 0
             val endedAt = if (isLatestSession) sessionEndedAt else row.endedAt
@@ -75,6 +84,8 @@ class ReconcileWorker(
                     totalDurationSeconds = totalSeconds,
                 )
             )
+            // Advance only after the call and queue transaction succeeds, so an interrupted save is retried.
+            state.lastCallLogId = max(state.lastCallLogId, row.callLogId)
             if (localId > 0) {
                 PostCallNotifier.notifyCaptured(
                     context = applicationContext,

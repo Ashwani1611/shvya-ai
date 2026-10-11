@@ -182,12 +182,16 @@ class DeviceHeartbeatView(APIView):
                 organization=user.organization,
                 user=user,
                 device_id=device_id,
-                is_active=True,
             )
             .first()
         )
         if device is None:
             return Response({"detail": "Device is not registered."}, status=404)
+        if not device.is_active:
+            return Response(
+                {"code": "device_removed", "detail": "This device has been removed."},
+                status=403,
+            )
         device.last_seen_at = timezone.now()
         if isinstance(request.data.get("permissions"), dict):
             device.permissions = request.data["permissions"]

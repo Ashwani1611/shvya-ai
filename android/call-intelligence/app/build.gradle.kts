@@ -13,9 +13,9 @@ android {
         minSdk = 23
         targetSdk = 35
         // Keep versionCode increasing so existing installations update in place.
-        // v1.4 standardizes safe areas and the mobile Lead Detail layout.
-        versionCode = 9
-        versionName = "1.5"
+        // v1.6 preserves sessions during sync and refines the mobile workspace.
+        versionCode = 10
+        versionName = "1.6"
 
         buildConfigField(
             "String",
@@ -68,4 +68,6 @@ dependencies {
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

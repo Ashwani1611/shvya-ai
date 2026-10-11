@@ -20,6 +20,7 @@ import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.Switch
 import android.app.DatePickerDialog
 import android.app.AlertDialog
@@ -47,18 +48,25 @@ import com.shvya.callintelligence.calls.CallTrackingService
 import com.shvya.callintelligence.calls.TrackingScheduler
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
+import com.shvya.callintelligence.net.ServerTimestamp
 import com.shvya.callintelligence.data.AppDatabase
+import com.shvya.callintelligence.data.AccountStoragePolicy
 import com.shvya.callintelligence.data.PendingAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : AppCompatActivity() {
-    private val ink = Color.rgb(22, 29, 39)
-    private val muted = Color.rgb(107, 116, 129)
-    private val blue = Color.rgb(25, 94, 185)
-    private val canvas = Color.rgb(246, 247, 249)
-    private val line = Color.rgb(233, 236, 240)
+    private val ink = Color.rgb(23, 32, 49)
+    private val muted = Color.rgb(100, 112, 131)
+    private val blue = Color.rgb(29, 92, 224)
+    private val canvas = Color.rgb(245, 247, 251)
+    private val line = Color.rgb(229, 234, 242)
+    private val blueWash = Color.rgb(234, 241, 255)
+    private val green = Color.rgb(26, 128, 91)
+    private val red = Color.rgb(192, 66, 61)
+    private val regularFont = Typeface.create("sans-serif", Typeface.NORMAL)
+    private val mediumFont = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     private lateinit var auth: AuthStore
     private var selectedTab = "today"
     private var query = ""
@@ -79,20 +87,33 @@ class MainActivity : AppCompatActivity() {
     private var renderVersion = 0
     private var leadFormOpen = false
     private var leadDetailId = ""
+    private var reauthenticate = false
+    private var resumeInitialized = false
+    private var permissionState = false
+    private var pausedSessionState = false
+    private var syncRequested = false
     private val apiPath = "api/v1/call-intelligence/"
 
     override fun onResume() {
         super.onResume()
         if (::auth.isInitialized && auth.hasSession()) {
             refreshLocalSyncHealth()
-            render()
+            // Returning from the dialer or a permission dialog must not discard a
+            // note, lead form, keyboard focus, or the current scroll position.
+            val permissions = essentialPermissionsGranted()
+            val paused = !auth.canTrack()
+            if (resumeInitialized && !leadFormOpen && !reauthenticate &&
+                (permissions != permissionState || paused != pausedSessionState)) render()
+            permissionState = permissions
+            pausedSessionState = paused
+            resumeInitialized = true
         }
     }
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
             render()
-            if (essentialPermissionsGranted()) {
+            if (essentialPermissionsGranted() && auth.canTrack()) {
                 TrackingScheduler.activate(this)
             }
         }
@@ -101,6 +122,17 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         auth = AuthStore(this)
         leadFormOpen = savedInstanceState?.getBoolean("lead_form_open") ?: false
+        selectedTab = savedInstanceState?.getString("selected_tab") ?: "today"
+        query = savedInstanceState?.getString("call_query").orEmpty()
+        leadQuery = savedInstanceState?.getString("lead_query").orEmpty()
+        callFilter = savedInstanceState?.getString("call_filter") ?: "all"
+        reminderSegment = savedInstanceState?.getString("reminder_segment") ?: "today"
+        leadDetailId = savedInstanceState?.getString("lead_detail_id").orEmpty()
+        dateFrom = savedInstanceState?.getString("date_from").orEmpty()
+        dateTo = savedInstanceState?.getString("date_to").orEmpty()
+        pageNumber = savedInstanceState?.getInt("page_number") ?: 1
+        permissionState = essentialPermissionsGranted()
+        pausedSessionState = !auth.canTrack()
         handleLaunchIntent(intent)
         render()
         openPendingCallAfterRender()
@@ -159,12 +191,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onSaveInstanceState(outState: Bundle) {
         outState.putBoolean("lead_form_open", leadFormOpen)
+        outState.putString("selected_tab", selectedTab)
+        outState.putString("call_query", query)
+        outState.putString("lead_query", leadQuery)
+        outState.putString("call_filter", callFilter)
+        outState.putString("reminder_segment", reminderSegment)
+        outState.putString("lead_detail_id", leadDetailId)
+        outState.putString("date_from", dateFrom)
+        outState.putString("date_to", dateTo)
+        outState.putInt("page_number", pageNumber)
         super.onSaveInstanceState(outState)
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         when {
+            reauthenticate && auth.hasSession() -> {
+                reauthenticate = false
+                render()
+            }
             leadFormOpen -> {
                 leadFormOpen = false
                 render()
@@ -179,7 +224,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun render() {
         when {
-            !auth.hasSession() -> showLogin()
+            !auth.hasSession() || reauthenticate -> showLogin()
             leadFormOpen -> showLeadForm()
             leadDetailId.isNotBlank() -> showLeadDetailPage(leadDetailId)
             else -> showDashboard()
@@ -187,6 +232,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showLogin() {
+        ++renderVersion
         val root = page().apply {
             gravity = Gravity.CENTER_VERTICAL
             setPadding(dp(24), dp(24), dp(24), dp(28))
@@ -231,6 +277,11 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
         val login = primaryButton("Continue").apply { minimumHeight = dp(54) }
+        if (!AppDatabase.accountStorageReady) {
+            login.isEnabled = false
+            root.addView(connectionNotice())
+            root.addView(space(16))
+        }
 
         login.setOnClickListener {
             val emailValue = email.text.toString().trim()
@@ -255,6 +306,7 @@ class MainActivity : AppCompatActivity() {
                         }
                 }
                 if (result.successful) {
+                    reauthenticate = false
                     render()
                 } else {
                     login.isEnabled = true
@@ -277,76 +329,108 @@ class MainActivity : AppCompatActivity() {
         card.addView(login, LinearLayout.LayoutParams(-1, dp(54)))
         card.addView(message)
         root.addView(card)
+        if (auth.hasSession()) {
+            root.addView(space(8))
+            root.addView(quietButton("Back to workspace").apply {
+                setOnClickListener { reauthenticate = false; render() }
+            })
+        }
         setPage(root)
     }
 
     private fun showDashboard() {
         val version = ++renderVersion
         val root = page()
-        val header = LinearLayout(this).apply {
-            gravity = Gravity.CENTER_VERTICAL
-            minimumHeight = dp(52)
+        if (!auth.canTrack()) {
+            root.addView(connectionNotice())
+            root.addView(space(18))
         }
-        header.addView(ImageView(this).apply {
-            setImageResource(R.drawable.ic_shvya)
-            contentDescription = "SHVYA"
-        }, LinearLayout.LayoutParams(dp(34), dp(34)))
-        header.addView(LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, 0, 0)
-            addView(sectionTitle("Call Intelligence").apply {
-                setPadding(0, 0, 0, 0)
-                textSize = 17f
-            })
-            addView(body("SHVYA").apply {
-                textSize = 11f
-                setPadding(0, dp(1), 0, 0)
-            })
-        }, LinearLayout.LayoutParams(0, -2, 1f))
-        header.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply {
-            setPadding(dp(12), dp(12), dp(12), dp(12))
-            layoutParams = LinearLayout.LayoutParams(dp(44), dp(44))
-            setOnClickListener { showSettings() }
-        })
-        root.addView(header)
-        root.addView(space(20))
-
         if (!essentialPermissionsGranted()) {
-            val permissionCard = card()
-            permissionCard.addView(iconBadge(R.drawable.ic_phone_outline, blue, Color.rgb(238, 244, 253)))
-            permissionCard.addView(space(16))
-            permissionCard.addView(sectionTitle("Finish setup").apply { textSize = 22f })
-            permissionCard.addView(body("Allow phone and call-log access so SHVYA can organize your call activity automatically."))
-            permissionCard.addView(space(18))
-            permissionCard.addView(primaryButton("Allow call access").apply {
-                setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
+            root.addView(card().apply {
+                val row = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+                row.addView(iconBadge(R.drawable.ic_phone_outline, blue, blueWash))
+                row.addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    addView(sectionTitle("Connect your call activity"))
+                    addView(body("Allow phone access to capture and sync your calls."))
+                }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12) })
+                addView(row)
+                addView(space(14))
+                addView(secondaryButton("Allow call access").apply {
+                    setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
+                })
             })
-            permissionCard.addView(space(8))
-            permissionCard.addView(quietButton("Open Android settings").apply {
-                setOnClickListener {
-                    startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))
-                }
-            })
-            root.addView(permissionCard)
-        } else {
-            when (selectedTab) {
-                "today" -> showToday(root, version)
-                "followups" -> showReminders(root, version)
-                "leads" -> showLeads(root, version)
-                else -> showCalls(root, version)
-            }
+            root.addView(space(20))
+        }
+        when (selectedTab) {
+            "today" -> showToday(root, version)
+            "followups" -> showReminders(root, version)
+            "leads" -> showLeads(root, version)
+            else -> showCalls(root, version)
         }
         setDashboardPage(root)
-        if (essentialPermissionsGranted()) {
+        if (essentialPermissionsGranted() && auth.canTrack()) {
             TrackingScheduler.ensureBaseline(this)
             TrackingScheduler.scheduleRecurring(this)
         }
     }
 
+    private fun connectionNotice(): LinearLayout = card().apply {
+        background = roundedStroke(Color.rgb(255, 249, 235), 20f, Color.rgb(241, 224, 185))
+        if (!AppDatabase.accountStorageReady) {
+            addView(sectionTitle("Device storage needs attention"))
+            addView(body("SHVYA couldn't prepare storage on this phone. Free some space, then fully close and reopen the app. Call capture and offline saving are paused.").apply {
+                setTextColor(Color.rgb(118, 83, 24))
+            })
+            addView(space(12))
+            addView(secondaryButton("Open storage settings").apply {
+                setOnClickListener {
+                    runCatching { startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }
+                        .onFailure { toast("Open your phone's Settings, then Storage. Free some space and restart SHVYA.") }
+                }
+            })
+            return@apply
+        }
+        addView(sectionTitle(if (auth.deviceBlocked) "Device connection paused" else "Reconnect your account"))
+        addView(body(auth.sessionMessage.ifBlank { "Sign in again to reconnect to SHVYA." }).apply {
+            setTextColor(Color.rgb(118, 83, 24))
+        })
+        addView(space(12))
+        addView(secondaryButton(if (auth.sessionRequiresSignIn) "Sign in again" else "Check connection").apply {
+            setOnClickListener {
+                if (auth.sessionRequiresSignIn) { reauthenticate = true; render() }
+                else {
+                    isEnabled = false
+                    text = "Checking…"
+                    lifecycleScope.launch {
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching { ApiClient(this@MainActivity).registerDevice() }.getOrNull()
+                        }
+                        if (result?.successful == true) toast("Device connection restored")
+                        else toast(auth.sessionMessage.ifBlank { "Could not reconnect. Please try again." })
+                        render()
+                    }
+                }
+            }
+        })
+    }
+
+    private fun requestSync(button: View? = null) {
+        if (!auth.canTrack()) { render(); return }
+        if (syncRequested) { toast("Sync is already requested"); return }
+        syncRequested = true
+        button?.isEnabled = false
+        TrackingScheduler.enqueueReconcile(this)
+        TrackingScheduler.enqueueSync(this)
+        toast("Sync requested. Your activity will update when it reaches SHVYA.")
+        refreshLocalSyncHealth()
+        window.decorView.postDelayed({ syncRequested = false; button?.isEnabled = true }, 2500)
+    }
+
     private fun showToday(root: LinearLayout, version: Int) {
-        root.addView(kicker("TODAY"))
+        root.addView(kicker(SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date()).uppercase(Locale.getDefault())))
         root.addView(title("Today").apply { textSize = 34f })
-        root.addView(body("Your calls and follow-ups, focused on what needs attention."))
+        root.addView(body("Every conversation. One clear next step."))
         root.addView(space(20))
         if (pendingSyncCount > 0) {
             root.addView(syncHealthCard())
@@ -390,7 +474,7 @@ class MainActivity : AppCompatActivity() {
                     pageNumber = 1
                     render()
                 }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
             actions.addView(primaryButton("Follow-ups").apply {
                 setOnClickListener {
                     selectedTab = "followups"
@@ -398,7 +482,7 @@ class MainActivity : AppCompatActivity() {
                     pageNumber = 1
                     render()
                 }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             content.addView(actions)
             content.addView(space(26))
 
@@ -437,7 +521,7 @@ class MainActivity : AppCompatActivity() {
     private fun showLeads(root: LinearLayout, version: Int) {
         root.addView(kicker("CRM"))
         root.addView(title("Leads").apply { textSize = 34f })
-        root.addView(body("Call, message, follow up and move leads without leaving your phone."))
+        root.addView(body("Your relationships, ready for the next conversation."))
         root.addView(space(22))
 
         val search = field("Search name, phone or email").apply {
@@ -468,7 +552,7 @@ class MainActivity : AppCompatActivity() {
             recent.take(3).forEach { value ->
                 recentRow.addView(quietButton(value).apply {
                     setOnClickListener { leadQuery = value; render() }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }, LinearLayout.LayoutParams(0, -2, 1f))
             }
             root.addView(recentRow)
         }
@@ -503,38 +587,89 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun compactCallCard(call: JSONObject): LinearLayout = card().apply {
+        setPadding(dp(16), dp(16), dp(12), dp(14))
         val lead = call.optJSONObject("lead")
         val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
-            .ifBlank { call.optString("phone_number") }
-        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+            .ifBlank { call.optString("phone_number").ifBlank { "Unknown caller" } }
         val missed = call.optString("status") == "missed"
-        top.addView(iconBadge(
-            R.drawable.ic_phone_outline,
-            if (missed) Color.rgb(204, 79, 65) else blue,
-            if (missed) Color.rgb(255, 238, 235) else Color.rgb(236, 244, 255),
-        ))
+        val phone = call.optString("phone_number")
+        val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
+        top.addView(contactAvatar(name, missed))
         top.addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
             addView(sectionTitle(name).apply {
                 setPadding(0, 0, 0, 0)
+                setTextColor(if (missed) red else ink)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            addView(body(
-                call.optString("direction").replaceFirstChar { it.uppercase() } + " · " +
-                    call.optString("status").replace('_', ' ').replaceFirstChar { it.uppercase() } +
-                    " · " + call.optString("talk_duration").ifBlank { formatDate(call.optString("ended_at")) }
-            ).apply { setPadding(0, dp(3), 0, 0) })
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+            addView(body(callStatus(call)).apply {
+                textSize = 12f
+                setTextColor(if (missed) red else muted)
+                setPadding(0, dp(5), 0, 0)
+            })
+            addView(body(formatDate(call.optString("ended_at"))).apply {
+                textSize = 12f
+                setPadding(0, dp(4), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12); rightMargin = dp(4) })
+        top.addView(iconAction(R.drawable.ic_phone_outline, "Call $name").apply {
+            background = RippleDrawable(ColorStateList.valueOf(Color.rgb(215, 227, 252)), rounded(blueWash, 24f), null)
+            isEnabled = phone.isNotBlank()
+            setOnClickListener { dial(phone) }
+        })
         addView(top)
-        if (lead != null) {
+        val stage = lead?.optString("stage").orEmpty()
+        if (stage.isNotBlank()) {
             addView(space(12))
-            addView(body(lead.optString("pipeline") + "  ›  " + lead.optString("stage")).apply {
-                setTextColor(blue)
+            addView(statusChip(stage, blue, blueWash))
+        }
+        val notesText = call.optString("notes").trim()
+        if (notesText.isNotBlank()) {
+            addView(space(10))
+            addView(body(notesText).apply {
                 setPadding(0, 0, 0, 0)
+                textSize = 13f
+                maxLines = 2
+                ellipsize = android.text.TextUtils.TruncateAt.END
             })
         }
+        contentDescription = "$name. ${callStatus(call)}. ${formatDate(call.optString("ended_at"))}. Open call details"
         setOnClickListener { showCallDetail(call.optString("id")) }
+    }
+
+    private fun callStatus(call: JSONObject): String {
+        val direction = call.optString("direction")
+        val status = call.optString("status").replace('_', ' ')
+        val arrow = if (direction == "outgoing") "↗" else "↙"
+        val duration = call.optString("talk_duration").takeIf { it.isNotBlank() && it != "0s" }.orEmpty()
+        return listOf("$arrow ${direction.replaceFirstChar { it.uppercase() }}", status.replaceFirstChar { it.uppercase() }, duration)
+            .filter { it.isNotBlank() }.joinToString(" · ")
+    }
+
+    private fun contactAvatar(name: String, missed: Boolean = false, size: Int = 48): TextView = TextView(this).apply {
+        val words = name.trim().split(Regex("\\s+")).filter { it.any(Char::isLetter) }
+        text = if (words.isEmpty()) "#" else words.take(2).joinToString("") { it.take(1).uppercase(Locale.getDefault()) }
+        textSize = if (size > 60) 26f else 16f
+        typeface = mediumFont
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+        val index = (name.hashCode().toLong().let { if (it < 0) -it else it } % 3).toInt()
+        val fills = listOf(blueWash, Color.rgb(234, 241, 239), Color.rgb(240, 235, 250))
+        val colors = listOf(blue, green, Color.rgb(115, 82, 172))
+        setTextColor(if (missed) red else colors[index])
+        background = rounded(if (missed) Color.rgb(253, 235, 234) else fills[index], (size / 2).toFloat())
+        importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        layoutParams = LinearLayout.LayoutParams(dp(size), dp(size))
+    }
+
+    private fun statusChip(label: String, color: Int, fill: Int): TextView = body(label).apply {
+        textSize = 12f
+        typeface = mediumFont
+        setTextColor(color)
+        setPadding(dp(10), dp(6), dp(10), dp(6))
+        background = rounded(fill, 9f)
+        layoutParams = LinearLayout.LayoutParams(-2, -2)
     }
 
     private fun compactReminderCard(item: JSONObject): LinearLayout = card().apply {
@@ -563,33 +698,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun leadCard(lead: JSONObject, favorite: Boolean): LinearLayout = card().apply {
+        setPadding(dp(16), dp(16), dp(16), dp(16))
+        val name = lead.optString("name").ifBlank { "Unnamed lead" }
         val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
-        top.addView(iconBadge(R.drawable.ic_people_outline, blue, Color.rgb(236, 244, 255)))
+        top.addView(contactAvatar(name))
         top.addView(LinearLayout(this@MainActivity).apply {
             orientation = LinearLayout.VERTICAL
-            addView(sectionTitle((if (favorite) "★  " else "") + lead.optString("name")).apply {
+            addView(sectionTitle(name).apply {
                 setPadding(0, 0, 0, 0)
                 maxLines = 1
                 ellipsize = android.text.TextUtils.TruncateAt.END
             })
-            addView(body(lead.optString("phone")).apply { setPadding(0, dp(3), 0, 0) })
-        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(13) })
+            addView(body(lead.optString("phone").ifBlank { lead.optString("email") }).apply {
+                textSize = 13f
+                setPadding(0, dp(5), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(12); rightMargin = dp(8) })
+        if (favorite) top.addView(TextView(this@MainActivity).apply {
+            text = "★"
+            textSize = 26f
+            setTextColor(Color.rgb(202, 137, 18))
+            contentDescription = "Priority lead"
+        })
+        top.addView(ImageView(this@MainActivity).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            imageTintList = ColorStateList.valueOf(muted)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(20), dp(20)))
         addView(top)
         addView(space(12))
-        addView(body(lead.optString("pipeline") + "  ›  " + lead.optString("stage")).apply {
-            setTextColor(blue)
+        val pipeline = lead.optString("pipeline")
+        val stage = lead.optString("stage")
+        addView(body(listOf(pipeline, stage).filter { it.isNotBlank() }.joinToString("  ›  ")).apply {
+            textSize = 12f
             setPadding(0, 0, 0, 0)
         })
         val reminder = lead.optJSONObject("reminder")
         if (reminder != null) {
-            addView(space(8))
-            addView(body(
-                (if (reminder.optBoolean("overdue")) "Overdue · " else "Follow-up · ") +
-                    formatDate(reminder.optString("due_at"))
-            ).apply {
-                setTextColor(if (reminder.optBoolean("overdue")) Color.rgb(204, 79, 65) else Color.rgb(35, 139, 100))
-                setPadding(0, 0, 0, 0)
-            })
+            addView(space(10))
+            val overdue = reminder.optBoolean("overdue")
+            addView(statusChip(
+                (if (overdue) "Overdue · " else "Follow-up · ") + formatDate(reminder.optString("due_at")),
+                if (overdue) red else green,
+                if (overdue) Color.rgb(253, 237, 235) else Color.rgb(232, 245, 237),
+            ))
         }
     }
 
@@ -601,25 +753,25 @@ class MainActivity : AppCompatActivity() {
         ))
         addView(body(
             if (pending == 0) "Calls are synced with SHVYA CRM."
-            else "Nothing is lost. Pending call activity will sync automatically when connectivity is available."
+            else "Activity saved on this device is waiting to sync. SHVYA will retry when your connection is available."
         ))
         addView(space(12))
         addView(secondaryButton("Sync now").apply {
             setOnClickListener {
-                TrackingScheduler.enqueueReconcile(this@MainActivity)
-                TrackingScheduler.enqueueSync(this@MainActivity)
-                toast("Sync requested")
-                refreshLocalSyncHealth()
+                requestSync(this)
             }
         })
     }
 
     private fun refreshLocalSyncHealth() {
         if (!::auth.isInitialized || !auth.hasSession()) return
+        val session = auth.readSession()
+        val accountId = auth.accountId(session) ?: return
         lifecycleScope.launch {
             val count = withContext(Dispatchers.IO) {
-                runCatching { AppDatabase.get(this@MainActivity).callDao().pendingCount() }.getOrDefault(0)
+                runCatching { AppDatabase.get(this@MainActivity, accountId).callDao().pendingCount() }.getOrDefault(0)
             }
+            if (auth.readSession().generation != session.generation) return@launch
             pendingSyncCount = count
         }
     }
@@ -691,10 +843,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showCalls(root: LinearLayout, version: Int) {
-        root.addView(kicker("YOUR WORKSPACE"))
+        root.addView(kicker("CALL ACTIVITY"))
         root.addView(title("Calls").apply { textSize = 34f })
-        root.addView(body("Find a call, take the next action and keep CRM updated."))
-        root.addView(space(26))
+        root.addView(body("Your conversations, connected to your CRM."))
+        root.addView(space(22))
 
         val search = field("Search leads or numbers").apply {
             setText(query)
@@ -716,10 +868,10 @@ class MainActivity : AppCompatActivity() {
         val filterRow = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         filterRow.addView(secondaryButton(callFilterLabel() + "  ⌄").apply {
             setOnClickListener { showCallFilterPicker() }
-        }, LinearLayout.LayoutParams(0, dp(46), 1f).apply { rightMargin = dp(8) })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
         filterRow.addView(secondaryButton(callDateLabel() + "  ⌄").apply {
             setOnClickListener { showCallDatePicker() }
-        }, LinearLayout.LayoutParams(0, dp(46), 1f))
+        }, LinearLayout.LayoutParams(0, -2, 1f))
         root.addView(filterRow)
         if (query.isNotBlank() || callFilter != "all" || dateFrom.isNotBlank()) {
             root.addView(space(4))
@@ -754,8 +906,7 @@ class MainActivity : AppCompatActivity() {
             val stats = data.getJSONObject("stats")
             val summary = card()
             summary.addView(sectionTitle("Call activity"))
-            summary.addView(body("A clear view of your conversations."))
-            summary.addView(space(20))
+            summary.addView(space(16))
             summary.addView(metricRow(listOf(
                 "Total" to stats.optInt("total"), "Incoming" to stats.optInt("incoming"),
                 "Missed" to stats.optInt("missed"), "Outgoing" to stats.optInt("outgoing"),
@@ -770,7 +921,7 @@ class MainActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams(0, -2, 1f))
             summary.addView(outcomes)
             content.addView(summary)
-            content.addView(space(32))
+            content.addView(space(24))
             content.addView(sectionHeader("Recent calls", "Refresh").apply {
                 setOnClickListener { render() }
             })
@@ -778,70 +929,43 @@ class MainActivity : AppCompatActivity() {
             val calls = data.getJSONArray("calls")
             if (calls.length() == 0) content.addView(emptyCard("No calls yet", "Your synced calls will appear here. Try clearing your filters or syncing your phone."))
             for (i in 0 until calls.length()) {
-                val call = calls.getJSONObject(i)
-                val row = card()
-                val lead = call.optJSONObject("lead")
-                val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
-                    .ifBlank { call.optString("phone_number") }
-                val missed = call.optString("status") == "missed"
-                val top = LinearLayout(this@MainActivity).apply { gravity = Gravity.CENTER_VERTICAL }
-                top.addView(iconBadge(R.drawable.ic_phone_outline,
-                    if (missed) Color.rgb(204, 79, 65) else blue,
-                    if (missed) Color.rgb(255, 238, 235) else Color.rgb(236, 244, 255)))
-                top.addView(LinearLayout(this@MainActivity).apply {
-                    orientation = LinearLayout.VERTICAL
-                    addView(sectionTitle(name).apply { setPadding(0, 0, 0, 0); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
-                    addView(body(call.optString("phone_number")).apply { setPadding(0, dp(3), 0, 0) })
-                }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(14) })
-                row.addView(top)
-                row.addView(space(16))
-                row.addView(divider())
-                row.addView(space(14))
-                val detail = call.optString("direction").replaceFirstChar { it.uppercase() } + " · " +
-                    call.optString("status").replace('_', ' ').replaceFirstChar { it.uppercase() }
-                row.addView(body(detail + "  ·  " + formatDate(call.optString("ended_at"))).apply { setPadding(0, 0, 0, 0) })
-                val notesText = call.optString("notes")
-                if (notesText.isNotBlank()) {
-                    row.addView(space(14))
-                    row.addView(body(notesText).apply { setTextColor(ink); setPadding(0, 0, 0, 0); maxLines = 3; ellipsize = android.text.TextUtils.TruncateAt.END })
-                }
-                row.addView(space(20))
-                val buttons = LinearLayout(this@MainActivity)
-                buttons.addView(secondaryButton("Call").apply { setOnClickListener { dial(call.optString("phone_number")) } },
-                    LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(10) })
-                buttons.addView(primaryButton(if (notesText.isBlank()) "Add notes" else "Edit notes").apply {
-                    setOnClickListener { editCallNotes(call) }
-                }, LinearLayout.LayoutParams(0, dp(48), 1f))
-                row.addView(buttons)
-                row.setOnClickListener { showCallDetail(call.optString("id")) }
-                content.addView(row)
-                content.addView(space(14))
+                content.addView(compactCallCard(calls.getJSONObject(i)))
+                content.addView(space(10))
             }
             if (calls.length() > 0) content.addView(pagination(data.optBoolean("has_next")))
         }
         root.addView(space(20))
         root.addView(quietButton("Sync calls now").apply { setOnClickListener {
-            TrackingScheduler.enqueueReconcile(this@MainActivity)
-            TrackingScheduler.enqueueSync(this@MainActivity)
-            toast("Sync requested. Refresh to see new calls.")
+            requestSync(this)
         } })
     }
 
     private fun showReminders(root: LinearLayout, version: Int) {
-        root.addView(kicker("YOUR FOLLOW-UPS"))
+        root.addView(kicker("STAY ONE STEP AHEAD"))
         root.addView(title("Follow-ups").apply { textSize = 34f })
-        root.addView(body("Overdue, due today and upcoming work — clearly separated."))
+        root.addView(body("Keep your promises. Make the next call count."))
         root.addView(space(16))
-        val segments = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
+        val segments = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(4), dp(4), dp(4))
+            background = rounded(Color.rgb(229, 234, 242), 16f)
+        }
         listOf(
-            "overdue" to "Overdue",
-            "today" to "Today",
-            "upcoming" to "Upcoming",
-            "completed" to "Done",
+            "overdue" to "Overdue", "today" to "Today",
+            "upcoming" to "Next", "completed" to "Done",
         ).forEach { (key, label) ->
-            segments.addView(quietButton(if (reminderSegment == key) "•  " + label else label).apply {
+            val active = reminderSegment == key
+            segments.addView(quietButton(label).apply {
+                isSelected = active
+                textSize = 12f
+                setPadding(dp(3), 0, dp(3), 0)
+                setTextColor(if (active) ink else muted)
+                background = RippleDrawable(ColorStateList.valueOf(blueWash),
+                    rounded(if (active) Color.WHITE else Color.TRANSPARENT, 12f), null)
+                if (active) elevation = dp(1).toFloat()
+                contentDescription = if (key == "upcoming") "Upcoming follow-ups" else "$label follow-ups"
                 setOnClickListener { reminderSegment = key; pageNumber = 1; render() }
-            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
         }
         root.addView(segments)
         root.addView(space(18))
@@ -863,7 +987,7 @@ class MainActivity : AppCompatActivity() {
                 "Overdue" to stats.optInt("overdue"), "Today" to stats.optInt("today"),
             )))
             content.addView(summary)
-            content.addView(space(32))
+            content.addView(space(24))
             content.addView(sectionHeader(
                 if (reminderSegment == "completed") "Completed follow-ups" else "Reminder list",
                 "Refresh"
@@ -915,9 +1039,9 @@ class MainActivity : AppCompatActivity() {
                 if (item.optString("status") != "completed") {
                     val actions = LinearLayout(this@MainActivity)
                     actions.addView(secondaryButton("Snooze 30 min").apply { setOnClickListener { reminderAction(item, "snooze", this) } },
-                        LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(10) })
+                        LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(10) })
                     actions.addView(primaryButton("Mark done").apply { setOnClickListener { reminderAction(item, "complete", this) } },
-                        LinearLayout.LayoutParams(0, dp(50), 1f))
+                        LinearLayout.LayoutParams(0, -2, 1f))
                     row.addView(actions)
                 } else {
                     row.addView(body("Completed").apply { setTextColor(Color.rgb(35, 139, 100)); setPadding(0, 0, 0, 0) })
@@ -926,9 +1050,9 @@ class MainActivity : AppCompatActivity() {
                     row.addView(space(8))
                     val contactActions = LinearLayout(this@MainActivity)
                     contactActions.addView(quietButton("Call").apply { setOnClickListener { dial(item.optString("phone")) } },
-                        LinearLayout.LayoutParams(0, dp(44), 1f))
+                        LinearLayout.LayoutParams(0, -2, 1f))
                     contactActions.addView(quietButton("WhatsApp").apply { setOnClickListener { openWhatsApp(item.optString("phone")) } },
-                        LinearLayout.LayoutParams(0, dp(44), 1f))
+                        LinearLayout.LayoutParams(0, -2, 1f))
                     row.addView(contactActions)
                 }
                 val leadId = item.optString("lead_id")
@@ -969,7 +1093,7 @@ class MainActivity : AppCompatActivity() {
             .setView(scroll)
             .setNegativeButton("Close", null)
             .create()
-        content.addView(body("Loading call details…"))
+        content.addView(loadingCard("Opening call…"))
         dialog.show()
         lifecycleScope.launch {
             val response = withContext(Dispatchers.IO) {
@@ -985,7 +1109,11 @@ class MainActivity : AppCompatActivity() {
                 content.addView(body("SHVYA returned an invalid call response."))
                 return@launch
             }
-            val call = data.getJSONObject("call")
+            val call = data.optJSONObject("call")
+            if (call == null) {
+                content.addView(emptyCard("Call unavailable", "This call could not be opened. Please try again."))
+                return@launch
+            }
             val lead = call.optJSONObject("lead")
             val name = call.optString("contact_name").ifBlank { lead?.optString("name").orEmpty() }
                 .ifBlank { call.optString("phone_number") }
@@ -1011,10 +1139,10 @@ class MainActivity : AppCompatActivity() {
             val contactActions = LinearLayout(this@MainActivity)
             contactActions.addView(secondaryButton("Call back").apply {
                 setOnClickListener { dial(call.optString("phone_number")) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
             contactActions.addView(primaryButton("WhatsApp").apply {
                 setOnClickListener { openWhatsApp(call.optString("phone_number")) }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             content.addView(contactActions)
 
             content.addView(space(22))
@@ -1084,7 +1212,7 @@ class MainActivity : AppCompatActivity() {
                 pair.forEach { text ->
                     noteRow.addView(quietButton(text).apply {
                         setOnClickListener { saveQuickNote(call, text) }
-                    }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                    }, LinearLayout.LayoutParams(0, -2, 1f))
                 }
                 content.addView(noteRow)
             }
@@ -1113,13 +1241,13 @@ class MainActivity : AppCompatActivity() {
                 val followRow = LinearLayout(this@MainActivity)
                 followRow.addView(quietButton("1 hour").apply {
                     setOnClickListener { scheduleCallFollowUp(callId, System.currentTimeMillis() + 60L * 60L * 1000L) }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }, LinearLayout.LayoutParams(0, -2, 1f))
                 followRow.addView(quietButton("Tomorrow").apply {
                     setOnClickListener { scheduleCallFollowUp(callId, tomorrowAtTen()) }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }, LinearLayout.LayoutParams(0, -2, 1f))
                 followRow.addView(quietButton("3 days").apply {
                     setOnClickListener { scheduleCallFollowUp(callId, daysFromNowAtTen(3)) }
-                }, LinearLayout.LayoutParams(0, dp(42), 1f))
+                }, LinearLayout.LayoutParams(0, -2, 1f))
                 content.addView(followRow)
                 content.addView(quietButton("Custom date & time").apply {
                     setOnClickListener { pickFollowUpDate { value -> scheduleCallFollowUp(callId, value) } }
@@ -1176,7 +1304,7 @@ class MainActivity : AppCompatActivity() {
         val content = page().apply {
             setPadding(dp(20), dp(22), dp(20), dp(34))
         }
-        content.addView(body("Loading lead…"))
+        content.addView(loadingCard("Opening lead…"))
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
@@ -1224,14 +1352,30 @@ class MainActivity : AppCompatActivity() {
             val pipeline = lead.optString("pipeline")
             val stage = lead.optString("stage")
 
-            content.addView(kicker("CRM LEAD"))
-            content.addView(title(lead.optString("name").ifBlank { "Unnamed lead" }).apply {
-                textSize = 30f
-                setPadding(0, dp(6), 0, 0)
-            })
-            content.addView(body(
-                listOf(phone, email).filter { it.isNotBlank() }.joinToString("  ·  ")
-            ).apply { textSize = 14f })
+            val identity = LinearLayout(this@MainActivity).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER_HORIZONTAL
+                setPadding(0, dp(8), 0, dp(8))
+                addView(contactAvatar(lead.optString("name"), size = 76))
+                addView(space(14))
+                addView(title(lead.optString("name").ifBlank { "Unnamed lead" }).apply {
+                    textSize = 28f
+                    gravity = Gravity.CENTER
+                    setPadding(0, 0, 0, 0)
+                })
+                if (phone.isNotBlank()) addView(body(phone).apply {
+                    gravity = Gravity.CENTER
+                    setTextIsSelectable(true)
+                    setPadding(0, dp(8), 0, 0)
+                })
+                if (email.isNotBlank()) addView(body(email).apply {
+                    gravity = Gravity.CENTER
+                    textSize = 13f
+                    setTextIsSelectable(true)
+                    setPadding(0, dp(5), 0, 0)
+                })
+            }
+            content.addView(identity)
             content.addView(space(18))
 
             val statusCard = card()
@@ -1264,11 +1408,11 @@ class MainActivity : AppCompatActivity() {
             contactActions.addView(primaryButton("Call").apply {
                 isEnabled = phone.isNotBlank()
                 setOnClickListener { dial(phone) }
-            }, LinearLayout.LayoutParams(0, dp(50), 1f).apply { rightMargin = dp(8) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
             contactActions.addView(secondaryButton("WhatsApp").apply {
                 isEnabled = phone.isNotBlank()
                 setOnClickListener { openWhatsApp(phone) }
-            }, LinearLayout.LayoutParams(0, dp(50), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             content.addView(contactActions)
             content.addView(space(8))
 
@@ -1279,14 +1423,14 @@ class MainActivity : AppCompatActivity() {
                         showLeadDetailPage(leadId)
                     }
                 }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f).apply { rightMargin = dp(8) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
             manageActions.addView(priorityButton(isFavorite).apply {
                 setOnClickListener {
                     val active = toggleFavoriteLead(leadId)
                     toast(if (active) "Added to priority leads" else "Removed from priority leads")
                     showLeadDetailPage(leadId)
                 }
-            }, LinearLayout.LayoutParams(0, dp(48), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             content.addView(manageActions)
 
             content.addView(space(26))
@@ -1316,13 +1460,13 @@ class MainActivity : AppCompatActivity() {
                 setOnClickListener {
                     scheduleLeadFollowUp(leadId, System.currentTimeMillis() + 60L * 60L * 1000L)
                 }
-            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             followRow.addView(quietButton("Tomorrow").apply {
                 setOnClickListener { scheduleLeadFollowUp(leadId, tomorrowAtTen()) }
-            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             followRow.addView(quietButton("3 days").apply {
                 setOnClickListener { scheduleLeadFollowUp(leadId, daysFromNowAtTen(3)) }
-            }, LinearLayout.LayoutParams(0, dp(42), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             followCard.addView(followRow)
             followCard.addView(quietButton("Choose date & time").apply {
                 setOnClickListener {
@@ -1393,21 +1537,24 @@ class MainActivity : AppCompatActivity() {
     private fun saveCallOutcome(call: JSONObject, code: String, button: Button, label: String) {
         button.isEnabled = false
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "calls/" + call.getString("id") + "/notes/"
             val payload = JSONObject()
                 .put("notes", call.optString("notes"))
                 .put("disposition", code)
             val result = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity, actionSession).authorizedPatch(path, payload) }.getOrNull()
             }
             button.isEnabled = true
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (result?.successful == true) {
                 call.put("disposition", code)
                 button.text = label
                 toast("Call outcome saved")
                 render()
             } else if (shouldQueueOffline(result)) {
-                queueOfflineAction(path, "PATCH", payload, "Call outcome")
+                if (!queueOfflineAction(path, "PATCH", payload, "Call outcome", actionAccountId)) return@launch
                 call.put("disposition", code)
                 button.text = label
                 toast("Saved offline · will sync automatically")
@@ -1419,19 +1566,22 @@ class MainActivity : AppCompatActivity() {
         val existing = call.optString("notes").trim()
         val notes = if (existing.isBlank()) value else existing + "\n" + value
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "calls/" + call.getString("id") + "/notes/"
             val payload = JSONObject()
                 .put("notes", notes)
                 .put("disposition", call.optString("disposition"))
             val result = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity, actionSession).authorizedPatch(path, payload) }.getOrNull()
             }
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (result?.successful == true) {
                 call.put("notes", notes)
                 toast("Quick note saved")
                 render()
             } else if (shouldQueueOffline(result)) {
-                queueOfflineAction(path, "PATCH", payload, "Call note")
+                if (!queueOfflineAction(path, "PATCH", payload, "Call note", actionAccountId)) return@launch
                 call.put("notes", notes)
                 toast("Saved offline · will sync automatically")
             } else toast(apiError(result?.body, "Could not save note."))
@@ -1440,20 +1590,23 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleCallFollowUp(callId: String, dueAtMillis: Long) {
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "calls/" + callId + "/follow-up/"
             val payload = JSONObject()
                 .put("due_at", isoUtc(dueAtMillis))
                 .put("title", "Call follow-up")
             val response = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity, actionSession).authorizedPost(path, payload) }.getOrNull()
             }
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (response?.successful == true) {
                 toast("Follow-up scheduled")
                 selectedTab = "followups"
                 reminderSegment = "today"
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Call follow-up")
+                if (!queueOfflineAction(path, "POST", payload, "Call follow-up", actionAccountId)) return@launch
                 toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
@@ -1461,18 +1614,21 @@ class MainActivity : AppCompatActivity() {
 
     private fun scheduleLeadFollowUp(leadId: String, dueAtMillis: Long) {
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "leads/" + leadId + "/"
             val payload = JSONObject()
                 .put("due_at", isoUtc(dueAtMillis))
                 .put("title", "Lead follow-up")
             val response = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity, actionSession).authorizedPost(path, payload) }.getOrNull()
             }
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (response?.successful == true) {
                 toast("Follow-up scheduled")
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Lead follow-up")
+                if (!queueOfflineAction(path, "POST", payload, "Lead follow-up", actionAccountId)) return@launch
                 toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
@@ -1501,18 +1657,21 @@ class MainActivity : AppCompatActivity() {
             .setTitle("Move lead")
             .setItems(labels.toTypedArray()) { _, which ->
                 lifecycleScope.launch {
+                    val actionSession = auth.readSession()
+                    val actionAccountId = auth.accountId(actionSession) ?: return@launch
                     val path = apiPath + "leads/" + lead.getString("id") + "/"
                     val payload = JSONObject()
                         .put("pipeline_id", pipelineIds[which])
                         .put("stage_id", stageIds[which])
                     val response = withContext(Dispatchers.IO) {
-                        runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
+                        runCatching { ApiClient(this@MainActivity, actionSession).authorizedPatch(path, payload) }.getOrNull()
                     }
+                    if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
                     if (response?.successful == true) {
                         toast("Lead moved")
                         onMoved()
                     } else if (shouldQueueOffline(response)) {
-                        queueOfflineAction(path, "PATCH", payload, "Move lead")
+                        if (!queueOfflineAction(path, "PATCH", payload, "Move lead", actionAccountId)) return@launch
                         toast("Stage change saved offline · will sync automatically")
                         onMoved()
                     } else toast(apiError(response?.body, "Could not move this lead."))
@@ -1567,13 +1726,19 @@ class MainActivity : AppCompatActivity() {
         }.onFailure { toast("WhatsApp could not be opened.") }
     }
 
+    private fun mobilePreferences(): android.content.SharedPreferences {
+        val accountId = auth.accountId()
+        val suffix = accountId?.let { AccountStoragePolicy.accountKey(it) } ?: "signed_out"
+        return getSharedPreferences("shvya_mobile_ui_" + suffix, MODE_PRIVATE)
+    }
+
     private fun favoriteLeadIds(): Set<String> {
-        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        val prefs = mobilePreferences()
         return prefs.getStringSet("favorite_leads", emptySet())?.toSet() ?: emptySet()
     }
 
     private fun toggleFavoriteLead(leadId: String): Boolean {
-        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        val prefs = mobilePreferences()
         val values = favoriteLeadIds().toMutableSet()
         val nowFavorite = if (values.contains(leadId)) {
             values.remove(leadId)
@@ -1587,7 +1752,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun recentLeadSearches(): List<String> {
-        val prefs = getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        val prefs = mobilePreferences()
         return prefs.getString("recent_lead_searches", "").orEmpty()
             .split("|||")
             .filter { it.isNotBlank() }
@@ -1599,7 +1764,7 @@ class MainActivity : AppCompatActivity() {
         val items = recentLeadSearches().toMutableList()
         items.remove(value)
         items.add(0, value)
-        getSharedPreferences("shvya_mobile_ui", MODE_PRIVATE)
+        mobilePreferences()
             .edit()
             .putString("recent_lead_searches", items.take(5).joinToString("|||"))
             .apply()
@@ -1620,35 +1785,52 @@ class MainActivity : AppCompatActivity() {
         method: String,
         payload: JSONObject,
         label: String,
-    ) {
-        withContext(Dispatchers.IO) {
-            AppDatabase.get(this@MainActivity).callDao().insertPendingAction(
-                PendingAction(
-                    path = path,
-                    method = method,
-                    payload = payload.toString(),
-                    label = label,
-                )
-            )
+        accountId: String,
+    ): Boolean {
+        if (!AppDatabase.accountStorageReady) {
+            toast("This change wasn't saved. Free some device storage, then close and reopen SHVYA before trying again.")
+            return false
         }
-        pendingSyncCount += 1
-        TrackingScheduler.enqueueSync(this)
+        val saved = withContext(Dispatchers.IO) {
+            runCatching {
+                AppDatabase.get(this@MainActivity, accountId).callDao().insertPendingAction(
+                    PendingAction(
+                        path = path,
+                        method = method,
+                        payload = payload.toString(),
+                        label = label,
+                    )
+                )
+            }.isSuccess
+        }
+        if (!saved) {
+            toast("This change couldn't be saved on your phone. Check available storage and try again.")
+            return false
+        }
+        if (auth.accountId() == accountId) {
+            pendingSyncCount += 1
+            if (auth.canTrack()) TrackingScheduler.enqueueSync(this)
+        }
+        return true
     }
 
     private fun performReminderAction(reminderId: String, action: String) {
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "reminders/" + reminderId + "/action/"
             val payload = JSONObject().put("action", action)
             val response = withContext(Dispatchers.IO) {
                 runCatching {
-                    ApiClient(this@MainActivity).authorizedPost(path, payload)
+                    ApiClient(this@MainActivity, actionSession).authorizedPost(path, payload)
                 }.getOrNull()
             }
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (response?.successful == true) {
                 toast(if (action == "complete") "Follow-up completed" else "Follow-up snoozed 30 minutes")
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Follow-up " + action)
+                if (!queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)) return@launch
                 toast("Follow-up action saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not update the follow-up."))
         }
@@ -1657,15 +1839,21 @@ class MainActivity : AppCompatActivity() {
     private fun reminderAction(item: JSONObject, action: String, button: View) {
         button.isEnabled = false
         lifecycleScope.launch {
+            val actionSession = auth.readSession()
+            val actionAccountId = auth.accountId(actionSession) ?: return@launch
             val path = apiPath + "reminders/" + item.getString("id") + "/action/"
             val payload = JSONObject().put("action", action)
             val response = withContext(Dispatchers.IO) {
-                runCatching { ApiClient(this@MainActivity).authorizedPost(path, payload) }.getOrNull()
+                runCatching { ApiClient(this@MainActivity, actionSession).authorizedPost(path, payload) }.getOrNull()
             }
+            if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
             if (response?.successful == true) {
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Follow-up " + action)
+                if (!queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)) {
+                    button.isEnabled = true
+                    return@launch
+                }
                 toast("Saved offline · will sync automatically")
                 render()
             } else {
@@ -1694,19 +1882,26 @@ class MainActivity : AppCompatActivity() {
             button.setOnClickListener {
                 button.isEnabled = false
                 lifecycleScope.launch {
+                    val actionSession = auth.readSession()
+                    val actionAccountId = auth.accountId(actionSession) ?: return@launch
                     val path = apiPath + "calls/" + call.getString("id") + "/notes/"
                     val payload = JSONObject()
                         .put("notes", notes.text.toString().trim())
                         .put("disposition", call.optString("disposition"))
                     val result = withContext(Dispatchers.IO) {
-                        runCatching { ApiClient(this@MainActivity).authorizedPatch(path, payload) }.getOrNull()
+                        runCatching { ApiClient(this@MainActivity, actionSession).authorizedPatch(path, payload) }.getOrNull()
                     }
+                    if (auth.readSession().generation != actionSession.generation || isFinishing) return@launch
                     if (result?.successful == true) {
                         dialog.dismiss()
                         toast("Call notes saved to CRM")
                         render()
                     } else if (shouldQueueOffline(result)) {
-                        queueOfflineAction(path, "PATCH", payload, "Call notes")
+                        if (!queueOfflineAction(path, "PATCH", payload, "Call notes", actionAccountId)) {
+                            button.isEnabled = true
+                            message.text = "Your note wasn't saved. Check device storage and try again."
+                            return@launch
+                        }
                         dialog.dismiss()
                         toast("Note saved offline · will sync automatically")
                     } else {
@@ -1720,34 +1915,41 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showSettings() {
+        val settingsSession = auth.readSession()
         val content = dialogContent()
         val scroll = ScrollView(this).apply { addView(content) }
         val dialog = AlertDialog.Builder(this).setTitle("Settings").setView(scroll).setNegativeButton("Close", null).create()
-        content.addView(body("Loading lead creation settings…"))
+        content.addView(loadingCard("Loading your preferences…"))
         dialog.show()
         lifecycleScope.launch {
-            val response = withContext(Dispatchers.IO) { runCatching { ApiClient(this@MainActivity).authorizedGet(apiPath + "settings/") }.getOrNull() }
+            val response = withContext(Dispatchers.IO) { runCatching { ApiClient(this@MainActivity, settingsSession).authorizedGet(apiPath + "settings/") }.getOrNull() }
+            if (auth.readSession().generation != settingsSession.generation) { dialog.dismiss(); return@launch }
             content.removeAllViews()
-            if (response?.successful == true) {
-                val data = JSONObject(response.body)
+            if (!dialog.isShowing || isFinishing || isDestroyed) return@launch
+            val data = response?.takeIf { it.successful }?.let { runCatching { JSONObject(it.body) }.getOrNull() }
+            if (data != null) {
                 val canEdit = data.optBoolean("can_edit")
                 val incoming = data.optBoolean("auto_create_answered_incoming")
                 val outgoing = data.optBoolean("auto_create_answered_outgoing")
                 val answered = Switch(this@MainActivity).apply {
-                    text = "Auto create lead · answered calls"
+                    text = "Leads from answered calls"
                     isChecked = incoming && outgoing
                     isEnabled = canEdit
                     minHeight = dp(64)
+                    switchPadding = dp(14)
+                    typeface = regularFont
                     textSize = 14f
                     setTextColor(ink)
                     thumbTintList = ColorStateList.valueOf(Color.WHITE)
                     trackTintList = ColorStateList.valueOf(if (isChecked) blue else Color.rgb(196, 203, 214))
                 }
                 val missed = Switch(this@MainActivity).apply {
-                    text = "Auto create lead · missed calls"
+                    text = "Leads from missed calls"
                     isChecked = data.optBoolean("auto_create_missed")
                     isEnabled = canEdit
                     minHeight = dp(64)
+                    switchPadding = dp(14)
+                    typeface = regularFont
                     textSize = 14f
                     setTextColor(ink)
                     thumbTintList = ColorStateList.valueOf(Color.WHITE)
@@ -1778,7 +1980,8 @@ class MainActivity : AppCompatActivity() {
                     if (changes.length() == 0) { dialog.dismiss(); return@setOnClickListener }
                     isEnabled = false
                     lifecycleScope.launch {
-                        val result = withContext(Dispatchers.IO) { runCatching { ApiClient(this@MainActivity).authorizedPatch(apiPath + "settings/", changes) }.getOrNull() }
+                        val result = withContext(Dispatchers.IO) { runCatching { ApiClient(this@MainActivity, settingsSession).authorizedPatch(apiPath + "settings/", changes) }.getOrNull() }
+                        if (auth.readSession().generation != settingsSession.generation) { dialog.dismiss(); return@launch }
                         if (result?.successful == true) { toast("Settings saved"); dialog.dismiss() }
                         else { isEnabled = true; toast("Could not save settings. Please retry.") }
                     }
@@ -1796,10 +1999,7 @@ class MainActivity : AppCompatActivity() {
             deviceCard.addView(space(10))
             deviceCard.addView(secondaryButton("Sync now").apply {
                 setOnClickListener {
-                    TrackingScheduler.enqueueReconcile(this@MainActivity)
-                    TrackingScheduler.enqueueSync(this@MainActivity)
-                    toast("Sync requested")
-                    refreshLocalSyncHealth()
+                    requestSync(this)
                 }
             })
             content.addView(deviceCard)
@@ -1807,10 +2007,10 @@ class MainActivity : AppCompatActivity() {
             val deviceActions = LinearLayout(this@MainActivity)
             deviceActions.addView(quietButton("Permissions").apply {
                 setOnClickListener { permissionLauncher.launch(requiredPermissions()) }
-            }, LinearLayout.LayoutParams(0, dp(44), 1f).apply { rightMargin = dp(8) })
+            }, LinearLayout.LayoutParams(0, -2, 1f).apply { rightMargin = dp(8) })
             deviceActions.addView(quietButton("Background access").apply {
                 setOnClickListener { requestBatteryOptimizationExemption() }
-            }, LinearLayout.LayoutParams(0, dp(44), 1f))
+            }, LinearLayout.LayoutParams(0, -2, 1f))
             content.addView(deviceActions)
 
             content.addView(space(24))
@@ -1836,7 +2036,7 @@ class MainActivity : AppCompatActivity() {
                     .setNegativeButton("Cancel", null).setPositiveButton("Sign out") { _, _ ->
                         stopService(Intent(this@MainActivity, CallTrackingService::class.java))
                         WorkManager.getInstance(this@MainActivity).cancelAllWork()
-                        auth.clear(); dialog.dismiss(); render()
+                        auth.clear(); reauthenticate = false; dialog.dismiss(); render()
                     }.show()
             } })
         }
@@ -1874,7 +2074,7 @@ class MainActivity : AppCompatActivity() {
         shell.addView(divider())
 
         val content = page()
-        content.addView(body("Loading your organization's lead form…"))
+        content.addView(loadingCard("Preparing your lead form…"))
         shell.addView(ScrollView(this).apply { addView(content) }, LinearLayout.LayoutParams(-1, 0, 1f))
         shell.addView(divider())
         val footer = LinearLayout(this).apply {
@@ -1916,6 +2116,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun buildLeadForm(content: LinearLayout, data: JSONObject, submit: Button) {
+        val formSession = auth.readSession()
         val pipelines = data.optJSONArray("pipelines") ?: org.json.JSONArray()
         content.addView(kicker(data.optString("organization_name").uppercase(Locale.getDefault())))
         content.addView(title("New lead").apply { textSize = 34f })
@@ -2069,9 +2270,9 @@ class MainActivity : AppCompatActivity() {
                 .put("attributes", attributes)
             lifecycleScope.launch {
                 val response = withContext(Dispatchers.IO) {
-                    runCatching { ApiClient(this@MainActivity).authorizedPost(apiPath + "leads/", payload) }.getOrNull()
+                    runCatching { ApiClient(this@MainActivity, formSession).authorizedPost(apiPath + "leads/", payload) }.getOrNull()
                 }
-                if (!leadFormOpen || isFinishing) return@launch
+                if (!leadFormOpen || isFinishing || auth.readSession().generation != formSession.generation) return@launch
                 if (response?.successful == true) {
                     toast("Lead added to CRM")
                     leadFormOpen = false
@@ -2090,48 +2291,77 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun loadInto(content: LinearLayout, version: Int, request: () -> com.shvya.callintelligence.net.ApiResponse, loaded: (JSONObject) -> Unit) {
-        content.addView(body("Loading…"))
+        content.addView(loadingCard("Updating your workspace…"))
+        val requestGeneration = auth.readSession().generation
         lifecycleScope.launch {
             val response = withContext(Dispatchers.IO) { runCatching { request() }.getOrNull() }
-            if (version != renderVersion || isFinishing) return@launch
+            if (version != renderVersion || auth.readSession().generation != requestGeneration || isFinishing || isDestroyed) return@launch
             content.removeAllViews()
             val data = if (response?.successful == true) runCatching { JSONObject(response.body) }.getOrNull() else null
             if (data != null && runCatching { loaded(data) }.isSuccess) return@launch
-            else {
-                content.removeAllViews()
-                content.addView(emptyCard("Unable to load", "Check your connection and retry. Your captured calls remain queued for sync."))
+            content.removeAllViews()
+            if (!auth.canTrack()) {
+                content.addView(connectionNotice())
+            } else {
+                val message = when (response?.code) {
+                    403 -> "Your account does not have access to this view. Contact your administrator."
+                    429 -> "SHVYA is receiving a lot of requests. Please try again shortly."
+                    else -> "We couldn't update this view. Check your connection and try again. Activity saved on this device remains available for sync."
+                }
+                content.addView(emptyCard("Let's try that again", message))
+                content.addView(space(12))
                 content.addView(secondaryButton("Retry").apply { setOnClickListener { render() } })
             }
         }
     }
 
-    private fun metricRow(values: List<Pair<String, Int>>): LinearLayout = LinearLayout(this).apply {
+    private fun loadingCard(label: String): LinearLayout = card().apply {
+        orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        values.forEachIndexed { index, (label, value) ->
-            val column = LinearLayout(this@MainActivity).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER_HORIZONTAL
-                addView(TextView(this@MainActivity).apply {
-                    text = value.toString()
-                    textSize = 25f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(when (label) {
-                        "Missed", "Overdue" -> Color.rgb(204, 79, 65)
-                        "Upcoming" -> Color.rgb(35, 139, 100)
-                        else -> ink
+        minimumHeight = dp(88)
+        addView(ProgressBar(this@MainActivity).apply {
+            indeterminateTintList = ColorStateList.valueOf(blue)
+            contentDescription = "Loading"
+        }, LinearLayout.LayoutParams(dp(22), dp(22)))
+        addView(body(label).apply { setPadding(0, 0, 0, 0) },
+            LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(14) })
+    }
+
+    private fun metricRow(values: List<Pair<String, Int>>): LinearLayout = LinearLayout(this).apply {
+        orientation = LinearLayout.VERTICAL
+        val columns = if (resources.configuration.screenWidthDp < 360 || resources.configuration.fontScale > 1.15f) 2 else 4
+        values.chunked(columns).forEachIndexed { rowIndex, group ->
+            if (rowIndex > 0) addView(space(14))
+            val row = LinearLayout(this@MainActivity).apply { gravity = Gravity.TOP }
+            group.forEachIndexed { index, (label, value) ->
+                row.addView(LinearLayout(this@MainActivity).apply {
+                    orientation = LinearLayout.VERTICAL
+                    gravity = Gravity.CENTER_HORIZONTAL
+                    setPadding(dp(2), dp(3), dp(2), dp(3))
+                    addView(TextView(this@MainActivity).apply {
+                        text = value.toString()
+                        textSize = 28f
+                        gravity = Gravity.CENTER
+                        typeface = mediumFont
+                        letterSpacing = -.04f
+                        setTextColor(when (label) {
+                            "Missed", "Overdue" -> if (value > 0) red else ink
+                            "Upcoming", "Answered" -> green
+                            else -> ink
+                        })
+                        includeFontPadding = false
                     })
-                    includeFontPadding = false
-                })
-                addView(body(label).apply {
-                    textSize = 11f
-                    gravity = Gravity.CENTER
-                    setPadding(0, dp(8), 0, 0)
-                })
+                    addView(body(label).apply {
+                        textSize = 11f
+                        gravity = Gravity.CENTER
+                        setPadding(0, dp(7), 0, 0)
+                    })
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (index < group.lastIndex) row.addView(View(this@MainActivity).apply {
+                    setBackgroundColor(line)
+                }, LinearLayout.LayoutParams(dp(1), dp(42)).apply { topMargin = dp(4) })
             }
-            addView(column, LinearLayout.LayoutParams(0, -2, 1f))
-            if (index < values.lastIndex) addView(View(this@MainActivity).apply {
-                setBackgroundColor(line)
-            }, LinearLayout.LayoutParams(dp(1), dp(44)))
+            addView(row)
         }
     }
 
@@ -2150,15 +2380,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun sectionHeader(heading: String, action: String): LinearLayout = LinearLayout(this).apply {
         gravity = Gravity.CENTER_VERTICAL
-        addView(sectionTitle(heading).apply { textSize = 21f; setPadding(0, 0, 0, 0) },
+        minimumHeight = dp(48)
+        addView(sectionTitle(heading).apply { textSize = 19f; setPadding(0, 0, dp(8), 0) },
             LinearLayout.LayoutParams(0, -2, 1f))
         addView(TextView(this@MainActivity).apply {
             text = action
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
+            textSize = 13f
+            typeface = mediumFont
+            includeFontPadding = false
             setTextColor(blue)
             gravity = Gravity.CENTER
-            minimumHeight = dp(44)
+            minimumHeight = dp(48)
+            setPadding(dp(4), 0, dp(4), 0)
         })
     }
 
@@ -2173,7 +2406,8 @@ class MainActivity : AppCompatActivity() {
     private fun iconAction(drawable: Int, description: String): ImageView = ImageView(this).apply {
         setImageResource(drawable)
         imageTintList = ColorStateList.valueOf(blue)
-        setPadding(dp(14), dp(14), dp(14), dp(14))
+        setPadding(dp(13), dp(13), dp(13), dp(13))
+        isFocusable = true
         contentDescription = description
         background = RippleDrawable(ColorStateList.valueOf(Color.rgb(210, 223, 241)),
             rounded(Color.rgb(235, 242, 251), 17f), null)
@@ -2201,15 +2435,48 @@ class MainActivity : AppCompatActivity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(canvas)
         }
+        val toolbar = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            minimumHeight = dp(68)
+            setPadding(dp(20), dp(10), dp(14), dp(8))
+        }
+        toolbar.addView(ImageView(this).apply {
+            setImageResource(R.drawable.ic_shvya)
+            contentDescription = "SHVYA"
+        }, LinearLayout.LayoutParams(dp(32), dp(32)))
+        toolbar.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(sectionTitle("SHVYA").apply {
+                textSize = 13f
+                letterSpacing = .12f
+                setPadding(0, 0, 0, 0)
+            })
+            addView(body("Call Intelligence").apply {
+                textSize = 11f
+                setPadding(0, dp(3), 0, 0)
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(9) })
+        toolbar.addView(iconAction(R.drawable.ic_refresh_outline, "Refresh current page").apply {
+            background = RippleDrawable(ColorStateList.valueOf(line), rounded(Color.TRANSPARENT, 24f), null)
+            setOnClickListener { render() }
+        })
+        toolbar.addView(iconAction(R.drawable.ic_settings_outline, "Settings").apply {
+            background = RippleDrawable(ColorStateList.valueOf(line), rounded(Color.WHITE, 24f), null)
+            setOnClickListener { showSettings() }
+        })
+        shell.addView(toolbar)
         shell.addView(ScrollView(this).apply {
             isFillViewport = true
             clipToPadding = false
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(content)
         }, LinearLayout.LayoutParams(-1, 0, 1f))
-        shell.addView(divider())
         val nav = LinearLayout(this).apply {
-            setPadding(dp(12), dp(6), dp(12), dp(6))
-            setBackgroundColor(Color.WHITE)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(6), dp(7), dp(6), dp(7))
+            background = roundedStroke(Color.WHITE, 26f, line)
+            elevation = dp(3).toFloat()
         }
         listOf(
             Triple("today", "Today", R.drawable.ic_home_outline),
@@ -2221,30 +2488,40 @@ class MainActivity : AppCompatActivity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                minimumHeight = dp(56)
+                minimumHeight = dp(60)
+                setPadding(dp(2), dp(6), dp(2), dp(6))
                 contentDescription = label
-                background = if (active) {
-                    rounded(Color.rgb(244, 248, 253), 17f)
-                } else {
-                    rounded(Color.TRANSPARENT, 17f)
-                }
+                isSelected = active
+                isFocusable = true
+                background = RippleDrawable(
+                    ColorStateList.valueOf(blueWash),
+                    rounded(if (active) blueWash else Color.TRANSPARENT, 20f), null,
+                )
                 addView(ImageView(this@MainActivity).apply {
                     setImageResource(drawable)
                     imageTintList = ColorStateList.valueOf(if (active) blue else muted)
+                    importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
                 }, LinearLayout.LayoutParams(dp(23), dp(23)))
                 addView(TextView(this@MainActivity).apply {
                     text = label
                     textSize = 11f
+                    includeFontPadding = false
                     gravity = Gravity.CENTER
-                    setPadding(0, dp(5), 0, 0)
-                    setTypeface(typeface, if (active) Typeface.BOLD else Typeface.NORMAL)
+                    setPadding(0, dp(6), 0, 0)
+                    typeface = if (active) mediumFont else regularFont
                     setTextColor(if (active) blue else muted)
                 })
-                setOnClickListener { selectedTab = key; pageNumber = 1; render() }
+                setOnClickListener {
+                    if (selectedTab != key) { selectedTab = key; pageNumber = 1; render() }
+                }
             }
-            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f))
+            nav.addView(item, LinearLayout.LayoutParams(0, -2, 1f).apply {
+                leftMargin = dp(2); rightMargin = dp(2)
+            })
         }
-        shell.addView(nav)
+        shell.addView(nav, LinearLayout.LayoutParams(-1, -2).apply {
+            leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(3); bottomMargin = dp(10)
+        })
         ViewCompat.setOnApplyWindowInsetsListener(shell) { view, insets ->
             val bars = safeInsets(insets)
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
@@ -2352,9 +2629,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatDate(value: String): String = try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
-        val date = parser.parse(value.replace(Regex("\\.\\d+(?=[Z+-])"), ""))
-        if (date == null) value else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(date)
+        val timestamp = ServerTimestamp.parseMillis(value)
+        if (timestamp == null) value else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(Date(timestamp))
     } catch (_: Exception) { value }
 
     private fun dial(phone: String) {
@@ -2403,13 +2679,14 @@ class MainActivity : AppCompatActivity() {
     private fun safeInsets(insets: WindowInsetsCompat) =
         insets.getInsets(
             WindowInsetsCompat.Type.systemBars() or
-                WindowInsetsCompat.Type.displayCutout()
+                WindowInsetsCompat.Type.displayCutout() or
+                WindowInsetsCompat.Type.ime()
         )
 
     private fun page(): LinearLayout =
         LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(22), dp(18), dp(22), dp(36))
+            setPadding(dp(20), dp(12), dp(20), dp(28))
             setBackgroundColor(canvas)
         }
 
@@ -2435,40 +2712,47 @@ class MainActivity : AppCompatActivity() {
             background = roundedStroke(
                 color = Color.WHITE,
                 radius = 22f,
-                strokeColor = Color.rgb(232, 235, 240),
+                strokeColor = line,
             )
+            foreground = RippleDrawable(ColorStateList.valueOf(Color.argb(18, 29, 92, 224)), null, rounded(Color.WHITE, 22f))
             elevation = 0f
         }
 
     private fun dialogContent(): LinearLayout = LinearLayout(this).apply {
         orientation = LinearLayout.VERTICAL
-        setPadding(dp(24), dp(12), dp(24), dp(20))
+        setPadding(dp(20), dp(12), dp(20), dp(24))
+        setBackgroundColor(canvas)
     }
 
     private fun kicker(text: String): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 11f
-            setTextColor(blue)
-            setTypeface(typeface, Typeface.BOLD)
-            letterSpacing = .1f
+            textSize = 10f
+            includeFontPadding = false
+            setTextColor(muted)
+            typeface = mediumFont
+            letterSpacing = .12f
         }
 
     private fun title(text: String): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 38f
+            textSize = 34f
+            includeFontPadding = false
             setTextColor(ink)
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(0, dp(7), 0, 0)
+            typeface = Typeface.create("sans-serif", Typeface.BOLD)
+            letterSpacing = -.035f
+            setPadding(0, dp(8), 0, dp(3))
         }
 
     private fun sectionTitle(text: String): TextView =
         TextView(this).apply {
             this.text = text
-            textSize = 17f
+            textSize = 16f
+            includeFontPadding = false
             setTextColor(ink)
-            setTypeface(typeface, Typeface.BOLD)
+            typeface = mediumFont
+            letterSpacing = -.01f
             setPadding(0, 0, 0, dp(3))
         }
 
@@ -2476,15 +2760,18 @@ class MainActivity : AppCompatActivity() {
         TextView(this).apply {
             this.text = text
             textSize = 14f
+            includeFontPadding = false
+            typeface = regularFont
             setTextColor(muted)
-            setLineSpacing(dp(2).toFloat(), 1f)
+            setLineSpacing(dp(3).toFloat(), 1f)
             setPadding(0, dp(4), 0, 0)
         }
 
     private fun fieldLabel(label: String): TextView = TextView(this).apply {
         text = label
         textSize = 13f
-        setTypeface(typeface, Typeface.BOLD)
+        includeFontPadding = false
+        typeface = mediumFont
         setTextColor(ink)
     }
 
@@ -2566,6 +2853,7 @@ class MainActivity : AppCompatActivity() {
     private fun priorityButton(active: Boolean): LinearLayout =
         LinearLayout(this).apply {
             gravity = Gravity.CENTER
+            minimumHeight = dp(50)
             isClickable = true
             isFocusable = true
             contentDescription = if (active) "Remove from priority leads" else "Add to priority leads"
@@ -2678,6 +2966,7 @@ class MainActivity : AppCompatActivity() {
             setHintTextColor(Color.rgb(142, 150, 162))
             setPadding(dp(16), 0, dp(16), 0)
             inputType = inputTypeValue
+            typeface = regularFont
             isSingleLine = true
             background = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autofillHint != null) {
@@ -2706,6 +2995,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(16), 0, dp(6), 0)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = PasswordTransformationMethod.getInstance()
+            typeface = regularFont
             isSingleLine = true
             background = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -2729,6 +3019,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 setImageResource(if (visible) R.drawable.ic_eye_off_outline else R.drawable.ic_eye_outline)
                 contentDescription = if (visible) "Hide password" else "Show password"
+                input.typeface = regularFont
                 input.setSelection(input.text.length)
             }
         }
@@ -2759,53 +3050,58 @@ class MainActivity : AppCompatActivity() {
             setHintTextColor(Color.rgb(145, 145, 150))
             setPadding(dp(16), 0, dp(16), 0)
             minHeight = dp(54)
-            background = rounded(Color.rgb(241, 243, 247), 15f)
+            includeFontPadding = false
+            typeface = regularFont
+            background = roundedStroke(Color.WHITE, 16f, line)
         }
 
-    private fun primaryButton(label: String): Button =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.WHITE)
-            minHeight = dp(48)
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(dp(12), 0, dp(12), 0)
-            backgroundTintList = null
-            background = RippleDrawable(ColorStateList.valueOf(Color.rgb(149, 188, 235)), rounded(blue, 15f), null)
-        }
+    private fun primaryButton(label: String): Button = actionButton(label, true)
 
-    private fun secondaryButton(label: String): Button =
-        Button(this).apply {
-            text = label
-            isAllCaps = false
-            textSize = 14f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(blue)
-            minHeight = dp(48)
-            minWidth = 0
-            minimumWidth = 0
-            setPadding(dp(12), 0, dp(12), 0)
-            backgroundTintList = null
-            background = RippleDrawable(ColorStateList.valueOf(Color.rgb(205, 222, 245)),
-                rounded(Color.rgb(234, 242, 253), 15f), null)
+    private fun secondaryButton(label: String): Button = actionButton(label, false)
+
+    private fun actionButton(label: String, primary: Boolean): Button = Button(this).apply {
+        text = label
+        isAllCaps = false
+        textSize = 14f
+        typeface = mediumFont
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+        maxLines = 2
+        minHeight = dp(50)
+        minimumHeight = dp(50)
+        minWidth = 0
+        minimumWidth = 0
+        setPadding(dp(12), dp(11), dp(12), dp(11))
+        stateListAnimator = null
+        backgroundTintList = null
+        setTextColor(ColorStateList(
+            arrayOf(intArrayOf(-android.R.attr.state_enabled), intArrayOf()),
+            intArrayOf(Color.rgb(147, 157, 174), if (primary) Color.WHITE else blue),
+        ))
+        val fill = android.graphics.drawable.StateListDrawable().apply {
+            addState(intArrayOf(-android.R.attr.state_enabled), rounded(Color.rgb(228, 233, 242), 15f))
+            addState(intArrayOf(), rounded(if (primary) blue else blueWash, 15f))
         }
+        background = RippleDrawable(ColorStateList.valueOf(Color.rgb(182, 207, 250)), fill, null)
+    }
 
     private fun quietButton(label: String): Button = Button(this).apply {
         text = label
         isAllCaps = false
         textSize = 13f
-        setTypeface(typeface, Typeface.BOLD)
+        typeface = mediumFont
+        includeFontPadding = false
+        gravity = Gravity.CENTER
+        maxLines = 2
         setTextColor(blue)
-        minHeight = dp(44)
+        minHeight = dp(48)
+        minimumHeight = dp(48)
         minWidth = 0
         minimumWidth = 0
-        setPadding(dp(8), 0, dp(8), 0)
+        setPadding(dp(8), dp(9), dp(8), dp(9))
+        stateListAnimator = null
         backgroundTintList = null
-        background = RippleDrawable(ColorStateList.valueOf(Color.rgb(223, 234, 248)),
-            rounded(Color.TRANSPARENT, 12f), null)
+        background = RippleDrawable(ColorStateList.valueOf(blueWash), rounded(Color.TRANSPARENT, 12f), null)
     }
 
     private fun rounded(color: Int, radius: Float): GradientDrawable =

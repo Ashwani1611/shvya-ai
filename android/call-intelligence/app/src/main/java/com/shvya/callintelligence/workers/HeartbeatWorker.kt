@@ -12,14 +12,21 @@ class HeartbeatWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
-        if (!AuthStore(applicationContext).hasSession()) return Result.success()
+        val auth = AuthStore(applicationContext)
+        if (!auth.canTrack()) return Result.success()
+        val session = auth.readSession()
         return try {
-            val api = ApiClient(applicationContext)
+            val api = ApiClient(applicationContext, session)
             val registration = api.registerDevice()
-            if (!registration.successful) return if (AuthStore(applicationContext).hasSession()) Result.retry() else Result.success()
+            if (!registration.successful) return if (
+                AuthStore(applicationContext).canTrack() &&
+                (registration.code !in 400..499 || registration.code in setOf(408, 429))
+            ) Result.retry() else Result.success()
             val powerManager = applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager
             val ignored = powerManager.isIgnoringBatteryOptimizations(applicationContext.packageName)
-            if (api.heartbeat(ignored).successful) Result.success() else Result.retry()
+            val response = api.heartbeat(ignored)
+            if (response.successful || !auth.canTrack() || response.code in setOf(401, 403, 404)) Result.success()
+            else Result.retry()
         } catch (_: Exception) {
             Result.retry()
         }
