@@ -767,11 +767,27 @@ def get_automation_configuration(*, identity, arguments):
     except (TypeError, ValueError):
         limit = 50
     limit = max(1, min(limit, 100))
+    arguments = arguments or {}
+    try:
+        workflow_offset = int(arguments.get("workflow_offset", 0))
+        cadence_offset = int(arguments.get("cadence_offset", 0))
+    except (TypeError, ValueError) as exc:
+        raise OperationsToolError("Automation offsets must be non-negative integers.") from exc
+    if workflow_offset < 0 or cadence_offset < 0:
+        raise OperationsToolError("Automation offsets must be non-negative integers.")
+    workflow_id = arguments.get("workflow_id")
+    if workflow_id and workflow_offset:
+        raise OperationsToolError("workflow_offset must be zero with workflow_id.")
 
     workflow_qs = SmartTrigger.objects.filter(
         organization=organization,
         is_active=True,
     )
+    if workflow_id:
+        workflow_qs = workflow_qs.filter(id=_uuid(workflow_id, field="workflow_id"))
+        if not workflow_qs.exists():
+            # Do not distinguish unknown, archived, or another tenant's IDs.
+            raise OperationsToolError("Active Workflow not found in this organization.")
     cadence_qs = FollowupSequence.objects.filter(
         organization=organization
     )
@@ -782,7 +798,8 @@ def get_automation_configuration(*, identity, arguments):
         workflow_qs.order_by(
             "position",
             "created_at",
-        )[:limit]
+            "id",
+        )[workflow_offset:workflow_offset + limit]
     )
     sensitive_attribute_keys = _sensitive_attribute_keys(organization)
     workflow_reference_index = _workflow_reference_index(
@@ -811,6 +828,7 @@ def get_automation_configuration(*, identity, arguments):
                 "action_type": rule.action_type,
                 "action": safe_action,
                 "updated_at": rule.updated_at.isoformat(),
+                "sensitive_fields_redacted": redacted,
             }
         )
 
@@ -864,7 +882,7 @@ def get_automation_configuration(*, identity, arguments):
                 to_attr="operations_steps",
             )
         )
-        .order_by("-updated_at")[:limit]
+        .order_by("-updated_at", "id")[cadence_offset:cadence_offset + limit]
     )
     cadence_rows = []
     for sequence in cadences:
@@ -992,6 +1010,26 @@ def get_automation_configuration(*, identity, arguments):
         data={
             "workflows": workflow_rows,
             "cadences": cadence_rows,
+            "pagination": {
+                "limit": limit,
+                "workflow_offset": workflow_offset,
+                "cadence_offset": cadence_offset,
+                "next_workflow_offset": (
+                    workflow_offset + len(workflows)
+                    if workflow_offset + len(workflows) < workflow_total else None
+                ),
+                "next_cadence_offset": (
+                    cadence_offset + len(cadences)
+                    if cadence_offset + len(cadences) < cadence_total else None
+                ),
+                "workflow_id": str(workflow_id) if workflow_id else None,
+                "ordering": {
+                    "workflows": ["position", "created_at", "id"],
+                    "cadences": ["-updated_at", "id"],
+                },
+                "consistency": "live_read; restart pagination after configuration changes",
+            },
+            "cadence_step_details_tool": "get_channel_cadence_configuration",
             "counts": {
                 "workflow_count": workflow_total,
                 "cadence_count": cadence_total,
