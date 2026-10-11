@@ -6,6 +6,7 @@ from apps.integrations.operations.tools.cadence import (
     reorder_cadence_steps,
     update_cadence_step,
 )
+from apps.integrations.operations.tools.handover import render_account_handover
 from apps.integrations.operations.tools.faqs import archive_faq, list_faqs, upsert_faq
 from apps.integrations.operations.tools.knowledge import (
     archive_knowledge_document,
@@ -95,6 +96,7 @@ EXTENDED_HANDLERS = {
     "get_setup_library_resource": get_setup_library_resource,
     "get_setup_variable_schema": get_setup_variable_schema,
     "render_setup_template": render_setup_template,
+    "render_account_handover": render_account_handover,
     "analyze_setup_group_export": analyze_setup_group_export,
     "get_setup_intake": get_setup_intake,
     "upsert_setup_intake_entry": upsert_setup_intake_entry,
