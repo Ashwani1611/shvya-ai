@@ -2341,6 +2341,7 @@ class MainActivity : AppCompatActivity() {
                     addView(TextView(this@MainActivity).apply {
                         text = value.toString()
                         textSize = 28f
+                        gravity = Gravity.CENTER
                         typeface = mediumFont
                         letterSpacing = -.04f
                         setTextColor(when (label) {
@@ -2852,6 +2853,7 @@ class MainActivity : AppCompatActivity() {
     private fun priorityButton(active: Boolean): LinearLayout =
         LinearLayout(this).apply {
             gravity = Gravity.CENTER
+            minimumHeight = dp(50)
             isClickable = true
             isFocusable = true
             contentDescription = if (active) "Remove from priority leads" else "Add to priority leads"
