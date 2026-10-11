@@ -20,6 +20,7 @@ SETUP_TOOL_CAPABILITIES = {
     "get_setup_library_resource": CAP_SETUP_LIBRARY_READ,
     "get_setup_variable_schema": CAP_SETUP_LIBRARY_READ,
     "render_setup_template": CAP_SETUP_ARTIFACTS_PREPARE,
+    "render_account_handover": CAP_SETUP_ARTIFACTS_PREPARE,
     "analyze_setup_group_export": CAP_SETUP_ARTIFACTS_PREPARE,
     "get_setup_intake": CAP_SETUP_INTAKE_READ,
     "upsert_setup_intake_entry": CAP_SETUP_INTAKE_WRITE,
@@ -72,6 +73,18 @@ def setup_tool_definitions(tool, write_properties):
                 "variables": {"type": "object"},
             },
             ["template_id", "variables"],
+        ),
+        tool(
+            "render_account_handover",
+            "Prepare an account handover artifact",
+            "Render a version 1 account handover document as Markdown or standalone HTML for the active organization. Caller-supplied evidence is not independently verified. Pure authoring: no configuration changes, file persistence, publication or demo execution. Follow the account-handover skill and handover-rendering reference. Join all character chunks with identical document and artifact SHA-256 values before saving.",
+            {
+                "document": {"type": "object"},
+                "format": {"type": "string", "enum": ["html", "markdown"], "default": "html"},
+                "offset": {"type": "integer", "minimum": 0, "maximum": 1000000, "default": 0},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 20000, "default": 20000},
+            },
+            ["document"],
         ),
         tool(
             "analyze_setup_group_export",

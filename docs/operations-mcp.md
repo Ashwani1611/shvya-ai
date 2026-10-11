@@ -470,3 +470,11 @@ Organization Admin authorization is bounded by three layers:
 A policy reduction takes effect immediately on existing grants. A later policy expansion does **not** silently give an already-connected ChatGPT, Claude or VS Code client new authority; the Organization Admin must complete fresh SHVYA OAuth authorization. The MCP context reports `policy_capabilities`, `granted_capabilities` and current `capabilities` separately.
 
 The Superadmin policy is granular for customer-state writes: lead stage, lead attributes, AI/Playbook, CRM pipeline, CRM stage, CRM attribute, Workflow, Cadence and messaging-automation settings can be controlled independently. Legacy stored `crm.config.write` and `automation.config.write` policies are expanded only for backward compatibility and are normalized to granular controls when Superadmin saves the policy.
+
+### Account handover generation
+
+`render_account_handover` uses `setup.artifacts.prepare` with read OAuth scope. It accepts a bounded organization-bound evidence document and returns paginated Markdown or standalone HTML, content digests and draft limitations. It does not fetch arbitrary URLs, execute supplied templates, publish files, run tests or change customer configuration. The `account-handover` prompt aliases `shvya-account-handover`.
+
+`get_automation_configuration` accepts `workflow_offset`, `cadence_offset` and optional `workflow_id`. Use returned next offsets for completion. Workflow and typed Cadence responses retain nested configuration at bounded depth and report output truncation/redaction paths; default diagnostic bounds remain unchanged. Existing tenant-reference validation and sensitive-attribute filtering are preserved. The portable configuration export is not a lossless handover fallback.
+
+See [account handover](account-handover.md) for collection, rendering, authorization and rollout details. Live discovery, not earlier static tool counts in this document, determines availability.

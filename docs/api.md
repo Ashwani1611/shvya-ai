@@ -123,3 +123,7 @@ See [`shvya-calendar-workspace.md`](./shvya-calendar-workspace.md).
 - `api/v1/urls.py`
 - `apps/*/urls*.py`
 - `apps/integrations/urls/diagnostics.py`
+
+### Account handover preparation
+
+`render_account_handover` is a read-only Operations tool using `setup.artifacts.prepare`; it returns deterministic, bounded Markdown/HTML text chunks, not a public artifact URL. `account-handover` is a prompt alias for the existing specialist. Automation inspection supports independent Workflow/Cadence offsets and exact Workflow selection, with explicit sanitation metadata. See [the handover contract and rollout](account-handover.md).

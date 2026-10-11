@@ -87,3 +87,7 @@ For material live work, follow the selected skill's shared quality-contract link
 - **LIVE THIRD-PARTY VERIFIED** may be used only after the named client has
   completed production discovery, authorization, tool listing, and a safe
   `get_operations_context` call.
+
+## Account handover command
+
+Clients that expose MCP prompts may select `account-handover`, an alias of `shvya-account-handover`. Clients without prompt primitives can load `skills/shvya-account-handover/SKILL.md` using setup-library tools. Slash-command presentation is client-specific. The specialist uses `render_account_handover` when it appears in the deployed authorized catalog to prepare Markdown and printable HTML; it does not run the demo or publish the document. See [account handover](account-handover.md). Refresh discovery after deployment; this does not automatically update a separately installed plugin archive.

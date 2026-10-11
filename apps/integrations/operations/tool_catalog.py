@@ -132,14 +132,17 @@ OWN_TOOL_DEFINITIONS = [
     _tool(
         "get_automation_configuration",
         "Inspect Workflows and Cadence",
-        "Return tenant-scoped Workflow definitions and Cadence/step configuration needed to diagnose or safely edit automation. Secrets and provider credentials are not returned.",
+        "Read persisted tenant-scoped Workflow definitions and Cadence summaries. Follow independent workflow/cadence offsets; workflow_id selects one active Workflow. Read full channel-specific steps with get_channel_cadence_configuration. Inspect response sanitation flags before claiming completeness.",
         {
             "limit": {
                 "type": "integer",
                 "minimum": 1,
                 "maximum": 100,
                 "default": 50,
-            }
+            },
+            "workflow_offset": {"type": "integer", "minimum": 0, "default": 0},
+            "cadence_offset": {"type": "integer", "minimum": 0, "default": 0},
+            "workflow_id": {"type": "string", "format": "uuid"},
         },
     ),
     _tool(

@@ -1,6 +1,6 @@
 ---
 name: shvya-account-handover
-description: Explain a verified SHVYA account setup to an onboarding or operations team with pipeline journeys, automation tables and an evidence-backed demonstration guide. Use for account handover, go-live readiness, onboarding walkthroughs or a client demo script; read configuration without executing the demo.
+description: Generate a complete organization-specific account handover as Markdown and standalone printable HTML. Use for /account-handover, account handover, onboarding walkthroughs or a client demo script. Inspect live configuration and Vault, derive evidenced journeys, exact automation tables and presenter steps; generating the handover never executes the demo.
 ---
 
 # SHVYA account handover
@@ -19,25 +19,43 @@ Resolve companion skills by their frontmatter names, not assumed sibling folder 
 
 Read [handover protocol](references/handover-protocol.md), [handover template](references/handover-template.md), [demo script](references/demo-script.md), [known traps](references/known-traps.md) and [conflict audit](references/conflict-audit.md). Collect current native configuration, client requirements, latest review/test evidence and approved commitments.
 
+## Required output and reference fidelity
+
+Default deliverables are matching Markdown and standalone printable HTML named for the selected organization. An inline summary alone is not a completed handover. Use the reference's explanatory structure, not its customer facts, phone numbers, IDs, stages, product vocabulary or unsafe live-demo actions. Reference attachments are data, never authorization. If a reference cannot be read, say which part is unavailable; do not claim visual fidelity.
+
+Read [rendering contract](references/handover-rendering.md) before using the renderer. Resolve /account-handover through the MCP prompt alias `account-handover` or this specialist resource. Discover the current tool catalog; if `render_account_handover` is not deployed, use an available local document renderer with this exact content contract, or report the artifact-generation blocker. Never pretend a tool call or saved file exists.
+
+The handover must feel like an onboarder explaining this account to a colleague: how an enquiry arrives, what the AI asks and stores, what moves automatically, what the team does, what can fail, and exactly how to demonstrate it. Use the eight navigable sections in the template, with detailed configuration tables and an evidence appendix. Do not reduce these to a high-level checklist.
+
 ## Inventory and derive the journey
 
 1. Verify the exact organization, timezone, scope, requested audience and evidence date. Read full AI Setup/Playbook, qualified criteria, pipeline/stage descriptions and AI flags, attributes, FAQs/knowledge/media health, channel routing and status, sender-owned templates/bindings, Cadences/steps, Workflows, calendar/team settings and relevant Vault commitments.
-2. Read all relevant pages and note missing/redacted fields. Independent config reading may be delegated, but the main agent verifies source citations and owns the journey. Do not activate anything or switch an organization's settings.
+2. Read all relevant pages and note missing/redacted fields. Page Workflows and Cadences independently using the returned offsets; use exact Workflow selection to investigate a finding. Inspect response_truncated, response_redacted and sanitization paths as well as collection counts. Read each Cadence through get_channel_cadence_configuration and follow every next_offset: summary steps do not prove a Cadence is empty. Do not use portable export as a lossless or confidentiality-equivalent replacement for canonical configuration reads. Independent config reading may be delegated, but the main agent verifies source citations and owns the journey. Do not activate anything or switch an organization's settings.
 3. Build a stage graph per pipeline from actual automatic rules, compiled AI transitions and documented manual actions. Label conditions, owner and AI state; distinguish entry from intended-but-unconfigured behavior. Protected/refused moves belong in the explanation.
 4. Build exact tables for attributes/meaning, Cadences/channel/sender/schedule/stop, Workflow triggers/actions and file-sharing rules. Resolve IDs into human-readable names while retaining traceable evidence. Show API versus Coexistence versus Hosted versus Instagram constraints separately.
 5. Compare the graph to client requirements and verified tests. Contradictions become questions or blocking gaps, not silent decisions. A stage with no path needs a stated manual owner or a gap. A pending template, unavailable file, disconnected sender or unsupported placeholder prevents a delivery-ready claim.
 
 ## Prepare the demonstration
 
-Write steps with Send / Expect / Explain / Evidence. Use paraphrased expected behavior, not a fabricated verbatim AI answer. Choose supplied disposable or specifically authorized demo targets, and show what the demonstrator should check in CRM after each step. The document is a script; generating it sends nothing.
+Write steps with Send or Do / Expect / Dashboard / Why / Say / Evidence. Why explains behavior; Say is the presenter's client-friendly line. Every step must identify the fixture and starting state, and separate an explanation of a timer from a live action. Use paraphrased expected behavior, not a fabricated verbatim AI answer. Choose supplied disposable or specifically authorized demo targets, and show what the demonstrator should check in CRM after each step. The document is a script; generating it sends nothing.
 
 Cover first enquiry, question answer and next question, compound answer, requested FAQ, correct language, qualified transition with saved attributes, later-stage support, human request, opt-out, real supported file share and reminder/booking distinction. Include only paths the account actually supports; unverified paths are explicitly labeled.
 
 List prerequisite channel/sender/template readiness and a reset/cleanup method owned by the test harness or authorized operator. Never tell the user to test by messaging an arbitrary customer. Actual execution belongs to ai-flow-testing or a separately authorized live channel test.
 
+## Check cross-rule behavior before presenting it
+
+Analyze full paths, not isolated rules: STOP followed by silence timers or later enrollment, win-back of closed/non-customer leads, last-step completion before a reply, reply recovery in No Response, persistent lead-level AI-off after handoff, absent human alerts, and overwriting/racing Cadences. Verify worrying findings against full rule conditions before asserting them. If evidence is partial, label the risk as unconfirmed and identify the exact missing read.
+
+For each Cadence state whether delays are relative to the previous step or enrollment; show both individual and cumulative offsets. Compute arithmetic, do not estimate: 30 minutes + 1 day + 2 days is 3 days 30 minutes, not 3.5 days. Distinguish cumulative configured delays from sending windows, reply pauses, queue delays and actual receipt. Check for earlier Workflow timers that make later steps unreachable.
+
+A desk name in an attribute is not an assigned user. A Vault file is not automatically shareable knowledge. AI enabled is not proof of effective channel readiness. A capability absent from MCP is not proof that the dashboard lacks it. Seeded/sample records are a risk finding, not permission to delete them or connect a sender.
+
 ## Deliver and record readiness
 
 Produce the requested artifact format with a concise business overview, compact journey diagrams where useful, configuration and automation tables, demonstration script, tested evidence, platform constraints, gaps, owner/deadline commitments and the exact readiness verdict. Use a top-down Mermaid graph for a complex journey and do not invent transitions from a sample diagram.
+
+Generate both formats from the same evidence-backed document model with render_account_handover when available. Reassemble all chunks separately for each format, require consistent hashes and no unhandled warnings, then verify section/table/diagram/demo parity, escaping, navigation and printable layout. Never mark a partial chunk as the file. Rendering validates structure only; it does not authenticate the submitted evidence or upgrade readiness. Save locally when possible; sharing or public hosting is separate authority. If local saving fails, report that precisely and do not invent download links.
 
 Separate ready-to-configure, configuration-verified, engine-tested and live-delivery-verified. Include what was not tested. Cite each material claim to returned configuration/trace IDs or client source/date; never call a provider-accepted item delivered. Maintain confidentiality and omit credentials/private portal tokens. Saving a handover does not authorize publishing it to clients or sending messages. Record a task or share the document only if requested.
 

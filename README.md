@@ -659,3 +659,7 @@ Useful project documentation includes:
 
 Do not bypass the service layer, tenant isolation, migration requirements, or CI/CD promotion path for convenience.
 # test
+
+### Account handover artifacts
+
+The `account-handover` prompt alias routes to the account-handover specialist. `render_account_handover` prepares matched Markdown and standalone printable HTML from a validated, tenant-bound document, without sending messages, testing leads or saving configuration. See [account handover](docs/account-handover.md); authenticated discovery remains authoritative for the deployed tool surface.

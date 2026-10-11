@@ -634,7 +634,25 @@
     {
       "name": "shvya-account-handover",
       "title": "SHVYA account handover",
-      "description": "Explain the verified account journey and create an onboarding demonstration guide.",
+      "description": "Generate organization-specific Markdown and printable HTML handovers with evidenced journeys, automation and presenter scripts; no demo execution.",
+      "arguments": [
+        {
+          "name": "organization_name",
+          "description": "Intended company context only; not a tenant selector or permission.",
+          "required": false
+        },
+        {
+          "name": "task",
+          "description": "Requested bounded work; no permission expansion.",
+          "required": false
+        }
+      ],
+      "path": "skills/shvya-account-handover/SKILL.md"
+    },
+    {
+      "name": "account-handover",
+      "title": "Account handover",
+      "description": "Generate organization-specific Markdown and printable HTML handovers with evidenced journeys, automation and presenter scripts; no demo execution.",
       "arguments": [
         {
           "name": "organization_name",
@@ -3073,6 +3091,15 @@
       "name": "templates/variables.md",
       "title": "Variables",
       "description": "Immutable Shvya reference guidance: templates/variables.md",
+      "kind": "reference",
+      "mimeType": "text/markdown"
+    },
+    {
+      "resource_id": "skills/shvya-account-handover/references/handover-rendering.md",
+      "uri": "shvya-kit:///skills/shvya-account-handover/references/handover-rendering.md",
+      "name": "skills/shvya-account-handover/references/handover-rendering.md",
+      "title": "Handover Rendering",
+      "description": "Versioned document model, artifact paging and validation for account handovers.",
       "kind": "reference",
       "mimeType": "text/markdown"
     }
