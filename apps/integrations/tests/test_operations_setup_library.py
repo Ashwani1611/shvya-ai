@@ -57,7 +57,7 @@ class SetupLibraryTests(SimpleTestCase):
         }
         self.assertEqual(skill_names, expected_skills)
         self.assertEqual(len(skill_entries), 27)
-        self.assertEqual(len(prompts), 36)
+        self.assertEqual(len(prompts), 37)
         self.assertEqual(
             len([
                 item for item in prompts
@@ -368,3 +368,25 @@ class SetupLibraryTests(SimpleTestCase):
         self.assertNotIn("scripts/", library._read_asset("skills/shvya-vault/SKILL.md"))
         self.assertIn("upsert_vault_entry", library._read_asset("skills/shvya-vault/references/vault-contract.md"))
         self.assertIn("analyze_setup_group_export", library._read_asset("skills/shvya-read-whatsapp-group/SKILL.md"))
+
+    def test_account_handover_alias_and_complete_artifact_contract(self):
+        prompt = library.get_prompt("account-handover")
+        self.assertIn("shvya-account-handover/SKILL.md", prompt["_meta"]["resource_uri"])
+        skill = library._read_asset("skills/shvya-account-handover/SKILL.md")
+        self.assertIn("render_account_handover", skill)
+        self.assertIn("inline summary alone is not a completed handover", skill)
+        self.assertIn("3 days 30 minutes", skill)
+        self.assertIn("never executes the demo", skill)
+        template = library._read_asset(
+            "skills/shvya-account-handover/references/handover-template.md"
+        )
+        for section in (
+            "overview", "flow", "qualification", "automation", "demo",
+            "day_to_day", "open_questions", "not_covered",
+        ):
+            self.assertIn("(" + section + ")", template)
+        rendering = library._read_asset(
+            "skills/shvya-account-handover/references/handover-rendering.md"
+        )
+        self.assertIn("render_account_handover", rendering)
+        self.assertIn("next_offset", rendering)
