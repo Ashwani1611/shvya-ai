@@ -101,8 +101,12 @@ def sanitize_data(
     depth: int = 0,
     text_limit: int = 800,
     list_limit: int = 100,
+    max_depth: int = 6,
 ):
-    if depth > 6:
+    # Only reviewed configuration readers opt into deeper canonical structures.
+    # Existing diagnostic callers retain the historical depth-six bound.
+    max_depth = max(0, min(int(max_depth), 20))
+    if depth > max_depth:
         return "[TRUNCATED]"
     text_limit = max(1, min(int(text_limit or 800), 100000))
     list_limit = max(1, min(int(list_limit or 100), 500))
@@ -147,6 +151,7 @@ def sanitize_data(
                     depth=depth + 1,
                     text_limit=text_limit,
                     list_limit=list_limit,
+                    max_depth=max_depth,
                 )
         return cleaned
     if isinstance(value, (list, tuple)):
@@ -156,6 +161,7 @@ def sanitize_data(
                 depth=depth + 1,
                 text_limit=text_limit,
                 list_limit=list_limit,
+                max_depth=max_depth,
             )
             for item in list(value)[:list_limit]
         ]
