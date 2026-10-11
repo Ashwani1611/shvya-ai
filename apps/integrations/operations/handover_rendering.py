@@ -79,6 +79,11 @@ def _text(value, maximum=8000):
     return value
 
 
+def _choice(value, choices):
+    if not isinstance(value, str) or value not in choices:
+        _fail("A handover enum value is unsupported.")
+
+
 def _identifier(value):
     _text(value, 64)
     if ID_RE.fullmatch(value) is None:
@@ -174,15 +179,17 @@ def _block(block, sources):
             _shape(stage, "id label state")
             _identifier(stage["id"])
             _text(stage["label"], 240)
-            if stage["id"] in identifiers or stage["state"] not in STATES:
+            _choice(stage["state"], STATES)
+            if stage["id"] in identifiers:
                 _fail("Journey stage IDs must be unique and states must be supported.")
             identifiers.add(stage["id"])
         for transition in _array(block["transitions"], 200, minimum=0):
             _shape(transition, "from to kind condition evidence")
+            _identifier(transition["from"])
+            _identifier(transition["to"])
             if transition["from"] not in identifiers or transition["to"] not in identifiers:
                 _fail("Journey transitions must reference stages in the same journey.")
-            if transition["kind"] not in {"automatic", "human", "requested"}:
-                _fail("Journey transitions require automatic, human or requested kind.")
+            _choice(transition["kind"], {"automatic", "human", "requested"})
             _text(transition["condition"], 1000)
             _evidence(transition["evidence"], sources)
     elif kind == "demo":
@@ -190,14 +197,12 @@ def _block(block, sources):
         _text(block["fixture"], 1000)
         for step in _array(block["steps"], 100):
             _shape(step, "kind action expect dashboard why say evidence")
-            if step["kind"] not in {"send", "do"}:
-                _fail("Demo steps require send or do kind.")
+            _choice(step["kind"], {"send", "do"})
             for field in ("action", "expect", "dashboard", "why", "say"):
                 _text(step[field], 4000)
             _evidence(step["evidence"], sources)
     elif kind == "gap":
-        if block["severity"] not in {"blocker", "warning", "question"}:
-            _fail("Unsupported open-question severity.")
+        _choice(block["severity"], {"blocker", "warning", "question"})
         for field in ("observation", "impact", "decision"):
             _text(block[field])
     elif kind == "cadence":
@@ -210,7 +215,8 @@ def _block(block, sources):
             _shape(step, "delay message evidence")
             _shape(step["delay"], "value unit")
             value, unit = step["delay"]["value"], step["delay"]["unit"]
-            if type(value) is not int or not 0 <= value <= 525600 or unit not in {"minutes", "hours", "days"}:
+            _choice(unit, {"minutes", "hours", "days"})
+            if type(value) is not int or not 0 <= value <= 525600:
                 _fail("Cadence delays require bounded non-negative integer minutes, hours or days.")
             total += value * {"minutes": 1, "hours": 60, "days": 1440}[unit]
             if total > 5256000:
@@ -245,14 +251,12 @@ def validate_document(document, *, organization_id, organization_name):
         for field in ("tool", "reference", "note"):
             _text(source[field], 2000)
         _timestamp(source["observed_at"])
-        if source["status"] not in {"complete", "partial", "unavailable", "conflict"}:
-            _fail("Unsupported evidence source status.")
+        _choice(source["status"], {"complete", "partial", "unavailable", "conflict"})
     readiness = document["readiness"]
     _shape(readiness, "configuration engine_test live_delivery evidence note")
-    if readiness["configuration"] not in {"configured", "partial", "not_configured", "unknown"}:
-        _fail("Unsupported configuration readiness.")
-    if readiness["engine_test"] not in TEST_STATES or readiness["live_delivery"] not in TEST_STATES:
-        _fail("Unsupported test readiness.")
+    _choice(readiness["configuration"], {"configured", "partial", "not_configured", "unknown"})
+    _choice(readiness["engine_test"], TEST_STATES)
+    _choice(readiness["live_delivery"], TEST_STATES)
     _text(readiness["note"], 4000)
     _evidence(readiness["evidence"], sources)
     _shape(document["sections"], " ".join(SECTION_TITLES))
@@ -356,7 +360,7 @@ def _render_block(block, html):
             else:
                 body += "<p>No transitions supplied; no stage-order arrows inferred.</p>" if html else "No transitions supplied; no stage-order arrows inferred.\n"
         elif kind == "demo":
-            fields = [("Prerequisites", block["prerequisites"]), ("Approved fixture plan", block["fixture"])]
+            fields = [("Prerequisites", block["prerequisites"]), ("Fixture plan (authorization separate)", block["fixture"])]
             for label, value in fields:
                 body += f"<p><strong>{label}:</strong> {_html(value)}</p>" if html else f"**{label}:** {_md(value)}\n\n"
             for index, step in enumerate(block["steps"], 1):
@@ -411,8 +415,7 @@ def _render(document, organization_name, html):
 
 def render_handover(document, *, organization_id, organization_name, format="html", offset=0, limit=20000):
     """Return a lossless character slice; join slices before saving or displaying."""
-    if format not in {"html", "markdown"}:
-        _fail("Handover format must be html or markdown.")
+    _choice(format, {"html", "markdown"})
     if type(offset) is not int or not 0 <= offset <= MAX_OUTPUT_CHARS:
         _fail("Handover offset is outside its supported range.")
     if type(limit) is not int or not 1 <= limit <= MAX_CHUNK_CHARS:
