@@ -17,7 +17,7 @@ Read `text`, then call again at `next_offset` until it is null. Reassemble in or
 
 Render both formats from the identical document. The document hash includes the organization name. If configuration/identity or the model changes between calls, restart assembly. The tool returns `suggested_filename`, not a saved file or download URL. Save reviewed files through an available artifact/file tool. If this fails, state what remains unsaved.
 
-The response also identifies MIME type, total/returned characters and validation facts. `evidence_independently_verified` is always false, `script_only` true and `persisted` false. Reported readiness is caller-supplied evidence, not a server certification or test run.
+The response also identifies template_version (account-handover-v1), MIME type, total/returned characters and validation facts. `evidence_independently_verified` is always false, `script_only` true and `persisted` false. Reported readiness is caller-supplied evidence, not a server certification or test run.
 
 ## Top-level document
 
