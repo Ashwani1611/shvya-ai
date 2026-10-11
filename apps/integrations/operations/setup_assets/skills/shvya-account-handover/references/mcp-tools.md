@@ -45,3 +45,14 @@ create_ai_flow_test_run requires pipeline_id, stage_id and idempotency_key, with
 The harness uses server-owned real ORM Lead and inactive credential-free WhatsApp account fixtures hidden from normal dashboard/task selection. It runs the production controller, CRM executor and summary path without actual files, reminder/calendar, Workflows or transport execution. Native Instagram is unsupported for this harness. A rejected/replayed idempotency key never re-runs or bills a turn; partial failures remain in the run evidence.
 
 Knowledge writes report SAVED with ingestion_scheduled=true and dispatch_status=pending_commit. This is not queued/complete proof. get_playbook_document exposes processing/readiness and latest_repair status/outcome. repair_knowledge_document reports REQUESTED for a durable job that may consume credits; inspect eventual outcome. Text/file registration, indexing readiness and actual source retrieval are separate states.
+
+## Account handover detail and artifact tools
+
+Discover the live deployed schemas before use. When available:
+
+- get_automation_configuration accepts independent workflow_offset and cadence_offset plus limit. Follow pagination.next_workflow_offset and pagination.next_cadence_offset independently, retaining already completed collections instead of treating a repeated first page as new evidence. workflow_id selects one exact persisted Workflow; do not combine it with a nonzero workflow_offset.
+- List-level truncated counts describe a returned page versus the whole collection; completion of an assembled inventory is established by following all next offsets and reconciling IDs/counts. response_truncated and response_redacted describe nested serialization limits separately. Inspect response_sanitization paths, including semantic sensitive-field redaction, before asserting complete conditions.
+- get_channel_cadence_configuration remains the full typed step reader. Follow its next_offset until complete. The automation overview alone cannot prove the absence of Hosted/Instagram/email/template/reminder steps.
+- render_account_handover prepares matching Markdown/HTML from an explicitly sourced organization-bound document, with no database mutation or sends. Follow [the rendering contract](handover-rendering.md), reassemble every next_offset chunk, verify returned hashes and save only complete artifacts.
+
+The portable export remains a migration representation and may have different completeness/redaction properties. It is not a replacement for canonical handover detail readers. A tool mentioned here but missing from live discovery is not available; report the gap without inventing an API.
