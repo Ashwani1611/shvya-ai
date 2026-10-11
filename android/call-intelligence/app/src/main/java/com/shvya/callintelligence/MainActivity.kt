@@ -2964,6 +2964,7 @@ class MainActivity : AppCompatActivity() {
             setHintTextColor(Color.rgb(142, 150, 162))
             setPadding(dp(16), 0, dp(16), 0)
             inputType = inputTypeValue
+            typeface = regularFont
             isSingleLine = true
             background = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && autofillHint != null) {
@@ -2992,6 +2993,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(16), 0, dp(6), 0)
             inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
             transformationMethod = PasswordTransformationMethod.getInstance()
+            typeface = regularFont
             isSingleLine = true
             background = null
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -3015,6 +3017,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 setImageResource(if (visible) R.drawable.ic_eye_off_outline else R.drawable.ic_eye_outline)
                 contentDescription = if (visible) "Hide password" else "Show password"
+                input.typeface = regularFont
                 input.setSelection(input.text.length)
             }
         }

@@ -43,7 +43,7 @@ abstract class AppDatabase : RoomDatabase() {
         @Volatile var accountStorageReady: Boolean = false
             private set
 
-        /** Called before providers/workers or any new login can run, never during database get. */
+        /** Called before workers or any new login can run, never during database get. */
         fun captureLegacyOwnership(context: Context, accountId: String?, sessionGeneration: String) {
             synchronized(this) {
                 if (ownershipCaptureAttempted) return
