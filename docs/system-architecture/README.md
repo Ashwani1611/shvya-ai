@@ -236,3 +236,7 @@ The architecture map now also includes these first-class staging domains:
 - **Expanded Operations MCP** — `apps/integrations/operations_*.py` plus `apps/integrations/operations/`; 101 Operations-native tools plus 10 diagnostic read tools, including configuration plans/lifecycle controls, Calendar/integration/team capabilities and Superadmin diagnostics. The authenticated setup library adds 25 top-level domain skills and 8 specialist setup/review sub-prompts without adding backend authority. See [`../operations-mcp.md`](../operations-mcp.md) and [`../operations-mcp-setup.md`](../operations-mcp-setup.md).
 
 These workspaces still follow the same organization boundary, service-layer validation, idempotency and deployment rules described throughout this folder.
+
+### Account handover artifacts
+
+The Operations skill library provides the `account-handover` alias and the account-handover specialist. A deterministic, non-persistent `render_account_handover` tool converts an evidence document into bounded Markdown/standalone HTML chunks. Tenant/capability validation and credential rejection remain server-side; facts and runtime tests must be verified separately by the collecting workflow. Canonical automation reads now support pagination and explicit sanitation metadata. See [account handover](../account-handover.md).
