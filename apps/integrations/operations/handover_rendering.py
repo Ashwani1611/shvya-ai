@@ -66,7 +66,11 @@ def _text(value, maximum=8000):
         _fail("Handover text contains invalid Unicode.")
     # The response policy deliberately does not re-sanitize generated artifacts:
     # reject *every* input string that the credential sanitizer would alter.
-    if sanitize_text(value, limit=len(value)) != value:
+    quoted_credential = re.search(
+        r"""(?i)["'](?:api[_-]?key|access[_-]?token|refresh[_-]?token|token|secret|credential|authorization|cookie|session|password|client[_-]?secret|smtp[_-]?password|database[_-]?password|private[_-]?key)["']\s*[:=]""",
+        value,
+    )
+    if quoted_credential or sanitize_text(value, limit=len(value)) != value:
         _fail("Handover text contains credential-like material.")
     if re.search(r"\b(?:data|javascript|vbscript|file)\s*:", value, re.I):
         _fail("Embedded media and executable URL schemes are not supported.")
