@@ -164,3 +164,9 @@ intake preview → approval → apply → readback, stale/replayed receipts, can
 Playbook compilation and post-deployment health. Use a dedicated authorized test
 organization for mutation smoke tests. The bundled behavioral evaluation cases
 are scenarios, not a claim of measured production model accuracy.
+
+## Account handover artifacts
+
+Choose the `account-handover` prompt alias or read `skills/shvya-account-handover/SKILL.md`. The specialist now requires a matched Markdown/HTML operating walkthrough with evidenced flow, qualification, complete automation, presenter script, daily duties, open questions and unsupported scenarios. Read the linked rendering contract before calling `render_account_handover` with `setup.artifacts.prepare`. Source capture and rendering are read-only; demo execution, client sharing and account changes require their own authority.
+
+See [account handover](account-handover.md) for pagination, artifact reassembly and deployment checks. Reference-company facts are never reusable defaults.
