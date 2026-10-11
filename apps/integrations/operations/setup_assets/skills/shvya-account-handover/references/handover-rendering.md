@@ -100,7 +100,7 @@ Use message for a faithful message/template/attachment summary with relevant ste
 
 ## Bounds and security
 
-At most 250000 serialized input characters, 300 total blocks, 100 blocks per section, 25000 JSON nodes, structural depth 12 and 1000000 output characters. Text fields have additional bounds (generally 8000, table/demo/Cadence text 4000, titles 240). Oversize/invalid input fails; it is not silently truncated into an apparently complete artifact.
+At most 250000 serialized input characters, 300 total blocks, 100 blocks per section, 25000 JSON nodes, structural depth 12 and 1000000 output characters. Text fields have additional bounds (generally 8000, table/demo/Cadence text 4000, titles 240). Oversize/invalid input fails; it is not silently truncated into an apparently complete artifact. For a large organization, split into explicitly numbered pipeline/topic volumes, each with the eight sections, its own scoped evidence ledger and a cross-volume coverage index in the overview. Save unique volume filenames in both formats. Reconcile all inventory IDs across the volumes; never discard rows or label a partial volume as the whole account merely to fit a limit.
 
 Credential-like text is rejected before rendering, and all rendered customer strings are escaped. Data/executable/file URLs and URLs with credentials, queries or fragments are unsupported. Supply stable public references or object IDs; never make a private asset public just to satisfy the renderer. There are no external scripts/fonts/assets or arbitrary template evaluation.
 
