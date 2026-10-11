@@ -21,6 +21,8 @@ class ReconcileWorker(
         val auth = AuthStore(applicationContext)
         if (!auth.canTrack()) return Result.success()
         val session = auth.readSession()
+        val eventSession = inputData.getString("session_generation").orEmpty()
+        if (eventSession.isNotBlank() && eventSession != session.generation) return Result.success()
         val sessionGeneration = session.generation
         val accountId = auth.accountId(session) ?: return Result.success()
         val state = TrackingState(applicationContext, accountId, sessionGeneration)

@@ -48,6 +48,7 @@ import com.shvya.callintelligence.calls.CallTrackingService
 import com.shvya.callintelligence.calls.TrackingScheduler
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
+import com.shvya.callintelligence.net.ServerTimestamp
 import com.shvya.callintelligence.data.AppDatabase
 import com.shvya.callintelligence.data.AccountStoragePolicy
 import com.shvya.callintelligence.data.PendingAction
@@ -276,6 +277,11 @@ class MainActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
         }
         val login = primaryButton("Continue").apply { minimumHeight = dp(54) }
+        if (!AppDatabase.accountStorageReady) {
+            login.isEnabled = false
+            root.addView(connectionNotice())
+            root.addView(space(16))
+        }
 
         login.setOnClickListener {
             val emailValue = email.text.toString().trim()
@@ -371,6 +377,20 @@ class MainActivity : AppCompatActivity() {
 
     private fun connectionNotice(): LinearLayout = card().apply {
         background = roundedStroke(Color.rgb(255, 249, 235), 20f, Color.rgb(241, 224, 185))
+        if (!AppDatabase.accountStorageReady) {
+            addView(sectionTitle("Device storage needs attention"))
+            addView(body("SHVYA couldn't prepare storage on this phone. Free some space, then fully close and reopen the app. Call capture and offline saving are paused.").apply {
+                setTextColor(Color.rgb(118, 83, 24))
+            })
+            addView(space(12))
+            addView(secondaryButton("Open storage settings").apply {
+                setOnClickListener {
+                    runCatching { startActivity(Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)) }
+                        .onFailure { toast("Open your phone's Settings, then Storage. Free some space and restart SHVYA.") }
+                }
+            })
+            return@apply
+        }
         addView(sectionTitle(if (auth.deviceBlocked) "Device connection paused" else "Reconnect your account"))
         addView(body(auth.sessionMessage.ifBlank { "Sign in again to reconnect to SHVYA." }).apply {
             setTextColor(Color.rgb(118, 83, 24))
@@ -1534,7 +1554,7 @@ class MainActivity : AppCompatActivity() {
                 toast("Call outcome saved")
                 render()
             } else if (shouldQueueOffline(result)) {
-                queueOfflineAction(path, "PATCH", payload, "Call outcome", actionAccountId)
+                if (!queueOfflineAction(path, "PATCH", payload, "Call outcome", actionAccountId)) return@launch
                 call.put("disposition", code)
                 button.text = label
                 toast("Saved offline · will sync automatically")
@@ -1561,7 +1581,7 @@ class MainActivity : AppCompatActivity() {
                 toast("Quick note saved")
                 render()
             } else if (shouldQueueOffline(result)) {
-                queueOfflineAction(path, "PATCH", payload, "Call note", actionAccountId)
+                if (!queueOfflineAction(path, "PATCH", payload, "Call note", actionAccountId)) return@launch
                 call.put("notes", notes)
                 toast("Saved offline · will sync automatically")
             } else toast(apiError(result?.body, "Could not save note."))
@@ -1586,7 +1606,7 @@ class MainActivity : AppCompatActivity() {
                 reminderSegment = "today"
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Call follow-up", actionAccountId)
+                if (!queueOfflineAction(path, "POST", payload, "Call follow-up", actionAccountId)) return@launch
                 toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
@@ -1608,7 +1628,7 @@ class MainActivity : AppCompatActivity() {
                 toast("Follow-up scheduled")
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Lead follow-up", actionAccountId)
+                if (!queueOfflineAction(path, "POST", payload, "Lead follow-up", actionAccountId)) return@launch
                 toast("Follow-up saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not create follow-up."))
         }
@@ -1651,7 +1671,7 @@ class MainActivity : AppCompatActivity() {
                         toast("Lead moved")
                         onMoved()
                     } else if (shouldQueueOffline(response)) {
-                        queueOfflineAction(path, "PATCH", payload, "Move lead", actionAccountId)
+                        if (!queueOfflineAction(path, "PATCH", payload, "Move lead", actionAccountId)) return@launch
                         toast("Stage change saved offline · will sync automatically")
                         onMoved()
                     } else toast(apiError(response?.body, "Could not move this lead."))
@@ -1766,21 +1786,32 @@ class MainActivity : AppCompatActivity() {
         payload: JSONObject,
         label: String,
         accountId: String,
-    ) {
-        withContext(Dispatchers.IO) {
-            AppDatabase.get(this@MainActivity, accountId).callDao().insertPendingAction(
-                PendingAction(
-                    path = path,
-                    method = method,
-                    payload = payload.toString(),
-                    label = label,
+    ): Boolean {
+        if (!AppDatabase.accountStorageReady) {
+            toast("This change wasn't saved. Free some device storage, then close and reopen SHVYA before trying again.")
+            return false
+        }
+        val saved = withContext(Dispatchers.IO) {
+            runCatching {
+                AppDatabase.get(this@MainActivity, accountId).callDao().insertPendingAction(
+                    PendingAction(
+                        path = path,
+                        method = method,
+                        payload = payload.toString(),
+                        label = label,
+                    )
                 )
-            )
+            }.isSuccess
+        }
+        if (!saved) {
+            toast("This change couldn't be saved on your phone. Check available storage and try again.")
+            return false
         }
         if (auth.accountId() == accountId) {
             pendingSyncCount += 1
             if (auth.canTrack()) TrackingScheduler.enqueueSync(this)
         }
+        return true
     }
 
     private fun performReminderAction(reminderId: String, action: String) {
@@ -1799,7 +1830,7 @@ class MainActivity : AppCompatActivity() {
                 toast(if (action == "complete") "Follow-up completed" else "Follow-up snoozed 30 minutes")
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)
+                if (!queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)) return@launch
                 toast("Follow-up action saved offline · will sync automatically")
             } else toast(apiError(response?.body, "Could not update the follow-up."))
         }
@@ -1819,7 +1850,10 @@ class MainActivity : AppCompatActivity() {
             if (response?.successful == true) {
                 render()
             } else if (shouldQueueOffline(response)) {
-                queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)
+                if (!queueOfflineAction(path, "POST", payload, "Follow-up " + action, actionAccountId)) {
+                    button.isEnabled = true
+                    return@launch
+                }
                 toast("Saved offline · will sync automatically")
                 render()
             } else {
@@ -1863,7 +1897,11 @@ class MainActivity : AppCompatActivity() {
                         toast("Call notes saved to CRM")
                         render()
                     } else if (shouldQueueOffline(result)) {
-                        queueOfflineAction(path, "PATCH", payload, "Call notes", actionAccountId)
+                        if (!queueOfflineAction(path, "PATCH", payload, "Call notes", actionAccountId)) {
+                            button.isEnabled = true
+                            message.text = "Your note wasn't saved. Check device storage and try again."
+                            return@launch
+                        }
                         dialog.dismiss()
                         toast("Note saved offline · will sync automatically")
                     } else {
@@ -2590,9 +2628,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatDate(value: String): String = try {
-        val parser = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US)
-        val date = parser.parse(value.replace(Regex("\\.\\d+(?=[Z+-])"), ""))
-        if (date == null) value else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(date)
+        val timestamp = ServerTimestamp.parseMillis(value)
+        if (timestamp == null) value else SimpleDateFormat("d MMM, h:mm a", Locale.getDefault()).format(Date(timestamp))
     } catch (_: Exception) { value }
 
     private fun dial(phone: String) {

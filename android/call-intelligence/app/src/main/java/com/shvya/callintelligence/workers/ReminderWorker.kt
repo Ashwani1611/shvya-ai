@@ -16,9 +16,8 @@ import androidx.work.WorkerParameters
 import com.shvya.callintelligence.MainActivity
 import com.shvya.callintelligence.net.ApiClient
 import com.shvya.callintelligence.net.AuthStore
+import com.shvya.callintelligence.net.ServerTimestamp
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Locale
 
 class ReminderWorker(
     appContext: Context,
@@ -60,7 +59,7 @@ class ReminderWorker(
             if (!auth.canTrack() || auth.readSession().generation != session.generation) return Result.success()
             val item = rows.optJSONObject(i) ?: continue
             val dueAt = item.optString("due_at")
-            val dueMillis = parseIso(dueAt) ?: continue
+            val dueMillis = ServerTimestamp.parseMillis(dueAt) ?: continue
             if (dueMillis > notifyBefore) continue
             val reminderId = item.optString("id")
             val key = reminderId + "|" + dueAt
@@ -140,11 +139,6 @@ class ReminderWorker(
         }
         manager.notify(id.hashCode(), builder.build())
     }
-
-    private fun parseIso(value: String): Long? = runCatching {
-        val normalized = value.replace(Regex("\\.\\d+(?=[Z+-])"), "")
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX", Locale.US).parse(normalized)?.time
-    }.getOrNull()
 
     companion object {
         private const val CHANNEL_ID = "shvya_followups"

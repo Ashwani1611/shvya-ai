@@ -16,6 +16,7 @@ import java.util.concurrent.TimeUnit
 
 class PhoneStateReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != TelephonyManager.ACTION_PHONE_STATE_CHANGED) return
         val auth = AuthStore(context)
         if (!auth.canTrack()) return
         val session = auth.readSession()
@@ -37,7 +38,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                     WorkManager.getInstance(context).enqueue(
                         OneTimeWorkRequestBuilder<CallerContextWorker>()
                             .setConstraints(network)
-                            .setInputData(workDataOf("phone" to incoming))
+                            .setInputData(workDataOf("phone" to incoming, "session_generation" to session.generation))
                             .build()
                     )
                 }
@@ -58,6 +59,7 @@ class PhoneStateReceiver : BroadcastReceiver() {
                     .setInitialDelay(1500, TimeUnit.MILLISECONDS)
                     .setInputData(
                         workDataOf(
+                            "session_generation" to session.generation,
                             "session_ended_at" to now,
                             "session_offhook_at" to offhookAt,
                             "session_ring_ms" to ringMillis,
