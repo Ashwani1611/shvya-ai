@@ -10,6 +10,8 @@ Per CLAUDE.md:
             via WhatsAppMessage.external_id (Meta's wamid).
 """
 
+from apps.channels.activity import observe_message_send
+
 from django.conf import settings
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
@@ -1258,6 +1260,7 @@ def _send_outbound_media_message(
 
 
 @paced_ai_send
+@observe_message_send("whatsapp_api")
 def send_outbound_message(
     *,
     message: WhatsAppMessage,
@@ -1332,6 +1335,8 @@ def send_outbound_message(
     client = WhatsAppClient(
         phone_number_id=account.phone_number_id,
         access_token=account.access_token,
+        organization_id=account.organization_id,
+        connection_id=account.pk,
     )
 
     # --------------------------------------------------------

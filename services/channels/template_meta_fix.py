@@ -141,6 +141,8 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
         client = base.WhatsAppClient(
             template.account.phone_number_id,
             template.account.access_token,
+            organization_id=template.organization_id,
+            connection_id=template.account_id,
         )
         response = client._post(
             f"{template.account.waba_id}/message_templates",

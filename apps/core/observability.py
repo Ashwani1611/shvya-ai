@@ -77,6 +77,12 @@ def emit_event(event, *, level=logging.INFO, **fields):
         else:
             payload[key] = _clean(value, maximum=240)
     logger.log(level, json.dumps(payload, separators=(",", ":"), sort_keys=True))
+    # Import lazily: Celery registers these hooks while Django is starting.
+    # The activity service contains capture failures and stores only allowlisted
+    # metadata. Its fallback logger does not call emit_event, avoiding recursion.
+    from apps.core.api_activity.operational import observe_operational_event
+
+    observe_operational_event(event, level=logging.getLevelName(level), fields=fields)
 
 
 def _normalized_labels(labels):

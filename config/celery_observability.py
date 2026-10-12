@@ -6,6 +6,7 @@ import logging
 import time
 
 from celery.signals import (
+    after_task_publish,
     before_task_publish,
     task_failure,
     task_postrun,
@@ -17,10 +18,13 @@ import redis
 
 from apps.core.observability import (
     bind_context,
-    clear_context,
     emit_event,
     increment,
     observe_latency,
+)
+from apps.core.api_activity.celery import (
+    confirm_publish, fail_execution, finish_execution, publish_activity,
+    retry_execution, start_execution,
 )
 
 
@@ -47,12 +51,18 @@ def task_published(sender=None, headers=None, routing_key=None, **kwargs):
     headers["shvya_queue"] = queue
     if not task_id:
         return
+    publish_activity(str(sender or "unknown"), headers, queue)
     try:
         client = _broker()
         client.zadd(f"shvya:queue-age:{queue}", {task_id: published_at})
         client.expire(f"shvya:queue-age:{queue}", 8 * 24 * 60 * 60)
     except Exception:
         emit_event("celery.queue_metric.failed", level=logging.WARNING, queue=queue)
+
+
+@after_task_publish.connect
+def task_publish_confirmed(headers=None, **kwargs):
+    confirm_publish(headers)
 
 
 @task_prerun.connect
@@ -62,6 +72,7 @@ def task_started(sender=None, task_id=None, task=None, **kwargs):
     task_name = str(getattr(sender, "name", "") or getattr(task, "name", "unknown"))
     queue = str(headers.get("shvya_queue") or "celery")
     enqueued_at = headers.get("shvya_enqueued_at")
+    start_execution(task_id, task_name, headers)
     bind_context(task_id=str(task_id or ""))
     _STARTED[str(task_id)] = time.perf_counter()
     if enqueued_at:
@@ -94,11 +105,15 @@ def task_finished(sender=None, task_id=None, task=None, state=None, **kwargs):
         "celery.tasks.completed",
         labels={"queue": queue, "task": task_name, "state": state or "unknown"},
     )
-    clear_context()
+    finish_execution(
+        task_id, state,
+        duration_ms=((time.perf_counter() - started) * 1000 if started is not None else None),
+    )
 
 
 @task_failure.connect
 def task_failed(sender=None, task_id=None, exception=None, **kwargs):
+    fail_execution(task_id, exception)
     task_name = str(getattr(sender, "name", "unknown"))
     increment("celery.tasks.failed", labels={"task": task_name})
     emit_event(
@@ -111,6 +126,7 @@ def task_failed(sender=None, task_id=None, exception=None, **kwargs):
 
 @task_retry.connect
 def task_retried(sender=None, request=None, reason=None, **kwargs):
+    retry_execution(getattr(request, "id", None), reason)
     task_name = str(getattr(sender, "name", "unknown"))
     increment("celery.tasks.retried", labels={"task": task_name})
     emit_event(

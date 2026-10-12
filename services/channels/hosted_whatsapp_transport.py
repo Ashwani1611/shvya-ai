@@ -1,5 +1,7 @@
 """Provider dispatch for Hosted Account sends without disturbing Meta Cloud API."""
 
+from apps.channels.activity import observe_message_send
+
 import json
 import logging
 from datetime import datetime, timedelta, timezone as datetime_timezone
@@ -86,6 +88,7 @@ def _record_send_error(message, *, error, failed):
 
 
 @paced_ai_send
+@observe_message_send("whatsapp_hosted")
 def send_hosted_message(*, message, defer_on_pause=True):
     from services.channels.hosted_automation_service import (
         HostedAutomationPaused,

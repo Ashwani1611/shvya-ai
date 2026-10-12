@@ -12,6 +12,8 @@ existing explicit phone-selection behavior.
 
 from __future__ import annotations
 
+from apps.core.api_activity.http import observed_request
+
 import logging
 import time
 
@@ -60,8 +62,9 @@ def _candidate_status_from_meta(*, phone_number_id, access_token):
         "platform_type",
     ):
         try:
-            response = requests.get(
-                url,
+            response = observed_request(
+                "GET", url, request_callable=requests.get,
+                integration="whatsapp_coexistence", operation="asset_resolution.request",
                 headers=headers,
                 params={"fields": fields},
                 timeout=whatsapp_provider.REQUEST_TIMEOUT_SECONDS,

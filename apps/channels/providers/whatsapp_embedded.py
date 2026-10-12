@@ -4,6 +4,8 @@ These calls run after SHVYA has exchanged Meta's short-lived authorization code
 for a customer-scoped business token. They contain no CRM/database logic.
 """
 
+from apps.core.api_activity.http import observed_request
+
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -34,8 +36,9 @@ def oauth_redirect_uri(value):
 
 def _get_json(url, *, params=None, headers=None, error_label):
     try:
-        response = requests.get(
-            url,
+        response = observed_request(
+            "GET", url, request_callable=requests.get,
+            integration="whatsapp_api", operation="embedded_signup.request",
             params=params,
             headers=headers,
             timeout=REQUEST_TIMEOUT_SECONDS,

@@ -5,7 +5,7 @@ from django import forms
 from django.contrib import messages
 from django.core.exceptions import ValidationError
 from django.db import transaction
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -14,6 +14,7 @@ from django.views.decorators.http import require_http_methods, require_POST
 from apps.crm.models import Pipeline, Stage, Lead, LeadNote
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import IndiaMartConnection, IndiaMartReceipt
+from apps.integrations.services.lead_activity import record_lead_activity
 from apps.organizations.models import Organization
 from apps.superadmin.feature_toggle_views import superuser_required
 from apps.superadmin.models import AuditLog
@@ -154,13 +155,23 @@ def indiamart_setup_view(request, organization_id):
 @require_POST
 def indiamart_ingest_view(request, token):
     if len(request.body) > 262144:
+        record_lead_activity(
+            integration="indiamart", result="failed",
+            reason_code="payload_too_large",
+            summary="IndiaMART webhook exceeded the accepted request size.",
+        )
         return JsonResponse({"error": "Payload too large"}, status=413)
+    connection = None
+    query_id = ""
+    batch_size = None
+    reason_code = "invalid_payload"
     try:
         payload = json.loads(request.body)
         rows = payload.get("RESPONSE", payload) if isinstance(payload, dict) else None
         rows = rows if isinstance(rows, list) else [rows]
         if not rows or len(rows) > 100:
             raise ValidationError("Send between 1 and 100 enquiries.")
+        batch_size = len(rows)
         with transaction.atomic():
             connection = get_object_or_404(
                 IndiaMartConnection.objects.select_for_update(
@@ -178,16 +189,34 @@ def indiamart_ingest_view(request, token):
                 or connection.pipeline.organization_id != connection.organization_id
                 or not connection.pipeline.is_active
             ):
+                record_lead_activity(
+                    integration="indiamart", result="blocked", connection=connection,
+                    reason_code="routing_unavailable",
+                    summary="IndiaMART intake has no valid active CRM destination.",
+                    metadata={"batch_size": batch_size}, operation="lead.batch_import",
+                )
                 return JsonResponse(
                     {"error": "Lead routing needs attention"}, status=503
                 )
             for row in rows:
+                query_id = ""
+                reason_code = "invalid_enquiry"
                 if not isinstance(row, dict):
+                    reason_code = "invalid_enquiry"
                     raise ValidationError("Invalid enquiry.")
                 query_id = str(row.get("UNIQUE_QUERY_ID") or "").strip()
                 if not query_id or len(query_id) > 100:
+                    reason_code = "invalid_query_id"
                     raise ValidationError("A valid UNIQUE_QUERY_ID is required.")
-                if connection.receipts.filter(query_id=query_id).exists():
+                previous_receipt = connection.receipts.filter(query_id=query_id).values("id", "lead_id").first()
+                if previous_receipt is not None:
+                    record_lead_activity(
+                        integration="indiamart", result="duplicate", connection=connection,
+                        provider_reference=query_id, reason_code="duplicate_query_id",
+                        lead_id=previous_receipt["lead_id"],
+                        summary="Previously accepted IndiaMART enquiry was acknowledged without importing again.",
+                        metadata={"source_receipt_id": str(previous_receipt["id"])},
+                    )
                     continue
                 raw_phone = str(
                     row.get("SENDER_MOBILE") or row.get("SENDER_PHONE") or ""
@@ -200,12 +229,15 @@ def indiamart_ingest_view(request, token):
                     ):
                         digits = "91" + digits
                     elif len(digits) == 10:
+                        reason_code = "missing_phone_country_code"
                         raise ValidationError("Phone country code is required.")
                     raw_phone = "+" + digits
                 if not 8 <= len(digits) <= 15:
+                    reason_code = "invalid_phone"
                     raise ValidationError("Invalid buyer phone.")
                 phone = normalize_phone(raw_phone)
                 if not phone:
+                    reason_code = "missing_phone"
                     raise ValidationError("Buyer phone is required.")
                 existing = (
                     Lead.objects.select_for_update()
@@ -232,9 +264,11 @@ def indiamart_ingest_view(request, token):
                 )
                 if existing:
                     lead = existing
+                    created = False
                     LeadNote.objects.create(lead=lead, note=text, note_type="system")
                 else:
-                    lead, _ = upsert_lead(
+                    reason_code = "crm_validation_failed"
+                    lead, created = upsert_lead(
                         organization=connection.organization,
                         pipeline=connection.pipeline,
                         stage=connection.stage,
@@ -248,11 +282,46 @@ def indiamart_ingest_view(request, token):
                     transaction.on_commit(
                         lambda lead=lead: _schedule_new_lead_welcome(lead), robust=True
                     )
-                IndiaMartReceipt.objects.create(
+                receipt = IndiaMartReceipt.objects.create(
                     connection=connection, query_id=query_id, lead=lead, payload=row
+                )
+                record_lead_activity(
+                    integration="indiamart", result="created" if created else "updated",
+                    connection=connection, lead=lead, provider_reference=query_id,
+                    summary=(
+                        "IndiaMART enquiry created a CRM lead."
+                        if created else "IndiaMART enquiry updated an existing CRM lead."
+                    ),
+                    metadata={"source_receipt_id": str(receipt.pk)},
                 )
             connection.last_received_at = timezone.now()
             connection.save(update_fields=["last_received_at"])
     except (ValueError, UnicodeDecodeError, ValidationError):
+        # The entire batch is atomic: do not leave successful activity rows for
+        # earlier enquiries when a later enquiry rolls their CRM writes back.
+        record_lead_activity(
+            integration="indiamart", result="failed", connection=connection,
+            provider_reference=query_id, reason_code=reason_code,
+            summary="IndiaMART batch was rejected; no CRM changes from this batch were committed.",
+            metadata={"batch_size": batch_size, "rolled_back": connection is not None},
+            operation="lead.batch_import",
+        )
         return JsonResponse({"error": "Invalid IndiaMART enquiry payload."}, status=400)
+    except Http404:
+        record_lead_activity(
+            integration="indiamart", result="blocked",
+            reason_code="connection_unavailable",
+            summary="IndiaMART webhook did not resolve to an enabled connection.",
+        )
+        raise
+    except Exception:
+        record_lead_activity(
+            integration="indiamart", result="failed", connection=connection,
+            provider_reference=query_id, reason_code="processing_failed",
+            error_category="processing",
+            summary="IndiaMART batch processing failed before completion.",
+            metadata={"batch_size": batch_size, "rolled_back": connection is not None},
+            operation="lead.batch_import",
+        )
+        raise
     return JsonResponse({"CODE": 200, "STATUS": "SUCCESS"})

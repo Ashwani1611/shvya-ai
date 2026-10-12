@@ -109,6 +109,12 @@ class SHVYAAPIKeyAuthentication(
             ]
         )
 
+        # Only this verified principal may attribute an API request's activity
+        # and downstream work; ambient browser sessions are not authoritative.
+        from apps.core.api_activity.services import bind_organization
+
+        bind_organization(api_key.organization_id)
+
         return (
             APIKeyPrincipal(api_key),
             api_key,

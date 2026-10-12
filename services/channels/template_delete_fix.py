@@ -5,6 +5,8 @@ of leaving a ``pending_deletion`` row behind. Failed remote deletes still keep
 the local record intact so the user can retry safely.
 """
 
+from apps.core.api_activity.http import observed_request
+
 from django.db import transaction
 
 from . import template_service as base
@@ -28,8 +30,14 @@ def delete_template(*, template):
     account = template.account
     url = f"{base.meta.GRAPH_API_BASE}/{account.waba_id}/message_templates"
     try:
-        response = base.meta.requests.delete(
+        response = observed_request(
+            "DELETE",
             url,
+            request_callable=base.meta.requests.delete,
+            integration="meta_templates",
+            operation="template_delete",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers={"Authorization": f"Bearer {account.access_token}"},
             params={"name": template.name, "hsm_id": template.meta_template_id},
             timeout=base.meta.REQUEST_TIMEOUT_SECONDS,

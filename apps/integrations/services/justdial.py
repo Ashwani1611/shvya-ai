@@ -11,6 +11,7 @@ from django.utils import timezone
 
 from apps.crm.models import AttributeDefinition, Lead
 from apps.integrations.justdial_models import JustDialIntegration, JustDialLeadEvent
+from apps.integrations.services.lead_activity import record_lead_activity
 from services.crm.lead_service import DuplicateLeadError, upsert_lead
 
 
@@ -233,6 +234,7 @@ def _record_event(
     status: str,
     lead=None,
     error_message: str = "",
+    reason_code: str = "",
 ) -> JustDialLeadEvent:
     event = JustDialLeadEvent.objects.create(
         integration=integration,
@@ -260,6 +262,31 @@ def _record_event(
         updates["error_count"] = F("error_count") + 1
 
     JustDialIntegration.objects.filter(pk=integration.pk).update(**updates)
+    result = status
+    if status == JustDialLeadEvent.Status.IGNORED:
+        result = "duplicate" if reason_code == "duplicate_lead_id" else "blocked"
+    record_lead_activity(
+        integration="justdial",
+        result=result,
+        connection=integration,
+        lead=lead,
+        provider_reference=event.external_lead_id,
+        reason_code=reason_code,
+        error_category=(
+            "processing" if reason_code == "processing_failed"
+            else "configuration" if reason_code == "routing_unavailable"
+            else ""
+        ),
+        summary={
+            "created": "JustDial enquiry created a CRM lead.",
+            "updated": "JustDial enquiry updated an existing CRM lead.",
+            "duplicate": "Previously accepted JustDial lead ID was acknowledged without importing again.",
+            "blocked": "JustDial intake is disabled or not provisioned.",
+            "failed": "JustDial enquiry could not be imported; inspect the recorded reason code.",
+        }[result],
+        method=method,
+        metadata={"source_event_id": str(event.pk)},
+    )
     return event
 
 
@@ -269,6 +296,7 @@ def record_justdial_failure(
     payload: Any,
     method: str,
     error_message: str,
+    reason_code: str = "processing_failed",
 ) -> JustDialLeadEvent:
     """Persist an unexpected webhook failure without exposing internals."""
     return _record_event(
@@ -277,6 +305,7 @@ def record_justdial_failure(
         method=method,
         status=JustDialLeadEvent.Status.FAILED,
         error_message=error_message,
+        reason_code=reason_code,
     )
 
 
@@ -318,6 +347,7 @@ def process_justdial_lead(
             method=method,
             status=JustDialLeadEvent.Status.IGNORED,
             error_message="JustDial integration is not enabled.",
+            reason_code="intake_disabled",
         )
         return event, None, False
 
@@ -330,6 +360,7 @@ def process_justdial_lead(
             method=method,
             status=JustDialLeadEvent.Status.FAILED,
             error_message=message,
+            reason_code="invalid_phone",
         )
         raise ValidationError(message)
 
@@ -354,6 +385,7 @@ def process_justdial_lead(
                     method=method,
                     status=JustDialLeadEvent.Status.IGNORED,
                     error_message="JustDial integration is not enabled.",
+                    reason_code="intake_disabled",
                 )
                 return event, None, False
             _validate_routing(integration)
@@ -379,6 +411,7 @@ def process_justdial_lead(
                         status=JustDialLeadEvent.Status.IGNORED,
                         lead=receipt.lead,
                         error_message="Duplicate JustDial lead ID.",
+                        reason_code="duplicate_lead_id",
                     )
                     return event, receipt.lead, False
 
@@ -464,5 +497,10 @@ def process_justdial_lead(
             payload=cleaned,
             method=method,
             error_message=str(exc),
+            reason_code=(
+                "routing_unavailable"
+                if isinstance(exc, JustDialRoutingError)
+                else "crm_validation_failed"
+            ),
         )
         raise

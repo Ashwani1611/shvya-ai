@@ -1,0 +1,44 @@
+{% extends "superadmin/base.html" %}
+{% load static %}
+{% block title %}Activity · API Operations Center · SHVYA{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'superadmin/api-operations.css' %}">{% endblock %}
+{% block content %}
+<div class="api-workspace">
+    <a class="api-back" href="{% url 'superadmin-api' %}">← All API activities</a>
+    <div class="sa-page-header"><div><div class="api-eyebrow">{{ activity.integration_label }} · {{ activity.kind }}</div><h1 class="sa-page-title api-detail-title">{{ activity.operation }}</h1><p class="sa-page-description">{{ activity.organization_name }} · {{ activity.created_at|date:'d M Y, H:i:s T' }}</p></div><div class="api-header-actions"><span class="api-status api-status--{{ activity.status }}">{{ activity.status_label }}</span><a class="sa-secondary-button" href="{% url 'superadmin-api-activity-data' activity_id=activity.id %}">View JSON</a></div></div>
+
+    {% if activity.is_overdue %}<div class="api-notice api-notice--warning"><strong>Expected next step is overdue</strong><span>{{ activity.next_step|default:'Investigate the last recorded step and its downstream work.' }} · expected {{ activity.expected_by|date:'d M Y, H:i:s T' }}. This does not establish a failure.</span></div>{% endif %}
+    {% if activity.status == 'unknown' %}<div class="api-notice api-notice--warning"><strong>The outcome is not confirmed</strong><span>Review provider references and callbacks before taking another external action. A retry may repeat an action that already succeeded.</span></div>{% endif %}
+    {% if activity.status == 'accepted' %}<div class="api-notice"><strong>Request accepted; final outcome unconfirmed</strong><span>This records acknowledgement at this step. It does not establish message delivery or downstream business completion.</span></div>{% endif %}
+
+    <div class="api-detail-grid">
+        <section class="sa-panel api-section" aria-labelledby="api-evidence-title"><div class="api-section-heading"><div><h2 id="api-evidence-title">Last recorded evidence</h2><p>What this operation confirms</p></div></div>
+            <p class="api-summary">{{ activity.summary|default:'No explanatory summary was recorded for this activity.' }}</p>
+            <div class="api-next-step"><strong>{{ activity.diagnosis.evidence }}</strong><p>{{ activity.diagnosis.explanation }}</p><p>{{ activity.diagnosis.action }}</p></div>
+            {% if activity.error_code or activity.error_category or activity.error_message %}<div class="api-error-box"><h3>Recorded error</h3><div class="api-mono">{{ activity.error_code }}{% if activity.error_category %} · {{ activity.error_category }}{% endif %}</div>{% if activity.error_message %}<p>{{ activity.error_message }}</p>{% endif %}</div>{% endif %}
+            {% if activity.next_step %}<div class="api-next-step"><strong>Expected next step</strong><p>{{ activity.next_step }}</p></div>{% endif %}
+            <dl class="api-evidence-list"><div><dt>Direction</dt><dd>{{ activity.direction|default:'Not recorded' }}</dd></div><div><dt>HTTP status</dt><dd>{{ activity.http_status|default:'Not recorded' }}</dd></div><div><dt>Duration</dt><dd>{% if activity.duration_ms != None %}{{ activity.duration_ms|floatformat:1 }} ms{% else %}Not recorded{% endif %}</dd></div><div><dt>Endpoint</dt><dd class="api-mono">{{ activity.method }} {{ activity.endpoint|default:'Not recorded' }}</dd></div><div><dt>Started</dt><dd>{{ activity.started_at|date:'d M Y, H:i:s T'|default:'Not recorded' }}</dd></div><div><dt>Finished</dt><dd>{{ activity.finished_at|date:'d M Y, H:i:s T'|default:'Not recorded' }}</dd></div></dl>
+        </section>
+        <section class="sa-panel api-section" aria-labelledby="api-references-title"><div class="api-section-heading"><div><h2 id="api-references-title">Correlation & references</h2><p>Identifiers for matching related evidence</p></div></div><dl class="api-reference-list">
+            <div><dt>Activity ID</dt><dd class="api-mono">{{ activity.id }}</dd></div><div><dt>Correlation ID</dt><dd class="api-mono">{{ activity.correlation_id }}</dd></div>
+            {% if activity.parent_id %}<div><dt>Parent ID</dt><dd class="api-mono">{{ activity.parent_id }}</dd></div>{% endif %}
+            <div><dt>Organization ID</dt><dd class="api-mono">{{ activity.organization_id|default:activity.organization_reference|default:'Unattributed / platform' }}</dd></div>
+            {% if activity.provider_reference %}<div><dt>Provider reference</dt><dd class="api-mono">{{ activity.provider_reference }}</dd></div>{% endif %}
+            {% if activity.connection_id %}<div><dt>Connection ID</dt><dd class="api-mono">{{ activity.connection_id }}</dd></div>{% endif %}
+            {% if activity.request_id %}<div><dt>Request ID</dt><dd class="api-mono">{{ activity.request_id }}</dd></div>{% endif %}
+            {% if activity.task_id %}<div><dt>Task ID</dt><dd class="api-mono">{{ activity.task_id }}</dd></div>{% endif %}
+            {% if activity.entity_id %}<div><dt>{{ activity.entity_type|default:'Entity' }} reference</dt><dd class="api-mono">{{ activity.entity_id }}</dd></div>{% endif %}
+        </dl></section>
+    </div>
+
+    <section class="sa-panel api-section" aria-labelledby="api-timeline-title"><div class="api-section-heading"><div><h2 id="api-timeline-title">Activity timeline</h2><p>Persisted events in time order. Historical steps are not inferred.</p></div><span class="api-subtle">{{ event_pagination.total }} event{{ event_pagination.total|pluralize }}</span></div>
+        <ol class="api-timeline">{% for event in events %}<li><div class="api-timeline-dot" aria-hidden="true"></div><div class="api-timeline-heading"><div><h3>{{ event.name }}</h3><time datetime="{{ event.timestamp|date:'c' }}">{{ event.timestamp|date:'d M Y, H:i:s T' }}</time></div>{% if event.status %}<span class="api-status api-status--{{ event.status }}">{{ event.status_label }}</span>{% endif %}</div>{% if event.summary %}<p>{{ event.summary }}</p>{% endif %}{% if event.metadata %}<details class="api-metadata"><summary>Event metadata</summary><pre>{{ event.metadata_display }}</pre></details>{% endif %}</li>{% empty %}<li class="api-inline-empty">No timeline events were recorded. The activity summary above is the available evidence.</li>{% endfor %}</ol>
+        {% if event_pagination.pages > 1 %}<div class="api-pagination"><span>Page {{ event_pagination.page }} of {{ event_pagination.pages }}</span><div>{% if pagination_links.previous %}<a class="sa-secondary-button" href="{{ pagination_links.previous }}">Previous events</a>{% endif %}{% if pagination_links.next %}<a class="sa-secondary-button" href="{{ pagination_links.next }}">Next events</a>{% endif %}</div></div>{% endif %}
+        {% if event_pagination.truncated %}<p class="api-subtle">The first 50,000 events are available in this view.</p>{% endif %}
+    </section>
+
+    <section class="sa-panel api-section"><div class="api-section-heading"><div><h2>Related activities</h2><p>Matching correlation, entity or provider reference within the same organization attribution. Later callbacks may have a different correlation ID.</p></div></div><div class="api-related-list">{% for row in related %}<a href="{{ row.url }}"><div><strong>{{ row.operation }}</strong><span>{{ row.integration_label }} · {{ row.created_at|date:'H:i:s T' }}</span></div><span class="api-status api-status--{{ row.status }}">{{ row.status_label }}</span></a>{% empty %}<p class="api-inline-empty">No related activities have been recorded in the same organization context.</p>{% endfor %}</div>{% if related_truncated %}<p class="api-subtle">Showing the first 30 related activities. Search the correlation or provider reference in the explorer for more.</p>{% endif %}</section>
+    <section class="sa-panel api-section"><details class="api-metadata"><summary>Sanitized activity metadata</summary><pre>{{ metadata_display }}</pre></details></section>
+    <p class="api-footnote">This view records evidence and does not resend messages or reprocess webhooks. An API response and a confirmed business outcome are separate steps.</p>
+</div>
+{% endblock %}

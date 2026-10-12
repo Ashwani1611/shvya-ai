@@ -9,3 +9,4 @@ class AiEngagementConfig(AppConfig):
         from .runtime_bootstrap import install_ai_runtime
 
         install_ai_runtime()
+        from . import activity_signals  # noqa: F401

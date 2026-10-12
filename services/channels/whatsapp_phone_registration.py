@@ -14,6 +14,8 @@ credential-encryption root for WhatsApp access tokens in this application, so
 rotating it already requires a credential migration.
 """
 
+from apps.core.api_activity.http import observed_request
+
 import hashlib
 import hmac
 
@@ -52,8 +54,12 @@ def register_phone_number(*, phone_number_id, access_token):
     }
 
     try:
-        response = requests.post(
+        response = observed_request(
+            "POST",
             url,
+            request_callable=requests.post,
+            integration="whatsapp_api",
+            operation="phone_registration",
             headers=headers,
             json=payload,
             timeout=whatsapp_provider.REQUEST_TIMEOUT_SECONDS,

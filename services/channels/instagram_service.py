@@ -7,6 +7,10 @@ work; network traffic to Meta belongs in Celery tasks.
 
 from __future__ import annotations
 
+from apps.channels.activity import observe_message_send
+
+from apps.core.api_activity.http import observed_request
+
 from datetime import datetime, timedelta, timezone as dt_timezone
 from urllib.parse import urlencode
 
@@ -180,9 +184,10 @@ def _raise_for_meta(response: requests.Response, label: str) -> dict:
 
 def _request(method: str, url: str, *, label: str, **kwargs) -> dict:
     try:
-        response = requests.request(
+        response = observed_request(
             method,
             url,
+            integration="instagram", operation="instagram_request",
             timeout=REQUEST_TIMEOUT_SECONDS,
             **kwargs,
         )
@@ -1074,6 +1079,7 @@ def queue_text_message(
     return message
 
 
+@observe_message_send("instagram")
 def send_queued_message(message: InstagramMessage) -> InstagramMessage:
     """Deliver one queued row once; callers decide whether a failure is retriable."""
     message = InstagramMessage.objects.select_related("account", "conversation").get(pk=message.pk)

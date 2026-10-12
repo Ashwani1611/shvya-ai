@@ -12,9 +12,11 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.core.api_activity.http import observed_request
 from apps.crm.models import AttributeDefinition, Pipeline, Stage
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.models import MetaLeadForm, MetaLeadPage
+from apps.integrations.services.lead_activity import record_lead_activity
 from apps.integrations.services.meta_lead_webhook_security import (
     _configured_secrets,
     _signature_matches_secret,
@@ -167,8 +169,15 @@ def _phone_like_field(fields):
 
 
 def _fetch_lead(leadgen_id, page):
-    response = requests.get(
+    response = observed_request(
+        "GET",
         f"https://graph.facebook.com/v26.0/{leadgen_id}",
+        request_callable=requests.get,
+        integration="meta_leads",
+        operation="lead_fetch",
+        organization_id=page.organization_id,
+        connection_id=str(page.pk),
+        reference=leadgen_id,
         params={
             "fields": "field_data,ad_id,form_id,created_time",
             "access_token": page.get_page_access_token(),
@@ -198,13 +207,25 @@ def meta_lead_webhook(request):
     try:
         payload = json.loads(request.body or b"{}")
     except (TypeError, ValueError):
+        record_lead_activity(
+            integration="meta_leads", result="failed", reason_code="invalid_json",
+            summary="Meta Lead Ads webhook contained invalid JSON.",
+        )
         return HttpResponse(status=400)
 
     if not isinstance(payload, dict):
+        record_lead_activity(
+            integration="meta_leads", result="failed", reason_code="invalid_payload",
+            summary="Meta Lead Ads webhook requires an object payload.",
+        )
         return HttpResponse(status=400)
 
     secrets = _configured_secrets(payload)
     if not secrets:
+        record_lead_activity(
+            integration="meta_leads", result="blocked", reason_code="signature_configuration_missing",
+            summary="Meta Lead Ads webhook could not be verified because no app secret is configured.",
+        )
         logger.error(
             "Rejected Meta Lead Ads webhook because no app secret is configured"
         )
@@ -214,6 +235,11 @@ def meta_lead_webhook(request):
         )
 
     if not any(_signature_is_valid(request, secret) for secret in secrets):
+        record_lead_activity(
+            integration="meta_leads", result="blocked", reason_code="invalid_signature",
+            error_category="authentication",
+            summary="Meta Lead Ads webhook authenticity could not be verified.",
+        )
         logger.warning(
             "Rejected Meta Lead Ads webhook with invalid or missing signature"
         )
@@ -221,6 +247,10 @@ def meta_lead_webhook(request):
 
     entries = payload.get("entry", [])
     if not isinstance(entries, list):
+        record_lead_activity(
+            integration="meta_leads", result="failed", reason_code="invalid_entries",
+            summary="Meta Lead Ads webhook requires a list of entries.",
+        )
         return HttpResponse(status=400)
 
     page_ids = [str(entry.get("id") or "") for entry in entries if isinstance(entry, dict)]
@@ -234,6 +264,11 @@ def meta_lead_webhook(request):
     for entry in entries:
         page = pages_by_id.get(str(entry.get("id") or ""))
         if not page:
+            record_lead_activity(
+                integration="meta_leads", result="blocked", reason_code="page_unconfigured",
+                summary="Meta Lead Ads webhook has no active configured Page.",
+                metadata={"page_id": str(entry.get("id") or "")},
+            )
             logger.warning("Received Meta webhook for an unconfigured Page")
             continue
 
@@ -241,10 +276,18 @@ def meta_lead_webhook(request):
             value = change.get("value") or {}
             leadgen_id = str(value.get("leadgen_id") or "")
             if change.get("field") != "leadgen" or not leadgen_id:
+                record_lead_activity(
+                    integration="meta_leads", result="ignored", connection=page,
+                    reason_code="not_leadgen_event",
+                    summary="Meta change did not contain a leadgen event with a lead ID.",
+                )
                 continue
 
+            phase = "provider_fetch"
+            form_id = str(value.get("form_id") or "")
             try:
                 lead_data = _fetch_lead(leadgen_id, page)
+                phase = "form_mapping"
                 form_id = str(lead_data.get("form_id") or value.get("form_id") or "")
                 form = (
                     MetaLeadForm.objects.select_related("pipeline", "stage")
@@ -252,9 +295,16 @@ def meta_lead_webhook(request):
                     .first()
                 )
                 if not form:
+                    record_lead_activity(
+                        integration="meta_leads", result="blocked", connection=page,
+                        provider_reference=leadgen_id, reason_code="form_unconfigured",
+                        summary="Meta lead has no active CRM form mapping.",
+                        metadata={"form_id": form_id},
+                    )
                     logger.warning("No active mapping for Meta form %s", form_id)
                     continue
 
+                phase = "field_mapping"
                 fields = {
                     item.get("name", ""): ", ".join(
                         str(answer)
@@ -289,6 +339,12 @@ def meta_lead_webhook(request):
                         )
 
                 if not _phone_is_crm_compatible(phone):
+                    record_lead_activity(
+                        integration="meta_leads", result="ignored", connection=page,
+                        provider_reference=leadgen_id, reason_code="invalid_phone",
+                        summary="Meta lead was skipped because no CRM-compatible phone was supplied.",
+                        metadata={"form_id": form_id},
+                    )
                     logger.warning(
                         "Skipping Meta lead %s because Meta did not provide a "
                         "CRM-compatible phone. Available fields: %s",
@@ -317,6 +373,7 @@ def meta_lead_webhook(request):
                     attributes["meta_import_warning"] = phone_warning
                     attributes["meta_raw_phone"] = raw_phone
 
+                phase = "crm_import"
                 with transaction.atomic():
                     _ensure_meta_attribute_definitions(page.organization)
                     lead, created = upsert_lead(
@@ -334,6 +391,15 @@ def meta_lead_webhook(request):
                         attributes=attributes,
                         lead_source="meta_ads",
                     )
+                    record_lead_activity(
+                        integration="meta_leads", result="created" if created else "updated",
+                        connection=page, lead=lead, provider_reference=leadgen_id,
+                        summary=(
+                            "Meta Lead Ads created a CRM lead."
+                            if created else "Meta Lead Ads updated an existing CRM lead."
+                        ),
+                        metadata={"form_id": form_id, "phone_recovered": bool(phone_warning)},
+                    )
                 logger.info(
                     "%s Meta lead %s for form %s into organization %s as CRM lead %s",
                     "Created" if created else "Updated",
@@ -342,8 +408,25 @@ def meta_lead_webhook(request):
                     page.organization_id,
                     lead.id,
                 )
-            except Exception:
-                logger.exception("Failed to import Meta lead %s", leadgen_id)
+            except Exception as exc:
+                # Meta still receives the established transport acknowledgement.
+                # Persist the failed business outcome after CRM rollback so an
+                # HTTP 200 cannot conceal a lead that was never imported.
+                record_lead_activity(
+                    integration="meta_leads", result="failed", connection=page,
+                    provider_reference=leadgen_id, reason_code=f"{phase}_failed",
+                    error_category="provider" if phase == "provider_fetch" else "processing",
+                    summary="Meta lead could not be imported; the webhook acknowledgement does not confirm CRM creation.",
+                    metadata={
+                        "form_id": form_id, "failed_step": phase,
+                        "exception_type": type(exc).__name__,
+                    },
+                )
+                # HTTPError messages can include the Graph URL's access_token.
+                logger.error(
+                    "Failed to import Meta lead %s during %s (%s)",
+                    leadgen_id, phase, type(exc).__name__,
+                )
 
     return HttpResponse("EVENT_RECEIVED")
 

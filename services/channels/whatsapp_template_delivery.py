@@ -1,5 +1,7 @@
 """Queue and transport approved WhatsApp templates from the Chats inbox."""
 
+from apps.channels.activity import observe_message_send
+
 from functools import wraps
 
 from django.utils import timezone
@@ -254,6 +256,7 @@ def queue_template_message(*, template, lead, user=None):
 
 
 @paced_ai_send
+@observe_message_send("whatsapp_api")
 def _send_template_transport(message):
     from apps.crm.models import Lead
     from .template_media import resolve_delivery_media
@@ -279,7 +282,8 @@ def _send_template_transport(message):
         if lead is None or lead.phone != message.to_number:
             raise TemplatePreparationError("The original recipient was removed or changed. Review before sending.")
         validate_template_sender(template=template, lead=lead, account=account)
-        client = base.WhatsAppClient(phone_number_id=account.phone_number_id, access_token=account.access_token)
+        client = base.WhatsAppClient(phone_number_id=account.phone_number_id, access_token=account.access_token,
+                                     organization_id=message.organization_id, connection_id=account.pk)
         components = resolve_delivery_media(components=components, template=template, client=client)
     except Exception as exc:
         # Storage/cache/upload errors happen before /messages and must not be

@@ -7,6 +7,9 @@ Meta's dedicated Embedded Signup flow links the Business App and Cloud API,
 then exposes contact/history synchronization plus Business-App message echoes.
 """
 
+from apps.core.api_activity.http import observed_request
+from apps.core.api_activity.services import record_activity
+
 import logging
 
 import requests
@@ -67,8 +70,12 @@ def _coexistence_status(*, phone_number_id, access_token):
         "fields": "display_phone_number,verified_name,is_on_biz_app,platform_type",
     }
     try:
-        response = requests.get(
+        response = observed_request(
+            "GET",
             url,
+            request_callable=requests.get,
+            integration="whatsapp_coexistence",
+            operation="coexistence_request",
             headers=headers,
             params=params,
             timeout=whatsapp_provider.REQUEST_TIMEOUT_SECONDS,
@@ -108,8 +115,12 @@ def request_smb_app_data_sync(*, phone_number_id, access_token, sync_type):
     }
     payload = {"messaging_product": "whatsapp", "sync_type": sync_type}
     try:
-        response = requests.post(
+        response = observed_request(
+            "POST",
             url,
+            request_callable=requests.post,
+            integration="whatsapp_coexistence",
+            operation="coexistence_request",
             headers=headers,
             json=payload,
             timeout=whatsapp_provider.REQUEST_TIMEOUT_SECONDS,
@@ -619,9 +630,20 @@ def process_coexistence_webhook_payload(payload):
                     waba_id,
                 )
                 continue
-            if field == "smb_message_echoes":
-                handle_smb_message_echoes(account=account, value=value)
-            elif field == "history":
-                handle_history_sync(account=account, value=value)
-            elif field == "smb_app_state_sync":
-                handle_smb_app_state_sync(account=account, value=value)
+            activity_fields = dict(
+                integration="whatsapp_coexistence", operation=f"webhook.{field}",
+                kind="webhook", direction="inbound", organization_id=account.organization_id,
+                connection_id=str(account.pk), entity_type="connection", entity_id=str(account.pk),
+            )
+            try:
+                if field == "smb_message_echoes":
+                    handle_smb_message_echoes(account=account, value=value)
+                elif field == "history":
+                    handle_history_sync(account=account, value=value)
+                elif field == "smb_app_state_sync":
+                    handle_smb_app_state_sync(account=account, value=value)
+            except Exception as exc:
+                record_activity(**activity_fields, status="failed", error_code=type(exc).__name__,
+                                summary="Coexistence webhook processing failed after standard webhook acknowledgement.")
+                raise
+            record_activity(**activity_fields, status="completed", summary="Coexistence webhook handler completed.")

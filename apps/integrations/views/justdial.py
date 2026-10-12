@@ -13,6 +13,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.integrations.access import connect_hub_admin_required
 from apps.integrations.justdial_models import JustDialIntegration
+from apps.integrations.services.lead_activity import record_lead_activity
 from apps.integrations.services.justdial import (
     JustDialRoutingError,
     process_justdial_lead,
@@ -114,15 +115,30 @@ def justdial_webhook_view(request, token):
         .first()
     )
     if integration is None:
+        record_lead_activity(
+            integration="justdial", result="blocked", method=request.method,
+            reason_code="connection_unavailable",
+            summary="JustDial webhook did not resolve to a configured connection.",
+        )
         return HttpResponse("NOT_FOUND", status=404)
 
     # Bound webhook request bodies; do not parse oversized provider payloads.
     if request.method == "POST" and len(request.body) > 262144:
+        record_lead_activity(
+            integration="justdial", result="failed", connection=integration,
+            method=request.method, reason_code="payload_too_large",
+            summary="JustDial webhook exceeded the accepted request size.",
+        )
         return HttpResponse("PAYLOAD_TOO_LARGE", status=413)
 
     try:
         payload = _request_payload(request)
     except ValidationError:
+        record_lead_activity(
+            integration="justdial", result="failed", connection=integration,
+            method=request.method, reason_code="invalid_payload",
+            summary="JustDial webhook could not be parsed as a supported lead payload.",
+        )
         return HttpResponse("INVALID_PAYLOAD", status=400)
 
     try:
