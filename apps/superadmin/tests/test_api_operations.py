@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import uuid
 
 from django.contrib.auth.models import AnonymousUser
+from django.core.cache import cache
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -63,9 +64,16 @@ class APIActivityFilterAndAccessTests(SimpleTestCase):
         self.assertEqual(serialized["metadata"]["count"], 2)
 
 
-@override_settings(API_ACTIVITY_ENABLED=False, CACHES={"default": {"BACKEND": "django.core.cache.backends.locmem.LocMemCache"}})
+@override_settings(API_ACTIVITY_ENABLED=False, CACHES={"default": {
+    "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+    "LOCATION": "api-operations-workspace-tests",
+}})
 class APIActivityWorkspaceTests(TestCase):
     def setUp(self):
+        # Every test logs in through the real protected endpoint. Rate-limit
+        # counters belong to this fixture, not the preceding test's requests.
+        cache.clear()
+        self.addCleanup(cache.clear)
         self.organization = Organization.objects.create(name="API Client One")
         self.other_organization = Organization.objects.create(name="API Client Two")
         self.superadmin = User.objects.create_superuser(email="api-superadmin@example.com", password="Password123!")
