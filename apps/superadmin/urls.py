@@ -4,6 +4,12 @@ from .acres99_views import organization_acres99_view
 from .platform_email import platform_email_view
 from django.urls import path
 from .bac_views import bac_list
+from .api_views import (
+    api_activity_data_view,
+    api_activity_view,
+    api_operations_data_view,
+    api_operations_view,
+)
 
 from .views import (
     admin_global_search,
@@ -48,6 +54,10 @@ from .plan_controls import organization_modules_view, organization_delete_view, 
 from apps.integrations.views.indiamart import indiamart_setup_view
 
 urlpatterns = [
+    path("api/", api_operations_view, name="superadmin-api"),
+    path("api/data/", api_operations_data_view, name="superadmin-api-data"),
+    path("api/activities/<uuid:activity_id>/", api_activity_view, name="superadmin-api-activity"),
+    path("api/data/activities/<uuid:activity_id>/", api_activity_data_view, name="superadmin-api-activity-data"),
     path("organization/<uuid:organization_id>/indiamart/", indiamart_setup_view, name="superadmin-indiamart"),
     path("organization/<uuid:organization_id>/99acres/", organization_acres99_view, name="superadmin-organization-99acres"),
     path("organization/<uuid:organization_id>/ai-model-routing/", organization_model_routing_update_view, name="superadmin-organization-model-routing-update"),

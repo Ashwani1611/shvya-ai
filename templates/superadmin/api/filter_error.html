@@ -1,0 +1,3 @@
+{% extends "superadmin/base.html" %}
+{% block title %}Check API filters · SHVYA{% endblock %}
+{% block content %}<div class="sa-page-header"><div><h1 class="sa-page-title">Check your activity filters</h1><p class="sa-page-description">{{ filter_error }}</p></div><a class="sa-primary-button" href="{% url 'superadmin-api' %}">Reset filters</a></div>{% endblock %}

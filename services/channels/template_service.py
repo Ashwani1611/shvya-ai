@@ -1,5 +1,7 @@
 """WhatsApp template lifecycle: drafts, Meta submit/sync/delete/copy and CRM variables."""
 
+from apps.core.api_activity.http import observed_request
+
 import copy
 import json
 import logging
@@ -423,8 +425,14 @@ def _upload_header_sample(*, account, attachment_type, uploaded_file):
     headers = {"Authorization": f"Bearer {account.access_token}"}
     session_url = f"{meta.GRAPH_API_BASE}/{app_id}/uploads"
     try:
-        response = meta.requests.post(
+        response = observed_request(
+            "POST",
             session_url,
+            request_callable=meta.requests.post,
+            integration="meta_templates",
+            operation="template_request",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers=headers,
             params={
                 "file_length": size,
@@ -447,8 +455,14 @@ def _upload_header_sample(*, account, attachment_type, uploaded_file):
 
     try:
         uploaded_file.seek(0)
-        upload_response = meta.requests.post(
+        upload_response = observed_request(
+            "POST",
             f"{meta.GRAPH_API_BASE}/{upload_id}",
+            request_callable=meta.requests.post,
+            integration="meta_templates",
+            operation="template_request",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers={**headers, "Content-Type": mime, "file_offset": "0"},
             data=uploaded_file.read(),
             timeout=meta.REQUEST_TIMEOUT_SECONDS,
@@ -756,7 +770,7 @@ def submit_template(*, template, attachment_file=None, carousel_files=None):
     st.local_status = WhatsAppTemplateMetadata.LocalStatus.SUBMITTING
     st.save(update_fields=["local_status", "updated_at"])
     try:
-        client = WhatsAppClient(template.account.phone_number_id, template.account.access_token)
+        client = WhatsAppClient(template.account.phone_number_id, template.account.access_token, organization_id=template.organization_id, connection_id=template.account_id)
         response = client._post(f"{template.account.waba_id}/message_templates", payload)
     except WhatsAppAPIError as exc:
         err = _error(exc)
@@ -812,8 +826,14 @@ def _remote_templates(account):
     rows = []
     while url:
         try:
-            response = meta.requests.get(
+            response = observed_request(
+                "GET",
                 url,
+                request_callable=meta.requests.get,
+                integration="meta_templates",
+                operation="template_request",
+                organization_id=account.organization_id,
+                connection_id=str(account.pk),
                 headers=headers,
                 params=params,
                 timeout=meta.REQUEST_TIMEOUT_SECONDS,
@@ -1098,8 +1118,14 @@ def delete_template(*, template):
     account = template.account
     url = f"{meta.GRAPH_API_BASE}/{account.waba_id}/message_templates"
     try:
-        response = meta.requests.delete(
+        response = observed_request(
+            "DELETE",
             url,
+            request_callable=meta.requests.delete,
+            integration="meta_templates",
+            operation="template_request",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers={"Authorization": f"Bearer {account.access_token}"},
             params={"name": template.name, "hsm_id": template.meta_template_id},
             timeout=meta.REQUEST_TIMEOUT_SECONDS,

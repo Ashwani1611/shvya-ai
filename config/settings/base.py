@@ -261,6 +261,13 @@ OBSERVABILITY_SLOW_REQUEST_MS = config(
     default=1000,
     cast=int,
 )
+# Superadmin API history captures bounded operational metadata, never bodies or
+# credentials. Apply migrations before restarting web and worker processes.
+API_ACTIVITY_ENABLED = config("API_ACTIVITY_ENABLED", default=True, cast=bool)
+API_ACTIVITY_RETENTION_DAYS = config("API_ACTIVITY_RETENTION_DAYS", default=30, cast=int)
+API_ACTIVITY_REQUEST_DEADLINE_SECONDS = config("API_ACTIVITY_REQUEST_DEADLINE_SECONDS", default=60, cast=int)
+API_ACTIVITY_QUEUE_DEADLINE_SECONDS = config("API_ACTIVITY_QUEUE_DEADLINE_SECONDS", default=300, cast=int)
+API_ACTIVITY_TASK_DEADLINE_SECONDS = config("API_ACTIVITY_TASK_DEADLINE_SECONDS", default=900, cast=int)
 WEBSOCKET_METRIC_STALE_SECONDS = config(
     "WEBSOCKET_METRIC_STALE_SECONDS",
     default=90,
@@ -462,6 +469,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "apps.accounts.middleware.SHVYAAreaAuthenticationMiddleware",
+    "apps.core.api_activity.middleware.APIActivityMiddleware",
     "apps.core.scale_middleware.TenantConcurrencyMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "apps.organizations.middleware.PackageAccessMiddleware",

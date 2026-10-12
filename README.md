@@ -65,6 +65,10 @@ Each top-level skill also carries a production quality layer: shared evidence/re
 
 See [`docs/operations-mcp.md`](./docs/operations-mcp.md) and [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md).
 
+Superadmin's **API** section provides searchable operational history across requests,
+workers and integrations. See [`docs/api-operations.md`](./docs/api-operations.md)
+for capture coverage, outcome semantics and rollout requirements.
+
 ---
 
 ## Architecture

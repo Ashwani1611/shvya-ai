@@ -5,6 +5,8 @@ contains no CRM, tenant, lead, or database logic. Hosted-account business
 rules live in services.channels.hosted_whatsapp_service.
 """
 
+from apps.core.api_activity.http import observed_request
+
 import base64
 from urllib.parse import quote
 
@@ -43,9 +45,10 @@ class WhatsAppWebClient:
 
     def _request(self, method, path, *, payload=None, timeout=REQUEST_TIMEOUT_SECONDS):
         try:
-            response = requests.request(
+            response = observed_request(
                 method,
                 f"{self.base_url}{path}",
+                integration="whatsapp_hosted", operation="gateway_request",
                 headers=self._headers(),
                 json=payload,
                 timeout=timeout,
@@ -192,8 +195,12 @@ class WhatsAppWebClient:
             headers["X-SHVYA-Request-Retry"] = "1"
 
         try:
-            response = requests.post(
+            response = observed_request(
+                "POST",
                 f"{self.base_url}/sessions/{session_id}/uploaded-media",
+                request_callable=requests.post,
+                integration="whatsapp_hosted",
+                operation="gateway_request",
                 headers=headers,
                 data=file_obj,
                 timeout=90,
@@ -232,8 +239,12 @@ class WhatsAppWebClient:
             headers["Authorization"] = f"Bearer {self.token}"
         encoded_message_id = quote(str(message_id), safe="")
         try:
-            response = requests.get(
+            response = observed_request(
+                "GET",
                 f"{self.base_url}/sessions/{session_id}/messages/{encoded_message_id}/media",
+                request_callable=requests.get,
+                integration="whatsapp_hosted",
+                operation="gateway_request",
                 headers=headers,
                 timeout=120,
             )

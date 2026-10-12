@@ -2,6 +2,8 @@ import uuid
 
 from django.db import models
 
+from apps.core.api_activity.models import APIActivity, APIActivityEvent  # noqa: F401
+
 
 class MarketingBookingRequest(models.Model):
     """Public request for a Shvya AI sales walkthrough."""

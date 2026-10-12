@@ -1,4 +1,7 @@
 import logging
+import time
+
+from apps.core.api_activity.services import finish_activity, record_activity, start_activity
 
 from celery import shared_task
 from django.core.exceptions import ValidationError
@@ -36,6 +39,14 @@ def _save_attempt(delivery, *, status, response_status=None, response_body="", e
             "delivered_at",
             "updated_at",
         ]
+    )
+    record_activity(
+        integration="webhooks", operation="delivery.state_observed", kind="webhook", direction="outbound",
+        organization_id=delivery.organization_id, connection_id=str(delivery.webhook_id),
+        entity_type="webhook", entity_id=str(delivery.pk),
+        status="queued" if status == WebhookDelivery.Status.RETRYING else "failed",
+        http_status=response_status, summary=f"Outbound webhook saved with {status} status.",
+        metadata={"attempt_count": delivery.attempt_count, "lead_id": str(delivery.lead_id)},
     )
 
 
@@ -127,6 +138,14 @@ def deliver_webhook_task(self, delivery_id):
         WEBHOOK_DELIVERY_HEADER: str(delivery.id),
     }
 
+    activity = start_activity(
+        integration="webhooks", operation="delivery.request", kind="webhook", direction="outbound",
+        organization_id=delivery.organization_id, connection_id=str(delivery.webhook_id),
+        entity_type="webhook", entity_id=str(delivery.pk), method="POST",
+        summary="Outbound webhook request started.",
+        metadata={"attempt_count": delivery.attempt_count, "lead_id": str(delivery.lead_id)},
+    )
+    request_started = time.monotonic()
     try:
         response_status, response_body = post_webhook_json(
             target_url,
@@ -135,6 +154,9 @@ def deliver_webhook_task(self, delivery_id):
             timeout=WEBHOOK_TIMEOUT_SECONDS,
         )
     except (OSError, RuntimeError) as exc:
+        finish_activity(activity, status="unknown", error_category="network", error_code=type(exc).__name__,
+                        duration_ms=round((time.monotonic() - request_started) * 1000),
+                        summary="Webhook request outcome is unconfirmed; delivery may have reached the receiver.")
         logger.warning(
             "Webhook delivery %s request failed: %s",
             delivery.id,
@@ -142,6 +164,11 @@ def deliver_webhook_task(self, delivery_id):
         )
         return _retry_or_fail(self, delivery, str(exc))
 
+    finish_activity(activity, status="accepted" if 200 <= response_status < 300 else "failed",
+                    duration_ms=round((time.monotonic() - request_started) * 1000), http_status=response_status,
+                    error_category="" if 200 <= response_status < 300 else "provider",
+                    summary="Webhook receiver acknowledged the request." if 200 <= response_status < 300
+                    else "Webhook receiver returned an unsuccessful HTTP response.")
     delivery.response_status = response_status
     delivery.response_body = response_body[:MAX_RESPONSE_BODY_LENGTH]
 

@@ -1,0 +1,61 @@
+{% extends "superadmin/base.html" %}
+{% load static %}
+{% block title %}API Operations Center · SHVYA Superadmin{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'superadmin/api-operations.css' %}">{% endblock %}
+{% block content %}
+<div class="api-workspace">
+    <div class="sa-page-header">
+        <div><div class="api-eyebrow">Platform visibility</div><h1 class="sa-page-title">API Operations Center</h1><p class="sa-page-description">Follow requests, background jobs and integration outcomes. Open an activity to inspect its evidence and the last confirmed step.</p></div>
+        <div class="api-header-actions"><a class="sa-secondary-button" href="{{ json_url }}">View JSON</a><button type="button" class="sa-primary-button" data-api-refresh>Refresh</button></div>
+    </div>
+    {% if not capture_health.enabled %}<div class="api-notice api-notice--warning" role="status"><strong>New activity capture is disabled</strong><span>Existing records remain searchable. New requests and events will not appear until capture is enabled.</span></div>{% endif %}
+    {% if not capture_health.available or capture_health.failed_writes %}
+    <div class="api-notice api-notice--warning" role="status"><strong>Monitoring needs attention</strong><span>{% if not capture_health.available %}The capture-health counter is unavailable. Completeness cannot be confirmed.{% else %}{{ capture_health.failed_writes }} activity write failure{{ capture_health.failed_writes|pluralize }} recorded{% if capture_health.last_failure_at %}; last failure {{ capture_health.last_failure_at }}{% endif %}. Some activity may be missing.{% endif %}</span></div>
+    {% endif %}
+
+    <div class="sa-stat-grid api-stats">
+        <div class="sa-stat-card"><div class="sa-stat-label">Recorded activities</div><div class="sa-stat-value">{{ summary.total }}</div><div class="sa-stat-note">{{ filters.range_label }} · current filters</div></div>
+        <div class="sa-stat-card"><div class="sa-stat-label">Completed steps</div><div class="sa-stat-value">{{ summary.completed }}</div><div class="sa-stat-note">Completion of each recorded operation</div></div>
+        <div class="sa-stat-card"><div class="sa-stat-label">Needs attention</div><div class="sa-stat-value {% if summary.attention %}api-text-danger{% endif %}">{{ summary.attention }}</div><div class="sa-stat-note">Failed, unknown, blocked, partial or overdue</div></div>
+        <div class="sa-stat-card"><div class="sa-stat-label">Waiting for next step</div><div class="sa-stat-value">{{ summary.waiting }}</div><div class="sa-stat-note">{{ summary.overdue }} overdue · {{ summary.unknown }} unknown outcome{{ summary.unknown|pluralize }}</div></div>
+    </div>
+
+    <section class="sa-panel api-explorer" aria-labelledby="api-explorer-title">
+        <div class="sa-table-header"><div><h2 class="sa-table-title" id="api-explorer-title">Activity explorer</h2><p class="sa-table-subtitle">Recorded at {{ generated_at|date:'d M Y, H:i:s T' }} · no automatic retries</p></div><span class="api-subtle">{% if summary.average_duration_ms != None %}{{ summary.average_duration_ms|floatformat:1 }} ms average duration{% else %}Duration not recorded{% endif %}</span></div>
+        <form class="api-filters" method="get">
+            <div class="api-filter api-filter--search"><label for="api-search">Search activity</label><input id="api-search" name="q" value="{{ filters.q }}" maxlength="160" placeholder="Organization, activity ID, provider ID, error code…" type="search"></div>
+            <div class="api-filter"><label for="api-organization">Organization</label><select id="api-organization" name="organization"><option value="">All organizations</option>{% for org in organizations %}<option value="{{ org.id }}" {% if filters.organization == org.id|stringformat:'s' %}selected{% endif %}>{{ org.name }}</option>{% endfor %}</select></div>
+            <div class="api-filter"><label for="api-integration">Integration</label><select id="api-integration" name="integration"><option value="">All integrations</option>{% for key, label in integration_options %}<option value="{{ key }}" {% if filters.integration == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="api-filter"><label for="api-status">Outcome</label><select id="api-status" name="status"><option value="">All outcomes</option>{% for key, label in status_options %}<option value="{{ key }}" {% if filters.status == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="api-filter"><label for="api-range">Time range</label><select id="api-range" name="range">{% for key, label in range_options %}<option value="{{ key }}" {% if filters.range == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+            <div class="api-filter-actions"><button type="submit" class="sa-primary-button">Apply filters</button><a class="sa-ghost-button" href="{% url 'superadmin-api' %}">Reset</a></div>
+            {% if filters.kind %}<input type="hidden" name="kind" value="{{ filters.kind }}">{% endif %}
+        </form>
+        <div class="api-context-note">Accepted means a request was acknowledged. Delivery or business completion requires its own recorded evidence. An overdue step is awaiting investigation, not a confirmed failure.</div>
+        <div class="sa-table-scroll">
+            <table class="sa-data-table api-activity-table">
+                <thead><tr><th scope="col">Activity / integration</th><th scope="col">Organization</th><th scope="col">Outcome</th><th scope="col">HTTP / duration</th><th scope="col">Recorded</th><th scope="col"><span class="api-sr-only">Open activity</span></th></tr></thead>
+                <tbody>{% for row in results %}<tr>
+                    <td><a class="sa-org-link api-operation" href="{{ row.url }}">{{ row.operation|default:'Recorded operation' }}</a><div class="sa-org-meta">{{ row.integration_label }}{% if row.kind %} · {{ row.kind }}{% endif %}</div>{% if row.error_code %}<div class="api-error-code">{{ row.error_code }}</div>{% endif %}</td>
+                    <td><span class="api-org-name">{{ row.organization_name }}</span><div class="sa-org-meta api-mono">{{ row.id|slice:':8' }}</div></td>
+                    <td><span class="api-status api-status--{{ row.status }}">{{ row.status_label }}</span>{% if row.is_overdue %}<div class="api-overdue">Next step overdue</div>{% endif %}</td>
+                    <td><div class="api-mono">{% if row.http_status %}{{ row.http_status }}{% else %}—{% endif %}</div><div class="sa-org-meta">{% if row.duration_ms != None %}{{ row.duration_ms|floatformat:1 }} ms{% else %}Not recorded{% endif %}</div></td>
+                    <td><time datetime="{{ row.created_at|date:'c' }}">{{ row.created_at|date:'d M, H:i:s' }}</time><div class="sa-org-meta">{{ row.created_at|date:'T' }}</div></td>
+                    <td><a class="api-open" href="{{ row.url }}" aria-label="Inspect {{ row.operation }}">Inspect <span aria-hidden="true">↗</span></a></td>
+                </tr>{% empty %}<tr><td colspan="6"><div class="api-empty"><div class="api-empty-symbol" aria-hidden="true">⌁</div><h3>No activities in this view</h3><p>Change your filters or wait for new traffic. Capture begins after deployment; absence of records does not establish that an integration is healthy.</p></div></td></tr>{% endfor %}</tbody>
+            </table>
+        </div>
+        <div class="api-pagination"><span>{{ pagination.total }} result{{ pagination.total|pluralize }} · page {{ pagination.page }} of {{ pagination.pages }}{% if pagination.truncated %} · narrow filters to explore beyond 1,000 pages{% endif %}</span><div>{% if pagination_links.previous %}<a class="sa-secondary-button" href="{{ pagination_links.previous }}">Previous</a>{% endif %}{% if pagination_links.next %}<a class="sa-secondary-button" href="{{ pagination_links.next }}">Next</a>{% endif %}</div></div>
+    </section>
+
+    <section class="sa-panel api-section" aria-labelledby="api-issues-title"><div class="api-section-heading"><div><h2 id="api-issues-title">Recurring issue groups</h2><p>Grouped by integration, outcome and recorded error. These are matching symptoms, not a proven shared root cause.</p></div><span class="api-subtle">Current filters</span></div>
+        <div class="api-issue-grid">{% for issue in incidents %}<a class="api-issue-card" href="{{ issue.url }}"><div class="api-issue-top"><span class="api-status api-status--{{ issue.status }}">{{ issue.integration_label }}</span><strong>{{ issue.count }}</strong></div><h3>{{ issue.label }}</h3><p>{{ issue.organizations }} attributed organization{{ issue.organizations|pluralize }} · last seen {{ issue.last_seen|date:'d M H:i' }}</p></a>{% empty %}<p class="api-inline-empty">No failed, unknown, blocked or partial outcomes recorded in this view.</p>{% endfor %}</div>
+    </section>
+
+    <section class="sa-panel api-section" aria-labelledby="api-coverage-title"><div class="api-section-heading"><div><h2 id="api-coverage-title">Capture coverage</h2><p>What can be investigated here, with actual record counts for the selected filters. A capture boundary is not a provider health check.</p></div></div>
+        <div class="api-coverage-grid">{% for row in coverage %}<article class="api-coverage-card"><div class="api-coverage-top"><h3>{{ row.label }}</h3><span class="api-count">{{ row.count }}</span></div><p>{{ row.capture }}</p><div class="api-coverage-limit">{{ row.limit }}</div><div class="api-coverage-seen">{% if row.last_seen %}Last record · {{ row.last_seen|date:'d M, H:i:s T' }}{% else %}No records in this view{% endif %}</div></article>{% endfor %}</div>
+    </section>
+    <p class="api-footnote">Metadata is redacted and bounded. Customer messages, authentication secrets and raw request bodies are excluded. Capture starts after deployment; historical records are not backfilled. Bulk database updates may not emit every state change. AI entries show recorded credit settlement and reported tokens; they do not reconstruct missing provider usage or currency costs. Provider internals and host resource metrics are outside this view.</p>
+</div>
+{% endblock %}
+{% block extra_scripts %}<script src="{% static 'superadmin/api-operations.js' %}" defer></script>{% endblock %}

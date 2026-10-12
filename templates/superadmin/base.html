@@ -115,6 +115,10 @@
                     </svg>
                     <span class="sa-nav-text">MCP</span>
                 </a>
+                <a href="{% url 'superadmin-api' %}" title="API Operations Center" class="sa-nav-link {% if '/superadmin/api/' in request.path %}is-active{% endif %}">
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="m7 7-5 5 5 5m10-10 5 5-5 5m-3-14-4 18" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    <span class="sa-nav-text">API</span>
+                </a>
                 <a href="{% url 'superadmin-platform-email' %}" class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-platform-email' %}is-active{% endif %}"><span class="sa-nav-icon" aria-hidden="true">✉</span><span class="sa-nav-text">Email integration</span></a>
                 {% include "support/partials/staff_nav.html" %}
                 <a href="{% url 'vault-staff-list' %}" title="SHVYA Vault" class="sa-nav-link {% if '/superadmin/vault/' in request.path %}is-active{% endif %}">
@@ -198,6 +202,8 @@
                                 Manage AI Coins
                             {% elif request.resolver_match.url_name == 'superadmin-operations-mcp' %}
                                 MCP · External AI
+                            {% elif '/superadmin/api/' in request.path %}
+                                API · Operations Center
                             {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
                                 Add Organization
                             {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}

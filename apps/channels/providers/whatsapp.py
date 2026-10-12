@@ -6,6 +6,8 @@ database writes, no CRM/lead awareness -- that all belongs in
 services.channels.whatsapp_service, per CLAUDE.md rule 2.
 """
 
+from apps.core.api_activity.http import observed_request
+
 import tempfile
 import time
 from urllib.parse import urlsplit
@@ -70,9 +72,14 @@ class WhatsAppClient:
         self,
         phone_number_id,
         access_token,
+        *,
+        organization_id=None,
+        connection_id="",
     ):
         self.phone_number_id = phone_number_id
         self.access_token = access_token
+        self.organization_id = organization_id
+        self.connection_id = str(connection_id or "")
 
     # ============================================================
     # AUTHENTICATION
@@ -109,8 +116,14 @@ class WhatsAppClient:
         file_obj = None
         started_at = time.monotonic()
         try:
-            metadata_response = requests.get(
+            metadata_response = observed_request(
+                "GET",
                 f"{GRAPH_API_BASE}/{media_id}", headers=headers,
+                request_callable=requests.get,
+                integration="whatsapp_api",
+                operation="provider_request",
+                organization_id=self.organization_id,
+                connection_id=self.connection_id,
                 params={"phone_number_id": self.phone_number_id},
                 timeout=(5, REQUEST_TIMEOUT_SECONDS), allow_redirects=False,
             )
@@ -132,8 +145,14 @@ class WhatsAppClient:
             file_size = metadata.get("file_size")
             if isinstance(file_size, int) and file_size > max_bytes:
                 raise WhatsAppAPIError("Media exceeds the download size limit.", status_code=413)
-            media_response = requests.get(
+            media_response = observed_request(
+                "GET",
                 url, headers=headers, stream=True,
+                request_callable=requests.get,
+                integration="whatsapp_api",
+                operation="provider_request",
+                organization_id=self.organization_id,
+                connection_id=self.connection_id,
                 timeout=(5, REQUEST_TIMEOUT_SECONDS), allow_redirects=False,
             )
             if not 200 <= media_response.status_code < 300:
@@ -186,8 +205,14 @@ class WhatsAppClient:
         )
 
         try:
-            response = requests.post(
+            response = observed_request(
+                "POST",
                 url,
+                request_callable=requests.post,
+                integration="meta_templates" if str(path).endswith("/message_templates") else "whatsapp_api",
+                operation="template.submit" if str(path).endswith("/message_templates") else "message.request",
+                organization_id=self.organization_id,
+                connection_id=self.connection_id,
                 headers=self._headers(),
                 json=payload,
                 timeout=REQUEST_TIMEOUT_SECONDS,
@@ -326,8 +351,14 @@ class WhatsAppClient:
         }
 
         try:
-            response = requests.post(
+            response = observed_request(
+                "POST",
                 url,
+                request_callable=requests.post,
+                integration="whatsapp_api",
+                operation="provider_request",
+                organization_id=self.organization_id,
+                connection_id=self.connection_id,
                 headers=headers,
                 data={
                     "messaging_product": "whatsapp",
@@ -530,8 +561,12 @@ def exchange_code_for_access_token(
     )
 
     try:
-        response = requests.get(
+        response = observed_request(
+            "GET",
             url,
+            request_callable=requests.get,
+            integration="whatsapp_api",
+            operation="provider_request",
             params={
                 "client_id": app_id,
                 "client_secret": app_secret,
@@ -599,8 +634,12 @@ def get_phone_number_details(
     )
 
     try:
-        response = requests.get(
+        response = observed_request(
+            "GET",
             url,
+            request_callable=requests.get,
+            integration="whatsapp_api",
+            operation="provider_request",
             params={
                 "fields": (
                     "display_phone_number,"
@@ -660,8 +699,12 @@ def subscribe_app_to_waba(
     )
 
     try:
-        response = requests.post(
+        response = observed_request(
+            "POST",
             url,
+            request_callable=requests.post,
+            integration="whatsapp_api",
+            operation="provider_request",
             params={
                 "access_token": access_token,
             },

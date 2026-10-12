@@ -11,6 +11,8 @@ tenant-scoped receipt floor for sent, delivered, and read figures. They fill
 Meta reporting delay or provider failure without fabricating click metrics.
 """
 
+from apps.core.api_activity.http import observed_request
+
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone as dt_timezone
 
@@ -124,8 +126,14 @@ def _analytics_timestamps(start_date, end_date):
 def _request_batch(*, account, template_ids, start_date, end_date):
     start_ts, end_ts = _analytics_timestamps(start_date, end_date)
     try:
-        response = meta.requests.get(
+        response = observed_request(
+            "GET",
             f"{meta.GRAPH_API_BASE}/{account.waba_id}/template_analytics",
+            request_callable=meta.requests.get,
+            integration="meta_templates",
+            operation="template_analytics",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers={"Authorization": f"Bearer {account.access_token}"},
             params={
                 "start": start_ts,
@@ -174,8 +182,14 @@ def _enable_template_insights(*, account):
     """
 
     try:
-        response = meta.requests.post(
+        response = observed_request(
+            "POST",
             f"{meta.GRAPH_API_BASE}/{account.waba_id}",
+            request_callable=meta.requests.post,
+            integration="meta_templates",
+            operation="template_analytics",
+            organization_id=account.organization_id,
+            connection_id=str(account.pk),
             headers={"Authorization": f"Bearer {account.access_token}"},
             params={"is_enabled_for_insights": "true"},
             timeout=meta.REQUEST_TIMEOUT_SECONDS,
