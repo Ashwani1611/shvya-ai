@@ -6,7 +6,7 @@ SHVYA AI is a multi-tenant AI sales engagement and CRM platform. The CRM is the 
 
 For project setup and product overview, see [`README.md`](./README.md). For feature-specific operational documentation, see [`docs/`](./docs/).
 
-> **Implementation baseline:** refreshed on 2026-10-12 against `main` commit `24f2a1d5f75d`. Runtime code, migrations, tests, live MCP discovery, and deployment configuration remain the executable source of truth.
+> **Implementation baseline:** refreshed on 2026-10-13 against `main` commit `bac4ebf2fcb1`. Runtime code, migrations, tests, live MCP discovery, and deployment configuration remain the executable source of truth.
 
 ---
 
@@ -94,6 +94,7 @@ The historical Django app module `apps.channels` intentionally retains the app l
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
 - `apps/telephony/` owns Call Intelligence call/device state and CRM-linked call analysis; `android/call-intelligence/` is the Android SIM companion client.
 - `apps/vault/` owns the private organization intake workspace, revision history, client access and encrypted attachment storage. Vault content is review input, not live AI authority.
+- `apps/core/api_activity/` owns bounded operational evidence for Superadmin → API. Domain models remain authoritative; activity rows must never become a second business-state ledger.
 - `apps/integrations/` owns Connect Hub boundaries including Google Sheets, Email, Meta Lead Ads/Conversions, JustDial, IndiaMART, 99acres, API/Webhook surfaces and both diagnostic/Operations MCP connectors.
 - `apps/integrations/operations_tools.py` and the historical `operations_*` modules are stable Operations MCP compatibility entry points. New implementation is organized under `apps/integrations/operations/` into the tool registry/catalog, domain tool modules, configuration services and diagnostics; lifecycle, policy, authorization and transport remain focused integration boundaries.
 
@@ -566,6 +567,10 @@ Health endpoints currently include:
 
 - `/health/live/`
 - `/health/ready/`
+
+### API Operations observability
+
+Superadmin → API (`/superadmin/api/`) records bounded operational evidence across instrumented HTTP, Celery, provider, webhook, messaging-state and settled AI-usage boundaries. Preserve the distinction between evidence and business truth: **accepted is not delivered**, a completed worker is not proof every child side effect completed, an overdue deadline is not automatic failure, and a timeout can leave an external mutation outcome unknown. Never copy raw request/response bodies, authorization headers, cookies, access tokens, QR material, customer message text or AI prompts into these records. See `docs/api-operations.md`.
 
 ---
 

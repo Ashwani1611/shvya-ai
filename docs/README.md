@@ -1,6 +1,6 @@
 # SHVYA AI documentation map
 
-> **Documentation refresh:** 2026-10-12, checked against `main` commit `24f2a1d5f75d`. Code, migrations, tests, generated provider/tool discovery and deployment workflows remain authoritative when a document and implementation disagree.
+> **Documentation refresh:** 2026-10-13, checked against `main` commit `bac4ebf2fcb1`. Code, migrations, tests, generated provider/tool discovery and deployment workflows remain authoritative when a document and implementation disagree.
 
 SHVYA keeps both **current-reference documentation** and **historical implementation evidence**. Do not rewrite an incident/completion record to make it look current; instead use the current-reference guide for present behavior and the historical file for the implementation/recovery context it captured.
 
@@ -14,6 +14,7 @@ SHVYA keeps both **current-reference documentation** and **historical implementa
 | Local development | [`local_setup.md`](./local_setup.md) |
 | Production release/deployment | [`deployment.md`](./deployment.md), [`deployment_environments.md`](./deployment_environments.md) |
 | API/webhooks/MCP boundaries | [`api.md`](./api.md) |
+| API operational history | [`api-operations.md`](./api-operations.md) |
 | End-to-end architecture | [`system-architecture/README.md`](./system-architecture/README.md) |
 | Operations MCP | [`operations-mcp.md`](./operations-mcp.md), [`operations-mcp-setup.md`](./operations-mcp-setup.md), [`operations-chatgpt-app.md`](./operations-chatgpt-app.md) |
 | AI Brain / Playbook / grounding | [`ai-playbook.md`](./ai-playbook.md), [`organization-ai-brain-bundle.md`](./organization-ai-brain-bundle.md), [`grounded-engagement.md`](./grounded-engagement.md) |

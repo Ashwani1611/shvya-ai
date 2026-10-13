@@ -423,3 +423,10 @@ Duplicating one of these rules in a view or new task creates drift. Prefer one c
 | Operations tools | `apps/integrations/operations/tools/`, `operations/registry.py`, `operations/tool_catalog.py` | Domain-focused qualification, messaging, workflow, Touchpoints, FAQ, knowledge, Cadence and simulation tools behind stable MCP names. |
 | Operations configuration | `apps/integrations/operations/configuration/`, `operations_lifecycle.py` | Dependency graph, validation/export/import, configuration plans, stage reorder and dependency-safe archive/delete. |
 | Operations diagnostics | `apps/integrations/operations/diagnostics/`, `operations_superadmin_diagnostics.py` | Safe integration tests, opaque Superadmin configuration drift, integrity diagnostics and AI response-policy tests. |
+
+
+### API Operations evidence
+
+- `apps/core/api_activity/` — capture, correlation, sanitization, deadlines, retention and queries for Superadmin operational history.
+- `apps/superadmin/api_views.py` — Superadmin API explorer endpoints.
+- `docs/api-operations.md` — outcome semantics, coverage, privacy and rollout runbook.

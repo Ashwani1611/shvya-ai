@@ -81,3 +81,8 @@ The current product uses Django templates, HTMX/JavaScript and shared static ass
 ### Account handover rendering boundary
 
 The Operations-owned handover renderer converts a strict caller-supplied document model into Markdown and self-contained printable HTML. It performs no provider calls, persistence, business configuration mutation or snapshot authentication. The existing actor/tenant/capability boundary wraps it; structure validation cannot upgrade evidence readiness. The specialist gathers canonical configuration and Vault evidence first. See [account handover](account-handover.md).
+
+
+## Operational evidence
+
+Superadmin → API uses `apps/core/api_activity/` plus `core.APIActivity` / `core.APIActivityEvent` to correlate bounded operational evidence across requests, Celery, integrations, message state and settled AI usage. This is observability, not a second domain-state store; see [`api-operations.md`](./api-operations.md).

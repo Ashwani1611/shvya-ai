@@ -240,3 +240,6 @@ These workspaces still follow the same organization boundary, service-layer vali
 ### Account handover artifacts
 
 The Operations skill library provides the `account-handover` alias and the account-handover specialist. A deterministic, non-persistent `render_account_handover` tool converts an evidence document into bounded Markdown/standalone HTML chunks. Tenant/capability validation and credential rejection remain server-side; facts and runtime tests must be verified separately by the collecting workflow. Canonical automation reads now support pagination and explicit sanitation metadata. See [account handover](../account-handover.md).
+
+
+Operational request/worker/provider evidence is documented in [`../api-operations.md`](../api-operations.md). `core.APIActivity` / `core.APIActivityEvent` provide diagnostic timelines while domain models remain authoritative.
