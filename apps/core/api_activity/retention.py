@@ -35,6 +35,9 @@ def prune_activities(*, days=None, batch_size=500, max_batches=20, dry_run=False
             ).values_list("pk", flat=True)[:batch_size])
             if not ids:
                 break
-            _, counts = model.objects.filter(pk__in=ids).delete()
+            # Use a fresh READ COMMITTED snapshot after locking: an incident
+            # may have committed between statement snapshot and lock acquisition.
+            eligible_ids = list(candidates.filter(pk__in=ids).values_list("pk", flat=True))
+            _, counts = model.objects.filter(pk__in=eligible_ids).delete()
             removed += counts.get("core.APIActivity", 0)
     return {"days": days, "deleted": removed, "dry_run": False, "has_more": candidates.exists()}

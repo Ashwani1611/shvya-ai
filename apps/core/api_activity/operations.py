@@ -148,7 +148,10 @@ def serialize_incident(incident):
 def update_incident(activity_id, actor, data):
     if not actor.is_authenticated or not actor.is_active or not actor.is_superuser:
         raise InvestigationError("Superadmin access required.")
-    activity = APIActivity.objects.select_for_update().get(pk=activity_id)
+    try:
+        activity = APIActivity.objects.select_for_update().get(pk=activity_id)
+    except APIActivity.DoesNotExist:
+        raise InvestigationError("This evidence is no longer available. Reload the API explorer.") from None
     incident = APIIncident.objects.select_for_update().filter(activity=activity).first()
     action = data.get("action", "")
     if action not in {"open", "claim", "assign", "acknowledge", "resolve", "reopen", "snooze", "deadline", "severity", "note", "check"}:
