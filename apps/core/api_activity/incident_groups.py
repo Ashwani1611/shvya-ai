@@ -16,6 +16,8 @@ def incident_cohorts(scope, *, limit=15):
         "activity__integration", "activity__error_code", "activity__error_category",
     ).annotate(
         affected_activities=Count("pk"),
+        distinct_recorded_entity_ids=Count("activity__entity_id", distinct=True, filter=~Q(activity__entity_id="")),
+        activities_without_entity_id=Count("pk", filter=Q(activity__entity_id="")),
         overdue_reviews=Count("pk", filter=overdue),
         high_severity=Count("pk", filter=Q(severity="high")),
         last_recorded=Max("activity__created_at"),
