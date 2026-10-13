@@ -13,6 +13,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 
+from apps.core.api_activity.health import operations_health
 from apps.core.api_activity.coverage import INTEGRATIONS
 from apps.core.api_activity.queries import (
     InvalidActivityFilter, RANGES, STATUS_LABELS, activity_detail, explorer_report, parse_filters, serialize_activity,
@@ -219,3 +220,17 @@ def api_incidents_view(request):
             "page": page.number, "has_previous": page.has_previous(), "has_next": page.has_next(),
         }),
     })
+
+
+@never_cache
+@superuser_required
+@require_GET
+def api_health_data_view(request):
+    """Tenant-filterable operational health; no raw payloads or provider calls."""
+    try:
+        hours = int(request.GET.get("hours", "24"))
+        organization = parse_filters({"organization": request.GET.get("organization", "")})["organization"]
+        result = operations_health(hours=hours, organization_id=organization or None)
+    except (ValueError, TypeError, InvalidActivityFilter):
+        return JsonResponse({"error": "invalid_filter"}, status=400)
+    return JsonResponse(result)
