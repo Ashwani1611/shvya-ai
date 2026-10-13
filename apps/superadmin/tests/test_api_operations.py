@@ -111,6 +111,58 @@ class APIActivityWorkspaceTests(TestCase):
         self.assertEqual(data["results"][0]["id"], str(activity.pk))
         self.assertEqual(data["results"][0]["status"], "accepted")
 
+    def test_attention_count_and_rows_link_to_org_and_debug_evidence(self):
+        failure = self.activity(status="failed", operation="message.send", error_code="131042",
+                                endpoint="https://graph.facebook.com/messages", method="POST",
+                                summary="Provider rejected the send")
+        self.activity(organization=self.other_organization, status="blocked", operation="lead.route")
+        self.activity(status="accepted", expected_by=timezone.now() - timedelta(minutes=2))
+        self.activity(status="completed")
+        response = self.client.get(reverse("superadmin-api"), {"range": "7d", "status": "completed"})
+        self.assertContains(response, 'href="/superadmin/api/?range=7d&amp;status=attention"')
+        self.assertContains(response, 'href="/superadmin/api/?range=7d&amp;status=waiting"')
+        self.assertContains(response, "View all 3")
+        self.assertContains(response, "API Client One")
+        self.assertContains(response, "API Client Two")
+        self.assertContains(response, "POST https://graph.facebook.com/messages")
+        self.assertContains(response, "Error 131042")
+        self.assertContains(response, f"Org {str(self.organization.pk)[:8]}", count=1)
+        self.assertContains(response, f"Activity {str(failure.pk)[:8]}", count=0)
+
+        attention = self.client.get(reverse("superadmin-api"), {"range": "7d", "status": "attention"})
+        self.assertContains(attention, f"Activity {str(failure.pk)[:8]}")
+        self.assertContains(attention, f"Org {str(self.organization.pk)[:8]}")
+        self.assertContains(attention, "Attribution unavailable", count=0)
+        self.assertContains(attention, "Overdue")
+        self.assertContains(attention, "Inspect evidence")
+        self.assertContains(attention, f"/superadmin/api/activities/{failure.pk}/?back=")
+
+    def test_waiting_filter_only_includes_open_work_with_a_deadline(self):
+        waiting = self.activity(status="processing", expected_by=timezone.now() + timedelta(minutes=5))
+        self.activity(status="queued")
+        self.activity(status="completed", expected_by=timezone.now() + timedelta(minutes=5))
+        response = self.client.get(reverse("superadmin-api-data"), {"status": "waiting"})
+        self.assertEqual([item["id"] for item in response.json()["results"]], [str(waiting.pk)])
+
+    def test_detail_shows_last_recorded_step_and_safe_filtered_back_link(self):
+        activity = self.activity(status="failed", organization=None,
+                                 organization_reference="reported-org-id", operation="message.send")
+        APIActivityEvent.objects.create(activity=activity, name="provider.rejected", status="failed",
+                                        summary="Provider rejection recorded")
+        detail_url = reverse("superadmin-api-activity", kwargs={"activity_id": activity.pk})
+        response = self.client.get(detail_url, {"back": "/superadmin/api/?status=attention"})
+        self.assertContains(response, 'href="/superadmin/api/?status=attention"')
+        self.assertContains(response, "Last recorded step")
+        self.assertContains(response, "provider.rejected")
+        self.assertContains(response, "Reported org reference")
+        self.assertContains(response, "attribution unverified")
+        self.assertContains(response, "Unattributed / platform")
+        unsafe = self.client.get(detail_url, {"back": "https://example.com/steal"})
+        self.assertContains(unsafe, 'href="/superadmin/api/"')
+        self.assertNotContains(unsafe, "example.com/steal")
+        data = self.client.get(reverse("superadmin-api-activity-data", kwargs={"activity_id": activity.pk})).json()
+        self.assertEqual(data["last_event"]["name"], "provider.rejected")
+
     def test_historical_queued_observations_do_not_count_as_current_waiting(self):
         self.activity(status="queued", kind="message", operation="message.created")
         self.activity(status="processing", kind="connection", operation="session.state_observed")
