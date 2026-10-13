@@ -9,6 +9,7 @@ from .api_views import (
     api_activity_view,
     api_operations_data_view,
     api_operations_view,
+    api_health_data_view,
     api_incidents_view,
     api_incident_update_view,
 )
@@ -59,6 +60,7 @@ urlpatterns = [
     path("api/incidents/", api_incidents_view, name="superadmin-api-incidents"),
     path("api/activities/<uuid:activity_id>/investigation/", api_incident_update_view, name="superadmin-api-incident-update"),
     path("api/", api_operations_view, name="superadmin-api"),
+    path("api/health/data/", api_health_data_view, name="superadmin-api-health-data"),
     path("api/data/", api_operations_data_view, name="superadmin-api-data"),
     path("api/activities/<uuid:activity_id>/", api_activity_view, name="superadmin-api-activity"),
     path("api/data/activities/<uuid:activity_id>/", api_activity_data_view, name="superadmin-api-activity-data"),
