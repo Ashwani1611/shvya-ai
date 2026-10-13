@@ -1,6 +1,6 @@
 # Workflows runtime and verification contract
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 Workflows are exposed at `/dashboard/workflows/` and reuse the existing CRM, Cadence, connected-mailbox and WhatsApp transports. They do not bypass tenant permissions, account health or messaging restrictions.
 
@@ -30,4 +30,4 @@ All WhatsApp actions must resolve the sender that belongs to the lead's current 
 
 ## Release validation
 
-Run the standard repository lint, migration check, Django check, full tests with coverage, Compose validation and both Docker builds. Verify the staging deployment before a focused main promotion. Verify main CI and the exact production deployment SHA/readiness afterward. Do not ship temporary development helpers or unrelated staging changes.
+Run the standard repository lint, migration check, Django check, full tests with coverage, Compose validation and both Docker builds. Open the focused change to `main`, require CI/Security to pass, then verify the exact deployed production SHA/readiness afterward. If an isolated staging stack is intentionally used, treat it as additional validation rather than a required promotion branch. Do not ship temporary development helpers or unrelated branch changes.

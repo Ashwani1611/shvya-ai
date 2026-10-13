@@ -1,39 +1,39 @@
 # SHVYA deployment runbook
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Implementation snapshot:** refreshed on 2026-10-12 against `main` commit `24f2a1d5f75d` and the workflows under `.github/workflows/`. Git, migrations, tests and the workflow files remain the executable source of truth.
 
-This is the concise release runbook. Environment-specific detail is in [`deployment_environments.md`](./deployment_environments.md).
+This is the concise release runbook. Environment isolation details are in [`deployment_environments.md`](./deployment_environments.md).
 
-## Environment map
+## Current release model
 
-| Environment | Branch | Compose | Checkout | URL |
-| --- | --- | --- | --- | --- |
-| Staging | `staging` | `docker-compose.staging.yml` | `/opt/shvya-ai-staging` | `https://staging.shvya-ai.com` |
-| Production | `main` | `docker-compose.yml` | `/opt/shvya-ai` | `https://shvya-ai.com` |
-
-Staging and production must keep separate environment files, databases, Redis data, sessions, media/static state and provider/test credentials.
-
-## Normal release path
+`main` is the production release branch. The current CI, Security, Hosted regression and Android workflow triggers target `main`. A successful `main` CI run is the source event for the production deployment workflows.
 
 ```text
 feature / fix / docs branch
           ↓
-       staging
+       PR to main
           ↓
- CI + staging deployment
+   CI + Security gates
           ↓
- manual/runtime verification
+         main
           ↓
-        main
-          ↓
- CI + production deployment
+ production deployment of validated SHA
 ```
 
-Do not assume that all staging commits should be promoted together. Compare the staging → main diff before production promotion and keep the production PR focused on the verified change set.
+The repository retains `docker-compose.staging.yml` for an isolated non-production stack, but the current `main` tree does **not** contain a `deploy-staging.yml` workflow. Do not document staging-first promotion unless such a workflow is intentionally reintroduced.
+
+## Automated production paths
+
+- `.github/workflows/deploy.yml` deploys the validated `main` SHA to the primary production target.
+- `.github/workflows/deploy-main-secondary.yml` can deploy the same validated `main` SHA to the configured secondary target.
+- `.github/workflows/android-apk.yml` builds the Android app on its configured `main` paths or manual dispatch.
+- Hosted delivery/inbox regression workflows run on their configured `main` triggers.
+
+A deployment must not substitute "whatever is currently checked out on the server" for the SHA that passed CI.
 
 ## Required validation
 
-Before promotion:
+Run the relevant checks for the changed surface. The full local equivalent remains:
 
 ```bash
 ruff check .
@@ -45,27 +45,22 @@ docker compose --env-file .env.example -f docker-compose.yml config --quiet
 docker compose --env-file .env.staging.example -f docker-compose.staging.yml config --quiet
 ```
 
-Repository CI also validates the relevant Docker builds after code-quality/test gates.
+Provider, browser, Android and gateway changes also require their focused tests/builds; CI decides between targeted and full jobs based on changed files.
 
 ## Deployment checks
 
-1. Confirm the intended branch and exact commit SHA.
-2. Confirm migrations are reviewed and compatible with the deployed code.
-3. Verify liveness and readiness endpoints.
-4. Verify background workers/Beat and ASGI/WebSocket services when touched.
-5. Verify provider callbacks/integrations only with the correct environment credentials.
-6. Check application logs without exposing secrets.
-7. For data/config changes, verify post-write state rather than relying only on a successful request.
-
-Health endpoints:
-
-- `/health/live/`
-- `/health/ready/`
+1. Confirm the intended `main` commit SHA and the CI/Security result associated with it.
+2. Confirm migrations are reviewed and compatible with the deployed application/worker set.
+3. Verify `/health/live/` and `/health/ready/`.
+4. Verify Celery workers/Beat and Daphne/WebSocket service when those paths changed.
+5. Verify provider callbacks/integrations only with the correct environment credentials and safe test identities.
+6. Verify durable post-write state or provider receipt; a successful HTTP request alone is not business-outcome proof.
+7. Check structured logs without exposing secrets, raw OAuth tokens, private webhook URLs or customer payloads.
 
 ## Rollback principle
 
-Rollback must preserve data integrity. Revert application code to a previously verified commit only when its schema remains compatible. Do not manually fake migrations or point staging at production data to make a rollback appear successful.
+Rollback must preserve data integrity. Revert through Git to a previously verified commit only when its schema remains compatible. Prefer expand/contract migrations. Do not manually fake migrations, edit production containers as the permanent fix, or point a test stack at production data to make a rollback appear successful.
 
 ## Documentation-only changes
 
-Documentation-only commits still land on `staging` first. They must not modify runtime code, workflows, Compose/YAML or infrastructure unless that change is explicitly part of the task. Before merging documentation to `main`, verify that the documented staging behavior is the behavior intended for production.
+Documentation-only PRs target `main` like other changes. They should not alter runtime code, Compose, infrastructure or provider behavior unless that is explicitly part of the task. Docs describing a tool catalog, route, release, API or deployment rule must be rechecked against the current code/workflow before merge.

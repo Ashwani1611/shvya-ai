@@ -1,6 +1,6 @@
 # Call Intelligence
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 Call Intelligence links Android SIM call activity and future compatible call sources to SHVYA CRM without making the phone device the system of record.
 
@@ -81,9 +81,7 @@ Additional mobile API behavior:
 - `POST /api/v1/call-intelligence/leads/` accepts name, phone, email, notes,
   the selected pipeline/stage and validated custom attributes. Existing leads
   are not overwritten by this creation path.
-- The Android app version is 1.6 (version code 10). Installation over an existing
-  build also requires the same signing certificate; a higher version code alone
-  does not make differently signed APKs compatible.
+- The currently published dashboard download is **v1.6 Preview** (version code 10), package `com.shvya.callintelligence.preview`. It installs alongside the prior app because the original signing key was unavailable; it is not a mandatory in-place update. Publication verifies the checked-in and publicly served APK SHA-256 before activating the release record. See [`android-release-publication.md`](./android-release-publication.md).
 
 Pipeline, stage and attribute validation remain backend-owned and tenant scoped.
 

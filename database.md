@@ -2,7 +2,7 @@
 
 This document is the database architecture reference for **SHVYA AI**. It documents the current Django ORM schema, the important database constraints and indexes, the relationships between domains, and the reason each major group of tables exists.
 
-> **Schema snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This includes the current CRM/AI/messaging/support schema plus SHVYA Sales, SHVYA Calendar, Call Intelligence, saved Touchpoints, soft-lifecycle fields, and the expanded Operations MCP configuration-plan/approval/audit models. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
 
 ---
 
@@ -28,6 +28,18 @@ pg_trgm  # trigram search, used by CRM lead search indexes
 ```
 
 ---
+
+## Current additions since the September schema snapshot
+
+The October refresh includes newer persisted domains that were not enumerated in the earlier table list:
+
+- **Vault:** `Vault`, `VaultSection`, `VaultEntry`, `VaultEntryRevision`, `VaultQuestion`, `VaultCall`, `VaultProfileSnapshot`, and `VaultEvent` under `apps/vault/`.
+- **JustDial:** `JustDialIntegration` and `JustDialLeadEvent` with organization-scoped routing and provider lead-ID replay protection.
+- **IndiaMART:** `IndiaMartConnection` and `IndiaMartReceipt` for Superadmin-provisioned Push API intake and idempotent receipts.
+- **99acres:** `Acres99Integration`, `Acres99Receipt`, and `Acres99Event` for tenant-isolated Push/Pull XML ingestion and sync evidence.
+- **Operations:** current models include `OperationsPolicy`, OAuth client/code/token state, `OperationsSupportSession`, `OperationsAuditEvent`, `OperationsApprovalUse`, `OperationsConfigurationPlan`, `OperationsCommitment`, and `OperationsAcceptanceRun`; later migrations also add intake and AI-flow testing state around this boundary.
+
+Use the current Django model modules and migrations for field-level truth. This document intentionally summarizes the relational architecture; it must not be used to infer a field that is not present in code.
 
 ## 2. Schema design principles and why they exist
 

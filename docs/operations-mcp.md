@@ -98,7 +98,7 @@ An OAuth write scope does not bypass capability policy. Authenticated `tools/lis
 
 ## Current Operations tool surface
 
-The current catalog defines **101 Operations-native tools**: 75 core Operations tools, 8 setup-library tools and 18 extended domain tools. The Operations authorization boundary also exposes 10 existing read-only Diagnostic MCP tools, for a maximum catalog surface of **111 tools** before capability/OAuth filtering. Authenticated `tools/list` is authoritative and capability scoped.
+The current catalog defines **149 Operations-native tools**: 75 core definitions in `tool_catalog.py`, plus 7 Dashboard CRM, 10 Vault, 5 AI/knowledge dashboard, 8 channel dashboard, 4 AI-flow testing, 9 setup-library and 31 extended-domain definitions. The Operations authorization boundary also exposes 10 existing read-only Diagnostic MCP tools, for a maximum catalog surface of **159 tools** before capability/OAuth filtering. Authenticated `tools/list` is authoritative and capability scoped; effective OAuth grants and Superadmin policy can expose fewer tools.
 
 ### Context and inspection
 
@@ -234,7 +234,7 @@ These tools serve the backend-owned setup/skill library and revisioned tenant in
 - `get_team_settings`
 - `upsert_team_settings`
 
-The setup library now exposes 25 top-level domain skills through `prompts/list` and `resources/list`. Skills route reasoning across the existing tool surface; they are not additional backend permissions or mutation endpoints.
+The setup library now exposes 27 top-level domain skills through `prompts/list` and `resources/list`. Skills route reasoning across the existing tool surface; they are not additional backend permissions or mutation endpoints.
 
 Every top-level skill links to the shared skill-quality/evidence/recovery framework, a domain-specific `references/domain-checks.md`, and behavioral `evals/evals.json`. The domain checks encode common false positives and verification requirements; evals remain `NOT_MODEL_EXECUTED` rubrics until an actual evaluator records results.
 

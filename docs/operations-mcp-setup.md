@@ -30,13 +30,13 @@ The bundled references are guidance, not instructions that override server polic
 
 ## Domain skill routing
 
-The packaged catalog now exposes 25 top-level skills. The operator routes work by domain: business orchestration, CRM, AI, automation, channels, Calendar/voice, operations and supplied-group research. A broad setup skill coordinates dependencies; specialized skills own detailed authoring, diagnostics and verification. Read-only diagnostics are intentionally separate from incident repair, and acceptance testing is the final readiness gate after configuration or repair.
+The packaged catalog now exposes 27 top-level skills. The manifest currently advertises 37 prompt entries: the central `shvya-operator`, 27 skill prompts, 8 specialist setup/review prompts, and the `account-handover` alias. The operator routes work by domain: business orchestration, CRM, AI, automation, channels, Calendar/voice, operations and supplied-group research. A broad setup skill coordinates dependencies; specialized skills own detailed authoring, diagnostics and verification. Read-only diagnostics are intentionally separate from incident repair, and acceptance testing is the final readiness gate after configuration or repair.
 
 This decomposition is guidance, not privilege. Loading a skill never adds a capability and never changes tenant context.
 
 ## Production skill quality contract
 
-The 25 domain skills share a common evidence and recovery model. For material live work, clients should load the selected skill plus its `references/domain-checks.md`; the skill links to the shared framework resources. The contract requires:
+The 27 domain skills share a common evidence and recovery model. For material live work, clients should load the selected skill plus its `references/domain-checks.md`; the skill links to the shared framework resources. The contract requires:
 - read-before-write and real tenant-owned IDs;
 - attribution to the layer that actually produced the symptom;
 - separate states for configured/enabled/triggered/executed/delivered/observed;

@@ -1,7 +1,6 @@
 # SHVYA AI
 
 [![CI](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml)
-[![Staging CI](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml/badge.svg?branch=staging)](https://github.com/Ashwani1611/shvya-ai/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.13-blue)
 ![Django](https://img.shields.io/badge/Django-6.1-0C4B33)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-17-336791)
@@ -10,7 +9,7 @@
 
 The CRM remains the system of record. AI, messaging, automation, and analytics operate on top of tenant-scoped CRM data rather than replacing it.
 
-> **Implementation note:** updated for the current Operations MCP and domain-skill architecture on 2026-10-03. Source code, migrations, tests, live `tools/list`/`prompts/list`, and deployment configuration remain the executable source of truth.
+> **Implementation note:** refreshed on 2026-10-13 against `main` commit `bac4ebf2fcb1`. Source code, migrations, tests, live `tools/list`/`prompts/list`, and deployment configuration remain the executable source of truth.
 
 > Engineering rules and architectural constraints are defined in [`CLAUDE.md`](./CLAUDE.md). Changes to tenant isolation, business logic, async work, idempotency, model structure, or external integrations must follow those rules.
 
@@ -39,24 +38,27 @@ Current platform capabilities include:
 | Analytics | CRM and engagement insights, operational reporting, account health |
 | Support | Organization Help & Support portal, Shvya-Ops Client's Portal, private attachments, ticket response indicator, email delivery/outbox |
 | Diagnostics | Read-only organization-scoped diagnostic MCP/OAuth connector with explicit API-key permission and audit metadata |
-| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound granular capabilities, **101 Operations-native + 10 diagnostic tools**, **25 top-level domain skills**, setup/intake resources, CRM/AI/automation/channel/Calendar operations, configuration plans, diagnostics, approval receipts, verified writes and append-only audit |
+| API Operations | Superadmin operational history for requests, Celery execution, provider calls, webhooks, messaging state and settled AI usage with bounded evidence and safe diagnostics |
+| SHVYA Vault | Private organization intake workspace with notes, links, encrypted files/audio, questions, revision history, draft profile snapshots, private S3 support and reviewed reuse of eligible assets |
+| Connect Hub | Google Sheets, Email, Meta Lead Ads, Meta Conversions, JustDial, IndiaMART, 99acres, SHVYA API and outbound Webhooks, with provider-specific tenant routing and event evidence |
+| Operations MCP | Actor-bound ChatGPT / Claude / VS Code connector with explicit Superadmin tenant context, consent-bound granular capabilities, **149 Operations-native + 10 diagnostic tools**, **27 top-level domain skills**, setup/intake resources, CRM/AI/automation/channel/Calendar/Sales/Vault operations, configuration plans, diagnostics, acceptance testing, approval receipts, verified writes and append-only audit |
 | Administration | Organization management, roles, API keys, Superadmin console, global search |
 
 ---
 
 ## Operations MCP and Domain Skills
 
-SHVYA's Operations MCP is a controlled external-AI control plane, not a generic admin shell. The current catalog can expose up to **111 tools** before OAuth/capability filtering: **101 Operations-native tools** plus **10 read-only diagnostic tools**. The bundled setup library exposes **25 top-level domain skills**, **8 specialist setup/review sub-prompts**, and the central `shvya-operator` prompt.
+SHVYA's Operations MCP is a controlled external-AI control plane, not a generic admin shell. The current catalog can expose up to **159 tools** before OAuth/capability filtering: **149 Operations-native tools** plus **10 read-only diagnostic tools**. The bundled setup library exposes **27 top-level domain skills**, **8 specialist setup/review sub-prompts**, the central `shvya-operator` prompt, and the `account-handover` prompt alias. Authenticated discovery remains authoritative because OAuth grants and live capability policy filter the visible surface.
 
 The skill layer routes work to the smallest relevant domain while the backend remains authoritative:
 
-- **Business:** account setup, account review, intake vault, industry designer
+- **Business:** account setup, account review, account handover, intake Vault, industry designer
 - **CRM:** CRM architect, qualification, lead repair
 - **AI:** AI Brain, AI Playbook, knowledge manager, AI debugger
 - **Automation:** Workflow builder, Cadence builder, automation debugger
 - **Channels:** routing, WhatsApp, Instagram, email
 - **Calendar / Voice:** Calendar and provider-neutral voice preparation
-- **Operations:** diagnostics, incident repair, integration manager, acceptance testing
+- **Operations:** diagnostics, incident repair, integration manager, acceptance testing, AI flow testing
 - **Research:** supplied WhatsApp-group analysis
 
 Loading a skill never grants authority. Effective access is still the intersection of actor role, explicit organization context, OAuth scopes, granted capabilities, live Superadmin policy, current tool exposure and backend resource state. Significant writes continue through dry-run, approval when required, canonical services, read-back verification and append-only audit.
@@ -65,9 +67,7 @@ Each top-level skill also carries a production quality layer: shared evidence/re
 
 See [`docs/operations-mcp.md`](./docs/operations-mcp.md) and [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md).
 
-Superadmin's **API** section provides searchable operational history across requests,
-workers and integrations. See [`docs/api-operations.md`](./docs/api-operations.md)
-for capture coverage, outcome semantics and rollout requirements.
+Superadmin's **API** section provides searchable operational history across requests, workers and integrations. See [`docs/api-operations.md`](./docs/api-operations.md) for capture coverage, outcome semantics and rollout requirements.
 
 ---
 
@@ -167,8 +167,9 @@ shvya-ai/
 │   ├── support/              # Customer Help & Support + Shvya-Ops ticketing
 │   ├── superadmin/           # Platform administration
 │   ├── teams/                # Teams and assignment features
-│   ├── telephony/            # Telephony domain code
-│   └── triggers/             # Workflow / trigger engine
+│   ├── telephony/            # Call Intelligence backend and mobile APIs
+│   ├── triggers/             # Workflow / trigger engine
+│   └── vault/                # Private organization onboarding/intake Vault
 ├── config/                   # Django settings, URLs, ASGI/WSGI and Celery config
 ├── core/                     # Shared utilities and common infrastructure
 ├── docs/                     # Operational and feature documentation
@@ -211,13 +212,15 @@ git clone https://github.com/Ashwani1611/shvya-ai.git
 cd shvya-ai
 ```
 
-Development work should normally branch from `staging`:
+Development work branches from the current `main` release line:
 
 ```bash
-git checkout staging
-git pull origin staging
+git checkout main
+git pull origin main
 git checkout -b feature/<short-description>
 ```
+
+The repository still contains `docker-compose.staging.yml` for an isolated non-production stack, but the current GitHub CI/deploy workflows are `main`-driven. Do not infer a staging-branch promotion requirement from that Compose file.
 
 Use `fix/`, `feature/`, `chore/`, or `docs/` prefixes as appropriate.
 
@@ -503,52 +506,35 @@ GitHub Actions CI validates both production and staging Compose configurations a
 
 ## Branch and Deployment Strategy
 
-SHVYA uses separate staging and production environments.
+The current repository uses `main` as the release branch. Pull requests and pushes to `main` run CI/security checks, and successful `main` CI drives the production deployment workflows.
 
-| Environment | Git branch | Compose file | Purpose |
+| Environment | Git source | Compose file | Purpose |
 | --- | --- | --- | --- |
-| Development | `feature/*`, `fix/*`, `chore/*`, `docs/*` | local | Isolated development work |
-| Staging | `staging` | `docker-compose.staging.yml` | Integration and pre-production verification |
-| Production | `main` | `docker-compose.yml` | Live production environment |
+| Development / review | focused feature/fix/docs branch → PR to `main` | local | Isolated implementation and code review |
+| Production | `main` | `docker-compose.yml` | Live production release |
+| Optional isolated validation stack | explicit/manual checkout | `docker-compose.staging.yml` | Non-production parity/testing when intentionally operated |
 
-Expected promotion path:
+Expected release path:
 
 ```text
-feature/fix/docs branch
-        ↓
-      staging
-        ↓
-  CI + staging deploy
-        ↓
- manual verification
-        ↓
-       main
-        ↓
- CI + production deploy
+feature / fix / docs branch
+          ↓
+       PR to main
+          ↓
+   CI + Security gates
+          ↓
+         main
+          ↓
+ production deployment of the validated SHA
 ```
 
-Feature work should not go directly to `main`.
-
-### Staging deployment
-
-A successful CI run on `staging` triggers `.github/workflows/deploy-staging.yml`, which deploys the isolated staging Docker stack.
-
-Staging uses:
-
-- its own checkout under `/opt/shvya-ai-staging`
-- separate Docker project/containers
-- separate database and Redis volumes
-- separate media/static paths
-- staging-specific environment settings
-- Basic Auth in front of the staging site
+There is no current `deploy-staging.yml` workflow on `main`. If an isolated staging stack is used operationally, keep its database, Redis, sessions, media, secrets and provider test credentials separate from production and treat it as an explicit validation environment rather than a hidden promotion branch.
 
 ### Production deployment
 
-A successful CI run on `main` triggers `.github/workflows/deploy.yml`.
+A successful CI run for a `main` push is consumed by `.github/workflows/deploy.yml`; `.github/workflows/deploy-main-secondary.yml` can deploy the same validated `main` SHA to the configured secondary target. Both workflows verify that the deployment SHA belongs to `main`.
 
-The production workflow deploys the exact commit SHA validated by CI and refuses to deploy a SHA that is not part of `origin/main`.
-
-See [`docs/deployment_environments.md`](./docs/deployment_environments.md) for additional environment details.
+See [`docs/deployment.md`](./docs/deployment.md) and [`docs/deployment_environments.md`](./docs/deployment_environments.md) for the current release and environment model.
 
 ---
 
@@ -621,8 +607,9 @@ API writes and external side effects should preserve tenant isolation and idempo
 Useful project documentation includes:
 
 - [`CLAUDE.md`](./CLAUDE.md) - architecture and engineering rules
+- [`docs/README.md`](./docs/README.md) - documentation map, freshness rules and canonical-vs-historical guide
 - [`docs/local_setup.md`](./docs/local_setup.md) - local development notes
-- [`docs/deployment_environments.md`](./docs/deployment_environments.md) - staging and production separation
+- [`docs/deployment_environments.md`](./docs/deployment_environments.md) - production release path and optional non-production environment isolation
 - [`database.md`](./database.md) - current relational schema and data-integrity map
 - [`docs/ai-playbook.md`](./docs/ai-playbook.md) - canonical organization AI Playbook and runtime authority
 - [`docs/organization-ai-brain-bundle.md`](./docs/organization-ai-brain-bundle.md) - versioned organization Brain exports, revisions and runtime projection
@@ -638,12 +625,19 @@ Useful project documentation includes:
 - [`docs/system-architecture/README.md`](./docs/system-architecture/README.md) - end-to-end architecture map
 - [`docs/architecture.md`](./docs/architecture.md) - concise staging architecture overview
 - [`docs/api.md`](./docs/api.md) - API, webhook and MCP route map
+- [`docs/api-operations.md`](./docs/api-operations.md) - Superadmin operational API/integration history, outcome semantics and diagnostics
 - [`docs/deployment.md`](./docs/deployment.md) - release/deployment runbook
 - [`docs/operations-mcp.md`](./docs/operations-mcp.md) - actor-bound external AI Operations connector and current tool surface
-- [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md) - 25-skill setup library, routing and authoring/intake contracts
+- [`docs/operations-mcp-setup.md`](./docs/operations-mcp-setup.md) - 27-skill setup library, routing and authoring/intake contracts
 - [`docs/shvya-calendar-workspace.md`](./docs/shvya-calendar-workspace.md) - Calendar workspace and booking operations
 - [`docs/shvya-sales.md`](./docs/shvya-sales.md) - Sales documents, delivery, tracking and payment lifecycle
-- [`docs/call-intelligence.md`](./docs/call-intelligence.md) - Android SIM + CRM Call Intelligence architecture
+- [`docs/call-intelligence.md`](./docs/call-intelligence.md) - Android SIM + CRM Call Intelligence architecture and v1.6 Preview behavior
+- [`docs/android-release-publication.md`](./docs/android-release-publication.md) - production APK publication and checksum verification
+- [`docs/shvya-vault.md`](./docs/shvya-vault.md) - private organization intake, encrypted storage and reviewed asset reuse
+- [`docs/integrations/99acres.md`](./docs/integrations/99acres.md) - native 99acres Push/Pull integration
+- [`docs/integrations/justdial.md`](./docs/integrations/justdial.md) - JustDial JSON/GET lead ingestion and replay rules
+- [`docs/integrations/indiamart.md`](./docs/integrations/indiamart.md) - IndiaMART Push API intake
+- [`docs/account-handover.md`](./docs/account-handover.md) - evidence-backed account handover rendering
 - [`docs/scalability/production-scaling.md`](./docs/scalability/production-scaling.md) - horizontal scale, pooling, fairness, retention and disaster recovery runbook
 - [`docs/scalability/hosted-whatsapp-sharding.md`](./docs/scalability/hosted-whatsapp-sharding.md) - Hosted gateway ownership, sharding and recovery
 - [`docs/performance/README.md`](./docs/performance/README.md) - reproducible capacity profiles and performance evidence
@@ -652,18 +646,17 @@ Useful project documentation includes:
 
 ## Contribution Workflow
 
-1. Update local `staging`.
-2. Create a scoped feature/fix/docs branch.
-3. Keep the change focused and tenant safe.
-4. Add or update tests where behavior changes.
-5. Run Ruff, Django checks, migration checks, and pytest locally.
-6. Open a pull request into `staging`.
-7. Verify the change on staging after CI/deployment succeeds.
-8. Promote tested staging changes to `main` for production deployment.
+1. Update local `main` and create a scoped feature/fix/docs branch.
+2. Keep the change focused and tenant safe.
+3. Add or update tests where behavior changes.
+4. Run the relevant Ruff, Django, migration, pytest, browser/gateway and container checks.
+5. Open a pull request into `main`.
+6. Do not merge a failing CI/Security run.
+7. For runtime changes, verify the deployed `main` SHA and relevant health/provider behavior after production promotion.
+8. Keep documentation synchronized with code, migrations, tool discovery and operational behavior in the same change.
 
-Do not bypass the service layer, tenant isolation, migration requirements, or CI/CD promotion path for convenience.
-# test
+Do not bypass the service layer, tenant isolation, migration requirements, provider idempotency, approval boundaries or CI/CD gates for convenience.
 
 ### Account handover artifacts
 
-The `account-handover` prompt alias routes to the account-handover specialist. `render_account_handover` prepares matched Markdown and standalone printable HTML from a validated, tenant-bound document, without sending messages, testing leads or saving configuration. See [account handover](docs/account-handover.md); authenticated discovery remains authoritative for the deployed tool surface.
+The `account-handover` prompt alias routes to the account-handover specialist. `render_account_handover` prepares matched Markdown and standalone printable HTML from a validated, tenant-bound document, without sending messages, testing leads or saving configuration. See [`docs/account-handover.md`](./docs/account-handover.md); authenticated discovery remains authoritative for the deployed tool surface.

@@ -54,6 +54,12 @@ PostgreSQL database, and S3 bucket versions in disaster-recovery backups.
 The normal `Vault.storage_quota_bytes` (2 GiB default) is an organization
 allowance, not disk reserved up-front; this migration does not change quotas.
 
+## Vault-backed Sales branding
+
+Authorized Superadmin Operations MCP can reuse an eligible private Vault image as a SHVYA Sales template logo or signature through `attach_vault_asset_to_sales_template`. The tool copies the validated image into Sales-owned template storage; it does **not** publish the private Vault object URL. `upload_sales_template_asset` supports a separately supplied image payload, while `upsert_sales_template_branding` updates template branding under the Sales write capability.
+
+This bridge does not turn Vault into live configuration authority. The selected organization context, `sales.template.write` capability, template ownership, Vault asset ownership/type and normal approval/audit rules still apply.
+
 ## Architecture and boundaries
 
 ```mermaid

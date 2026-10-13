@@ -1,138 +1,64 @@
 # SHVYA AI deployment environments
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Implementation baseline:** refreshed on 2026-10-12 against `main` commit `24f2a1d5f75d`. Runtime workflow files and server configuration remain authoritative.
 
-SHVYA AI uses two long-lived environments and short-lived feature/fix branches.
+## Source branches and environments
 
-## Branches and environments
-
-| Branch | Environment | URL | Server directory |
+| Source | Environment | Compose / workflow | Status |
 | --- | --- | --- | --- |
-| `main` | Production | `https://shvya-ai.com` | `/opt/shvya-ai` |
-| `staging` | Staging / pre-production | `https://staging.shvya-ai.com` | `/opt/shvya-ai-staging` |
-| `feature/*`, `fix/*` | Development | local / PR CI | developer machine |
+| `main` | Production | `docker-compose.yml` + `deploy.yml` | Current automated release path |
+| `main` validated SHA | Secondary production target | `deploy-main-secondary.yml` | Optional configured production deployment |
+| Focused feature/fix/docs branch | Development / PR review | CI on PR to `main` | Current change-development path |
+| Explicit/manual non-production checkout | Isolated validation stack | `docker-compose.staging.yml` | Available stack definition; not an automatic branch promotion path |
 
-Production and staging run separate PostgreSQL, Redis, Celery, media, static,
-internal Nginx, and WhatsApp session storage. They share only the VPS and the
-public TLS edge. The public Nginx container is attached to the staging Docker
-network only so it can proxy to the isolated staging Nginx container.
+The current `main` tree has no `deploy-staging.yml` workflow. Any separately operated staging host must therefore be treated as an explicitly managed non-production environment, not as an assumed GitHub promotion branch.
 
-## Normal release flow
+## Environment isolation
 
-1. Create `feature/<name>` or `fix/<name>` from `staging`.
-2. Open a pull request into `staging`.
-3. CI must pass.
-4. Merge to `staging`.
-5. `Deploy Staging` automatically deploys `/opt/shvya-ai-staging`.
-6. Verify the feature at `staging.shvya-ai.com` using staging/test credentials.
-7. Open a pull request from `staging` into `main`.
-8. CI must pass again.
-9. Merge to `main`.
-10. `Deploy` backs up PostgreSQL, drains schema-dependent application workers before migrations, migrates, brings the tested web/worker release back up, performs readiness checks, and deploys production.
+Production and any non-production stack must keep separate:
 
-Do not merge feature branches directly to `main` except for a documented
-emergency hotfix.
+- PostgreSQL databases and backups
+- Redis/Celery/channel-layer state
+- WhatsApp linked-device session volumes
+- media/static state where mutable
+- Django/OAuth/JWT/provider secrets
+- webhook tokens and callback registrations
+- Meta, OpenAI, SMTP, payment and marketplace test credentials
 
-## Environment files
+Never point a test stack at production PostgreSQL, Redis or live WhatsApp/Instagram credentials. If production data is copied for debugging, anonymize personal/customer data first.
 
-Production keeps `/opt/shvya-ai/.env` and staging keeps
-`/opt/shvya-ai-staging/.env.staging`. Both files are ignored by Git.
+## Production deployment behavior
 
-The staging deploy creates `.env.staging` automatically on first deploy from
-`.env.staging.example` and generates independent Django, database, webhook,
-gateway, and Basic Auth secrets. Meta, OpenAI, SMTP, payment, and other
-third-party credentials must use sandbox/test accounts in staging when those
-integrations are tested.
+`deploy.yml` and the secondary deployment workflow accept only a SHA associated with the validated `main` release path. The primary deployment performs its configured backup/migration/readiness sequence and must keep schema-dependent web/workers on a compatible release.
 
-Never point staging at the production PostgreSQL database, production Redis, or
-production WhatsApp/Instagram credentials.
+Health endpoints:
 
-## Staging access and outbound safety
+- `/health/live/` — Django process liveness.
+- `/health/ready/` — database/Redis readiness.
 
-The staging website is protected by HTTP Basic Auth in its private Nginx layer.
-The deployment generates a random password on first deploy and keeps the plain
-credential only in `/opt/shvya-ai-staging/.env.staging`. The generated
-`.staging.htpasswd` contains only the password hash and is ignored by Git.
+## Optional staging Compose
 
-The Operations MCP protocol surface is intentionally exempt from this outer
-Basic Auth layer so ChatGPT, Claude and VS Code can perform OAuth discovery,
-registration, authorization, token exchange and Bearer-authenticated MCP calls.
-Only the exact Operations MCP/OAuth paths are exempt; the rest of staging stays
-behind Basic Auth. Those exempt paths remain protected by SHVYA OAuth/PKCE,
-live Superadmin/Organization Admin authority checks, tenant isolation,
-capability policy and per-operation approval rules.
+`docker-compose.staging.yml` remains useful for isolated parity checks and manual validation. If it is operated:
 
-To retrieve the generated login while connected to the VPS:
+- use `.env.staging` derived from `.env.staging.example`, never production `.env`;
+- retain outbound-message guards and explicit test recipients;
+- keep its Compose project, ports, database, Redis, sessions and media distinct;
+- keep public access protected and do not expose internal Hosted WhatsApp gateway ports;
+- document the actual host/DNS/deployment owner separately because the repository no longer guarantees an automatic staging deploy.
 
-```bash
-sudo grep -E '^STAGING_BASIC_AUTH_(USER|PASSWORD)=' /opt/shvya-ai-staging/.env.staging
-```
+## GitHub repository controls
 
-WhatsApp API, Hosted WhatsApp, and Instagram outbound transports have an
-additional application-level guard. In staging they are blocked by default.
-Outbound testing requires both:
+Recommended controls for the current model:
 
-```env
-OUTBOUND_MESSAGING_ENABLED=True
-STAGING_ALLOWED_RECIPIENTS=919999999999,17841400000000000
-```
-
-Only explicitly allowlisted test recipients can be sent to in staging.
-Production is not affected by this staging-only guard.
-
-## Database safety
-
-Production deployment creates a timestamped `pg_dump` before migrations and
-keeps 14 days of deployment backups in `/opt/shvya-ai/backups`.
-
-Staging migrations only run against the isolated `shvya-staging` Compose
-project database volume.
-
-If production data is ever copied to staging, anonymize personal/customer data
-before it becomes available to staging users.
-
-## Health checks
-
-- `/health/live/` checks that the Django process can respond.
-- `/health/ready/` checks both PostgreSQL and Redis.
-
-Deployments use readiness checks before reporting success. Staging health probes
-are exempt from Basic Auth but expose only service health, not application data.
-
-## DNS and TLS
-
-Create an `A` record for `staging.shvya-ai.com` pointing to the same VPS as the
-production dashboard. Before TLS exists, the public edge exposes only the ACME
-challenge and returns HTTP 503 for application traffic so Basic Auth credentials
-are never sent over plain HTTP. The staging deploy then provisions a Let's
-Encrypt certificate, redirects HTTP to HTTPS, adds
-`X-Robots-Tag: noindex, nofollow, noarchive`, and proxies HTTPS traffic to the
-private staging Nginx container. If DNS is not ready, the isolated Docker stack
-still deploys locally and TLS provisioning can be retried by rerunning the
-staging deploy.
-
-## GitHub repository settings
-
-Recommended repository controls:
-
-- Require pull requests for `main` and `staging`.
-- Require the `CI` checks before merge.
-- Block force pushes and branch deletion for both long-lived branches.
-- Configure the GitHub `production` Environment with required approval.
-- `staging` may deploy automatically after CI.
-- Keep VPS credentials in GitHub Actions secrets, never in repository files.
-
-The workflows reference GitHub Environments named `staging` and `production`.
-Environment protection rules are configured in GitHub repository settings.
+- require pull requests for `main`;
+- require CI and Security checks before merge;
+- block force pushes/deletion of `main`;
+- protect the GitHub production Environment and deployment secrets;
+- keep VPS credentials and provider secrets in GitHub/host secret stores, never repository files.
 
 ## Rollback
 
-Application rollback:
-
-1. Revert the bad PR or reset `staging` to a known good commit for staging.
-2. For production, create a revert PR into `main` and deploy it through CI.
-3. If a migration is not backward compatible, restore the matching pre-deploy
-   database backup before bringing the previous application version back.
-
-Prefer backward-compatible, expand/contract database migrations so ordinary
-application rollbacks do not require a database restore. Web, Celery workers and Beat must not intentionally run mixed schema expectations across a migration boundary.
+1. Prefer a revert PR into `main`.
+2. Confirm schema compatibility before deploying the older application revision.
+3. Restore the matching pre-deploy database backup only when a non-backward-compatible migration makes application-only rollback unsafe.
+4. Bring web, workers and Beat back on one compatible release after the schema is ready.

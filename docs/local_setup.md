@@ -1,12 +1,12 @@
 # Local Setup — SHVYA AI
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Implementation baseline:** refreshed on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, migrations, tests and environment examples remain authoritative.
 
 ## 1. Prerequisites
 - Python 3.13
 - PostgreSQL 17+ with the `vector`/pgvector extension available
 - Redis
-- Node.js 18+ only when running the Hosted WhatsApp gateway locally
+- Node.js 22.12+ only when running the Hosted WhatsApp gateway locally
 
 macOS:
 ```bash
@@ -74,11 +74,11 @@ celery -A config beat -l info
 Run the Node gateway only when testing Hosted WhatsApp. Never use production provider credentials in local development.
 
 ## 7. Branch workflow
-Normal development starts from `staging`, not `main`.
+Normal development starts from the current `main` release line.
 
 ```bash
-git checkout staging
-git pull origin staging
+git checkout main
+git pull origin main
 git checkout -b feature/<short-description>
 # ...work...
 git add .
@@ -86,7 +86,7 @@ git commit -m "feat: <what you did>"
 git push -u origin feature/<short-description>
 ```
 
-Open the first pull request into `staging`. After CI and staging verification, promote only the verified change to `main` through a focused pull request. Do not use a broad staging→main merge when the branches contain unrelated work.
+Open the focused pull request into `main`. Require CI/Security to pass before merge. If an isolated non-production staging stack is intentionally used, treat it as additional validation rather than a required Git branch promotion path.
 
 Branch prefixes:
 - `feature/...` — new functionality

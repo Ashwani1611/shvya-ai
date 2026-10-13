@@ -37,7 +37,7 @@ flowchart LR
 - **SHVYA Calendar** owns lead capture, availability, booking, Google Calendar/Meet and reminder delivery.
 - **Call Intelligence** owns Android/cloud/manual call identity, device state, CRM call linkage and call-analysis data.
 - **Support** owns organization tickets and the Shvya-Ops Client's Portal.
-- **Operations MCP** is a separate actor-bound external-AI control plane; it does not bypass normal tenant/service validation. Its current maximum catalog is 101 Operations-native tools plus 10 diagnostic tools. A backend-owned library exposes 25 domain skills that route reasoning across CRM, AI, automation, channels, Calendar and operations without adding permissions.
+- **Operations MCP** is a separate actor-bound external-AI control plane; it does not bypass normal tenant/service validation. Its current maximum catalog is 149 Operations-native tools plus 10 diagnostic tools. A backend-owned library exposes 27 domain skills that route reasoning across CRM, AI, automation, channels, Calendar and operations without adding permissions.
 
 ## Operations MCP skill layer
 

@@ -2,7 +2,7 @@
 
 This folder is the end-to-end runtime architecture reference for SHVYA AI. It explains how requests enter the application, where data moves, how leads are created and routed, how AI decisions are produced and validated, how RAG knowledge is ingested and retrieved, and how background jobs and realtime updates connect the system.
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 ## Documentation map
 
@@ -233,7 +233,7 @@ The architecture map now also includes these first-class staging domains:
 - **SHVYA Sales** — `apps/sales/`; quotations, agreements, invoices, PDF/delivery tracking and payment lifecycle. See [`../shvya-sales.md`](../shvya-sales.md).
 - **SHVYA Calendar** — `apps/shvya_calendar/`; lead capture, scheduling, Google Calendar/Meet, bookings and reminders. See [`../shvya-calendar-workspace.md`](../shvya-calendar-workspace.md).
 - **Call Intelligence** — `apps/telephony/` plus `android/call-intelligence/`; device/call synchronization, CRM linkage and analysis. See [`../call-intelligence.md`](../call-intelligence.md).
-- **Expanded Operations MCP** — `apps/integrations/operations_*.py` plus `apps/integrations/operations/`; 101 Operations-native tools plus 10 diagnostic read tools, including configuration plans/lifecycle controls, Calendar/integration/team capabilities and Superadmin diagnostics. The authenticated setup library adds 25 top-level domain skills and 8 specialist setup/review sub-prompts without adding backend authority. See [`../operations-mcp.md`](../operations-mcp.md) and [`../operations-mcp-setup.md`](../operations-mcp-setup.md).
+- **Expanded Operations MCP** — `apps/integrations/operations_*.py` plus `apps/integrations/operations/`; 149 Operations-native tools plus 10 diagnostic read tools, including configuration plans/lifecycle controls, Calendar/integration/team capabilities and Superadmin diagnostics. The authenticated setup library adds 27 top-level domain skills and 8 specialist setup/review sub-prompts without adding backend authority. See [`../operations-mcp.md`](../operations-mcp.md) and [`../operations-mcp-setup.md`](../operations-mcp-setup.md).
 
 These workspaces still follow the same organization boundary, service-layer validation, idempotency and deployment rules described throughout this folder.
 

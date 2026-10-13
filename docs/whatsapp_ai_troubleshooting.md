@@ -1,6 +1,6 @@
 # Diagnosing WhatsApp AI replies
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 Docker images now default to `config.settings.prod`. If the VPS `.env` explicitly
 sets `DJANGO_SETTINGS_MODULE`, use `config.settings.prod` there too. Recreate web,

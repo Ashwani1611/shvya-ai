@@ -118,8 +118,7 @@ reconstructed safely.
 Deploy the application and Hosted gateway together. Drain schema-dependent
 workers, apply the `channels` and `hosted_automation` migrations, and restart
 web, ASGI, Beat, general, `ai_realtime`, and `hosted_ai` workers on the same
-release. Keep the existing gateway session storage. Follow the repository's
-staging-first promotion process.
+release. Keep the existing gateway session storage. Follow the repository's current `main`-based CI/Security and production deployment process. An isolated staging stack may be used for extra validation, but it is not the source branch for the current automated release path.
 
 Required verification before production promotion:
 

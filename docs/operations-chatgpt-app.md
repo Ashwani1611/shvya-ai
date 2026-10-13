@@ -41,7 +41,7 @@ Official references:
 
 ## MCP skill and resource surface
 
-The same production MCP endpoint serves the backend-owned SHVYA setup library through authenticated `prompts/list`, `prompts/get`, `resources/list` and `resources/read` plus tool equivalents for clients that do not expose prompt/resource primitives. The current library exposes 25 top-level domain skills, 8 specialist setup/review sub-prompts and the central `shvya-operator` router.
+The same production MCP endpoint serves the backend-owned SHVYA setup library through authenticated `prompts/list`, `prompts/get`, `resources/list` and `resources/read` plus tool equivalents for clients that do not expose prompt/resource primitives. The current library exposes 27 top-level domain skills, 8 specialist setup/review sub-prompts, the central `shvya-operator` router and the `account-handover` alias. The manifest therefore contains 37 prompt entries; authenticated discovery is authoritative.
 
 For broad work, load `shvya-operator` or `shvya-account-setup`; for a narrow task, load the smallest domain skill such as `shvya-ai-debugger`, `shvya-qualification`, `shvya-workflow-builder`, `shvya-channel-routing` or `shvya-acceptance-testing`. Skills never grant scope or capabilities; the live `tools/list`, actor, tenant context, OAuth grant and SHVYA policy remain authoritative.
 
