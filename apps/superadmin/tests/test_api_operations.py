@@ -14,6 +14,7 @@ from apps.core.models import APIActivity, APIActivityEvent
 from apps.organizations.models import Organization
 from apps.superadmin.api_views import (
     api_activity_data_view, api_activity_view, api_operations_data_view, api_operations_view,
+    api_incidents_view, api_incident_update_view,
 )
 
 
@@ -33,6 +34,7 @@ class APIActivityFilterAndAccessTests(SimpleTestCase):
     def test_all_views_reject_non_superadmins_before_reading_data(self):
         factory = RequestFactory()
         views = ((api_operations_view, {}), (api_operations_data_view, {}),
+                 (api_incidents_view, {}), (api_incident_update_view, {"activity_id": uuid.uuid4()}),
                  (api_activity_view, {"activity_id": uuid.uuid4()}),
                  (api_activity_data_view, {"activity_id": uuid.uuid4()}))
         for user in (AnonymousUser(), SimpleNamespace(is_authenticated=True, is_superuser=False)):

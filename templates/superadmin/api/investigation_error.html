@@ -1,0 +1,3 @@
+{% extends 'superadmin/base.html' %}
+{% block title %}Investigation needs review · SHVYA{% endblock %}
+{% block content %}<section class="sa-panel" style="padding:24px"><h1 class="sa-page-title">Investigation needs review</h1><p>{{ error }}</p><a class="sa-secondary-button" href="{% url 'superadmin-api-activity' activity_id=activity_id %}">Reload activity</a></section>{% endblock %}

@@ -3,6 +3,7 @@
 import uuid
 
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
 
@@ -64,6 +65,7 @@ class APIActivity(models.Model):
             models.Index(fields=("expected_by",), name="api_act_expected_idx"),
             models.Index(fields=("organization", "entity_type", "entity_id"), name="api_act_entity_idx"),
             models.Index(fields=("organization", "provider_reference"), name="api_act_provider_ref_idx"),
+            models.Index(fields=("organization", "parent_id"), name="api_act_org_parent_idx"),
         ]
 
     def __str__(self):
@@ -80,3 +82,37 @@ class APIActivityEvent(models.Model):
 
     class Meta:
         ordering = ("timestamp", "id")
+
+
+class APIIncident(models.Model):
+    """Human investigation state, independent of provider/business outcomes."""
+
+    activity = models.OneToOneField(APIActivity, on_delete=models.CASCADE, related_name="incident")
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    status = models.CharField(max_length=16, default="open", choices=[
+        ("open", "Open"), ("acknowledged", "Acknowledged"), ("resolved", "Resolved"),
+    ])
+    severity = models.CharField(max_length=12, default="medium", choices=[
+        ("low", "Low"), ("medium", "Medium"), ("high", "High"),
+    ])
+    due_at = models.DateTimeField(null=True, blank=True)
+    snoozed_until = models.DateTimeField(null=True, blank=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    version = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=("status", "due_at"), name="api_inc_status_due_idx")]
+
+
+class APIIncidentEvent(models.Model):
+    incident = models.ForeignKey(APIIncident, on_delete=models.CASCADE, related_name="events")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=24)
+    note = models.CharField(max_length=500, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-id")

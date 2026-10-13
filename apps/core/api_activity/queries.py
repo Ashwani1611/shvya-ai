@@ -239,11 +239,13 @@ def activity_detail(activity, *, event_page=1):
         })
     last_event = activity.events.order_by("-timestamp", "-pk").first()
     relation = Q(correlation_id=activity.correlation_id)
-    if activity.entity_type and activity.entity_id:
+    if activity.organization_id and activity.entity_type and activity.entity_id:
         relation |= Q(entity_type=activity.entity_type, entity_id=activity.entity_id)
-    if activity.provider_reference:
+    if activity.organization_id and activity.provider_reference:
         relation |= Q(integration=activity.integration, provider_reference=activity.provider_reference)
     related = APIActivity.objects.filter(relation, organization_id=activity.organization_id).exclude(pk=activity.pk).select_related("organization").defer("metadata").order_by("created_at", "pk")
+    if not activity.organization_id:
+        related = related.filter(organization_reference=activity.organization_reference)
     related_rows = list(related[:31])
     return {
         "activity": result, "events": events,
