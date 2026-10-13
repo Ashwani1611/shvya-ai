@@ -1,6 +1,6 @@
 # Public Features experience
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
 
 
 `/features/` renders `templates/features.html` inside the same `marketing/dark_base.html`, header and footer as the current public landing page. Keep this interactive experience when changing the marketing theme; route tests assert its assets and controls so a static catalogue cannot silently replace it again.
@@ -46,4 +46,4 @@ The public marketing shell supports day/night presentation. The initial theme fo
 
 ## Current authenticated workspaces
 
-The staging product also exposes dedicated **SHVYA Sales**, **SHVYA Calendar**, and **Call Intelligence** workspaces. These names are customer-facing; internal app/module identifiers such as `sales`, `shvya_calendar` and `telephony` remain implementation details.
+The current product also exposes dedicated **SHVYA Sales**, **SHVYA Calendar**, and **Call Intelligence** workspaces. These names are customer-facing; internal app/module identifiers such as `sales`, `shvya_calendar` and `telephony` remain implementation details.

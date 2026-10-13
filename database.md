@@ -2,7 +2,7 @@
 
 This document is the database architecture reference for **SHVYA AI**. It documents the current Django ORM schema, the important database constraints and indexes, the relationships between domains, and the reason each major group of tables exists.
 
-> **Schema snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This includes the current CRM/AI/messaging/support schema plus SHVYA Sales, SHVYA Calendar, Call Intelligence, saved Touchpoints, soft-lifecycle fields, and the expanded Operations MCP configuration-plan/approval/audit models. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
+> **Current-reference refresh:** verified on 2026-10-13 against `main` commit `bac4ebf2fcb1`. Django models and migrations remain the executable source of truth; a deployed database can differ until its migrations are applied.
 
 ---
 
@@ -28,6 +28,19 @@ pg_trgm  # trigram search, used by CRM lead search indexes
 ```
 
 ---
+
+## Current additions since the September schema snapshot
+
+The October refresh includes newer persisted domains that were not enumerated in the earlier table list:
+
+- **Vault:** `Vault`, `VaultSection`, `VaultEntry`, `VaultEntryRevision`, `VaultQuestion`, `VaultCall`, `VaultProfileSnapshot`, and `VaultEvent` under `apps/vault/`.
+- **JustDial:** `JustDialIntegration` and `JustDialLeadEvent` with organization-scoped routing and provider lead-ID replay protection.
+- **IndiaMART:** `IndiaMartConnection` and `IndiaMartReceipt` for Superadmin-provisioned Push API intake and idempotent receipts.
+- **99acres:** `Acres99Integration`, `Acres99Receipt`, and `Acres99Event` for tenant-isolated Push/Pull XML ingestion and sync evidence.
+- **Operations:** current models include `OperationsPolicy`, OAuth client/code/token state, `OperationsSupportSession`, `OperationsAuditEvent`, `OperationsApprovalUse`, `OperationsConfigurationPlan`, `OperationsCommitment`, and `OperationsAcceptanceRun`; later migrations also add intake and AI-flow testing state around this boundary.
+- **API Operations:** `core.APIActivity` stores bounded latest operational observations and `core.APIActivityEvent` stores their timeline. These are diagnostic/evidence records, not replacements for authoritative message, webhook, task, lead, template, payment or AI-credit models.
+
+Use the current Django model modules and migrations for field-level truth. This document intentionally summarizes the relational architecture; it must not be used to infer a field that is not present in code.
 
 ## 2. Schema design principles and why they exist
 
@@ -1143,7 +1156,7 @@ Durable, tenant-scoped Operations configuration plan created by the actor-bound 
 
 ### SHVYA Sales
 
-The current staging Sales domain persists templates, numbered customer documents and their operational lifecycle:
+The current Sales domain persists templates, numbered customer documents and their operational lifecycle:
 
 - `sales_salestemplate`
 - `sales_salesdocumentnumbersequence`
@@ -1165,7 +1178,7 @@ The current staging Sales domain persists templates, numbered customer documents
 
 ### SHVYA Calendar
 
-The current staging Calendar domain persists:
+The current Calendar domain persists:
 
 - `shvya_calendar_calendarpage`
 - `shvya_calendar_calendarpageversion`
@@ -1182,7 +1195,7 @@ Pages bind to an organization and can bind host/pipeline/stage context. Google O
 
 ### Call Intelligence
 
-The current staging telephony domain persists:
+The current telephony domain persists:
 
 - `telephony_callintelligencesettings`
 - `telephony_calldisposition`
@@ -1198,7 +1211,7 @@ The current staging telephony domain persists:
 
 Saved replies use `followups_touchpointcategory` and `followups_touchpointreply`. Touchpoint replies now carry `is_active` so Operations/API lifecycle tools can archive them without destroying referenced configuration.
 
-The staging schema also uses explicit soft-lifecycle flags where destructive deletion is unsafe: `crm_attributedefinition.is_active`, `triggers_smarttrigger.is_active` and `followups_touchpointreply.is_active`. Operations archive/delete tools must respect dependency checks before hard deletion.
+The current schema also uses explicit soft-lifecycle flags where destructive deletion is unsafe: `crm_attributedefinition.is_active`, `triggers_smarttrigger.is_active` and `followups_touchpointreply.is_active`. Operations archive/delete tools must respect dependency checks before hard deletion.
 
 ## 9.17 Legacy call-app cleanup
 
@@ -1375,9 +1388,9 @@ Whenever a model changes:
 1. Update the Django model.
 2. Create a migration with `python manage.py makemigrations`.
 3. Review generated operations, constraints, indexes and destructive changes.
-4. Run `python manage.py migrate` in the test/staging environment.
+4. Run `python manage.py migrate` in an isolated test/non-production environment before production.
 5. Run tests and database-sensitive smoke checks.
 6. Update **this `database.md`** if a table, relationship, constraint, index, security-sensitive field, or architectural rule changed.
-7. Merge through the normal flow: feature/fix branch → `staging` → verify → `main` → production deployment.
+7. Merge through the current release flow: feature/fix/docs branch → PR to `main` → CI/Security → production deployment of the validated SHA.
 
 For production, treat the migration history as executable truth and this file as the human-readable architecture map.

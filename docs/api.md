@@ -72,6 +72,14 @@ Current routes:
 
 Call ingestion is idempotent on organization + source + source-call identity and reuses tenant-safe CRM services.
 
+## Superadmin API Operations Center
+
+`/superadmin/api/` is a Superadmin-only operational-history explorer backed by bounded `core.APIActivity` and `core.APIActivityEvent` evidence. It correlates instrumented SHVYA HTTP requests, Celery attempts, provider/API calls, webhooks, messaging state and settled AI-credit usage without storing raw bodies, authorization headers, tokens, customer message text, QR material or prompts. It is read-only with respect to provider state. See [`api-operations.md`](./api-operations.md).
+
+## Connect Hub provider boundaries
+
+Current provider-specific integrations include JustDial, IndiaMART and 99acres in addition to Meta Lead Ads/Conversions, Google Sheets, Email, SHVYA API and outbound Webhooks. Provider callbacks/credentials remain organization scoped; generated token-bearing URLs are secrets. See [`integrations/justdial.md`](./integrations/justdial.md), [`integrations/indiamart.md`](./integrations/indiamart.md) and [`integrations/99acres.md`](./integrations/99acres.md).
+
 ## Provider webhooks
 
 - `/webhooks/whatsapp/`
@@ -93,7 +101,7 @@ Current Operations endpoints:
 - `/.well-known/oauth-authorization-server/operations`
 - `/.well-known/oauth-protected-resource/operations/mcp/`
 
-See [`operations-mcp.md`](./operations-mcp.md) for roles, capabilities, the current **101 Operations-native tools + 10 diagnostic tools**, dry-run/approval behavior and audit guarantees. The same endpoint also serves the **25 top-level domain skills** through authenticated prompts/resources; see [`operations-mcp-setup.md`](./operations-mcp-setup.md).
+See [`operations-mcp.md`](./operations-mcp.md) for roles, capabilities, the current **149 Operations-native tools + 10 diagnostic tools**, dry-run/approval behavior and audit guarantees. The same endpoint also serves the **27 top-level domain skills** through authenticated prompts/resources; see [`operations-mcp-setup.md`](./operations-mcp-setup.md).
 
 ## Public booking surface
 

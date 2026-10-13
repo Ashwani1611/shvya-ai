@@ -39,7 +39,7 @@ Implementation is split by responsibility:
   Workflow, knowledge, FAQ and configuration tools.
 - `operations/configuration/` — validation, export, import and plan execution.
 - `operations/diagnostics/` — lead, messaging and runtime diagnostics.
-- `operations/setup_assets/` and `operations/setup_library.py` — immutable MCP prompts/resources, 25 domain skills, setup/review sub-prompts and deterministic authoring templates; these are guidance and never an authorization layer.
+- `operations/setup_assets/` and `operations/setup_library.py` — immutable MCP prompts/resources, 27 domain skills, setup/review sub-prompts and deterministic authoring templates; these are guidance and never an authorization layer.
 - `operations_lifecycle.py`, `operations_policy.py`, `operations_auth.py` and
   `views/operations_mcp.py` — lifecycle, capability, actor-bound authorization
   and protocol transport.

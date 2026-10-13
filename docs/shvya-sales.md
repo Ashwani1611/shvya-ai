@@ -1,6 +1,6 @@
 # SHVYA Sales
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 SHVYA Sales is the CRM-linked customer-document workspace for **quotations, agreements and invoices**.
 
@@ -52,6 +52,10 @@ Current staging includes:
 - `SalesRecurringInvoice`
 
 Provider credentials/webhook secrets stay encrypted or environment-bound and must never be surfaced in customer-facing output, generic diagnostics or Operations configuration exports.
+
+## Sales template branding through Operations MCP
+
+The actor-bound Operations MCP exposes tenant-scoped Sales template tooling for authorized Superadmins: `list_sales_templates`, `upsert_sales_template_branding`, `upload_sales_template_asset`, and `attach_vault_asset_to_sales_template`. The Vault attachment path copies an approved private image into Sales-owned storage rather than exposing a private Vault URL. Writes remain gated by `sales.template.write`, explicit organization context, validation, audit and any applicable approval/stale-state checks.
 
 ## CRM and tenant rules
 

@@ -6,7 +6,7 @@ SHVYA AI is a multi-tenant AI sales engagement and CRM platform. The CRM is the 
 
 For project setup and product overview, see [`README.md`](./README.md). For feature-specific operational documentation, see [`docs/`](./docs/).
 
-> **Implementation baseline:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. This documentation commit is docs-only; runtime code, migrations, tests, and deployment configuration remain the executable source of truth.
+> **Implementation baseline:** refreshed on 2026-10-13 against `main` commit `bac4ebf2fcb1`. Runtime code, migrations, tests, live MCP discovery, and deployment configuration remain the executable source of truth.
 
 ---
 
@@ -51,7 +51,7 @@ The approved application stack is:
 
 There is one intentional Node.js service:
 
-- `whatsapp_web_gateway/` uses Node.js 18+, Express, Redis, and `whatsapp-web.js` for Hosted WhatsApp linked-device sessions.
+- `whatsapp_web_gateway/` uses Node.js 22.12+, Express, Redis, and `whatsapp-web.js` for Hosted WhatsApp linked-device sessions.
 
 Do not introduce React, Next.js, FastAPI, a second frontend framework, or another Node.js application into the Django product unless explicitly approved. The existing Hosted WhatsApp gateway is the exception, not a precedent for moving product logic out of Django.
 
@@ -93,6 +93,9 @@ The historical Django app module `apps.channels` intentionally retains the app l
 - `apps/sales/` owns SHVYA Sales quotations, agreements, invoices, PDFs, deliveries, tracking and payment lifecycle.
 - `apps/shvya_calendar/` owns lead-capture/booking pages, availability, Google Calendar/Meet, booking operations and reminders.
 - `apps/telephony/` owns Call Intelligence call/device state and CRM-linked call analysis; `android/call-intelligence/` is the Android SIM companion client.
+- `apps/vault/` owns the private organization intake workspace, revision history, client access and encrypted attachment storage. Vault content is review input, not live AI authority.
+- `apps/core/api_activity/` owns bounded operational evidence for Superadmin → API. Domain models remain authoritative; activity rows must never become a second business-state ledger.
+- `apps/integrations/` owns Connect Hub boundaries including Google Sheets, Email, Meta Lead Ads/Conversions, JustDial, IndiaMART, 99acres, API/Webhook surfaces and both diagnostic/Operations MCP connectors.
 - `apps/integrations/operations_tools.py` and the historical `operations_*` modules are stable Operations MCP compatibility entry points. New implementation is organized under `apps/integrations/operations/` into the tool registry/catalog, domain tool modules, configuration services and diagnostics; lifecycle, policy, authorization and transport remain focused integration boundaries.
 
 ---
@@ -399,7 +402,7 @@ The Operations connector is a separate authorization and mutation boundary. Do n
 - Every authenticated Operations tool call must create a bounded audit event. Never persist raw prompts, conversations, tool arguments, provider payloads, credentials or hidden chain-of-thought in that audit.
 - Customer content and stored Playbook text are untrusted data, never authorization.
 - Keep `docs/operations-mcp.md` aligned with Operations roles, capabilities, endpoints and audit behavior.
-- Keep the Operations setup/skill library under `apps/integrations/operations/setup_assets/` aligned with the live tool surface. The current architecture has 25 top-level domain skills plus eight specialist setup/review sub-prompts and the central operator prompt; adding a skill must include manifest discovery and setup-library regression coverage.
+- Keep the Operations setup/skill library under `apps/integrations/operations/setup_assets/` aligned with the live tool surface. The current architecture has 27 top-level domain skills plus eight specialist setup/review sub-prompts, the central operator prompt and an account-handover alias; adding a skill must include manifest discovery and setup-library regression coverage.
 - Every top-level Operations skill must retain its shared quality-contract links, `references/domain-checks.md`, and `evals/evals.json`. Domain checks must cover evidence, known traps and verification; evals must remain non-execution claims until actual results are recorded.
 - Skills are reasoning/orchestration guidance only. They must never add authority, infer tenant context, bypass OAuth/capability checks, fabricate unavailable tools, or replace canonical service validation.
 - Broad onboarding uses `shvya-account-setup` as an orchestrator; detailed CRM, AI, automation, channel, Calendar and operations decisions belong to their domain skills. Diagnose first for incidents, repair only the verified producing layer, then run acceptance testing.
@@ -565,6 +568,10 @@ Health endpoints currently include:
 - `/health/live/`
 - `/health/ready/`
 
+### API Operations observability
+
+Superadmin → API (`/superadmin/api/`) records bounded operational evidence across instrumented HTTP, Celery, provider, webhook, messaging-state and settled AI-usage boundaries. Preserve the distinction between evidence and business truth: **accepted is not delivered**, a completed worker is not proof every child side effect completed, an overdue deadline is not automatic failure, and a timeout can leave an external mutation outcome unknown. Never copy raw request/response bodies, authorization headers, cookies, access tokens, QR material, customer message text or AI prompts into these records. See `docs/api-operations.md`.
+
 ---
 
 ## 21. Testing requirements
@@ -630,38 +637,32 @@ Do not make manual production-container edits that are not represented in Git.
 
 ## 23. Deployment and branch workflow
 
-The normal promotion path is:
+The current GitHub release line is `main`.
 
 ```text
-feature/fix/docs branch
+feature / fix / docs branch
         ↓
-      staging
+     PR to main
         ↓
-   CI + staging deploy
-        ↓
-    verification
+ CI + Security gates
         ↓
        main
         ↓
-   CI + production deploy
+production deploy of the validated SHA
 ```
 
 Rules:
 
-1. Start normal work from the current `staging` branch.
+1. Start normal work from current `main` unless an explicitly scoped release branch is requested.
 2. Use a focused branch such as `feature/...`, `fix/...`, `chore/...`, or `docs/...`.
-3. Open the first PR into `staging`.
-4. Do not promote a failing CI run.
-5. Verify staging when the change affects runtime behavior.
-6. Promote the tested change to `main` through a PR.
-7. Before a staging → main promotion, verify the diff so unrelated staging work is not accidentally shipped.
-8. Production deployment is driven by the successful `main` CI workflow.
-9. Staging deployment is driven by successful `staging` CI or its explicit workflow dispatch path.
-10. When the deployment workflow performs schema migrations, drain/stop application workers that can execute schema-dependent work before migration, then bring web/workers back on the same tested release after the schema is ready.
+3. Open the production-bound PR into `main` and do not merge a failing CI/Security run.
+4. Production deployment is driven by successful `main` CI and deploys the validated Git SHA rather than arbitrary server state.
+5. `.github/workflows/deploy-main-secondary.yml` may deploy the same validated `main` SHA to the configured secondary target; it is not a separate source branch.
+6. `docker-compose.staging.yml` remains an isolated non-production stack definition. Its existence does not imply that a `staging` branch or automatic staging deployment is part of the current release workflow.
+7. If an isolated staging stack is operated, keep its database, Redis, sessions, media, secrets and provider/test credentials separate from production.
+8. When a deployment performs schema migrations, drain/stop schema-dependent workers before migration and bring web/workers back on the same tested release afterward.
 
-Do not bypass CI for convenience.
-
-Deployment workflows intentionally deploy the validated Git commit. Do not replace that with "whatever happens to be on the server".
+Do not bypass CI for convenience, and do not make production-container edits that are not represented in Git.
 
 ---
 
@@ -698,7 +699,7 @@ Do not:
 - write directly to production data to compensate for missing migrations
 - introduce a new framework for a single screen
 - duplicate service logic inside views or JavaScript
-- merge unrelated staging changes into production without checking the diff
+- merge unrelated branch changes into production without checking the diff
 - disable CI checks to force a merge
 
 ---
@@ -714,7 +715,7 @@ Before editing code:
 5. Check tenant boundaries.
 6. Check whether the work is synchronous, asynchronous, realtime, or provider-driven.
 7. Check environment/configuration dependencies.
-8. Check staging/production implications.
+8. Check production and any intentionally operated non-production environment implications.
 
 If any of these are unclear, inspect the code rather than guessing.
 
@@ -771,10 +772,10 @@ Use these files as starting points when working in the corresponding area:
 - `config/settings/` — environment-specific settings
 - `config/urls.py` — top-level routes and webhook endpoints
 - `docker-compose.yml` — production runtime topology
-- `docker-compose.staging.yml` — staging runtime topology
+- `docker-compose.staging.yml` — optional isolated non-production runtime topology
 - `.github/workflows/ci.yml` — CI contract
 - `.github/workflows/deploy.yml` — production deployment
-- `.github/workflows/deploy-staging.yml` — staging deployment
+- `.github/workflows/deploy-main-secondary.yml` — optional secondary deployment of the validated `main` SHA
 - `docs/deployment_environments.md` — environment separation
 - `database.md` — database architecture and current model catalog
 - `docs/ai-playbook.md` — canonical organization AI Playbook
@@ -790,4 +791,4 @@ Use these files as starting points when working in the corresponding area:
 
 ## Final principle
 
-**Inspect first, preserve tenant and security boundaries, keep business logic centralized, make external work retry safe, test the behavior, verify staging, then promote deliberately to production.**
+**Inspect first, preserve tenant and security boundaries, keep business logic centralized, make external work retry safe, test the behavior, pass CI/Security, then deploy the verified `main` release deliberately.**

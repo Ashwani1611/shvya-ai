@@ -1,6 +1,6 @@
 # 07. Architecture Source-Code Map
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 This file maps architecture responsibilities to implementation locations. Use it as the starting point when you know **what behavior you want to change** but not **which file owns it**.
 
@@ -31,7 +31,7 @@ The map intentionally distinguishes entry points, orchestration, deterministic b
 | Lead API authentication | CRM API authentication classes used by `apps/crm/views/api.py` | API-key scoped access. |
 | Read-only Diagnostic MCP | `apps/integrations/diagnostic_auth.py`, `diagnostic_tools.py`, `views/mcp.py` | Organization/API-key scoped troubleshooting; never add writes here. |
 | Actor-bound Operations MCP | `apps/integrations/operations_auth.py`, `operations_policy.py`, `operations_tools.py`, `views/operations_mcp.py` | Superadmin explicit tenant context or Superadmin-policy-bounded Organization Admin access; dry-run/approval/verification/audit. |
-| Operations MCP tool + skill catalog | `apps/integrations/operations/tool_catalog.py`, `operations/registry.py`, `operations/setup_library.py`, `operations/setup_assets/` | 101 Operations-native tools plus diagnostic exposure; 25 top-level domain skills and setup resources route work without granting authority. |
+| Operations MCP tool + skill catalog | `apps/integrations/operations/tool_catalog.py`, `operations/registry.py`, `operations/setup_library.py`, `operations/setup_assets/` | 149 Operations-native tools plus diagnostic exposure; 27 top-level domain skills and setup resources route work without granting authority. |
 
 When adding a new tenant-facing entry point, reuse central organization authorization rather than checking only `user.is_active`.
 
@@ -423,3 +423,10 @@ Duplicating one of these rules in a view or new task creates drift. Prefer one c
 | Operations tools | `apps/integrations/operations/tools/`, `operations/registry.py`, `operations/tool_catalog.py` | Domain-focused qualification, messaging, workflow, Touchpoints, FAQ, knowledge, Cadence and simulation tools behind stable MCP names. |
 | Operations configuration | `apps/integrations/operations/configuration/`, `operations_lifecycle.py` | Dependency graph, validation/export/import, configuration plans, stage reorder and dependency-safe archive/delete. |
 | Operations diagnostics | `apps/integrations/operations/diagnostics/`, `operations_superadmin_diagnostics.py` | Safe integration tests, opaque Superadmin configuration drift, integrity diagnostics and AI response-policy tests. |
+
+
+### API Operations evidence
+
+- `apps/core/api_activity/` — capture, correlation, sanitization, deadlines, retention and queries for Superadmin operational history.
+- `apps/superadmin/api_views.py` — Superadmin API explorer endpoints.
+- `docs/api-operations.md` — outcome semantics, coverage, privacy and rollout runbook.

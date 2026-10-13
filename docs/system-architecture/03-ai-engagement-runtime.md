@@ -1,6 +1,6 @@
 # 03. AI Engagement Runtime Design
 
-> **Implementation snapshot:** verified on 2026-09-23 against staging runtime commit `84013a4190cfa97644e0216a896fa4ecc59eaebd`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
+> **Current-reference refresh:** verified on 2026-10-12 against `main` commit `24f2a1d5f75d`. Source code, Django models/migrations, tests, and runtime configuration remain the executable source of truth.
 
 This document describes the production AI engagement architecture from inbound message to validated CRM actions and outbound WhatsApp reply.
 

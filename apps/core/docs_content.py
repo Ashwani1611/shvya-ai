@@ -49,7 +49,7 @@ DOC_TOPICS = {
         "title": "Connect Hub",
         "intro": "Connect the sources that bring enquiries into Shvya and the tools your team already uses.",
         "sections": [
-            ("Available integrations", ["WhatsApp Business", "Google Sheets", "Email", "Meta Lead Ad Forms", "Meta Conversions API", "Razorpay", "Justdial", "IndiaMART", "Shvya API", "Webhooks"]),
+            ("Available integrations", ["WhatsApp Business", "Google Sheets", "Email", "Meta Lead Ad Forms", "Meta Conversions API", "Razorpay", "JustDial", "IndiaMART", "99acres", "Shvya API", "Webhooks"]),
             ("Setup guidance", ["Provider accounts, credentials and access permissions are required where applicable. Map fields carefully and verify test events before production use."]),
         ],
     },
