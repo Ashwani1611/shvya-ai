@@ -24,7 +24,6 @@ def incident_cohorts(scope, *, limit=15):
 
 def attention_queue(scope, *, limit=25):
     """Priority ordering of existing reviews; no notification delivery or replay."""
-    now = timezone.now()
     return list(scope.filter(status__in=("open", "acknowledged")).select_related(
         "activity__organization", "owner",
     ).order_by("due_at", "-created_at")[:limit])
