@@ -3,7 +3,13 @@ name: Documentation validation
 on:
   push:
     branches: [docs/refresh-20261012]
-    paths: [.github/workflows/docs-validation.yml]
+    paths:
+      - .github/workflows/docs-validation.yml
+      - README.md
+      - CLAUDE.md
+      - database.md
+      - docs/**
+      - apps/core/docs_articles/**
 
 permissions:
   contents: read

@@ -1,6 +1,6 @@
 # SHVYA deployment runbook
 
-> **Implementation snapshot:** refreshed on 2026-10-12 against `main` commit `24f2a1d5f75d` and the workflows under `.github/workflows/`. Git, migrations, tests and the workflow files remain the executable source of truth.
+> **Implementation snapshot:** refreshed on 2026-10-13 against `main` commit `bac4ebf2fcb1` and the workflows under `.github/workflows/`. Git, migrations, tests and the workflow files remain the executable source of truth.
 
 This is the concise release runbook. Environment isolation details are in [`deployment_environments.md`](./deployment_environments.md).
 
@@ -20,7 +20,7 @@ feature / fix / docs branch
  production deployment of validated SHA
 ```
 
-The repository retains `docker-compose.staging.yml` for an isolated non-production stack, but the current `main` tree does **not** contain a `deploy-staging.yml` workflow. Do not document staging-first promotion unless such a workflow is intentionally reintroduced.
+The repository retains `docker-compose.staging.yml` for an isolated non-production stack, but the current `main` tree does **not** contain a `deploy-staging.yml` workflow. Do not document a staging branch as a required promotion step unless such a workflow is intentionally reintroduced.
 
 ## Automated production paths
 
