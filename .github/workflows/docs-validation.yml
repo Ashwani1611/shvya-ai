@@ -1,0 +1,89 @@
+name: Documentation validation
+
+on:
+  push:
+    branches: [docs/refresh-20261012]
+    paths: [.github/workflows/docs-validation.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Validate documentation sources
+        run: |
+          python - <<'PY'
+          import json, pathlib, re, sys
+          root = pathlib.Path(".")
+          errors = []
+
+          # Customer docs JSON must remain valid and have unique slugs.
+          for path in sorted((root / "apps/core/docs_articles").glob("*.json")):
+              try:
+                  data = json.loads(path.read_text())
+              except Exception as exc:
+                  errors.append(f"{path}: invalid JSON: {exc}")
+                  continue
+              slugs = [p.get("slug") for p in data.get("pages", [])]
+              if len(slugs) != len(set(slugs)):
+                  errors.append(f"{path}: duplicate page slug")
+
+          # Current-reference files must not retain superseded catalog/release claims.
+          current = [
+              root/"README.md", root/"CLAUDE.md", root/"database.md", root/"docs/README.md",
+              root/"docs/api.md", root/"docs/architecture.md", root/"docs/deployment.md",
+              root/"docs/deployment_environments.md", root/"docs/local_setup.md",
+              root/"docs/operations-mcp.md", root/"docs/operations-mcp-setup.md",
+              root/"docs/operations-chatgpt-app.md",
+          ] + sorted((root/"docs/system-architecture").glob("*.md"))
+          bad = [
+              "101 Operations-native", "111 tools", "25 top-level domain skills",
+              "staging-first promotion", "git checkout staging", "[![Staging CI]",
+          ]
+          for path in current:
+              text = path.read_text()
+              for phrase in bad:
+                  if phrase in text:
+                      errors.append(f"{path}: stale phrase: {phrase}")
+
+          # Basic relative Markdown link validation for authored docs.
+          md_files = [root/"README.md", root/"CLAUDE.md", root/"database.md"] + sorted((root/"docs").rglob("*.md"))
+          link_re = re.compile(r"\[[^\]]+\]\(([^)]+)\)")
+          for path in md_files:
+              if "source-snapshot" in path.parts:
+                  continue
+              text = path.read_text(errors="replace")
+              for target in link_re.findall(text):
+                  target = target.strip().split("#",1)[0]
+                  if not target or target.startswith(("http://","https://","/","mailto:")):
+                      continue
+                  candidate = (path.parent / target).resolve()
+                  try:
+                      candidate.relative_to(root.resolve())
+                  except ValueError:
+                      errors.append(f"{path}: link escapes repository: {target}")
+                      continue
+                  if not candidate.exists():
+                      errors.append(f"{path}: missing relative link target: {target}")
+
+          # Required current facts.
+          readme = (root/"README.md").read_text()
+          for phrase in ["149 Operations-native", "159 tools", "27 top-level domain skills", "docs/api-operations.md", "99acres"]:
+              if phrase not in readme:
+                  errors.append(f"README.md missing: {phrase}")
+          ops = json.loads((root/"apps/core/docs_articles/operations.json").read_text())
+          if not any(p.get("slug") == "api-operations" for p in ops["pages"]):
+              errors.append("public operations docs missing api-operations page")
+          hub = json.loads((root/"apps/core/docs_articles/connect-hub.json").read_text())
+          if not any(p.get("slug") == "99acres" for p in hub["pages"]):
+              errors.append("public Connect Hub docs missing 99acres page")
+
+          if errors:
+              print("\n".join("ERROR: "+e for e in errors))
+              sys.exit(1)
+          print("Documentation validation passed.")
+          PY
