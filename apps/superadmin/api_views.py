@@ -1,20 +1,29 @@
-"""Read-only API Operations Center, protected by the Superadmin session."""
+"""API evidence and investigation controls, protected by the Superadmin session."""
 
 from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
+from django.contrib.auth import get_user_model
+from django.core.paginator import Paginator
+from django.db.models import Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_GET
+from django.views.decorators.http import require_GET, require_POST
+from django.utils import timezone
 
 from apps.core.api_activity.coverage import INTEGRATIONS
 from apps.core.api_activity.queries import (
-    InvalidActivityFilter, RANGES, STATUS_LABELS, activity_detail, explorer_report, parse_filters,
+    InvalidActivityFilter, RANGES, STATUS_LABELS, activity_detail, explorer_report, parse_filters, serialize_activity,
 )
 from apps.core.api_activity.services import capture_health
-from apps.core.models import APIActivity
+from apps.core.api_activity.operations import (
+    InvestigationError, StaleInvestigation, journey_report, needs_attention,
+    saved_outcome, serialize_incident, update_incident,
+)
+from apps.core.api_activity.sanitization import sanitize_metadata, sanitize_text
+from apps.core.models import APIActivity, APIIncident
 from apps.organizations.models import Organization
 
 from .views_flat import superuser_required
@@ -86,6 +95,12 @@ def api_operations_view(request):
         if group["error_code"]:
             params["q"] = group["error_code"]
         group["url"] = reverse("superadmin-api") + "?" + urlencode(params)
+    rows = [*report["results"], *report["attention_items"]]
+    investigations = {str(item.activity_id): serialize_incident(item) for item in APIIncident.objects.filter(
+        activity_id__in=[row["id"] for row in rows]
+    ).select_related("owner")}
+    for row in rows:
+        row["investigation"] = investigations.get(row["id"])
     return render(request, "superadmin/api/index.html", report)
 
 
@@ -107,6 +122,16 @@ def _detail(request, activity_id):
     except (TypeError, ValueError):
         event_page = 1
     detail = activity_detail(activity, event_page=event_page)
+    detail["journey"] = journey_report(activity)
+    detail["saved_outcome"] = saved_outcome(activity)
+    incident = APIIncident.objects.filter(activity=activity).select_related("owner").first()
+    detail["investigation"] = serialize_incident(incident) if incident else None
+    detail["can_open_investigation"] = needs_attention(activity)
+    detail["investigation_events"] = [{
+        "action": event.action, "note": sanitize_text(event.note, max_length=500),
+        "actor": event.actor.email if event.actor else "Former operator",
+        "created_at": event.created_at, "metadata": sanitize_metadata(event.metadata),
+    } for event in incident.events.select_related("actor")[:50]] if incident else []
     detail["pagination_links"] = _pagination_links(request, detail["event_pagination"], parameter="event_page")
     back = request.GET.get("back", "")
     try:
@@ -125,7 +150,9 @@ def _detail(request, activity_id):
 @superuser_required
 @require_GET
 def api_activity_view(request, activity_id):
-    return render(request, "superadmin/api/detail.html", _detail(request, activity_id))
+    detail = _detail(request, activity_id)
+    detail["incident_owners"] = get_user_model().objects.filter(is_active=True, is_superuser=True).only("id", "email").order_by("email")[:100]
+    return render(request, "superadmin/api/detail.html", detail)
 
 
 @never_cache
@@ -133,3 +160,62 @@ def api_activity_view(request, activity_id):
 @require_GET
 def api_activity_data_view(request, activity_id):
     return JsonResponse(_detail(request, activity_id))
+
+
+@never_cache
+@superuser_required
+@require_POST
+def api_incident_update_view(request, activity_id):
+    get_object_or_404(APIActivity, pk=activity_id)
+    try:
+        update_incident(activity_id, request.user, request.POST)
+    except InvestigationError as exc:
+        return render(request, "superadmin/api/investigation_error.html", {
+            "error": str(exc), "activity_id": activity_id,
+        }, status=409 if isinstance(exc, StaleInvestigation) else 400)
+    return redirect("superadmin-api-activity", activity_id=activity_id)
+
+
+@never_cache
+@superuser_required
+@require_GET
+def api_incidents_view(request):
+    try:
+        filters = parse_filters(request.GET)
+        review = request.GET.get("review", "active")
+        owner = request.GET.get("owner", "all")
+        severity = request.GET.get("severity", "")
+        if review not in {"active", "open", "acknowledged", "resolved", "all", "overdue"} or owner not in {"all", "me", "unassigned"} or severity not in {"", "low", "medium", "high"}:
+            raise InvalidActivityFilter("Choose supported investigation filters.")
+    except InvalidActivityFilter as exc:
+        return render(request, "superadmin/api/filter_error.html", {"filter_error": str(exc)}, status=400)
+    rows = APIIncident.objects.select_related("activity__organization", "owner")
+    if filters["organization"]:
+        rows = rows.filter(activity__organization_id=filters["organization"])
+    if filters["integration"]:
+        rows = rows.filter(activity__integration=filters["integration"])
+    now = timezone.now()
+    overdue = Q(due_at__lt=now) & ~Q(status="resolved") & (Q(snoozed_until__isnull=True) | Q(snoozed_until__lte=now))
+    if owner == "me":
+        rows = rows.filter(owner=request.user)
+    elif owner == "unassigned":
+        rows = rows.filter(owner__isnull=True)
+    if severity:
+        rows = rows.filter(severity=severity)
+    scope = rows
+    if review == "active":
+        rows = rows.exclude(status="resolved")
+    elif review == "overdue":
+        rows = rows.filter(overdue)
+    elif review != "all":
+        rows = rows.filter(status=review)
+    paginator = Paginator(rows.order_by("due_at", "-created_at", "pk"), 50)
+    page = paginator.get_page(filters["page"])
+    return render(request, "superadmin/api/incidents.html", {
+        "results": [{"incident": serialize_incident(row), "activity": serialize_activity(row.activity)} for row in page],
+        "review": review, "owner": owner, "severity": severity, "filters": filters,
+        "active_count": scope.exclude(status="resolved").count(), "overdue_count": scope.filter(overdue).count(),
+        "page": page, "pagination_links": _pagination_links(request, {
+            "page": page.number, "has_previous": page.has_previous(), "has_next": page.has_next(),
+        }),
+    })

@@ -9,6 +9,8 @@ search. Open an activity for its recorded steps, diagnostic evidence, related
 requests/worker attempts and callback observations. Related records match a
 correlation ID, or an exact entity/provider reference within the same organization.
 This view does not send messages, replay webhooks or alter provider state.
+Superadmin can separately manage operator investigation state through CSRF-protected
+POST actions; evidence GET routes remain read only.
 
 The four overview counts are links. **Needs attention** opens failed, blocked,
 partial, unknown and explicitly overdue records; **Waiting for next step** opens
@@ -20,6 +22,45 @@ that organization's attention items. The activity detail shows its last recorded
 step and a return link to the filtered explorer. An activity ID is never shown
 as if it were an organization ID. An unattributed record retains that label;
 an unverified organization reference is displayed separately.
+
+## Journeys and investigations
+
+Activity detail now includes a bounded journey of up to 100 activities. Explicit
+parent IDs and shared correlation are labeled separately from shared domain or
+provider references. All associations preserve organization attribution; platform
+records require the same reported organization reference. A shared domain reference
+does not establish causality. Truncation and missing parents are shown explicitly;
+this is not a guarantee that every processing step was captured.
+
+Open an investigation from an activity that needs attention. Assign an active
+Superadmin, acknowledge it, choose severity, set a review deadline, snooze, add an
+operational note, resolve or reopen the review. Each change records its actor and
+bounded, redacted audit data. Version checks and activity row locks reject stale
+edits. Resolving the investigation never rewrites the original API or message
+outcome. The `/superadmin/api/incidents/` inbox shows active, owned, unassigned,
+resolved and overdue reviews, with in-app deadline notices. Reviews begin with a
+24-hour deadline; deadline and snooze extensions are limited to 1–168 hours.
+There are no external alert notifications or automatic incident creation.
+
+The saved-outcome check reads only the matching organization's and connection's
+canonical WhatsApp, Instagram or outgoing-webhook state. It reports receiver
+acknowledgement separately from delivery or downstream completion. A provider-ID
+mismatch or missing attribution/object is not silently treated as success. The
+check does not call provider APIs, resend, poll history or automatically resolve
+uncertain outcomes. Recording a check adds a sanitized snapshot to the review audit.
+
+Open and acknowledged investigations pin their activity, timeline and review audit
+beyond normal retention. Snoozing does not remove that protection. Once resolved,
+the evidence again follows the original activity retention date and may be pruned
+on the next cleanup run. Monitor unresolved review volume: this preservation can
+increase storage. Cleanup locks the same activity rows as investigation writes so
+an operator cannot lose a newly pinned record during concurrent pruning.
+
+Durable delivery handoff and provider retries remain owned by the existing channel
+and integration services. This release does not introduce universal replay,
+provider reconciliation or a generic outbox for every task. A safe replay adapter
+must first verify current routing, provider outcome, duplicate protection and the
+specific domain's retry contract.
 
 ## Outcomes and evidence
 

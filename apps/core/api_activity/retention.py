@@ -5,6 +5,7 @@ from time import monotonic
 
 from django.apps import apps
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
 
@@ -16,7 +17,9 @@ def prune_activities(*, days=None, batch_size=500, max_batches=20, dry_run=False
         raise ValueError("--batch-size must be 1–2000 and --max-batches must be 1–1000")
     model = apps.get_model("core", "APIActivity")
     cutoff = timezone.now() - timedelta(days=days)
-    candidates = model.objects.filter(created_at__lt=cutoff)
+    candidates = model.objects.filter(created_at__lt=cutoff).exclude(
+        incident__status__in=("open", "acknowledged"),
+    )
     if dry_run:
         return {"days": days, "eligible": candidates.count(), "deleted": 0, "dry_run": True}
     started = monotonic()
@@ -24,9 +27,14 @@ def prune_activities(*, days=None, batch_size=500, max_batches=20, dry_run=False
     for _ in range(max_batches):
         if monotonic() - started >= max_seconds:
             break
-        ids = list(candidates.order_by("created_at", "id").values_list("pk", flat=True)[:batch_size])
-        if not ids:
-            break
-        _, counts = model.objects.filter(pk__in=ids).delete()
-        removed += counts.get("core.APIActivity", 0)
+        with transaction.atomic():
+            # Investigation writes lock the same activity, so a concurrent
+            # operator cannot pin a row after selection but before deletion.
+            ids = list(candidates.select_for_update(of=("self",), skip_locked=True).order_by(
+                "created_at", "id"
+            ).values_list("pk", flat=True)[:batch_size])
+            if not ids:
+                break
+            _, counts = model.objects.filter(pk__in=ids).delete()
+            removed += counts.get("core.APIActivity", 0)
     return {"days": days, "deleted": removed, "dry_run": False, "has_more": candidates.exists()}
