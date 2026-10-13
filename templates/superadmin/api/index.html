@@ -6,7 +6,7 @@
 <div class="api-workspace">
     <div class="sa-page-header">
         <div><div class="api-eyebrow">Platform visibility</div><h1 class="sa-page-title">API Operations Center</h1><p class="sa-page-description">Follow requests, background jobs and integration outcomes. Open an activity to inspect its evidence and the last confirmed step.</p></div>
-        <div class="api-header-actions"><a class="sa-secondary-button" href="{% url 'superadmin-api-incidents' %}">Investigations</a><a class="sa-secondary-button" href="{{ json_url }}">View JSON</a><button type="button" class="sa-primary-button" data-api-refresh>Refresh</button></div>
+        <div class="api-header-actions"><a class="sa-secondary-button" href="{% url 'superadmin-api-incidents' %}">Investigations</a><a class="sa-secondary-button" href="{{ json_url }}">View JSON</a><label class="api-subtle" style="display:inline-flex;align-items:center;gap:.4rem"><input type="checkbox" data-api-auto-refresh> Auto-refresh every 60s</label><button type="button" class="sa-primary-button" data-api-refresh>Refresh</button></div>
     </div>
     {% if not capture_health.enabled %}<div class="api-notice api-notice--warning" role="status"><strong>New activity capture is disabled</strong><span>Existing records remain searchable. New requests and events will not appear until capture is enabled.</span></div>{% endif %}
     {% if not capture_health.available or capture_health.failed_writes %}
