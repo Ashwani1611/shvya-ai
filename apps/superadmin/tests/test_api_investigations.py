@@ -10,6 +10,7 @@ from apps.core.api_activity.operations import (
     InvestigationError, StaleInvestigation, journey_report, saved_outcome, update_incident,
 )
 from apps.core.api_activity.retention import prune_activities
+from apps.core.api_activity.queries import activity_detail
 from apps.core.models import APIActivity, APIIncident, APIIncidentEvent
 from apps.integrations.models import WebhookConfiguration, WebhookDelivery
 from apps.superadmin.tests import test_api_operations as fixtures
@@ -35,6 +36,7 @@ class APIInvestigationTests(TestCase):
         unattributed = self.activity(organization=None, organization_reference="reported-one")
         self.activity(organization=None, organization_reference="reported-two", correlation_id=unattributed.correlation_id)
         self.assertEqual(len(journey_report(unattributed)["results"]), 1)
+        self.assertEqual(activity_detail(unattributed)["related"], [])
 
     def test_investigation_versions_owner_validation_and_audit_preserve_outcome(self):
         activity = self.activity(status="unknown")

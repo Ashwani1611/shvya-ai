@@ -10,6 +10,10 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        migrations.AddIndex(
+            model_name="apiactivity",
+            index=models.Index(fields=["organization", "parent_id"], name="api_act_org_parent_idx"),
+        ),
         migrations.CreateModel(
             name="APIIncident",
             fields=[

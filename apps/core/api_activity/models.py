@@ -65,6 +65,7 @@ class APIActivity(models.Model):
             models.Index(fields=("expected_by",), name="api_act_expected_idx"),
             models.Index(fields=("organization", "entity_type", "entity_id"), name="api_act_entity_idx"),
             models.Index(fields=("organization", "provider_reference"), name="api_act_provider_ref_idx"),
+            models.Index(fields=("organization", "parent_id"), name="api_act_org_parent_idx"),
         ]
 
     def __str__(self):
