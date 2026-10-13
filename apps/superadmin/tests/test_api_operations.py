@@ -126,7 +126,7 @@ class APIActivityWorkspaceTests(TestCase):
         self.assertContains(response, "API Client Two")
         self.assertContains(response, "POST https://graph.facebook.com/messages")
         self.assertContains(response, "Error 131042")
-        self.assertContains(response, f"Org {str(self.organization.pk)[:8]}", count=0)
+        self.assertContains(response, f"Org {str(self.organization.pk)[:8]}", count=1)
         self.assertContains(response, f"Activity {str(failure.pk)[:8]}", count=0)
 
         attention = self.client.get(reverse("superadmin-api"), {"range": "7d", "status": "attention"})
