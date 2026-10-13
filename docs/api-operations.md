@@ -40,7 +40,7 @@ edits. Resolving the investigation never rewrites the original API or message
 outcome. The `/superadmin/api/incidents/` inbox shows active, owned, unassigned,
 resolved and overdue reviews, with in-app deadline notices. Reviews begin with a
 24-hour deadline; deadline and snooze extensions are limited to 1–168 hours.
-There are no external alert notifications or automatic incident creation.
+There are no external alert notifications. The scheduled review-discovery task opens an incident for newly recorded attention activities every five minutes when activity capture is enabled; it never resends customer operations.
 
 The saved-outcome check reads only the matching organization's and connection's
 canonical WhatsApp, Instagram or outgoing-webhook state. It reports receiver
@@ -61,6 +61,34 @@ and integration services. This release does not introduce universal replay,
 provider reconciliation or a generic outbox for every task. A safe replay adapter
 must first verify current routing, provider outcome, duplicate protection and the
 specific domain's retry contract.
+
+
+## Organisation health and operator queue (October 2026)
+
+The Superadmin API homepage now includes an organisation health table, with
+recorded/completed/attention/unknown activity counts and open review counts.
+Each row links to organisation-scoped evidence. This is not an uptime SLA or an
+end-to-end message-delivery report. Read-only health data is also available at
+`/superadmin/api/health/data/` for authenticated Superadmins. Supported `hours`
+values are `1`, `24`, `168`, and `720`; `organization` accepts a UUID.
+
+The investigation inbox groups **open** reviews by organisation, integration,
+error category and error code. Each group shows high-severity and overdue counts.
+These are symptom cohorts, not deduplicated master incidents or proof of root cause.
+An operator attention queue orders active reviews by their review due dates and
+links to the evidence page. It is not an outbound notification feed.
+
+Celery Beat schedules `core.discover_api_incidents` every 300 seconds on the
+general worker, scanning up to 200 recent attention activities per invocation.
+Discovery creates a review record once per activity using row locks and a unique
+activity link. When capture is disabled, the scheduled task skips discovery.
+Operational verification requires confirming Beat and worker execution, not only
+a successful deployment workflow. You can run a bounded manual scan using
+`python manage.py discover_api_incidents --hours 24 --limit 100`.
+
+Not yet supported: external notifications, provider-API reconciliation, guarded
+provider retries, automatic root-cause verification, and authoritative
+transaction-impact counting. Never infer those abilities from the incident UI.
 
 ## Outcomes and evidence
 
