@@ -14,6 +14,7 @@ from django.views.decorators.http import require_GET, require_POST
 from django.utils import timezone
 
 from apps.core.api_activity.health import operations_health
+from apps.core.api_activity.incident_groups import incident_cohorts
 from apps.core.api_activity.coverage import INTEGRATIONS
 from apps.core.api_activity.queries import (
     InvalidActivityFilter, RANGES, STATUS_LABELS, activity_detail, explorer_report, parse_filters, serialize_activity,
@@ -217,6 +218,7 @@ def api_incidents_view(request):
         "results": [{"incident": serialize_incident(row), "activity": serialize_activity(row.activity)} for row in page],
         "review": review, "owner": owner, "severity": severity, "filters": filters,
         "active_count": scope.exclude(status="resolved").count(), "overdue_count": scope.filter(overdue).count(),
+        "incident_cohorts": incident_cohorts(scope),
         "page": page, "pagination_links": _pagination_links(request, {
             "page": page.number, "has_previous": page.has_previous(), "has_next": page.has_next(),
         }),
