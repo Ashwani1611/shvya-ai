@@ -69,6 +69,7 @@ def api_operations_view(request):
         report = _report(request)
     except InvalidActivityFilter as exc:
         return render(request, "superadmin/api/filter_error.html", {"filter_error": str(exc)}, status=400)
+    report["organization_health"] = operations_health(hours={"24h": 24, "7d": 168, "30d": 720, "90d": 720}.get(report["filters"]["range"], 24), organization_id=report["filters"]["organization"] or None)["organizations"][:12]
     report.update({
         "organizations": Organization.objects.only("id", "name").order_by("name")[:500],
         "integration_options": [(key, label) for key, label, _, _ in INTEGRATIONS],
