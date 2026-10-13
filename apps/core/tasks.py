@@ -13,3 +13,13 @@ def prune_api_activities():
     if result.get("has_more"):
         emit_event("api_activity.retention_backlog")
     return result
+
+
+@shared_task(name="core.discover_api_incidents", ignore_result=True, soft_time_limit=45, time_limit=60)
+def discover_api_incidents():
+    """Open bounded operator reviews; do not retry any customer operation."""
+    from django.conf import settings
+    if not getattr(settings, "API_ACTIVITY_ENABLED", True):
+        return {"skipped": "capture disabled"}
+    from apps.core.api_activity.health import discover_attention
+    return discover_attention(hours=24, limit=200)

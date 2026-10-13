@@ -29,6 +29,10 @@ from config import celery_observability  # noqa: E402,F401
 # self-schedules a due-time wake-up, and the dedicated recovery scans catch jobs
 # or sender publications that were missed around a deploy/broker interruption.
 app.conf.beat_schedule = {
+    "discover-api-incidents-every-5-minutes": {
+        "task": "core.discover_api_incidents", "schedule": 300.0,
+        "options": {"expires": 300},
+    },
     "prune-api-activities-hourly": {
         "task": "core.prune_api_activities", "schedule": 3600.0,
         "options": {"expires": 3600},
