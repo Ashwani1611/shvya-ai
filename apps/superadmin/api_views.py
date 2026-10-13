@@ -1,6 +1,6 @@
 """Read-only API Operations Center, protected by the Superadmin session."""
 
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
 from django.http import JsonResponse
@@ -37,6 +37,20 @@ def _report(request):
     return report
 
 
+def _explorer_url(filters, *, status="", organization=None):
+    params = {
+        key: value for key, value in filters.items()
+        if key in {"range", "organization", "integration", "kind", "q", "per_page"}
+        and value and not (key == "per_page" and value == 25)
+    }
+    if organization is not None:
+        params["organization"] = organization
+        params.pop("q", None)
+    if status:
+        params["status"] = status
+    return reverse("superadmin-api") + "?" + urlencode(params)
+
+
 @never_cache
 @superuser_required
 @require_GET
@@ -49,10 +63,23 @@ def api_operations_view(request):
         "organizations": Organization.objects.only("id", "name").order_by("name")[:500],
         "integration_options": [(key, label) for key, label, _, _ in INTEGRATIONS],
         "range_options": [(key, value[1]) for key, value in RANGES.items()],
-        "status_options": [("attention", "Needs attention"), ("overdue", "Overdue"), *STATUS_LABELS.items()],
+        "status_options": [("attention", "Needs attention"), ("waiting", "Waiting for next step"), ("overdue", "Overdue"), *STATUS_LABELS.items()],
         "pagination_links": _pagination_links(request, report["pagination"]),
         "json_url": reverse("superadmin-api-data") + ("?" + request.GET.urlencode() if request.GET else ""),
     })
+    report["summary_links"] = {
+        key: _explorer_url(report["filters"], status=status)
+        for key, status in (("all", ""), ("completed", "completed"),
+                            ("attention", "attention"), ("waiting", "waiting"),
+                            ("overdue", "overdue"), ("unknown", "unknown"))
+    }
+    back = urlencode({"back": request.get_full_path()})
+    for row in (*report["results"], *report["attention_items"]):
+        row["url"] += "?" + back
+        if row["organization_id"]:
+            row["organization_url"] = _explorer_url(
+                report["filters"], status="attention", organization=row["organization_id"]
+            )
     for group in report["incidents"]:
         params = {key: value for key, value in report["filters"].items() if key in {"range", "organization", "kind"} and value}
         params.update({"integration": group["integration"], "status": group["status"]})
@@ -81,6 +108,16 @@ def _detail(request, activity_id):
         event_page = 1
     detail = activity_detail(activity, event_page=event_page)
     detail["pagination_links"] = _pagination_links(request, detail["event_pagination"], parameter="event_page")
+    back = request.GET.get("back", "")
+    try:
+        parsed = urlsplit(back)
+    except ValueError:
+        parsed = urlsplit("")
+    detail["back_url"] = (
+        back if len(back) <= 1200 and not parsed.scheme and not parsed.netloc
+        and not parsed.fragment and parsed.path == reverse("superadmin-api")
+        else reverse("superadmin-api")
+    )
     return detail
 
 

@@ -40,7 +40,7 @@ def parse_filters(params):
         except (ValueError, TypeError, AttributeError):
             raise InvalidActivityFilter("Enter a valid organization ID.") from None
     status = params.get("status", "").strip()
-    if status and status not in {*STATUS_LABELS, "overdue", "attention"}:
+    if status and status not in {*STATUS_LABELS, "overdue", "attention", "waiting"}:
         raise InvalidActivityFilter("Choose a supported activity outcome.")
     integration = params.get("integration", "").strip()
     if integration and not re.fullmatch(r"[a-zA-Z0-9_.-]{1,48}", integration):
@@ -108,6 +108,8 @@ def filtered_activities(filters, *, now=None):
         queryset = queryset.filter(kind=filters["kind"])
     if filters["status"] == "overdue":
         queryset = queryset.filter(overdue_filter(now))
+    elif filters["status"] == "waiting":
+        queryset = queryset.filter(waiting_filter())
     elif filters["status"] == "attention":
         queryset = queryset.filter(Q(status__in=ISSUE_STATUSES) | overdue_filter(now))
     elif filters["status"]:
@@ -173,7 +175,10 @@ def serialize_activity(activity, *, now=None, detail=False):
 def explorer_report(filters, *, now=None):
     now = now or timezone.now()
     queryset = filtered_activities(filters, now=now)
-    summary = queryset.aggregate(
+    # Keep overview counts aligned with the links that change the outcome filter.
+    # Time, organization, integration, type and search remain in scope.
+    overview = filtered_activities({**filters, "status": ""}, now=now)
+    summary = overview.aggregate(
         total=Count("pk"), completed=Count("pk", filter=Q(status="completed")),
         attention=Count("pk", filter=Q(status__in=ISSUE_STATUSES) | overdue_filter(now)),
         waiting=Count("pk", filter=waiting_filter()),
@@ -194,6 +199,19 @@ def explorer_report(filters, *, now=None):
             group[key] = sanitize_text(group[key], max_length=100)
         group["integration_label"] = INTEGRATION_LABELS.get(group["integration"], group["integration"])
         group["label"] = sanitize_text(group["error_code"] or group["error_category"] or STATUS_LABELS.get(group["status"], "Unknown"), max_length=100)
+    attention_rows = overview.filter(Q(status__in=ISSUE_STATUSES) | overdue_filter(now)).select_related(
+        "organization"
+    ).defer("metadata").order_by("-created_at", "-id")[:8]
+    attention_items = []
+    for activity in attention_rows:
+        item = serialize_activity(activity, now=now)
+        item["attention_label"] = "Overdue" if item["is_overdue"] else item["status_label"]
+        item["attention_status"] = "overdue" if item["is_overdue"] else item["status"]
+        if item["is_overdue"]:
+            item["investigation_hint"] = item["next_step"] or "Check the last recorded step and its related activity."
+        else:
+            item["investigation_hint"] = item["summary"] or diagnosis(activity)["action"]
+        attention_items.append(item)
     return {
         "generated_at": now, "filters": filters, "summary": summary,
         "results": [serialize_activity(activity, now=now) for activity in page.object_list],
@@ -201,6 +219,7 @@ def explorer_report(filters, *, now=None):
                        "per_page": filters["per_page"], "has_next": page.has_next() and page.number < 1000,
                        "has_previous": page.has_previous(), "truncated": paginator.num_pages > 1000},
         "incidents": groups, "coverage": coverage_snapshot(queryset),
+        "attention_items": attention_items,
     }
 
 
@@ -218,6 +237,7 @@ def activity_detail(activity, *, event_page=1):
             "summary": sanitize_text(event.summary, max_length=1000), "metadata": metadata,
             "metadata_display": json.dumps(metadata, indent=2, ensure_ascii=False),
         })
+    last_event = activity.events.order_by("-timestamp", "-pk").first()
     relation = Q(correlation_id=activity.correlation_id)
     if activity.entity_type and activity.entity_id:
         relation |= Q(entity_type=activity.entity_type, entity_id=activity.entity_id)
@@ -227,6 +247,12 @@ def activity_detail(activity, *, event_page=1):
     related_rows = list(related[:31])
     return {
         "activity": result, "events": events,
+        "last_event": ({
+            "name": sanitize_text(last_event.name, max_length=160),
+            "status": last_event.status,
+            "summary": sanitize_text(last_event.summary, max_length=1000),
+            "timestamp": last_event.timestamp,
+        } if last_event else None),
         "metadata_display": json.dumps(result["metadata"], indent=2, ensure_ascii=False),
         "event_pagination": {"page": page.number, "pages": min(event_paginator.num_pages, 1000), "total": event_paginator.count,
                              "has_next": page.has_next() and page.number < 1000, "has_previous": page.has_previous(),

@@ -10,6 +10,17 @@ requests/worker attempts and callback observations. Related records match a
 correlation ID, or an exact entity/provider reference within the same organization.
 This view does not send messages, replay webhooks or alter provider state.
 
+The four overview counts are links. **Needs attention** opens failed, blocked,
+partial, unknown and explicitly overdue records; **Waiting for next step** opens
+only active work with an expected deadline. Counts retain the time, organization,
+integration, type and search scope when switching outcome filters. The latest
+attention records show the organization, integration, operation or endpoint,
+error code and a direct **Inspect evidence** link. Organization names link to
+that organization's attention items. The activity detail shows its last recorded
+step and a return link to the filtered explorer. An activity ID is never shown
+as if it were an organization ID. An unattributed record retains that label;
+an unverified organization reference is displayed separately.
+
 ## Outcomes and evidence
 
 | Outcome | Meaning |
