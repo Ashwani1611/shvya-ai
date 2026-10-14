@@ -4,6 +4,7 @@ from datetime import timedelta
 import json
 import re
 import uuid
+from urllib.parse import urlencode
 
 from django.core.paginator import Paginator
 from django.db.models import Avg, Count, Max, Min, Q
@@ -22,7 +23,13 @@ STATUS_LABELS = {
 }
 OPEN_STATUSES = ("queued", "processing", "accepted")
 ISSUE_STATUSES = ("failed", "unknown", "blocked", "partial")
-RANGES = {"24h": (1, "Last 24 hours"), "7d": (7, "Last 7 days"), "30d": (30, "Last 30 days"), "90d": (90, "Last 90 days")}
+# Values remain days for existing callers. One hour also supports exact health-API drill-downs.
+RANGES = {
+    "1h": (1 / 24, "Last hour"), "24h": (1, "Last 24 hours"),
+    "7d": (7, "Last 7 days"), "30d": (30, "Last 30 days"), "90d": (90, "Last 90 days"),
+}
+RANGE_BY_HOURS = {round(days * 24): key for key, (days, _) in RANGES.items()}
+UNATTRIBUTED = "unattributed"
 
 
 class InvalidActivityFilter(ValueError):
@@ -32,13 +39,13 @@ class InvalidActivityFilter(ValueError):
 def parse_filters(params):
     selected_range = params.get("range", "24h")
     if selected_range not in RANGES:
-        raise InvalidActivityFilter("Choose a time range of 24 hours, 7, 30 or 90 days.")
+        raise InvalidActivityFilter("Choose a time range of 1 or 24 hours, 7, 30 or 90 days.")
     organization = params.get("organization", "").strip()
-    if organization:
+    if organization and organization != UNATTRIBUTED:
         try:
             organization = str(uuid.UUID(organization))
         except (ValueError, TypeError, AttributeError):
-            raise InvalidActivityFilter("Enter a valid organization ID.") from None
+            raise InvalidActivityFilter("Enter a valid organization ID or choose unattributed activity.") from None
     status = params.get("status", "").strip()
     if status and status not in {*STATUS_LABELS, "overdue", "attention", "waiting"}:
         raise InvalidActivityFilter("Choose a supported activity outcome.")
@@ -61,8 +68,36 @@ def parse_filters(params):
     }
 
 
+def organization_scope(queryset, organization, *, field="organization_id"):
+    """Apply an already validated tenant selection without broadening a null scope."""
+    if organization == UNATTRIBUTED:
+        return queryset.filter(**{field + "__isnull": True})
+    if organization:
+        return queryset.filter(**{field: organization})
+    return queryset
+
+
+def explorer_url(filters, *, status="", organization=None):
+    """Change outcome/tenant only; keep the exact search scope and reset pagination."""
+    params = {
+        key: value for key, value in filters.items()
+        if key in {"range", "organization", "integration", "kind", "q", "per_page"}
+        and value and not (key == "per_page" and value == 25)
+    }
+    if organization is not None:
+        params["organization"] = organization
+    if status:
+        params["status"] = status
+    return reverse("superadmin-api") + "?" + urlencode(params)
+
+
 def overdue_filter(now):
     return Q(status__in=OPEN_STATUSES, expected_by__lt=now)
+
+
+def attention_filter(now):
+    """The same attention definition for explorer, health and review discovery."""
+    return Q(status__in=ISSUE_STATUSES) | overdue_filter(now)
 
 
 def waiting_filter():
@@ -98,8 +133,7 @@ def diagnosis(activity):
 def filtered_activities(filters, *, now=None):
     now = now or timezone.now()
     queryset = APIActivity.objects.filter(created_at__gte=now - timedelta(days=RANGES[filters["range"]][0]))
-    if filters["organization"]:
-        queryset = queryset.filter(organization_id=filters["organization"])
+    queryset = organization_scope(queryset, filters["organization"])
     if filters["integration"] == "celery":
         queryset = queryset.filter(kind="task")
     elif filters["integration"]:
@@ -111,7 +145,7 @@ def filtered_activities(filters, *, now=None):
     elif filters["status"] == "waiting":
         queryset = queryset.filter(waiting_filter())
     elif filters["status"] == "attention":
-        queryset = queryset.filter(Q(status__in=ISSUE_STATUSES) | overdue_filter(now))
+        queryset = queryset.filter(attention_filter(now))
     elif filters["status"]:
         queryset = queryset.filter(status=filters["status"])
     if filters["q"]:
@@ -180,7 +214,7 @@ def explorer_report(filters, *, now=None):
     overview = filtered_activities({**filters, "status": ""}, now=now)
     summary = overview.aggregate(
         total=Count("pk"), completed=Count("pk", filter=Q(status="completed")),
-        attention=Count("pk", filter=Q(status__in=ISSUE_STATUSES) | overdue_filter(now)),
+        attention=Count("pk", filter=attention_filter(now)),
         waiting=Count("pk", filter=waiting_filter()),
         overdue=Count("pk", filter=overdue_filter(now)),
         unknown=Count("pk", filter=Q(status="unknown")),
@@ -199,7 +233,7 @@ def explorer_report(filters, *, now=None):
             group[key] = sanitize_text(group[key], max_length=100)
         group["integration_label"] = INTEGRATION_LABELS.get(group["integration"], group["integration"])
         group["label"] = sanitize_text(group["error_code"] or group["error_category"] or STATUS_LABELS.get(group["status"], "Unknown"), max_length=100)
-    attention_rows = overview.filter(Q(status__in=ISSUE_STATUSES) | overdue_filter(now)).select_related(
+    attention_rows = overview.filter(attention_filter(now)).select_related(
         "organization"
     ).defer("metadata").order_by("-created_at", "-id")[:8]
     attention_items = []

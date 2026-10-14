@@ -22,4 +22,5 @@ def discover_api_incidents():
     if not getattr(settings, "API_ACTIVITY_ENABLED", True):
         return {"skipped": "capture disabled"}
     from apps.core.api_activity.health import discover_attention
-    return discover_attention(hours=24, limit=200)
+    # Do not age unreviewed failures or long-running overdue work out of the scan.
+    return discover_attention(limit=200)
