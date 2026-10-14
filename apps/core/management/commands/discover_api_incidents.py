@@ -5,10 +5,13 @@ from apps.core.api_activity.health import discover_attention
 
 
 class Command(BaseCommand):
-    help = "Idempotently create API incident reviews from recent failed/overdue activities."
+    help = "Idempotently create API incident reviews from retained attention activities."
 
     def add_arguments(self, parser):
-        parser.add_argument("--hours", type=int, default=24)
+        parser.add_argument(
+            "--hours", type=int, default=None,
+            help="Optional updated-time lookback for issue outcomes (1-720 hours). Overdue work is always included.",
+        )
         parser.add_argument("--limit", type=int, default=100)
 
     def handle(self, *args, **options):
