@@ -17,7 +17,9 @@ from apps.core.api_activity.health import operations_health
 from apps.core.api_activity.incident_groups import incident_cohorts, attention_queue
 from apps.core.api_activity.coverage import INTEGRATIONS
 from apps.core.api_activity.queries import (
-    InvalidActivityFilter, RANGES, STATUS_LABELS, activity_detail, explorer_report, parse_filters, serialize_activity,
+    InvalidActivityFilter, RANGE_BY_HOURS, RANGES, STATUS_LABELS, activity_detail,
+    explorer_report, explorer_url as _explorer_url, organization_scope, parse_filters,
+    serialize_activity,
 )
 from apps.core.api_activity.services import capture_health
 from apps.core.api_activity.operations import (
@@ -48,20 +50,6 @@ def _report(request):
     return report
 
 
-def _explorer_url(filters, *, status="", organization=None):
-    params = {
-        key: value for key, value in filters.items()
-        if key in {"range", "organization", "integration", "kind", "q", "per_page"}
-        and value and not (key == "per_page" and value == 25)
-    }
-    if organization is not None:
-        params["organization"] = organization
-        params.pop("q", None)
-    if status:
-        params["status"] = status
-    return reverse("superadmin-api") + "?" + urlencode(params)
-
-
 @never_cache
 @superuser_required
 @require_GET
@@ -70,7 +58,9 @@ def api_operations_view(request):
         report = _report(request)
     except InvalidActivityFilter as exc:
         return render(request, "superadmin/api/filter_error.html", {"filter_error": str(exc)}, status=400)
-    report["organization_health"] = operations_health(hours={"24h": 24, "7d": 168, "30d": 720, "90d": 720}.get(report["filters"]["range"], 24), organization_id=report["filters"]["organization"] or None)["organizations"][:12]
+    report["organization_health"] = operations_health(
+        filters=report["filters"], now=report["generated_at"],
+    )["organizations"][:12]
     report.update({
         "organizations": Organization.objects.only("id", "name").order_by("name")[:500],
         "integration_options": [(key, label) for key, label, _, _ in INTEGRATIONS],
@@ -193,8 +183,7 @@ def api_incidents_view(request):
     except InvalidActivityFilter as exc:
         return render(request, "superadmin/api/filter_error.html", {"filter_error": str(exc)}, status=400)
     rows = APIIncident.objects.select_related("activity__organization", "owner")
-    if filters["organization"]:
-        rows = rows.filter(activity__organization_id=filters["organization"])
+    rows = organization_scope(rows, filters["organization"], field="activity__organization_id")
     if filters["integration"]:
         rows = rows.filter(activity__integration=filters["integration"])
     now = timezone.now()
@@ -230,11 +219,15 @@ def api_incidents_view(request):
 @superuser_required
 @require_GET
 def api_health_data_view(request):
-    """Tenant-filterable operational health; no raw payloads or provider calls."""
+    """Health and drill-downs share validated explorer filters; no provider calls."""
     try:
-        hours = int(request.GET.get("hours", "24"))
-        organization = parse_filters({"organization": request.GET.get("organization", "")})["organization"]
-        result = operations_health(hours=hours, organization_id=organization or None)
-    except (ValueError, TypeError, InvalidActivityFilter):
+        params = request.GET.copy()
+        if "hours" in params:
+            selected_range = RANGE_BY_HOURS[int(params["hours"])]
+            if "range" in params and params["range"] != selected_range:
+                raise InvalidActivityFilter("Time range and hours must describe the same window.")
+            params["range"] = selected_range
+        result = operations_health(filters=parse_filters(params))
+    except (KeyError, ValueError, TypeError, InvalidActivityFilter):
         return JsonResponse({"error": "invalid_filter"}, status=400)
     return JsonResponse(result)
