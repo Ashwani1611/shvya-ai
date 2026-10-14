@@ -18,10 +18,12 @@ only active work with an expected deadline. Counts retain the time, organization
 integration, type and search scope when switching outcome filters. The latest
 attention records show the organization, integration, operation or endpoint,
 error code and a direct **Inspect evidence** link. Organization names link to
-that organization's attention items. The activity detail shows its last recorded
+that organization's attention items without dropping the search filter. The activity detail shows its last recorded
 step and a return link to the filtered explorer. An activity ID is never shown
 as if it were an organization ID. An unattributed record retains that label;
-an unverified organization reference is displayed separately.
+an unverified organization reference is displayed separately. The explicit
+`organization=unattributed` selection filters only records with no resolved tenant;
+it is supported by the explorer, health endpoint and investigation inbox.
 
 ## Journeys and investigations
 
@@ -40,7 +42,7 @@ edits. Resolving the investigation never rewrites the original API or message
 outcome. The `/superadmin/api/incidents/` inbox shows active, owned, unassigned,
 resolved and overdue reviews, with in-app deadline notices. Reviews begin with a
 24-hour deadline; deadline and snooze extensions are limited to 1–168 hours.
-There are no external alert notifications. The scheduled review-discovery task opens an incident for newly recorded attention activities every five minutes when activity capture is enabled; it never resends customer operations.
+There are no external alert notifications. The scheduled review-discovery task opens incidents for retained unreviewed attention activities every five minutes when activity capture is enabled; it never resends customer operations.
 
 The saved-outcome check reads only the matching organization's and connection's
 canonical WhatsApp, Instagram or outgoing-webhook state. It reports receiver
@@ -67,10 +69,20 @@ specific domain's retry contract.
 
 The Superadmin API homepage now includes an organisation health table, with
 recorded/completed/attention/unknown activity counts and open review counts.
-Each row links to organisation-scoped evidence. This is not an uptime SLA or an
-end-to-end message-delivery report. Read-only health data is also available at
-`/superadmin/api/health/data/` for authenticated Superadmins. Supported `hours`
-values are `1`, `24`, `168`, and `720`; `organization` accepts a UUID.
+Health and its evidence links use the same time, organisation, integration,
+activity-type and search filters as the explorer. Like overview cards, health
+compares all outcomes independently of the outcome tab. The **Inspect attention**
+links preserve this scope and reset pagination. Attention includes overdue open
+work; the JSON compatibility field `failures` remains issue-status-only, with
+`attention` and `overdue` returned separately. Unknown is a subset of attention.
+This is not an uptime SLA or an end-to-end message-delivery report.
+
+Read-only health data is available at `/superadmin/api/health/data/` for
+ authenticated Superadmins. Supported `hours` values are `1`, `24`, `168`, `720`,
+and `2160`; equivalent `range` values are `1h`, `24h`, `7d`, `30d`, and `90d`.
+Conflicting `hours` and `range` values return HTTP 400. A 90-day selection uses
+2160 hours in both health and explorer, not a silently reduced 30-day window.
+`organization` accepts a UUID or `unattributed`. See [health rollout details](api-health-rollout.md).
 
 The investigation inbox groups **open** reviews by organisation, integration,
 error category and error code. Each group shows high-severity and overdue counts.
@@ -79,12 +91,18 @@ An operator attention queue orders active reviews by their review due dates and
 links to the evidence page. It is not an outbound notification feed.
 
 Celery Beat schedules `core.discover_api_incidents` every 300 seconds on the
-general worker, scanning up to 200 recent attention activities per invocation.
-Discovery creates a review record once per activity using row locks and a unique
-activity link. When capture is disabled, the scheduled task skips discovery.
-Operational verification requires confirming Beat and worker execution, not only
-a successful deployment workflow. You can run a bounded manual scan using
-`python manage.py discover_api_incidents --hours 24 --limit 100`.
+general worker, scanning up to 200 retained attention activities per invocation,
+oldest first and without a creation-time cutoff. Old failures and older work
+that becomes overdue remain eligible while evidence is retained. Discovery
+creates a review record once per activity using row locks and a unique activity
+link; it does not reopen an existing resolved review. When capture is disabled,
+the scheduled task skips discovery. Operational verification requires confirming
+Beat and worker execution, not only a successful deployment workflow.
+Run a bounded manual scan using `python manage.py discover_api_incidents --limit 100`.
+An optional `--hours 24` limits issue outcomes by their updated time, not creation
+time; overdue open work is always included. Existing record/retention bounds
+remain in effect. Older unreviewed evidence may create additional review tickets
+after rollout; monitor unresolved-review storage and worker capacity.
 
 Not yet supported: external notifications, provider-API reconciliation, guarded
 provider retries, automatic root-cause verification, and authoritative
@@ -173,7 +191,8 @@ duplicated by this page.
 ## Rollout and retention
 
 1. Apply migrations with `python manage.py migrate` before starting the updated
-   web and worker processes. The new core migration only adds tables/indexes.
+   web and worker processes. The original core migration only adds tables/indexes;
+   the health-scope and discovery fixes require no additional schema migration.
 2. Run the deployment's normal static collection and restart web, workers and Beat.
 3. Open `/superadmin/api/`; exercise an approved existing workflow and verify its
    new records and correct organization. Capture starts with new traffic.
