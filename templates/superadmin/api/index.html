@@ -1,13 +1,14 @@
 {% extends "superadmin/base.html" %}
 {% load static %}
 {% block title %}API Operations Center · SHVYA Superadmin{% endblock %}
-{% block extra_head %}<link rel="stylesheet" href="{% static 'superadmin/api-operations.css' %}">{% endblock %}
+{% block extra_head %}<link rel="stylesheet" href="{% static 'superadmin/api-operations.css' %}"><link rel="stylesheet" href="{% static 'superadmin/api-refresh.css' %}">{% endblock %}
 {% block content %}
 <div class="api-workspace">
     <div class="sa-page-header">
         <div><div class="api-eyebrow">Platform visibility</div><h1 class="sa-page-title">API Operations Center</h1><p class="sa-page-description">Follow requests, background jobs and integration outcomes. Open an activity to inspect its evidence and the last confirmed step.</p></div>
         <div class="api-header-actions"><a class="sa-secondary-button" href="{% url 'superadmin-api-incidents' %}">Investigations</a><a class="sa-secondary-button" href="{{ json_url }}">View JSON</a><button type="button" class="sa-primary-button" data-api-refresh>Refresh</button></div>
     </div>
+    {% include "superadmin/api/refresh_controls.html" %}
     {% if not capture_health.enabled %}<div class="api-notice api-notice--warning" role="status"><strong>New activity capture is disabled</strong><span>Existing records remain searchable. New requests and events will not appear until capture is enabled.</span></div>{% endif %}
     {% if not capture_health.available or capture_health.failed_writes %}
     <div class="api-notice api-notice--warning" role="status"><strong>Monitoring needs attention</strong><span>{% if not capture_health.available %}The capture-health counter is unavailable. Completeness cannot be confirmed.{% else %}{{ capture_health.failed_writes }} activity write failure{{ capture_health.failed_writes|pluralize }} recorded{% if capture_health.last_failure_at %}; last failure {{ capture_health.last_failure_at }}{% endif %}. Some activity may be missing.{% endif %}</span></div>
