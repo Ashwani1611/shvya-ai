@@ -27,6 +27,10 @@ SHVYA keeps both **current-reference documentation** and **historical implementa
 | Workflows / Cadence | [`smart-triggers.md`](./smart-triggers.md), [`workflows-runtime-contract.md`](./workflows-runtime-contract.md) |
 | Scale/performance | [`scalability/production-scaling.md`](./scalability/production-scaling.md), [`performance/README.md`](./performance/README.md) |
 
+## Website publishing
+
+- [`website-blog.md`](./website-blog.md) — Blog Manager, draft revisions, scheduled publishing, images and search metadata.
+
 ## Connect Hub provider guides
 
 - [`integrations/justdial.md`](./integrations/justdial.md) — JustDial JSON/GET lead ingestion, `SUCCESS` acknowledgement and replay handling.

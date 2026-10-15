@@ -166,12 +166,18 @@ class SHVYAAreaAuthenticationMiddleware:
                 self._clear_invalid_session(session)
                 return
 
+            # Editorial accounts can use only the dedicated Blog Manager.
+            # This does not grant access to any other Superadmin operation.
             if not user.is_superuser:
-                self._clear_invalid_session(
-                    session,
-                )
+                from apps.blog.auth import can_edit
 
-                return
+                if not can_edit(user):
+                    self._clear_invalid_session(session)
+                    return
+                if not request.path.startswith("/superadmin/blog/"):
+                    # A valid editorial session has no authority here. Leave
+                    # request.user anonymous without destroying the session.
+                    return
 
         elif area == "dashboard":
 

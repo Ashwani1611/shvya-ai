@@ -606,6 +606,7 @@ API writes and external side effects should preserve tenant isolation and idempo
 
 Useful project documentation includes:
 
+- [`docs/website-blog.md`](./docs/website-blog.md) - website blog, editorial workflow, public SEO and image publication
 - [`CLAUDE.md`](./CLAUDE.md) - architecture and engineering rules
 - [`docs/README.md`](./docs/README.md) - documentation map, freshness rules and canonical-vs-historical guide
 - [`docs/local_setup.md`](./docs/local_setup.md) - local development notes

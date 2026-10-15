@@ -44,7 +44,7 @@
     <div class="sa-shell">
         <aside id="superadmin-sidebar" class="sa-sidebar" aria-label="Superadmin navigation">
             <div class="sa-brand">
-                <a href="{% url 'superadmin-org-list' %}" class="sa-brand-home" aria-label="SHVYA AI Superadmin home">
+                <a href="{% if request.user.is_superuser %}{% url 'superadmin-org-list' %}{% else %}{% url 'blog_admin:index' %}{% endif %}" class="sa-brand-home" aria-label="SHVYA AI Superadmin home">
                     <span class="sa-brand-logo-shell" aria-hidden="true">
                         <img src="{% static 'images/shvya-brand-2026.png' %}" alt="" class="sa-brand-logo">
                     </span>
@@ -71,6 +71,7 @@
 
             <nav class="sa-nav">
                 <div class="sa-nav-label">Workspace</div>
+                {% if request.user.is_superuser %}
                 <a href="{% url 'superadmin-bac' %}" title="Book a call requests" class="sa-nav-link {% if request.resolver_match.url_name == 'superadmin-bac' %}is-active{% endif %}"><span class="sa-nav-icon" aria-hidden="true">☎</span><span class="sa-nav-text">BAC</span></a>
 
                 <a
@@ -124,6 +125,11 @@
                 <a href="{% url 'vault-staff-list' %}" title="SHVYA Vault" class="sa-nav-link {% if '/superadmin/vault/' in request.path %}is-active{% endif %}">
                     <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="3"/><circle cx="12" cy="12" r="4"/><path d="M12 8v8m-4-4h8"/></svg>
                     <span class="sa-nav-text">Vault</span>
+                </a>
+                {% endif %}
+                <a href="{% url 'blog_admin:index' %}" title="Website blog" class="sa-nav-link {% if '/superadmin/blog/' in request.path %}is-active{% endif %}">
+                    <svg class="sa-nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h10l4 4v12H5zM14 4v5h5M8 13h8M8 16h6" stroke-linejoin="round"/></svg>
+                    <span class="sa-nav-text">Website Blog</span>
                 </a>
             </nav>
 
@@ -194,7 +200,9 @@
                     <div class="min-w-0">
                         <div class="sa-page-kicker">SHVYA AI · Superadmin</div>
                         <div class="sa-page-location">
-                            {% if support_staff %}
+                            {% if '/superadmin/blog/' in request.path %}
+                                Website · Blog Manager
+                            {% elif support_staff %}
                                 Client’s Portal
                             {% elif request.resolver_match.url_name == 'superadmin-ai-credit-overview' %}
                                 AI Coins
@@ -226,7 +234,7 @@
                     </div>
                     <div class="hidden sm:block text-right">
                         <div class="text-[11px] font-semibold text-gray-700">{{ request.user.get_full_name|default:request.user.email }}</div>
-                        <div class="mt-0.5 text-[9px] text-gray-400">Administrator</div>
+                        <div class="mt-0.5 text-[9px] text-gray-400">{% if request.user.is_superuser %}Administrator{% else %}Blog editor{% endif %}</div>
                     </div>
                     <form method="post" action="{% url 'superadmin-logout' %}">
                         {% csrf_token %}
