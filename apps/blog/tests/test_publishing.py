@@ -157,6 +157,25 @@ class PublishingLifecycleTests(BlogTestCase):
         post.refresh_from_db()
         self.assertIsNone(post.published_snapshot)
 
+    def test_schedule_rechecks_edit_permission_as_well_as_publish_permission(self):
+        actor = User.objects.create_user(email="revoked-editor@example.com", role="superadmin")
+        edit_permission = Permission.objects.get(content_type__app_label="blog", codename="change_post")
+        publish_permission = Permission.objects.get(content_type__app_label="blog", codename="publish_post")
+        actor.user_permissions.add(edit_permission, publish_permission)
+        post = services.create_post(article_data(slug="revoked-editor-schedule"), actor=actor)
+        due_at = timezone.now() + timedelta(hours=1)
+        services.schedule_post(post, actor=actor, expected_version=post.version, scheduled_at=due_at)
+
+        actor.user_permissions.remove(edit_permission)
+        with patch("django.utils.timezone.now", return_value=due_at + timedelta(seconds=1)):
+            self.assertEqual(services.publish_due_posts(), 0)
+
+        post.refresh_from_db()
+        self.assertIsNone(post.published_snapshot)
+        self.assertEqual(post.status, Post.Status.REVIEW)
+        self.assertIsNone(post.scheduled_at)
+        self.assertTrue(post.scheduling_error)
+
     def test_blocked_scheduled_slug_does_not_stop_other_due_articles(self):
         due_at = timezone.now() + timedelta(hours=1)
         blocked = self.post(slug="contested-publication")
@@ -196,6 +215,20 @@ class PublishingLifecycleTests(BlogTestCase):
 
 
 class PublishingAuthorizationTests(BlogTestCase):
+    def test_publish_permission_alone_does_not_grant_publication_authority(self):
+        actor = User.objects.create_user(email="publish-only@example.com", role="superadmin")
+        actor.user_permissions.add(Permission.objects.get(content_type__app_label="blog", codename="publish_post"))
+        post = self.post(slug="publish-only-denied")
+
+        with self.assertRaises(PermissionDenied):
+            services.publish_post(post, actor=actor, expected_version=post.version)
+        with self.assertRaises(PermissionDenied):
+            services.schedule_post(post, actor=actor, expected_version=post.version,
+                                   scheduled_at=timezone.now() + timedelta(hours=1))
+        post.refresh_from_db()
+        self.assertIsNone(post.published_snapshot)
+        self.assertEqual(post.status, Post.Status.DRAFT)
+
     def test_tenant_admin_and_tenant_superuser_cannot_modify_company_blog(self):
         organization = Organization.objects.create(name="Customer Tenant")
         for elevated in (False, True):

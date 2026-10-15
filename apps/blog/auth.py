@@ -16,7 +16,9 @@ def can_edit(user):
 
 
 def can_publish(user):
-    return bool(_platform_actor(user) and (user.is_superuser or user.has_perm("blog.publish_post")))
+    # Publishing is an additional capability of an editor, including when a
+    # scheduled job rechecks the actor after their account permissions change.
+    return bool(can_edit(user) and (user.is_superuser or user.has_perm("blog.publish_post")))
 
 
 def check_authorized(user, *, publish=False):

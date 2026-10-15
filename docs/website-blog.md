@@ -20,6 +20,10 @@ The available workflow states are Draft, In Review, Scheduled, Published and Arc
 
 The editor uses optimistic version checks. A stale browser tab must reload before overwriting newer content. Autosave and manual publication are coordinated by the editor so a delayed save cannot overwrite the just-published version.
 
+Save, publish and restore requests keep the editor open when validation, authentication, network or server errors occur. Explicit actions temporarily lock editing while their snapshot is submitted. Requests have time limits and do not automatically retry publication. After signing in again in another tab, the editor uses the refreshed CSRF token for the next attempt.
+
+Each new editor page carries a stable creation identifier. Retrying an identical initial draft save after a lost response returns the existing article instead of creating a duplicate. If content has changed or an action may already have completed, the editor preserves local edits and offers a draft backup and a link to the saved version for reconciliation.
+
 Scheduling uses a frozen content snapshot and a timezone-labelled IST input. Saving changed content cancels its existing schedule; the editor explains that the revised article must be scheduled again. Celery Beat dispatches `apps.blog.tasks.publish_scheduled_posts` every minute on the general worker. Due posts are published transactionally and duplicate executions are safe. Authorisation is checked again at execution. Publication errors remain visible in Blog Manager; the job does not silently mark a failed publication as live. The scheduler catches up after a worker interruption, so publication may occur after the requested time during an outage.
 
 Unpublishing removes the live snapshot from public pages, search, related content, sitemap and image-publication references. A changed published slug receives a permanent redirect. Old slugs remain reserved for their original article to prevent unrelated content taking over an existing link.
@@ -34,7 +38,11 @@ The dedicated Superadmin session is reused. The middleware exception for restric
 
 ## Images and HTML
 
-Uploads are decoded and re-encoded as WebP, with bounded file size/dimensions and a smaller responsive variant. Raw HTML is validated through a server-side allowlist; scripts, event handlers, arbitrary embeds and non-blog image URLs are excluded. Do not relax this boundary merely to support a pasted third-party widget.
+Uploads accept still JPEG, PNG and WebP images up to 10 MiB and 25 megapixels. Empty, corrupt, animated and unsupported files are rejected with an explanation. Images are decoded, their orientation corrected, and re-encoded as WebP while preserving transparency, with a smaller responsive variant. The upload dialog shows progress and retains the selected file after a failed attempt so the editor can retry. Browser checks improve feedback; server-side validation remains authoritative.
+
+Expected storage failures produce a safe temporary-unavailability response instead of exposing provider errors. Failed uploads clean up completed objects on a best-effort basis, with cleanup failures logged separately. Public and private media routes handle missing or corrupt objects consistently, and a missing thumbnail falls back to the main image. Deployment upload limits must remain larger than the 10 MiB image limit plus multipart overhead; the current 20 MiB Nginx limit meets that requirement.
+
+Raw HTML is validated through a server-side allowlist; scripts, event handlers, arbitrary embeds and non-blog image URLs are excluded. Do not relax this boundary merely to support a pasted third-party widget.
 
 Images use the configured default storage backend, including S3 in production. Stored objects contain authenticated ciphertext. Browser-visible URLs are stable application routes under `/blog/media/<image-id>/`; they are not expiring S3 signed URLs. Only images referenced by a currently published snapshot are publicly served. Private previews use `/superadmin/blog/media/<image-id>/`.
 
@@ -72,4 +80,4 @@ python manage.py makemigrations --check --dry-run --settings=config.settings.tes
 ruff check apps/blog apps/accounts/middleware.py config/urls.py config/celery.py
 ```
 
-The publishing tests cover the live/draft boundary, schedules, optimistic concurrency, tenant/editor permissions, HTML/upload validation, image visibility, redirects, sitemap and SEO output. The wider CI gate remains authoritative for shared middleware/settings changes.
+The focused tests cover the live/draft boundary, schedules, optimistic concurrency, creation retry recovery, tenant/editor permissions, HTML/upload validation, storage outages and cleanup failures, image visibility and thumbnail fallback, redirects, sitemap and SEO output. The wider CI gate remains authoritative for shared middleware/settings changes.

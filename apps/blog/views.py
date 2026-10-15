@@ -8,7 +8,7 @@ from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import Http404, JsonResponse
+from django.http import JsonResponse
 from django.middleware.csrf import rotate_token
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -111,6 +111,7 @@ def _editor(request, post=None, form=None, status=200):
         "images_data": [_image_data(image) for image in images], "categories": Category.objects.all(),
         "revisions": post.revisions.select_related("created_by")[:30] if post else [],
         "can_publish": can_publish(request.user),
+        "recovery_url": getattr(form, "blog_recovery_url", ""),
     }, status=status)
 
 
@@ -144,6 +145,8 @@ def index(request):
 
 
 def _save(request, post=None, *, autosave=False):
+    created = False
+    recovery_url = ""
     try:
         data = _data(request)
     except ValidationError as exc:
@@ -158,8 +161,16 @@ def _save(request, post=None, *, autosave=False):
             # One atomic boundary means an invalid publish/schedule cannot silently
             # save a different draft while returning an old optimistic-lock version.
             with transaction.atomic():
-                saved = (services.save_draft(post, form.cleaned_data, request.user, form.cleaned_data["version"])
-                         if post else services.create_post(form.cleaned_data, request.user))
+                if post:
+                    saved = services.save_draft(post, form.cleaned_data, request.user, form.cleaned_data["version"])
+                else:
+                    saved, created = services.create_post_once(
+                        form.cleaned_data, request.user, form.cleaned_data.get("creation_id"),
+                    )
+                    if not created and action != "save":
+                        # A lost response must not replay publishing/unpublishing
+                        # after somebody has subsequently changed the article.
+                        raise services.CreationConflictError(saved)
                 if action == "publish":
                     saved = services.publish_post(saved, request.user, saved.version)
                 elif action == "schedule":
@@ -171,9 +182,12 @@ def _save(request, post=None, *, autosave=False):
         except ValidationError as exc:
             _add_validation_errors(form, exc)
             code = 409 if isinstance(exc, services.ConflictError) else 400
+            if isinstance(exc, services.CreationConflictError) and exc.recovery_post:
+                recovery_url = reverse("blog_admin:edit", kwargs={"post_id": exc.recovery_post.pk})
+                form.blog_recovery_url = recovery_url
         else:
             if autosave or _json_request(request):
-                return JsonResponse(_post_response(saved), status=201 if post is None else 200)
+                return JsonResponse(_post_response(saved), status=201 if created else 200)
             messages.success(request, {"save": "Draft saved.", "review": "Article sent for review.",
                                        "publish": "Article is live.", "schedule": "Article scheduled (IST).",
                                        "unpublish": "Article unpublished.", "archive": "Article archived."}[action])
@@ -182,7 +196,8 @@ def _save(request, post=None, *, autosave=False):
         code = 400
     if autosave or _json_request(request):
         return JsonResponse({"ok": False, "errors": form.errors.get_json_data(),
-                             "detail": " ".join(form.non_field_errors()) or "Review the highlighted fields."}, status=code)
+                             "detail": " ".join(form.non_field_errors()) or "Review the highlighted fields.",
+                             **({"edit_url": recovery_url} if recovery_url else {})}, status=code)
     return _editor(request, post, form, status=code)
 
 
@@ -230,6 +245,10 @@ def upload_image(request):
         image = services.upload_image(file, request.user, request.POST.get("alt_text", ""), request.POST.get("caption", ""))
     except ValidationError as exc:
         return JsonResponse({"ok": False, "detail": " ".join(exc.messages)}, status=400)
+    except services.ImageUploadUnavailable as exc:
+        response = JsonResponse({"ok": False, "detail": str(exc)}, status=503)
+        response["Retry-After"] = "60"
+        return response
     return JsonResponse({"ok": True, **_image_data(image)}, status=201)
 
 
@@ -238,10 +257,7 @@ def upload_image(request):
 @require_GET
 def media(request, image_id):
     image = get_object_or_404(BlogImage, pk=image_id)
-    try:
-        return services.media_response(image, private=True, width=request.GET.get("w"))
-    except FileNotFoundError as exc:
-        raise Http404("Image not found.") from exc
+    return services.media_response(image, private=True, width=request.GET.get("w"))
 
 
 @private_page

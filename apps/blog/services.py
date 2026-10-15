@@ -4,13 +4,16 @@ import io
 import logging
 import re
 import uuid
+import warnings
 from urllib.parse import urlsplit
 
+from boto3.exceptions import S3UploadFailedError
+from botocore.exceptions import BotoCoreError, ClientError
 from django.conf import settings
-from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.exceptions import PermissionDenied, SuspiciousFileOperation, ValidationError
 from django.core.files.base import ContentFile
-from django.db import IntegrityError, transaction
-from django.http import FileResponse
+from django.db import IntegrityError, InterfaceError, OperationalError, transaction
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import slugify
@@ -23,6 +26,7 @@ from .models import BlogImage, Category, Post, Revision, SlugRedirect
 logger = logging.getLogger(__name__)
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_IMAGE_PIXELS = 25_000_000
+STORAGE_ERRORS = (OSError, BotoCoreError, ClientError, S3UploadFailedError)
 TEXT_LIMITS = {
     "title": 220, "slug": 180, "excerpt": 500, "author_name": 120,
     "author_bio": 500, "author_url": 500, "seo_title": 220, "meta_description": 500,
@@ -34,6 +38,32 @@ RESERVED_SLUGS = {"media", "category", "tag", "search", "feed", "sitemap", "admi
 class ConflictError(ValidationError):
     def __init__(self):
         super().__init__("This article changed in another tab. Reload it before saving to avoid overwriting newer work.")
+
+
+class CreationConflictError(ConflictError):
+    def __init__(self, post=None):
+        ValidationError.__init__(self,
+            "This article creation request was already used. Open the saved article before making further changes."
+        )
+        self.recovery_post = post
+
+
+class ImageUploadUnavailable(Exception):
+    """An expected storage/database outage that the editor can safely retry."""
+
+
+def _image_error_context(error):
+    context = {"error_type": type(error).__name__}
+    if isinstance(error, ClientError):
+        code = error.response.get("Error", {}).get("Code")
+        # Keep provider diagnosis useful without recording arbitrary messages,
+        # object keys, request metadata or a malicious/unexpected error value.
+        context["storage_code"] = code if code in {
+            "404", "NoSuchKey", "NotFound", "AccessDenied", "InvalidAccessKeyId",
+            "SignatureDoesNotMatch", "NoSuchBucket", "ExpiredToken", "InvalidToken",
+            "RequestTimeout", "SlowDown", "ServiceUnavailable", "InternalError",
+        } else "OtherClientError"
+    return context
 
 
 def published_posts():
@@ -144,13 +174,35 @@ def _clear_schedule(post):
 
 
 @transaction.atomic
-def create_post(data, actor):
+def create_post_once(data, actor, creation_id=None):
+    """Reuse the browser's creation key after a lost response, never overwrite it."""
     check_authorized(actor)
-    post = Post(draft=normalize_snapshot(data), created_by=actor, updated_by=actor)
-    post.save()
+    snapshot = normalize_snapshot(data)
+    if creation_id:
+        try:
+            creation_id = uuid.UUID(str(creation_id))
+        except (ValueError, TypeError, AttributeError) as exc:
+            raise ValidationError("The draft creation key is invalid. Open a new article editor.") from exc
+        # get_or_create has an inner savepoint for concurrent UUID insert races;
+        # its recovery lookup also retains this queryset's row lock.
+        post, created = Post.objects.select_for_update().get_or_create(
+            pk=creation_id, defaults={"draft": snapshot, "created_by": actor, "updated_by": actor},
+        )
+        if not created:
+            if post.created_by_id != actor.pk:
+                raise CreationConflictError()
+            if post.draft != snapshot:
+                raise CreationConflictError(post)
+            return post, False
+    else:
+        post = Post.objects.create(draft=snapshot, created_by=actor, updated_by=actor)
     Revision.objects.create(post=post, snapshot=copy.deepcopy(post.draft), version=post.version,
                             reason="created", created_by=actor)
-    return post
+    return post, True
+
+
+def create_post(data, actor, creation_id=None):
+    return create_post_once(data, actor, creation_id)[0]
 
 
 @transaction.atomic
@@ -305,30 +357,38 @@ def upload_image(file, actor, alt_text="", caption=""):
         raise ValidationError("Use at most 300 characters for alt text and 500 for the caption.")
     if getattr(file, "size", 0) > MAX_UPLOAD_BYTES:
         raise ValidationError("Images must be 10 MB or smaller.")
-    data = file.read(MAX_UPLOAD_BYTES + 1)
+    try:
+        file.seek(0)
+        data = file.read(MAX_UPLOAD_BYTES + 1)
+    except OSError as exc:
+        raise ValidationError("The uploaded file could not be read. Choose the image again and retry.") from exc
     if len(data) > MAX_UPLOAD_BYTES:
         raise ValidationError("Images must be 10 MB or smaller.")
     try:
-        with Image.open(io.BytesIO(data)) as source:
-            if source.format not in {"JPEG", "PNG", "WEBP"}:
-                raise ValidationError("Upload a JPEG, PNG or WebP image.")
-            if source.width * source.height > MAX_IMAGE_PIXELS:
-                raise ValidationError("Images must be no larger than 25 megapixels.")
-            if getattr(source, "n_frames", 1) != 1:
-                raise ValidationError("Animated images are not supported. Upload a still image.")
-            source.load()
-            processed = ImageOps.exif_transpose(source)
-            mode = "RGBA" if processed.mode == "RGBA" or "transparency" in processed.info else "RGB"
-            processed = processed.convert(mode)
-            processed.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
-            large = io.BytesIO()
-            processed.save(large, "WEBP", quality=85, method=4)
-            thumbnail = processed.copy()
-            thumbnail.thumbnail((640, 640), Image.Resampling.LANCZOS)
-            small = io.BytesIO()
-            thumbnail.save(small, "WEBP", quality=82, method=4)
-    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as exc:
-        raise ValidationError("This file is not a valid supported image.") from exc
+        with warnings.catch_warnings():
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            # verify() catches damaged PNG chunks that load() alone can accept.
+            with Image.open(io.BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as source:
+                if source.width * source.height > MAX_IMAGE_PIXELS:
+                    raise ValidationError("Images must be no larger than 25 megapixels.")
+                if getattr(source, "n_frames", 1) != 1:
+                    raise ValidationError("Animated images are not supported. Upload a still image.")
+                source.verify()
+            with Image.open(io.BytesIO(data), formats=["JPEG", "PNG", "WEBP"]) as source:
+                source.load()
+                processed = ImageOps.exif_transpose(source)
+                mode = "RGBA" if "A" in processed.getbands() or "transparency" in processed.info else "RGB"
+                processed = processed.convert(mode)
+                processed.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
+                large = io.BytesIO()
+                processed.save(large, "WEBP", quality=85, method=4)
+                thumbnail = processed.copy()
+                thumbnail.thumbnail((640, 640), Image.Resampling.LANCZOS)
+                small = io.BytesIO()
+                thumbnail.save(small, "WEBP", quality=82, method=4)
+    except (UnidentifiedImageError, OSError, SyntaxError, ValueError,
+            Image.DecompressionBombError, Image.DecompressionBombWarning) as exc:
+        raise ValidationError("This file is damaged or unsupported. Upload a valid JPEG, PNG or WebP image.") from exc
     image = BlogImage(width=processed.width, height=processed.height,
                       thumbnail_width=thumbnail.width, thumbnail_height=thumbnail.height,
                       alt_text=alt_text.strip(), caption=caption.strip(), created_by=actor)
@@ -336,20 +396,57 @@ def upload_image(file, actor, alt_text="", caption=""):
         image.file.save(f"{image.id}.webp", ContentFile(large.getvalue()), save=False)
         image.thumbnail_file.save(f"{image.id}-640.webp", ContentFile(small.getvalue()), save=False)
         image.save()
-    except Exception:
-        if image.file.name:
-            image.file.delete(save=False)
-        if image.thumbnail_file.name:
-            image.thumbnail_file.delete(save=False)
+    except Exception as exc:
+        # Cleanup must not replace the original failure, or prevent a second
+        # already-saved object from being removed. Never log provider messages:
+        # they can contain bucket paths, endpoints or credential material.
+        for stored in (image.file, image.thumbnail_file):
+            if stored.name:
+                try:
+                    stored.delete(save=False)
+                except Exception as cleanup_error:
+                    logger.error("Blog image upload cleanup failed", extra={
+                        "image_id": str(image.pk), "variant": stored.field.name,
+                        **_image_error_context(cleanup_error),
+                    })
+        if isinstance(exc, (*STORAGE_ERRORS, OperationalError, InterfaceError)):
+            logger.error("Blog image upload unavailable", extra={
+                "image_id": str(image.pk), **_image_error_context(exc),
+            })
+            raise ImageUploadUnavailable(
+                "The image could not be saved because storage is temporarily unavailable. "
+                "Your article is unchanged. Please retry the upload."
+            ) from exc
         raise
     return image
 
 
 def media_response(image, *, private=False, width=None):
     file = image.thumbnail_file if str(width) == "640" and image.thumbnail_file else image.file
-    response = FileResponse(file.open("rb"), content_type="image/webp", as_attachment=False)
+    try:
+        if not file.name:
+            raise FileNotFoundError("Image file is missing.")
+        response = FileResponse(file.open("rb"), content_type="image/webp", as_attachment=False)
+    except (*STORAGE_ERRORS, SuspiciousFileOperation) as exc:
+        missing = isinstance(exc, (FileNotFoundError, SuspiciousFileOperation))
+        if isinstance(exc, ClientError):
+            missing = exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}
+        logger.warning("Blog image unavailable", extra={
+            "image_id": str(image.pk), "variant": file.field.name,
+            **_image_error_context(exc), "missing_or_invalid": missing,
+        })
+        if missing and file.field.name == "thumbnail_file":
+            # A lost derived variant should not break an otherwise healthy image.
+            # Authorization has already been checked before either object is read.
+            return media_response(image, private=private)
+        response = HttpResponse(
+            "Image not available." if missing else "Image storage is temporarily unavailable. Please retry shortly.",
+            status=404 if missing else 503, content_type="text/plain; charset=utf-8",
+        )
+        if not missing:
+            response["Retry-After"] = "60"
     # Revalidation matters when an article is unpublished; private bytes are never cached.
-    response["Cache-Control"] = "private, no-store" if private else "public, max-age=0, must-revalidate"
+    response["Cache-Control"] = "private, no-store" if private or response.status_code != 200 else "public, max-age=0, must-revalidate"
     response["X-Content-Type-Options"] = "nosniff"
     response["Content-Security-Policy"] = "default-src 'none'; sandbox"
     if private:

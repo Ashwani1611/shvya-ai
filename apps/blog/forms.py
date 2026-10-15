@@ -1,3 +1,4 @@
+import uuid
 from zoneinfo import ZoneInfo
 
 from django import forms
@@ -28,6 +29,7 @@ class PostForm(forms.Form):
     noindex = forms.BooleanField(required=False)
     canonical_url = forms.URLField(max_length=500, required=False)
     version = forms.IntegerField(min_value=0, widget=forms.HiddenInput)
+    creation_id = forms.UUIDField(required=False, widget=forms.HiddenInput)
     schedule_at = forms.DateTimeField(required=False, input_formats=["%Y-%m-%dT%H:%M", "%Y-%m-%dT%H:%M:%S"],
                                        widget=forms.DateTimeInput(format="%Y-%m-%dT%H:%M", attrs={"type": "datetime-local"}))
 
@@ -38,6 +40,7 @@ class PostForm(forms.Form):
         if isinstance(initial.get("tags"), list):
             initial["tags"] = ", ".join(initial["tags"])
         initial["version"] = post.version if post else 0
+        initial["creation_id"] = post.pk if post else uuid.uuid4()
         if post and post.scheduled_at:
             initial["schedule_at"] = timezone.localtime(post.scheduled_at, ZoneInfo("Asia/Kolkata"))
         initial.update(kwargs.pop("initial", {}))

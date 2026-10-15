@@ -12,7 +12,14 @@
     const media = new Map();
     const fields = name => form.elements.namedItem(name);
     const value = name => fields(name)?.value || '';
-    const csrf = () => value('csrfmiddlewaretoken');
+    const csrf = () => {
+        // Signing in again in another tab rotates the CSRF cookie. Use its
+        // current value so a recovered session can retry without losing edits.
+        const cookie = document.cookie.split('; ').find(item => item.startsWith('csrftoken='));
+        const token = cookie ? decodeURIComponent(cookie.slice('csrftoken='.length)) : value('csrfmiddlewaretoken');
+        fields('csrfmiddlewaretoken').value = token;
+        return token;
+    };
     let changeNumber = 0;
     let savedNumber = 0;
     let saveTimer;
@@ -26,6 +33,7 @@
     let editingLink = null;
     let uploadInProgress = false;
     let wasScheduled = document.getElementById('blog-current-status').textContent.trim() === 'Scheduled';
+    let scheduleCancellationPending = false;
     let slugManuallyEdited = Boolean(value('slug'));
 
     for (const node of document.querySelectorAll('#blog-image-data [data-id]')) {
@@ -48,6 +56,7 @@
 
     function showMessage(text, isError = true, focus = false) {
         message.textContent = text;
+        if (text === sessionError) appendSignInLink(message);
         message.hidden = false;
         message.classList.toggle('is-error', isError);
         if (focus) message.focus();
@@ -200,8 +209,10 @@
         updatePreviews();
         if (!conflict) setStatus('Unsaved changes');
         if (wasScheduled) {
+            document.getElementById('blog-scheduled-notice')?.remove();
             showMessage('Editing a scheduled article cancels its schedule when saved. Schedule it again when your changes are ready.', false);
             wasScheduled = false;
+            scheduleCancellationPending = true;
         }
         clearTimeout(saveTimer);
         if (!actionInProgress && !conflict) saveTimer = setTimeout(() => saveDraft().catch(() => {}), 1800);
@@ -219,13 +230,83 @@
         return data.detail || fallback;
     }
 
-    async function responseJSON(response) {
-        if (!response.headers.get('content-type')?.includes('application/json')) {
-            throw new Error(response.redirected || response.status === 403 || response.status === 401
-                ? 'Your session may have expired. Keep this tab open and sign in again in another tab before retrying.'
-                : 'The server could not save your article. Your edits are still in this tab. Please try again.');
-        }
-        return response.json();
+    const sessionError = 'Your session may have expired or your access has changed. Keep this tab open and sign in again in another tab before retrying.';
+
+    function appendSignInLink(container) {
+        const link = document.createElement('a');
+        link.href = '/superadmin/blog/login/'; link.target = '_blank'; link.rel = 'noopener';
+        link.className = 'blog-text-link'; link.textContent = 'Sign in in another tab';
+        container.append(' ', link);
+    }
+
+    function requestError(context, reason = '') {
+        const retained = context === 'upload'
+            ? 'Your selected file and image details are still here.'
+            : 'Your article edits are still in this tab.';
+        if (reason === 'timeout') return `This is taking longer than expected. ${retained} Check your connection and try again.`;
+        if (reason === 'network') return `We could not reach the server. ${retained} Check your connection and try again.`;
+        return `The ${context === 'upload' ? 'image upload' : 'editor'} service is temporarily unavailable. ${retained} Please try again shortly.`;
+    }
+
+    async function responseJSON(response, context = 'save') {
+        if (response.redirected || [401, 403].includes(response.status)) throw new Error(sessionError);
+        if (response.status === 413) throw new Error(context === 'upload'
+            ? 'This upload is too large. Choose a JPG, PNG or WebP image that is 10 MB or smaller. If your image is already smaller, try compressing it and retry.'
+            : 'This article is too large to save. Reduce its length, and upload images using the Image button instead of pasting image data. Your edits are still in this tab.');
+        if (response.status === 429) throw new Error('Too many requests were made recently. Keep this tab open, wait a few minutes, then try again.');
+        if (response.status >= 500) throw new Error(requestError(context));
+        if (!response.headers.get('content-type')?.includes('application/json')) throw new Error(requestError(context));
+        try {
+            const data = await response.json();
+            if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error();
+            return data;
+        } catch (_) { throw new Error(requestError(context)); }
+    }
+
+    async function editorRequest(endpoint, payload) {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 45000);
+        payload.set('csrfmiddlewaretoken', csrf());
+        try {
+            let response;
+            try {
+                response = await fetch(endpoint, {method: 'POST', body: payload, credentials: 'same-origin', signal: controller.signal, headers: {'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json'}});
+            } catch (error) { throw new Error(requestError('save', error.name === 'AbortError' ? 'timeout' : 'network')); }
+            return {response, data: await responseJSON(response)};
+        } finally { clearTimeout(timeout); }
+    }
+
+    function uploadRequest(payload) {
+        // XHR exposes transfer progress and an end-to-end timeout. A failed
+        // request leaves the selected file intact for an explicit retry.
+        return new Promise((resolve, reject) => {
+            const request = new XMLHttpRequest();
+            const progress = document.getElementById('blog-upload-progress');
+            const label = document.getElementById('blog-upload-status');
+            request.open('POST', form.dataset.uploadUrl);
+            request.timeout = 120000;
+            request.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+            request.setRequestHeader('Accept', 'application/json');
+            request.upload.addEventListener('progress', event => {
+                if (!event.lengthComputable) return;
+                const percent = Math.min(100, Math.round(event.loaded / event.total * 100));
+                progress.value = percent;
+                label.textContent = percent === 100 ? 'Upload received. Optimising your image…' : `Uploading image… ${percent}%`;
+            });
+            request.onload = async () => {
+                const headers = new Headers({'content-type': request.getResponseHeader('content-type') || ''});
+                const response = {status: request.status, ok: request.status >= 200 && request.status < 300,
+                    redirected: Boolean(request.responseURL && new URL(request.responseURL).pathname.includes('/login/')),
+                    headers, json: async () => JSON.parse(request.responseText)};
+                try { resolve({response, data: await responseJSON(response, 'upload')}); }
+                catch (error) { reject(error); }
+            };
+            request.onerror = () => reject(new Error(requestError('upload', 'network')));
+            request.ontimeout = () => reject(new Error(requestError('upload', 'timeout')));
+            request.onabort = () => reject(new Error('The upload was interrupted. Your selected file and image details are still here. Try again when ready.'));
+            payload.set('csrfmiddlewaretoken', csrf());
+            request.send(payload);
+        });
     }
 
     function downloadBackup() {
@@ -240,7 +321,7 @@
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    function showConflict(detail) {
+    function showConflict(detail, recoveryURL = '') {
         conflict = true;
         clearTimeout(saveTimer);
         setStatus('Version conflict — edits retained', 'error');
@@ -255,7 +336,10 @@
         reload.addEventListener('click', () => {
             if (window.confirm('Load the latest version? Unsaved edits in this tab will be lost. Download your backup first if you need to keep them.')) {
                 leaving = true;
-                window.location.reload();
+                // A lost first-create response can leave this page at /new/.
+                // The server supplies the saved article's recovery destination.
+                if (recoveryURL.startsWith('/superadmin/blog/') && !recoveryURL.startsWith('//')) window.location.assign(recoveryURL);
+                else window.location.reload();
             }
         });
         actions.append(download, reload); message.append(actions);
@@ -278,6 +362,12 @@
             badge.textContent = labels[data.status] || data.status;
             badge.className = `blog-badge blog-badge-${data.status}`;
         }
+        if (scheduleCancellationPending && data.status) {
+            document.getElementById('blog-scheduled-notice')?.remove();
+            if (data.status === 'scheduled') clearMessage();
+            else showMessage('The previous publication schedule was cancelled. Schedule your updated draft again when ready.', false);
+            scheduleCancellationPending = false;
+        }
         setStatus(changeNumber === savedAt ? 'All changes saved' : 'Unsaved changes', changeNumber === savedAt ? 'saved' : '');
     }
 
@@ -298,9 +388,8 @@
         setStatus('Saving…', 'saving');
         savePromise = (async () => {
             try {
-                const response = await fetch(endpoint, {method: 'POST', body: payload, credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json'}});
-                const data = await responseJSON(response);
-                if (response.status === 409) { showConflict(data.detail); throw new Error('Version conflict'); }
+                const {response, data} = await editorRequest(endpoint, payload);
+                if (response.status === 409) { showConflict(data.detail, data.edit_url); throw new Error('Version conflict'); }
                 if (!response.ok || !data.ok) throw new Error(errorText(data, 'The draft could not be saved.'));
                 acceptSave(data, capturedChange);
             } catch (error) {
@@ -328,21 +417,31 @@
         }
         if (['unpublish', 'archive'].includes(action) && !window.confirm(action === 'unpublish' ? 'Remove this article from the public website? Its content and revisions will be kept.' : 'Archive this article? It will be removed from the public website and kept in your manager.')) return;
         actionInProgress = true;
+        clearMessage();
+        form.inert = true;
+        form.setAttribute('aria-busy', 'true');
         clearTimeout(saveTimer);
         try {
             if (savePromise) await savePromise;
             if (conflict) return;
             syncBody();
-            const hidden = document.createElement('input');
-            hidden.type = 'hidden'; hidden.name = 'action'; hidden.value = action;
-            form.append(hidden);
+            const payload = new FormData(form);
+            payload.set('action', action);
             setStatus(action === 'publish' ? 'Publishing…' : 'Saving…', 'saving');
+            const {response, data} = await editorRequest(form.dataset.editUrl || form.dataset.newUrl, payload);
+            if (response.status === 409) { showConflict(data.detail, data.edit_url); return; }
+            if (!response.ok || !data.ok) throw new Error(errorText(data, 'The article could not be saved. Review your details and try again.'));
+            acceptSave(data, changeNumber);
             leaving = true;
-            HTMLFormElement.prototype.submit.call(form);
+            window.location.assign(data.edit_url);
         } catch (error) {
-            if (!conflict) showMessage(`${error.message} Your action was not submitted. Retry after your draft is saved.`, true, true);
+            if (!conflict) { setStatus('Action not confirmed — retry', 'error'); showMessage(error.message, true, true); }
         } finally {
-            if (!leaving) actionInProgress = false;
+            if (!leaving) {
+                actionInProgress = false;
+                form.inert = false;
+                form.removeAttribute('aria-busy');
+            }
         }
     });
 
@@ -367,20 +466,28 @@
 
     document.querySelectorAll('[data-restore-url]').forEach(button => button.addEventListener('click', async () => {
         if (actionInProgress || conflict) return;
+        if (uploadInProgress) { showMessage('Wait for your image upload to finish before restoring a revision.', false); return; }
         if (!window.confirm('Restore this revision as your draft? Save your current changes first if you want to keep them in revision history. The live article will stay unchanged.')) return;
         actionInProgress = true;
+        clearMessage();
+        form.inert = true;
+        form.setAttribute('aria-busy', 'true');
         clearTimeout(saveTimer);
         try {
             if (savePromise) await savePromise;
             if (conflict) return;
-            const restoreForm = document.createElement('form');
-            restoreForm.method = 'POST'; restoreForm.action = button.dataset.restoreUrl;
+            const payload = new FormData();
             for (const [name, data] of Object.entries({csrfmiddlewaretoken: csrf(), version: value('version'), expected_version: value('version')})) {
-                const input = document.createElement('input'); input.type = 'hidden'; input.name = name; input.value = data; restoreForm.append(input);
+                payload.set(name, data);
             }
-            document.body.append(restoreForm); leaving = true; restoreForm.submit();
+            const {response, data} = await editorRequest(button.dataset.restoreUrl, payload);
+            if (response.status === 409) { showConflict(data.detail, data.edit_url); return; }
+            if (!response.ok || !data.ok) throw new Error(errorText(data, 'The revision could not be restored. Your current draft is still here.'));
+            leaving = true; window.location.assign(data.edit_url);
         } catch (error) { if (!conflict) showMessage(error.message); }
-        finally { if (!leaving) actionInProgress = false; }
+        finally {
+            if (!leaving) { actionInProgress = false; form.inert = false; form.removeAttribute('aria-busy'); }
+        }
     }));
 
     function openDialog(dialog) { rememberSelection(); dialog.showModal(); }
@@ -443,6 +550,7 @@
         const dialog = document.getElementById('blog-image-dialog');
         document.getElementById('blog-image-file').value = '';
         document.getElementById('blog-image-error').textContent = '';
+        document.getElementById('blog-upload-feedback').hidden = true;
         const item = current ? imageForSource(current.getAttribute('src')) : media.get(value(`${target}_image`));
         document.getElementById('blog-existing-image').value = item?.id || '';
         document.getElementById('blog-image-alt').value = current?.getAttribute('alt') ?? item?.alt_text ?? '';
@@ -468,6 +576,7 @@
         if (anchor) event.preventDefault();
     });
     document.getElementById('blog-existing-image').addEventListener('change', event => {
+        document.getElementById('blog-image-error').textContent = '';
         const item = media.get(event.target.value);
         if (item) {
             document.getElementById('blog-image-file').value = '';
@@ -477,6 +586,7 @@
         setImageMetadataState();
     });
     document.getElementById('blog-image-file').addEventListener('change', event => {
+        document.getElementById('blog-image-error').textContent = '';
         if (event.target.files.length) document.getElementById('blog-existing-image').value = '';
         setImageMetadataState();
     });
@@ -491,18 +601,29 @@
         let item = media.get(document.getElementById('blog-existing-image').value);
         error.textContent = '';
         if (!file && !item) { error.textContent = 'Upload an image or choose a previous upload.'; return; }
+        if (file && file.size > 10 * 1024 * 1024) { error.textContent = 'This image is larger than 10 MB. Compress it or choose a smaller JPG, PNG or WebP image.'; return; }
+        if (file && file.size === 0) { error.textContent = 'This file is empty. Choose a complete JPG, PNG or WebP image.'; return; }
+        // Some browsers provide no MIME type. Permit a supported filename in
+        // that case; the server always checks the actual image content.
+        if (file && !['image/jpeg', 'image/png', 'image/webp'].includes(file.type) && !/\.(jpe?g|png|webp)$/i.test(file.name)) {
+            error.textContent = 'Choose a JPG, PNG or WebP image. Convert HEIC, GIF, PDF or other files to a supported still image first.'; return;
+        }
         uploadInProgress = true; button.disabled = true;
         const imageDialog = document.getElementById('blog-image-dialog');
+        const uploadFeedback = document.getElementById('blog-upload-feedback');
         imageDialog.setAttribute('aria-busy', 'true');
         imageDialog.querySelectorAll('input,select,button').forEach(control => { control.disabled = true; });
         const originalText = button.textContent;
         try {
             if (file) {
                 button.textContent = 'Uploading…';
+                uploadFeedback.hidden = false;
+                document.getElementById('blog-upload-progress').value = 0;
+                document.getElementById('blog-upload-status').textContent = 'Uploading image…';
                 const payload = new FormData(); payload.set('csrfmiddlewaretoken', csrf()); payload.set('image', file); payload.set('alt_text', alt); payload.set('caption', caption);
-                const response = await fetch(form.dataset.uploadUrl, {method: 'POST', body: payload, credentials: 'same-origin', headers: {'X-Requested-With': 'XMLHttpRequest', Accept: 'application/json'}});
-                const data = await responseJSON(response);
+                const {response, data} = await uploadRequest(payload);
                 if (!response.ok || !data.ok) throw new Error(errorText(data, 'The image could not be uploaded.'));
+                if (!data.id || !data.preview_url || !(data.url || data.public_url)) throw new Error(requestError('upload'));
                 item = {...data, caption, url: data.url || data.public_url};
                 media.set(String(item.id), item);
                 const option = document.createElement('option'); option.value = item.id; option.textContent = `${item.alt_text || 'Image'} · ${item.width} × ${item.height}`;
@@ -529,9 +650,14 @@
                     insertHTML(figure.outerHTML);
                 } else insertHTML(`${figure.outerHTML}<p><br></p>`);
             }
-        } catch (failure) { error.textContent = failure.message; }
+        } catch (failure) {
+            error.textContent = failure.message;
+            if (failure.message === sessionError) appendSignInLink(error);
+            error.focus();
+        }
         finally {
             uploadInProgress = false;
+            uploadFeedback.hidden = true;
             imageDialog.removeAttribute('aria-busy');
             imageDialog.querySelectorAll('input,select,button').forEach(control => { control.disabled = false; });
             setImageMetadataState();
@@ -601,7 +727,7 @@
         if (event.target.matches('select,input[type=checkbox],input[type=datetime-local]')) markChanged();
     });
     window.addEventListener('beforeunload', event => {
-        if (!leaving && (changeNumber !== savedNumber || savePromise || uploadInProgress)) { event.preventDefault(); event.returnValue = ''; }
+        if (!leaving && (changeNumber !== savedNumber || savePromise || uploadInProgress || actionInProgress)) { event.preventDefault(); event.returnValue = ''; }
     });
     document.addEventListener('keydown', event => {
         if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 's') {
