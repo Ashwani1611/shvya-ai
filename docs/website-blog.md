@@ -67,7 +67,7 @@ Search previews and completeness checks are advisory, not a promise of ranking. 
 5. In the site's verified Google Search Console property, submit `/sitemap.xml` and inspect a representative article URL. Validate structured data using Google's Rich Results Test and assess loading with PageSpeed Insights.
 6. Monitor impressions, clicks, search queries and demo enquiries. Article demo links prefill the existing booking `interest` field with the originating blog title for attribution.
 
-Search Console ownership/connection and third-party analytics require the site's account access and are not provisioned by this code migration. No third-party tracking script or fabricated traffic metrics are added.
+Search Console ownership/connection and third-party analytics require the site's account access and are not provisioned by this code migration. No third-party tracking script or fabricated traffic metrics are added. First-party article views are measured as described below.
 
 ## Validation
 
@@ -81,3 +81,15 @@ ruff check apps/blog apps/accounts/middleware.py config/urls.py config/celery.py
 ```
 
 The focused tests cover the live/draft boundary, schedules, optimistic concurrency, creation retry recovery, tenant/editor permissions, HTML/upload validation, storage outages and cleanup failures, image visibility and thumbnail fallback, redirects, sitemap and SEO output. The wider CI gate remains authoritative for shared middleware/settings changes.
+
+## Article view tracking
+
+Published articles show a public **views** counter beside reading time. Blog Manager lists the same cumulative total for each article. Existing articles start at zero when migration `0002` is applied; earlier traffic is not reconstructed.
+
+A visible browser tab sends a CSRF-protected POST to `/blog/views/<post-id>/` after loading the article. A signed landing token (one-hour lifetime) binds the request to its article and browser cookie. GET/HEAD requests, redirects, archive pages, images, private previews, known bot user agents, and browsers sending DNT/GPC signals do not increment the counter. A failed tracking request leaves the article readable with its last server-rendered total.
+
+The count is **daily browser views**, not clicks, verified humans, lifetime unique people, or completed reads. One browser counts once per article per IST calendar day. Different devices, cleared cookies and undetected bots can affect totals. JavaScript/cookie blocking or an expired landing token can undercount. No search impressions, Google clicks, referrers, IP addresses, user agents or UTM parameters are stored by this feature. Click attribution requires separate analytics.
+
+The signed `shvya_blog_visitor` cookie expires at the next IST midnight (at most 24 hours), is HttpOnly/SameSite=Lax, uses Secure over HTTPS, and is restricted to `/blog/`. Token-bearing article responses are private/no-store to avoid sharing visitor tokens. Each receipt holds only a daily article-specific HMAC and date. A database uniqueness constraint and locked transaction prevent refresh/retry races; the cumulative counter is updated atomically without editing the article's publication dates, revision or SEO metadata. Totals remain attached to the article across slug changes and republication.
+
+Celery Beat runs `apps.blog.tasks.prune_article_view_receipts` daily on the general worker, removing receipts older than seven days while preserving cumulative totals. Migration, web, Beat, worker and collected static assets must be deployed together. The endpoint is rate-limited to 120 POSTs per source IP per minute; the cache holds only hashed rate-limit keys. This is a lightweight public engagement indicator, not fraud-proof analytics.
