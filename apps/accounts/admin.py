@@ -94,6 +94,8 @@ class UserChangeForm(
             "is_active",
             "is_staff",
             "is_superuser",
+            "groups",
+            "user_permissions",
         )
 
     def clean_password(self):
@@ -266,13 +268,15 @@ class SuperadminAccountAdmin(BaseUserAdmin):
         )
 
     def save_model(self, request, obj, form, change):
-        # A platform superadmin must never inherit a client organization.
-        # Normalizing here also repairs legacy role-only superadmin records
-        # when they are edited through Account Information.
+        # Account information edits must not silently grant platform authority
+        # to role-only users, including restricted website editors. An explicit
+        # promotion belongs in Users; new superadmin creation still sets both
+        # flags in SuperadminCreationForm.
         obj.organization = None
         obj.role = User.Role.SUPERADMIN
-        obj.is_staff = True
-        obj.is_superuser = True
+        if not change:
+            obj.is_staff = True
+            obj.is_superuser = True
         super().save_model(request, obj, form, change)
 
     @admin.display(description="Password")
@@ -434,6 +438,23 @@ class UserAdmin(
             },
         ),
     )
+
+    def get_fieldsets(self, request, obj=None):
+        fieldsets = super().get_fieldsets(request, obj)
+        if obj is None or not request.user.is_superuser:
+            return fieldsets
+        # Only platform superusers can assign direct permissions or membership
+        # of permission-bearing groups through the technical Users editor.
+        return tuple(
+            (name, {**options, "fields": (*options["fields"], "groups", "user_permissions")})
+            if name == "Permissions" else (name, options)
+            for name, options in fieldsets
+        )
+
+    def get_form(self, request, obj=None, **kwargs):
+        if not request.user.is_superuser:
+            kwargs["exclude"] = tuple(kwargs.get("exclude") or ()) + ("groups", "user_permissions")
+        return super().get_form(request, obj, **kwargs)
 
 
 

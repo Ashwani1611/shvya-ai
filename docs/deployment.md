@@ -52,7 +52,7 @@ Provider, browser, Android and gateway changes also require their focused tests/
 1. Confirm the intended `main` commit SHA and the CI/Security result associated with it.
 2. Confirm migrations are reviewed and compatible with the deployed application/worker set.
 3. Verify `/health/live/` and `/health/ready/`.
-4. Verify Celery workers/Beat and Daphne/WebSocket service when those paths changed.
+4. Verify Celery workers/Beat and the Uvicorn/WebSocket service when those paths changed. Follow the [ASGI runtime checks](./asgi-runtime.md) for a protocol-server update.
 5. Verify provider callbacks/integrations only with the correct environment credentials and safe test identities.
 6. Verify durable post-write state or provider receipt; a successful HTTP request alone is not business-outcome proof.
 7. Check structured logs without exposing secrets, raw OAuth tokens, private webhook URLs or customer payloads.

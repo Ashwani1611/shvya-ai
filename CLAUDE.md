@@ -42,7 +42,7 @@ The approved application stack is:
 - **Database:** PostgreSQL 17 + pgvector
 - **Cache / broker:** Redis 8
 - **Background processing:** Celery 5.6 + Celery Beat
-- **Realtime:** Django Channels + Daphne + channels-redis
+- **Realtime:** Django Channels + Uvicorn + channels-redis
 - **AI:** OpenAI SDK + LangGraph
 - **Frontend:** Django Templates + HTMX + JavaScript + Tailwind CSS
 - **Production HTTP:** Gunicorn + Nginx
@@ -416,10 +416,12 @@ The Operations connector is a separate authorization and mutation boundary. Do n
 Production uses separate WSGI and ASGI processes.
 
 - Gunicorn serves normal Django HTTP through `config.wsgi:application`.
-- Daphne serves WebSockets/ASGI through `config.asgi:application`.
+- Uvicorn serves WebSockets/ASGI through `config.asgi:application`.
 - Redis backs channel-layer communication.
 
 Do not expect Gunicorn's WSGI process to serve WebSockets.
+
+The ASGI runner and its explicit protocol limits are documented in `docs/asgi-runtime.md`. The security remediation replaces the protocol server only; Django Channels, authentication, tenant checks and the separate WSGI/ASGI services remain authoritative.
 
 When changing realtime behavior, verify both the HTTP path and the ASGI route. Do not collapse the two services without an explicit architecture change.
 
@@ -620,7 +622,7 @@ Current service responsibilities include:
 - PostgreSQL + pgvector
 - Redis
 - Gunicorn web service
-- Daphne ASGI service
+- Uvicorn ASGI service
 - general Celery worker
 - realtime AI worker
 - Hosted AI worker

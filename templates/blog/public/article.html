@@ -1,0 +1,32 @@
+{% extends 'blog/public/base.html' %}
+{% block blog_content %}
+<main id="blog-main" class="blog-main">
+  {% if preview %}<div class="blog-preview-banner" role="status"><strong>Private preview</strong> This draft is visible only to authorised blog staff. Changes are not live.</div>{% endif %}
+  <div class="blog-container">
+    <nav class="blog-breadcrumbs" aria-label="Breadcrumb"><a href="{% url 'blog:index' %}">Blog</a>{% if article.category.slug %}<span aria-hidden="true">/</span><a href="{% url 'blog:category' article.category.slug %}">{{ article.category.name }}</a>{% endif %}<span aria-hidden="true">/</span><span aria-current="page">Article</span></nav>
+    <article>
+      <div class="blog-article-heading">
+        <p class="blog-eyebrow">{{ article.category.name|default:'SHVYA INSIGHTS' }}</p>
+        <h1>{{ article.title|default:'Untitled article' }}</h1>
+        {% if article.excerpt %}<p class="blog-article-deck">{{ article.excerpt }}</p>{% endif %}
+        <div class="blog-article-byline">
+          <span class="blog-author-avatar" aria-hidden="true">{{ article.author_name|default:'SHVYA AI'|first }}</span>
+          <div><strong>{{ article.author_name|default:'SHVYA AI' }}</strong><div class="blog-meta">{% if published_at %}<time datetime="{{ published_at|date:'c' }}">{{ published_at|date:'F j, Y' }}</time><span aria-hidden="true">·</span>{% endif %}<span>{{ reading_minutes }} min read</span>{% if modified_at and modified_at|date:'Ymd' != published_at|date:'Ymd' %}<span>Updated {{ modified_at|date:'M j, Y' }}</span>{% endif %}</div></div>
+        </div>
+      </div>
+      {% if cover %}<figure class="blog-article-cover"><img src="{{ cover.url }}" alt="{{ cover.alt }}" width="{{ cover.width }}" height="{{ cover.height }}" fetchpriority="high" decoding="async">{% if cover.caption %}<figcaption>{{ cover.caption }}</figcaption>{% endif %}</figure>{% endif %}
+      <div class="blog-reading-layout{% if not toc %} blog-no-toc{% endif %}">
+        {% if toc %}<aside class="blog-toc"><details open><summary>On this page <span aria-hidden="true">⌄</span></summary><nav aria-label="Table of contents">{% for heading in toc %}<a href="#{{ heading.id }}" class="blog-toc-{{ heading.level }}">{{ heading.label }}</a>{% endfor %}</nav></details><div class="blog-toc-note">Capture.<br>Automate.<br><span>Convert.</span></div></aside>{% endif %}
+        <div class="blog-reading-column">
+          <div class="blog-prose">{{ article_body|safe }}</div>
+          {% if article.tags %}<div class="blog-tags" aria-label="Topics">{% for tag in article.tags %}<span>{{ tag }}</span>{% endfor %}</div>{% endif %}
+          <div class="blog-author-card"><span class="blog-author-avatar" aria-hidden="true">{{ article.author_name|default:'SHVYA AI'|first }}</span><div><p class="blog-eyebrow">WRITTEN BY</p><h2>{% if article.author_url %}<a href="{{ article.author_url }}" rel="noopener noreferrer">{{ article.author_name|default:'SHVYA AI' }}</a>{% else %}{{ article.author_name|default:'SHVYA AI' }}{% endif %}</h2>{% if article.author_bio %}<p>{{ article.author_bio }}</p>{% endif %}</div></div>
+          {% if not preview %}<div class="blog-share"><span>Share this article</span><a href="https://www.linkedin.com/sharing/share-offsite/?url={{ share_url|urlencode }}" target="_blank" rel="noopener noreferrer" aria-label="Share on LinkedIn (opens a new tab)">LinkedIn ↗</a><a href="https://wa.me/?text={{ share_url|urlencode }}" target="_blank" rel="noopener noreferrer" aria-label="Share on WhatsApp (opens a new tab)">WhatsApp ↗</a></div>{% endif %}
+        </div>
+      </div>
+    </article>
+    {% if related %}<section class="blog-related" aria-labelledby="blog-related-heading"><div class="blog-section-heading"><h2 id="blog-related-heading">Keep exploring</h2><a href="{% url 'blog:index' %}" class="blog-text-link">All articles ↗</a></div><div class="blog-grid">{% for item in related %}{% include 'blog/public/card.html' %}{% endfor %}</div></section>{% endif %}
+    {% include 'blog/public/cta.html' %}
+  </div>
+</main>
+{% endblock %}

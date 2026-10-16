@@ -1,0 +1,52 @@
+{% extends 'blog/public/base.html' %}
+{% block blog_content %}
+<main id="blog-main" class="blog-main">
+  <section class="blog-intro">
+    <p class="blog-eyebrow">THE SHVYA JOURNAL</p>
+    <h1>{% if category_name %}{{ category_name }}{% else %}Better conversations.<br><span>Smarter growth.</span>{% endif %}</h1>
+    <p>Practical ideas for sales teams. Clear guides to AI, WhatsApp and follow-up that moves business forward.</p>
+    <form action="{{ search_action }}" method="get" class="blog-search" role="search">
+      <label class="blog-sr-only" for="blog-search-input">Search articles</label>
+      <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 4.5 4.5"/></svg>
+      <input id="blog-search-input" type="search" name="q" value="{{ query }}" placeholder="Find a guide, topic or idea…" maxlength="150">
+      <button type="submit">Search</button>
+    </form>
+  </section>
+  <div class="blog-container">
+    <nav class="blog-categories" aria-label="Article categories">
+      <a href="{% url 'blog:index' %}"{% if not category_slug %} class="active" aria-current="page"{% endif %}>All articles</a>
+      {% for category in categories %}<a href="{% url 'blog:category' category.slug %}"{% if category.slug == category_slug %} class="active" aria-current="page"{% endif %}>{{ category.name }}</a>{% endfor %}
+    </nav>
+    {% if featured %}
+    <article class="blog-featured">
+      <a class="blog-featured-image{% if not featured.cover %} blog-image-placeholder{% endif %}" href="{{ featured.url }}" tabindex="-1" aria-hidden="true">
+        {% if featured.cover %}<img src="{{ featured.cover.url }}" alt="" width="{{ featured.cover.width }}" height="{{ featured.cover.height }}" fetchpriority="high" decoding="async">{% else %}<span>SHVYA <span class="blog-mark">AI</span></span><span class="blog-placeholder-topic">Ideas worth putting into practice.</span>{% endif %}
+      </a>
+      <div class="blog-featured-copy">
+        <div class="blog-eyebrow">EDITOR'S PICK <span> / {{ featured.category.name }}</span></div>
+        <h2><a href="{{ featured.url }}">{{ featured.title }}</a></h2>
+        <p>{{ featured.excerpt }}</p>
+        <div class="blog-byline"><span>{{ featured.author_name|default:'SHVYA AI' }}</span><span>{{ featured.reading_minutes }} min read</span></div>
+        <a class="blog-text-link" href="{{ featured.url }}">Read the article <span aria-hidden="true">↗</span></a>
+      </div>
+    </article>
+    {% endif %}
+    {% if posts or not featured %}<section class="blog-list" aria-labelledby="blog-list-heading">
+      <div class="blog-section-heading"><h2 id="blog-list-heading">{% if query %}Results for “{{ query }}”{% elif category_name %}Explore {{ category_name }}{% else %}The latest thinking{% endif %}</h2>{% if query %}<a href="{{ search_action }}" class="blog-text-link">Clear search</a>{% endif %}</div>
+      {% if posts %}
+      <div class="blog-grid">{% for item in posts %}{% include 'blog/public/card.html' %}{% endfor %}</div>
+      {% elif not featured %}
+      <div class="blog-empty"><span class="blog-empty-symbol" aria-hidden="true">✳</span><h3>{% if query %}No articles found{% else %}Good ideas are on their way.{% endif %}</h3><p>{% if query %}Try a different keyword, or explore all our articles.{% else %}We're preparing practical guides to help your team capture, automate and convert. Check back soon.{% endif %}</p><a class="blog-text-link" href="{% if query %}{% url 'blog:index' %}{% else %}{% url 'features' %}{% endif %}">{% if query %}Browse all articles{% else %}Explore what SHVYA can do{% endif %} <span aria-hidden="true">↗</span></a></div>
+      {% endif %}
+      {% if page_obj.paginator.num_pages > 1 %}
+      <nav class="blog-pagination" aria-label="Article pages">
+        {% if previous_url %}<a href="{{ previous_url }}" rel="prev" aria-label="Previous page">←</a>{% endif %}
+        {% for page in pagination %}{% if page.ellipsis %}<span aria-hidden="true">…</span>{% elif page.current %}<span class="current" aria-current="page">{{ page.number }}</span>{% else %}<a href="{{ page.url }}" aria-label="Page {{ page.number }}">{{ page.number }}</a>{% endif %}{% endfor %}
+        {% if next_url %}<a href="{{ next_url }}" rel="next" aria-label="Next page">→</a>{% endif %}
+      </nav>
+      {% endif %}
+    </section>{% endif %}
+    {% include 'blog/public/cta.html' %}
+  </div>
+</main>
+{% endblock %}

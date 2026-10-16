@@ -75,6 +75,11 @@ PUBLIC_ASSET_BASE_URL = str(
     config("PUBLIC_ASSET_BASE_URL", default="") or ""
 ).strip().rstrip("/")
 
+# Canonical marketing origin is configuration-owned, never derived from Host.
+BLOG_PUBLIC_ORIGIN = str(
+    config("BLOG_PUBLIC_ORIGIN", default="https://shvya-ai.com")
+).strip().rstrip("/")
+
 
 # ---------------------------------------------------------------------------
 # OpenAI
@@ -440,6 +445,7 @@ INSTALLED_APPS = [
     "apps.vault.apps.VaultConfig",
 
     # --- Business & AI Feature Apps ---
+    "apps.blog.apps.BlogConfig",
     "apps.channels",
     "apps.copilot",
     "apps.ai_engagement",

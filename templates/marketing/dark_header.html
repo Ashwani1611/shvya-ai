@@ -5,6 +5,7 @@
     <a href="/features/">Features</a><a href="/pricing/">Pricing</a>
     <details class="nav-dropdown"><summary>SHVYA ecosystem <span>⌄</span></summary><div><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a></div></details>
     <a href="/docs/">Documentation</a>
+    <a href="{% url 'blog:index' %}">Blog</a>
   </nav>
   <div class="header-actions">
     {% if crm_user %}
@@ -17,6 +18,7 @@
     <a class="button small" href="/book-a-call/">Book a call <span>↗</span></a>
     <details class="mobile-menu"><summary aria-label="Open navigation">☰</summary><div>
       <a href="/features/">Features ↗</a><a href="/pricing/">Pricing ↗</a><a href="/services/">SHVYA Services ↗</a><a href="/product-suite/">SHVYA Product Suite ↗</a><a href="/#integrations">Integrations ↗</a><a href="/docs/">Documentation ↗</a>
+      <a href="{% url 'blog:index' %}">Blog ↗</a>
       {% if crm_user %}<a href="{% url 'crm-dashboard' %}">Dashboard</a><a href="{% url 'crm-profile' %}">Profile</a><a href="{% url 'crm-logout' %}">Logout</a>{% else %}<a href="{% url 'crm-login' %}">Login</a>{% endif %}
     </div></details>
   </div>

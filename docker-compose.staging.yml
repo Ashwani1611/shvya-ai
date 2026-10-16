@@ -123,12 +123,31 @@ services:
       redis:
         condition: service_healthy
     command:
-      - daphne
-      - -b
-      - "0.0.0.0"
-      - -p
-      - "8001"
+      - uvicorn
       - config.asgi:application
+      - --host
+      - "0.0.0.0"
+      - --port
+      - "8001"
+      - --workers
+      - "1"
+      - --loop
+      - asyncio
+      - --http
+      - h11
+      - --ws
+      - websockets-sansio
+      - --lifespan
+      - "off"
+      - --no-proxy-headers
+      - --ws-max-size
+      - "1048576"
+      - --ws-ping-interval
+      - "20"
+      - --ws-ping-timeout
+      - "30"
+      - --timeout-graceful-shutdown
+      - "5"
     expose:
       - "8001"
 

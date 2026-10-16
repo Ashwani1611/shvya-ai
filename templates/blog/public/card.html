@@ -1,0 +1,11 @@
+<article class="blog-card">
+  <a class="blog-card-image{% if not item.cover %} blog-image-placeholder{% endif %}" href="{{ item.url }}" tabindex="-1" aria-hidden="true">
+    {% if item.cover %}<img src="{{ item.cover.thumbnail_url }}" alt="" width="{{ item.cover.width }}" height="{{ item.cover.height }}" loading="lazy" decoding="async">{% else %}<span>SHVYA <span class="blog-mark">AI</span></span><span class="blog-placeholder-topic">{{ item.category.name|default:'Ideas for better conversations' }}</span>{% endif %}
+  </a>
+  <div class="blog-card-content">
+    <div class="blog-kicker">{{ item.category.name|default:'SHVYA insights' }} <span>· {{ item.reading_minutes }} min read</span></div>
+    <h3><a href="{{ item.url }}">{{ item.title }}</a></h3>
+    <p>{{ item.excerpt }}</p>
+    <div class="blog-card-foot"><span>{{ item.author_name|default:'SHVYA AI' }}</span>{% if item.published_at %}<time datetime="{{ item.published_at|date:'c' }}">{{ item.published_at|date:'M j, Y' }}</time>{% endif %}</div>
+  </div>
+</article>

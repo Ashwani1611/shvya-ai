@@ -79,7 +79,7 @@ SHVYA AI follows a **multi-tenant, service-layer, event-driven, queue-first** ar
 flowchart LR
     User[Browser / API Client] --> Nginx[Nginx]
     Nginx --> Web[Gunicorn / Django WSGI]
-    Nginx --> WS[Daphne / Django ASGI]
+    Nginx --> WS[Uvicorn / Django ASGI]
 
     Meta[Meta Webhooks] --> Web
     Hosted[Hosted WhatsApp Gateway] --> Web
@@ -128,7 +128,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the authoritative engineering contract.
 | Web framework | Django 6.1 |
 | API | Django REST Framework 3.18 |
 | Authentication | SimpleJWT + organization-scoped API keys |
-| Realtime | Django Channels + Daphne + channels-redis |
+| Realtime | Django Channels + Uvicorn + channels-redis |
 | Database | PostgreSQL 17 + pgvector |
 | Cache / broker | Redis 8 |
 | Background jobs | Celery 5.6 + Celery Beat |
@@ -347,8 +347,14 @@ celery -A config beat -l info
 For an ASGI/WebSocket process outside `runserver`:
 
 ```bash
-daphne -b 0.0.0.0 -p 8001 config.asgi:application
+uvicorn config.asgi:application --host 0.0.0.0 --port 8001 \
+  --workers 1 --loop asyncio --http h11 --ws websockets-sansio \
+  --lifespan off --no-proxy-headers --ws-max-size 1048576 \
+  --ws-ping-interval 20 --ws-ping-timeout 30 --timeout-graceful-shutdown 5
 ```
+
+The separate ASGI service uses the same command in both Compose environments.
+See [ASGI runtime](./docs/asgi-runtime.md) for its security limits and release checks.
 
 ---
 
@@ -545,7 +551,7 @@ The production-style stack is defined in [`docker-compose.yml`](./docker-compose
 - PostgreSQL + pgvector
 - Redis
 - Gunicorn web service
-- Daphne WebSocket/ASGI service
+- Uvicorn WebSocket/ASGI service
 - general Celery worker
 - realtime AI worker
 - Hosted AI worker
@@ -606,6 +612,7 @@ API writes and external side effects should preserve tenant isolation and idempo
 
 Useful project documentation includes:
 
+- [`docs/website-blog.md`](./docs/website-blog.md) - website blog, editorial workflow, public SEO and image publication
 - [`CLAUDE.md`](./CLAUDE.md) - architecture and engineering rules
 - [`docs/README.md`](./docs/README.md) - documentation map, freshness rules and canonical-vs-historical guide
 - [`docs/local_setup.md`](./docs/local_setup.md) - local development notes

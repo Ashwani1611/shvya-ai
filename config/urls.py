@@ -12,9 +12,14 @@ from apps.integrations.views.justdial import justdial_webhook_view
 from apps.superadmin.views import admin_global_search
 
 from apps.core.views import BookCallView, DocumentationView, FeaturesView, HomeView, PricingView
+from apps.blog import public as blog_public
 
 
 urlpatterns = [
+    path("superadmin/blog/", include("apps.blog.urls")),
+    path("blog/", include("apps.blog.public_urls")),
+    path("sitemap.xml", blog_public.sitemap, name="website-sitemap"),
+    path("robots.txt", blog_public.robots, name="website-robots"),
     path("superadmin/vault/", include("apps.vault.urls_staff")),
     path("vault/api/agent/", include("apps.vault.urls_agent")),
     path("vault/", include("apps.vault.urls_client")),
