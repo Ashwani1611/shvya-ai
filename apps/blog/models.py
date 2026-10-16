@@ -35,6 +35,7 @@ class Post(models.Model):
     published_slug = models.SlugField(max_length=180, unique=True, null=True, blank=True)
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.DRAFT, db_index=True)
     version = models.PositiveIntegerField(default=1)
+    view_count = models.PositiveBigIntegerField(default=0, editable=False)
     scheduled_at = models.DateTimeField(null=True, blank=True, db_index=True)
     scheduled_snapshot = models.JSONField(null=True, blank=True)
     scheduled_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
@@ -79,6 +80,19 @@ class Post(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class ArticleView(models.Model):
+    """Short-lived deduplication receipts; cumulative totals live on Post."""
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name="view_receipts")
+    day = models.DateField(db_index=True)
+    visitor_digest = models.CharField(max_length=64)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(
+            fields=["post", "day", "visitor_digest"], name="blog_daily_browser_view_unique",
+        )]
 
 
 class BlogImage(models.Model):

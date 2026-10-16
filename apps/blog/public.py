@@ -1,4 +1,4 @@
-"""Read-only public blog routes. Draft JSON is never a public read source."""
+"""Public blog rendering routes. Draft JSON is never a public read source."""
 
 from urllib.parse import urlencode
 from uuid import UUID
@@ -12,6 +12,7 @@ from django.urls import reverse
 from django.utils.cache import patch_vary_headers
 from django.views.decorators.http import require_safe
 
+from . import tracking
 from .models import BlogImage, SlugRedirect
 from .seo import (
     absolute_url, article_body, article_seo, article_url, canonical_url,
@@ -65,6 +66,8 @@ def build_article_context(post, snapshot, preview=False, request=None):
         "cover": cover,
         "toc": toc,
         "reading_minutes": reading_minutes(snapshot.get("body_html", "")),
+        "view_count": post.view_count,
+        "view_url": reverse("blog:record_view", kwargs={"post_id": post.pk}),
         "published_at": post.published_at,
         "modified_at": post.live_updated_at,
         "preview": preview,
@@ -191,7 +194,18 @@ def detail(request, slug):
     context = build_article_context(post, post.published_snapshot, request=request)
     if request.GET:
         context["seo"]["robots"] = "noindex, follow"
-    return _page_response(request, "blog/public/article.html", context)
+    visitor = tracking.prepare_tracking(request, post, context)
+    response = _page_response(request, "blog/public/article.html", context)
+    if context.get("view_token"):
+        # The signed landing token is browser-specific and must never be shared.
+        response["Cache-Control"] = "private, no-store"
+    if visitor:
+        response.set_signed_cookie(
+            tracking.COOKIE, visitor, salt=tracking.COOKIE_SALT,
+            max_age=tracking.cookie_lifetime(), path="/blog/", secure=request.is_secure(),
+            httponly=True, samesite="Lax",
+        )
+    return response
 
 
 @require_safe

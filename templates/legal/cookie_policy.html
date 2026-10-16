@@ -1,6 +1,6 @@
 {% extends "marketing/dark_base.html" %}
 {% block title %}cookie policy — SHVYA AI{% endblock %}
-{% block content %}{% include "marketing/dark_header.html" %}<main class="legal-layout"><aside><p class="eyebrow">SHVYA / LEGAL</p><a class="" href="/privacy-policy/">Privacy Policy</a><a class="" href="/terms-conditions/">Terms &amp; Conditions</a><a class="active" href="/cookie-policy/">Cookie Policy</a><a class="" href="/refund-policy/">Refund Policy</a></aside><article class="legal-content"><p class="eyebrow">TECJNANAM ACADEMY LLP / SHVYA</p><h1>Cookie Policy</h1><p class="legal-date">Last updated: 02/09/2026</p><div class="notice"><b>This landing page</b><p>This version does not include advertising pixels or analytics tracking scripts. Hosting and access-control services may use cookies needed to deliver the site. The introduction video is hosted with the site.</p></div><div>
+{% block content %}{% include "marketing/dark_header.html" %}<main class="legal-layout"><aside><p class="eyebrow">SHVYA / LEGAL</p><a class="" href="/privacy-policy/">Privacy Policy</a><a class="" href="/terms-conditions/">Terms &amp; Conditions</a><a class="active" href="/cookie-policy/">Cookie Policy</a><a class="" href="/refund-policy/">Refund Policy</a></aside><article class="legal-content"><p class="eyebrow">TECJNANAM ACADEMY LLP / SHVYA</p><h1>Cookie Policy</h1><p class="legal-date">Last updated: 16/10/2026</p><div class="notice"><b>This landing page</b><p>The blog uses a first-party article view counter. It does not add advertising pixels or third-party analytics scripts. Hosting and access-control services may use cookies needed to deliver the site. The introduction video is hosted with the site.</p></div><div>
 <p>This Cookie Policy explains how Shvya (operated by Tecjnanam Academy LLP) uses cookies and similar tracking technologies on our website. By using our website, you agree that we can store and access cookies as described in this policy. If you do not agree, you may disable cookies through your browser settings (instructions below).</p>
 
 <h2>1. What Are Cookies?</h2>
@@ -14,6 +14,8 @@
 
 <h3>B. Analytics & Performance Cookies</h3>
 <p>These cookies help us understand how visitors use the website so we can improve it. They may track which pages are visited, time spent on each page, errors or crashes, and traffic sources. We may use tools like Google Analytics for this purpose.</p>
+
+<p>On blog article pages, <code>shvya_blog_visitor</code> is a signed, random first-party cookie, scoped to <code>/blog/</code> and expires at the next midnight in India Standard Time (at most 24 hours). It helps count a browser once per article per day (India Standard Time). The counter stores an article-specific daily hash rather than a raw cookie identifier, IP address or user-agent. Deduplication records are removed by a daily cleanup after seven days; cumulative article totals remain. A CSRF cookie protects the counting request. Known bots and browsers sending Do Not Track or Global Privacy Control signals are excluded. Blocking cookies or JavaScript prevents the visit from being counted, while the article remains readable.</p>
 
 <h3>C. Preference Cookies</h3>
 <p>These remember your language settings, display preferences, and previously selected options — helping provide a smoother, more personalised experience.</p>

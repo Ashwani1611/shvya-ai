@@ -1,4 +1,5 @@
 {% extends 'blog/public/base.html' %}
+{% load static %}
 {% block blog_content %}
 <main id="blog-main" class="blog-main">
   {% if preview %}<div class="blog-preview-banner" role="status"><strong>Private preview</strong> This draft is visible only to authorised blog staff. Changes are not live.</div>{% endif %}
@@ -11,7 +12,7 @@
         {% if article.excerpt %}<p class="blog-article-deck">{{ article.excerpt }}</p>{% endif %}
         <div class="blog-article-byline">
           <span class="blog-author-avatar" aria-hidden="true">{{ article.author_name|default:'SHVYA AI'|first }}</span>
-          <div><strong>{{ article.author_name|default:'SHVYA AI' }}</strong><div class="blog-meta">{% if published_at %}<time datetime="{{ published_at|date:'c' }}">{{ published_at|date:'F j, Y' }}</time><span aria-hidden="true">·</span>{% endif %}<span>{{ reading_minutes }} min read</span>{% if modified_at and modified_at|date:'Ymd' != published_at|date:'Ymd' %}<span>Updated {{ modified_at|date:'M j, Y' }}</span>{% endif %}</div></div>
+          <div><strong>{{ article.author_name|default:'SHVYA AI' }}</strong><div class="blog-meta">{% if published_at %}<time datetime="{{ published_at|date:'c' }}">{{ published_at|date:'F j, Y' }}</time><span aria-hidden="true">·</span>{% endif %}<span>{{ reading_minutes }} min read</span>{% if not preview %}<span aria-hidden="true">·</span><span title="Views since tracking began; counted once per browser per day (IST)."><span id="blog-view-count"{% if view_token %} data-url="{{ view_url }}" data-token="{{ view_token }}" data-csrf="{{ view_csrf }}"{% endif %}>{{ view_count }}</span> views</span>{% endif %}{% if modified_at and modified_at|date:'Ymd' != published_at|date:'Ymd' %}<span>Updated {{ modified_at|date:'M j, Y' }}</span>{% endif %}</div></div>
         </div>
       </div>
       {% if cover %}<figure class="blog-article-cover"><img src="{{ cover.url }}" alt="{{ cover.alt }}" width="{{ cover.width }}" height="{{ cover.height }}" fetchpriority="high" decoding="async">{% if cover.caption %}<figcaption>{{ cover.caption }}</figcaption>{% endif %}</figure>{% endif %}
@@ -30,3 +31,5 @@
   </div>
 </main>
 {% endblock %}
+
+{% block extra_scripts %}{{ block.super }}{% if not preview and view_token %}<script src="{% static 'blog/views.js' %}" defer></script>{% endif %}{% endblock %}

@@ -29,6 +29,10 @@ from config import celery_observability  # noqa: E402,F401
 # self-schedules a due-time wake-up, and the dedicated recovery scans catch jobs
 # or sender publications that were missed around a deploy/broker interruption.
 app.conf.beat_schedule = {
+    "prune-blog-view-receipts-daily": {
+        "task": "apps.blog.tasks.prune_article_view_receipts", "schedule": 86400.0,
+        "options": {"expires": 86400},
+    },
     "publish-scheduled-blog-posts": {
         "task": "apps.blog.tasks.publish_scheduled_posts", "schedule": 60.0,
         "options": {"expires": 60},

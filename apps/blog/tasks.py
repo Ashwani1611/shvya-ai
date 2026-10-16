@@ -9,3 +9,9 @@ from .services import publish_due_posts
 def publish_scheduled_posts():
     """Minute-based durable sweep; row locks make overlapping/retried runs safe."""
     return publish_due_posts()
+
+
+@shared_task(name="apps.blog.tasks.prune_article_view_receipts", ignore_result=True)
+def prune_article_view_receipts():
+    from .tracking import prune_view_receipts
+    return prune_view_receipts()
