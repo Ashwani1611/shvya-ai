@@ -11,7 +11,7 @@ The supported topology is now:
 ```text
 external load balancer / Nginx
   ├── Gunicorn web x N ─┐
-  ├── Daphne ASGI x N ──┼── PgBouncer (transaction mode) ── PostgreSQL
+  ├── Uvicorn ASGI x N ─┼── PgBouncer (transaction mode) ── PostgreSQL
   └── Celery lanes x N ─┘
          ├── celery (general)
          ├── ai_realtime
@@ -90,6 +90,8 @@ Deployment validation:
 Production no longer publishes the web container's port to the host; Nginx is the ingress. Web, ASGI, and each Celery lane expose declarative replica controls (`WEB_REPLICAS`, `ASGI_REPLICAS`, and lane-specific `CELERY_*_REPLICAS`) so routine Compose deploys preserve the intended fleet shape. Docker DNS is resolved dynamically by Nginx for web/ASGI membership; an external load balancer may replace this when the fleet spans hosts. Use WebSocket upgrade support and connection draining. Sticky sessions are not required.
 
 WebSocket authentication binds users to their organization before joining tenant-specific groups. Shared Channels Redis carries broadcasts across ASGI replicas. Heartbeats refresh shared presence; stale entries expire. Clients must reconnect and refetch current durable chat state after disconnect. Delivery is at-least-once at the broadcast layer, so browser rendering must continue to key messages by durable message/provider ID rather than arrival count.
+
+Each ASGI container runs one Uvicorn process; scale with `ASGI_REPLICAS`. Runtime flags and verification for the protocol-server security update are documented in [ASGI runtime](../asgi-runtime.md).
 
 Celery concurrency is configured with environment variables. Realtime and Hosted AI keep priority isolation. Campaigns are bounded, durable, and account-round-robin; ingestion is isolated because document work is CPU/provider-heavy; automation is isolated because scans can burst. `prefetch_multiplier=1`, child recycling, and memory caps reduce head-of-line blocking and leaks.
 

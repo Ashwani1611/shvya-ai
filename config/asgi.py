@@ -27,6 +27,7 @@ from channels.security.websocket import AllowedHostsOriginValidator  # noqa: E40
 from apps.accounts.channels_middleware import (  # noqa: E402
     CRMSessionAuthMiddleware,
 )
+from apps.channels.asgi import WebSocketLifecycleMiddleware  # noqa: E402
 from apps.channels.routing import (  # noqa: E402
     websocket_urlpatterns,
 )
@@ -35,10 +36,12 @@ application = ProtocolTypeRouter(
     {
         "http": django_asgi_app,
 
-        "websocket": AllowedHostsOriginValidator(
-            CRMSessionAuthMiddleware(
-                URLRouter(
-                    websocket_urlpatterns,
+        "websocket": WebSocketLifecycleMiddleware(
+            AllowedHostsOriginValidator(
+                CRMSessionAuthMiddleware(
+                    URLRouter(
+                        websocket_urlpatterns,
+                    )
                 )
             )
         ),

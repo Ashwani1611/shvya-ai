@@ -11,7 +11,7 @@ flowchart LR
     Browser[Browser / API / MCP client] --> Nginx[Nginx]
     Provider[Meta / Google / external callbacks] --> Nginx
     Nginx --> WSGI[Gunicorn / Django WSGI]
-    Nginx --> ASGI[Daphne / Django ASGI]
+    Nginx --> ASGI[Uvicorn / Django ASGI]
 
     WSGI --> PG[(PostgreSQL + pgvector)]
     ASGI --> PG
