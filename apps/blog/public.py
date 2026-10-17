@@ -19,13 +19,14 @@ from .seo import (
     image_data, reading_minutes,
 )
 from .services import media_response, published_posts, snapshot_image_ids
+from apps.core.docs_portal import DOC_ORDER
 
 
 PAGE_SIZE = 9
 SITEMAP_PAGE_SIZE = 45000
 CORE_SITEMAP_NAMES = (
     "home", "features", "pricing", "services", "product_suite", "docs",
-    "book_call", "privacy_policy", "terms_conditions", "cookie_policy", "refund_policy",
+    "book_call", "cookie_policy", "refund_policy",
 )
 
 
@@ -245,6 +246,14 @@ def sitemap(request):
     if page.number == 1:
         for name in (*CORE_SITEMAP_NAMES, "blog:index"):
             SubElement(SubElement(root, "url"), "loc").text = absolute_url(reverse(name))
+        # Use the same curated public catalogue as the documentation renderer.
+        # Never enumerate operational routes or internal engineering documents.
+        for article in DOC_ORDER:
+            SubElement(SubElement(root, "url"), "loc").text = absolute_url(article["url"])
+        categories = posts.order_by().values_list("published_snapshot__category", flat=True).distinct()
+        for slug in sorted({item["slug"] for item in categories if item and item.get("slug")}):
+            path = reverse("blog:category", kwargs={"slug": slug})
+            SubElement(SubElement(root, "url"), "loc").text = absolute_url(path)
     for post in page.object_list.iterator(chunk_size=500):
         snapshot = post.published_snapshot
         location = article_url(post.published_slug)
@@ -259,9 +268,13 @@ def sitemap(request):
 
 @require_safe
 def robots(request):
-    return HttpResponse(
+    response = HttpResponse(
         "User-agent: *\nAllow: /\nDisallow: /superadmin/\nDisallow: /admin/\n"
         "Disallow: /dashboard/\nDisallow: /api/\nDisallow: /vault/\n"
+        "Disallow: /contact-us\nDisallow: /privacy-policy\nDisallow: /terms-conditions\n"
+        "Disallow: /faq\nDisallow: /*?search\nDisallow: /*&search\n"
         f"Sitemap: {absolute_url('/sitemap.xml')}\n",
         content_type="text/plain; charset=utf-8",
     )
+    response["Cache-Control"] = "public, max-age=0, must-revalidate"
+    return response
