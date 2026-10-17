@@ -5,10 +5,10 @@ from types import SimpleNamespace
 from bs4 import BeautifulSoup
 from django.conf import settings
 from django.template import Context, Engine
-from django.test import SimpleTestCase
+from django.test import RequestFactory, SimpleTestCase
 
-from apps.core.docs_portal import docs_context
 from apps.core.marketing_context import marketing_context
+from apps.core.views import DocumentationView
 
 
 class MarketingCanonicalTests(SimpleTestCase):
@@ -42,14 +42,20 @@ class MarketingCanonicalTests(SimpleTestCase):
                               'title': 'Blog', 'description': 'Sales guides'}),
                          ['https://shvya-ai.com/blog/?page=2'])
 
-    def test_legacy_doc_topics_use_the_article_canonical(self):
-        self.assertEqual(self.canonical_links(
-            'docs.html', '/docs/', query={'topic': 'playbooks', 'utm_source': 'campaign'},
-            **docs_context(legacy_topic='playbooks'),
-        ), ['https://shvya-ai.com/docs/ai-automation/ai-brain/'])
+    def assert_docs_metadata(self, url, **view_kwargs):
+        request = RequestFactory().get(url)
+        response = DocumentationView.as_view()(request, **view_kwargs).render()
+        soup = BeautifulSoup(response.content, 'html.parser')
+        canonical = 'https://shvya-ai.com/docs/ai-automation/ai-brain/'
+        self.assertEqual([tag['href'] for tag in soup.select('link[rel=canonical]')], [canonical])
+        self.assertEqual(soup.select_one('meta[property="og:url"]')['content'], canonical)
+        self.assertIn('max-image-preview:large', soup.select_one('meta[name=robots]')['content'])
+        self.assertIsNotNone(soup.select_one('meta[name="twitter:card"]'))
+        self.assertIsNotNone(soup.select_one('script[type="application/ld+json"]'))
+
+    def test_legacy_doc_topics_retain_article_canonical_and_shared_metadata(self):
+        self.assert_docs_metadata('/docs/?topic=playbooks&utm_source=campaign')
 
     def test_documentation_article_uses_its_own_canonical(self):
-        self.assertEqual(self.canonical_links(
-            'docs.html', '/docs/ai-automation/ai-brain/',
-            **docs_context(category='ai-automation', slug='ai-brain'),
-        ), ['https://shvya-ai.com/docs/ai-automation/ai-brain/'])
+        self.assert_docs_metadata('/docs/ai-automation/ai-brain/',
+                                  category='ai-automation', slug='ai-brain')
