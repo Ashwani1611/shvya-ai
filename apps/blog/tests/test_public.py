@@ -7,6 +7,8 @@ from django.urls import reverse
 
 from apps.blog import services
 from apps.blog.tests.helpers import BlogTestCase
+from apps.core.docs_portal import DOC_ORDER
+from unittest.mock import patch
 
 
 class PublicBlogTests(BlogTestCase):
@@ -165,3 +167,35 @@ class PublicBlogTests(BlogTestCase):
         for url in (reverse("blog:index"), self.article_url(post.published_slug), reverse("website-sitemap"), reverse("website-robots")):
             with self.subTest(url=url):
                 self.assertEqual(Client().post(url, {}).status_code, 405)
+
+    def test_sitemap_covers_public_docs_categories_and_all_article_pages(self):
+        first = self.publish(slug="first-sitemap-guide")
+        second = self.publish(slug="second-sitemap-guide")
+        with patch("apps.blog.public.SITEMAP_PAGE_SIZE", 1):
+            index = ElementTree.fromstring(self.client.get(reverse("website-sitemap")).content)
+            maps = [node.text for node in index.findall("{*}sitemap/{*}loc")]
+            self.assertEqual(len(maps), 2)
+            locations = []
+            for number in (1, 2):
+                response = self.client.get(reverse("website-sitemap"), {"page": number})
+                root = ElementTree.fromstring(response.content)
+                locations.extend(node.text for node in root.findall("{*}url/{*}loc"))
+            self.assertEqual(len(locations), len(set(locations)))
+            for post in (first, second):
+                self.assertIn(f"https://shvya-ai.com{post.get_absolute_url()}", locations)
+            for article in DOC_ORDER:
+                self.assertIn(f"https://shvya-ai.com{article['url']}", locations)
+            self.assertIn("https://shvya-ai.com/blog/category/crm-sales/", locations)
+            self.assertNotIn("https://shvya-ai.com/privacy-policy/", locations)
+            self.assertNotIn("https://shvya-ai.com/terms-conditions/", locations)
+            self.assertEqual(self.client.get(reverse("website-sitemap"), {"page": 3}).status_code, 404)
+
+    def test_robots_preserves_public_crawling_and_requested_exclusions(self):
+        response = self.client.get(reverse("website-robots"))
+        self.assertContains(response, "Sitemap: https://shvya-ai.com/sitemap.xml")
+        for path in ("/contact-us", "/privacy-policy", "/terms-conditions", "/faq", "/*?search", "/*&search", "/superadmin/"):
+            self.assertContains(response, f"Disallow: {path}\n")
+        self.assertNotContains(response, "Disallow: /blog/")
+        self.assertNotContains(response, "Disallow: /docs/")
+        self.assertNotContains(response, "tecknowacademy")
+        self.assertEqual(response["Cache-Control"], "public, max-age=0, must-revalidate")

@@ -27,7 +27,9 @@ No Google script loads before explicit permission. Preferences can be reopened a
 
 ## SEO coverage
 
-The marketing base supplies a canonical URL from the configured origin, robots directives and social metadata. Blog pages retain their own canonical, Article/Breadcrumb structured data, previews and noindex behavior. The existing sitemap includes core pages and published, indexable articles. Robots excludes private operational areas; robots is not access control. Search Console verification supports both DNS and HTML ownership methods.
+The marketing base supplies a canonical URL from the configured origin, robots directives and social metadata. Blog pages retain their own canonical, Article/Breadcrumb structured data, previews and noindex behavior. The dynamic `/sitemap.xml` includes public marketing pages, every curated documentation article, blog categories with indexable published content, and every published, indexable, self-canonical blog article. Drafts, unpublished articles, noindex articles and alternate canonical article URLs are excluded. Publishing an article adds its URL automatically; `lastmod` uses the live content update time, not visitor counts or sitemap request time. Large blog inventories use a sitemap index.
+
+At the site owner’s request, `/robots.txt` blocks `/contact-us`, `/privacy-policy`, `/terms-conditions`, `/faq` and `search` query variants, alongside existing private operational areas. Blocked legal pages are excluded from the sitemap. These exclusions reduce crawling; they do not improve rankings or guarantee removal from search results. The blog’s actual `q` search URLs remain crawlable so Google can read their `noindex` directive. Public blogs, documentation and static assets remain crawlable. Robots is not access control. Both crawler endpoints request cache revalidation; purge any edge cache that overrides origin headers after deployment. Search Console verification supports both DNS and HTML ownership methods.
 
 ## Release verification
 
