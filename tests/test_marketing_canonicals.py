@@ -1,6 +1,5 @@
 """Marketing canonical URLs must ignore tracking parameters and request hosts."""
 from pathlib import Path
-from types import SimpleNamespace
 
 from bs4 import BeautifulSoup
 from django.conf import settings
@@ -19,8 +18,10 @@ class MarketingCanonicalTests(SimpleTestCase):
         })
 
     def canonical_links(self, template, path, **context):
-        request = SimpleNamespace(path=path, META={'HTTP_HOST': 'untrusted.example'},
-                                  GET=context.pop('query', {'utm_source': 'campaign'}))
+        request = RequestFactory().get(
+            path, data=context.pop('query', {'utm_source': 'campaign'}),
+            HTTP_HOST='untrusted.example',
+        )
         html = self.engine.get_template(template).render(Context({'request': request, **marketing_context(request), **context}))
         return [node['href'] for node in BeautifulSoup(html, 'html.parser').select('link[rel=canonical]')]
 
