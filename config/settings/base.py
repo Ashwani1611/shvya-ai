@@ -75,6 +75,10 @@ PUBLIC_ASSET_BASE_URL = str(
     config("PUBLIC_ASSET_BASE_URL", default="") or ""
 ).strip().rstrip("/")
 
+# Optional public marketing measurement. Keep credentials out of these values.
+GOOGLE_ANALYTICS_ID = str(config("GOOGLE_ANALYTICS_ID", default="")).strip()
+GOOGLE_SITE_VERIFICATION = str(config("GOOGLE_SITE_VERIFICATION", default="")).strip()
+
 # Canonical marketing origin is configuration-owned, never derived from Host.
 BLOG_PUBLIC_ORIGIN = str(
     config("BLOG_PUBLIC_ORIGIN", default="https://shvya-ai.com")
@@ -619,6 +623,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
+                "apps.core.marketing_context.marketing_context",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
 
