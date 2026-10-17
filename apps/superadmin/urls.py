@@ -1,3 +1,5 @@
+from .ai_brain_views import organization_ai_brain
+from .organization_console_views import organization_lookup
 from .model_routing_views import organization_model_routing_update_view
 from .justdial_views import organization_justdial_view
 from .acres99_views import organization_acres99_view
@@ -57,6 +59,8 @@ from .plan_controls import organization_modules_view, organization_delete_view, 
 from apps.integrations.views.indiamart import indiamart_setup_view
 
 urlpatterns = [
+    path("organization/<uuid:organization_id>/ai-brain/", organization_ai_brain, name="superadmin-organization-ai-brain"),
+    path("organizations/lookup/", organization_lookup, name="superadmin-organization-lookup"),
     path("api/incidents/", api_incidents_view, name="superadmin-api-incidents"),
     path("api/activities/<uuid:activity_id>/investigation/", api_incident_update_view, name="superadmin-api-incident-update"),
     path("api/", api_operations_view, name="superadmin-api"),

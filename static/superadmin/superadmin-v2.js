@@ -100,7 +100,7 @@
     }
 
     function addInformationCompactToggle(card) {
-        if (!card) return;
+        if (!card || card.dataset.consoleSummary === "true") return;
         card.classList.add("sa-org-information-card", "is-compact");
         const header = card.firstElementChild;
         if (!header) return;

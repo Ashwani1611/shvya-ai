@@ -1,11 +1,20 @@
 {% extends "superadmin/base.html" %}
 
+{% load static %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'superadmin/organization-console.css' %}">
+{% endblock %}
 {% block content %}
+{% include "superadmin/org_detail/_analytics_filters.html" %}
 {% include "superadmin/org_detail/_overview.html" %}
 {% include "superadmin/org_detail/_control_center.html" %}
+{% include "superadmin/org_detail/_analytics.html" %}
 {% include "superadmin/org_detail/_model_routing.html" %}
 {% include "superadmin/org_detail/_modals.html" %}
 {% include "superadmin/org_detail/_payment_user_scripts.html" %}
 {% include "superadmin/org_detail/_external_ai_operations.html" %}
 {% include "superadmin/org_detail/_footer_scripts.html" %}
+
 {% endblock %}
+
+{% block extra_scripts %}<script defer src="{% static 'superadmin/organization-console.js' %}"></script>{% endblock %}
