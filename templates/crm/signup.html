@@ -84,6 +84,7 @@
             }
         }
     </style>
+{% if marketing_ga_id %}<script src="{% static 'marketing/analytics.js' %}" data-ga-id="{{ marketing_ga_id }}" defer></script><link rel="stylesheet" href="{% static 'marketing/analytics.css' %}">{% endif %}
 </head>
 <body>
 <main class="login-shell">
@@ -430,5 +431,6 @@
     window.setTimeout(typeNextCharacter, 320);
 }());
 </script>
+{% include "marketing/analytics_consent.html" %}
 </body>
 </html>

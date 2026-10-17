@@ -28,3 +28,10 @@ condition = "AND"
 paths = ['''^static/marketing/analytics\.js$''']
 regexTarget = "line"
 regexes = ['''^\s*const key = 'shvya-marketing-consent-v1';\s*$''']
+
+[[rules.allowlists]]
+description = "Browser test dispatches the public analytics consent preference name; not a credential."
+condition = "AND"
+paths = ['''^tests/js/marketing-analytics\.test\.cjs$''']
+regexTarget = "line"
+regexes = ['''^\s*const h=harness\(\{consent:'granted'\}\);h\.events\.storage\(\{key:'shvya-marketing-consent-v1',newValue:'denied'\}\);\s*$''']

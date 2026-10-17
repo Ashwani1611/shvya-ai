@@ -38,14 +38,7 @@
 </head>
 <body class="marketing-site {% block body_class %}{% endblock %}">
   {% block content %}{% endblock %}
-  {% if marketing_ga_id and not preview %}
-  <aside id="marketing-consent" class="marketing-consent" aria-label="Analytics preferences" hidden>
-    <p>Allow usage measurement to help improve this website? <a href="/cookie-policy/">Cookie policy</a></p>
-    <button type="button" data-analytics-consent="granted">Allow analytics</button>
-    <button type="button" data-analytics-consent="denied">Decline</button>
-  </aside>
-  <button type="button" id="marketing-consent-settings" class="marketing-consent-settings">Analytics preferences</button>
-  {% endif %}
+  {% include "marketing/analytics_consent.html" %}
   <script src="{% static 'marketing/dark/interactions.js' %}" defer></script>
   <script src="{% static 'marketing/opportunity.js' %}" defer></script>
   {% block extra_scripts %}{% endblock %}
