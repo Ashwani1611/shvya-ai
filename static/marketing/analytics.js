@@ -38,7 +38,9 @@
       gtag('js', new Date());
       // Exclude query strings, fragments, booking references and submitted form values.
       let referrer = '';
-      try { referrer = new URL(document.referrer).origin; } catch (_) { /* Direct visit. */ }
+      try { const source = new URL(document.referrer);
+        if (['www.google.com', 'google.com', 'www.google.co.in', 'www.bing.com', 'bing.com', 'duckduckgo.com'].includes(source.hostname)) referrer = source.origin;
+      } catch (_) { /* Direct visit. */ }
       gtag('config', id, {send_page_view: false, allow_google_signals: false, allow_ad_personalization_signals: false,
         page_location: 'https://shvya-ai.com' + location.pathname, page_referrer: referrer,
         page_title: 'SHVYA AI public website', cookie_expires: 7776000, cookie_update: false});

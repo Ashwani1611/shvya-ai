@@ -23,7 +23,7 @@
 | outbound_click | External HTTP link; no target URL or domain is sent |
 | content_scroll | 50% or 90% of scrollable page reached |
 
-No Google script loads before explicit permission. Preferences can be reopened and collection disabled. Query strings, fragments, form values and booking references are not sent by the custom events. Referrers are reduced to origin. Query stripping also removes automatic UTM campaign attribution; do not expect campaign-level reporting until a reviewed attribution design is added. Local browser storage keeps preferences and conversion deduplication markers. This does not replace the existing blog view counter.
+No Google script loads before explicit permission. Preferences can be reopened and collection disabled. Query strings, fragments, form values and booking references are not sent by the custom events. Referrers are limited to allowlisted search-engine origins; other referrers are omitted. Query stripping also removes automatic UTM campaign attribution; do not expect campaign-level reporting until a reviewed attribution design is added. Local browser storage keeps preferences and conversion deduplication markers. This does not replace the existing blog view counter.
 
 ## SEO coverage
 
