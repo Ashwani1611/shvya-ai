@@ -69,6 +69,8 @@ See [`docs/operations-mcp.md`](./docs/operations-mcp.md) and [`docs/operations-m
 
 Superadmin's **API** section provides searchable operational history across requests, workers and integrations. See [`docs/api-operations.md`](./docs/api-operations.md) for capture coverage, outcome semantics and rollout requirements.
 
+Each organisation's **Message Activity** workspace brings together saved WhatsApp/Instagram messages, AI runs and queues, Cadence attempts and Workflow results, with pipeline/linked-number filters, inspectable history and Excel export. See [`docs/superadmin-message-activity.md`](./docs/superadmin-message-activity.md) for status meanings, timezone/filter behavior, export formatting and retained-evidence limits.
+
 ---
 
 ## Architecture

@@ -22,6 +22,10 @@ are imported.
   available alongside every chart. Zero buckets are filled.
 - The next 20 active, enabled, scheduled Cadence assignments and their next step.
   Overdue is a scheduling observation, not proof of failure.
+- The **Message Activity** link opens organisation-scoped messages, AI/queue,
+  Cadence and Workflow records with pipeline, linked-number and date filters,
+  detail history and `.xlsx` export. See
+  [`superadmin-message-activity.md`](./superadmin-message-activity.md).
 
 Every query uses the URL-authorized organisation; the existing superuser guard
 remains unchanged. Operational test lead fixtures are excluded. Windows use the

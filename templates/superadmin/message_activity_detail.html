@@ -1,0 +1,125 @@
+{% extends 'superadmin/base.html' %}
+{% load static %}
+
+{% block title %}Activity Details · {{ organization.name }} · SHVYA{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'superadmin/message-activity.css' %}?v=20261017-1">
+{% endblock %}
+
+{% block content %}
+<div class="ma-workspace ma-workspace--detail">
+    <nav class="ma-detail-breadcrumbs" aria-label="Activity navigation">
+        <a class="ma-back" href="{{ urls.index }}"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 4-6 6 6 6m-6-6h16" stroke-linecap="round" stroke-linejoin="round"/></svg><span>Back to message activity</span></a>
+        <a class="ma-inline-link" href="{{ urls.org }}">{{ organization.name }} →</a>
+    </nav>
+
+    <header class="ma-header">
+        <div class="ma-header-copy">
+            <p class="ma-eyebrow">{{ organization.name }} · {{ activity_row.kind_label|default:activity_row.kind }}</p>
+            <h1>Activity details</h1>
+            <p class="ma-description">{% if activity_row.event_time %}Recorded <time datetime="{{ activity_row.event_time|date:'c' }}">{{ activity_row.event_time|date:'d M Y, H:i:s T' }}</time>{% else %}No event timestamp was retained{% endif %}{% if activity_row.lead_name %} · {{ activity_row.lead_name }}{% endif %}</p>
+        </div>
+        <div class="ma-detail-status">
+            <span class="ma-eyebrow">Recorded result</span>
+            <span class="ma-status ma-status--{{ activity_row.outcome|slugify }}">{{ activity_row.status_label|default:activity_row.status|default:'Not recorded' }}</span>
+        </div>
+    </header>
+
+    <div class="ma-detail-intro"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 9v5m0-8v.1" stroke-linecap="round"/></svg><p>AI and automation completion describe processing. Delivery is confirmed only by a recorded message delivery status. Times use {{ filters.tz|default:'the organisation’s timezone' }}.</p></div>
+
+    {% if activity_row.error %}
+    <section class="ma-notice {% if activity_row.outcome == 'attention' %}ma-notice--error{% else %}ma-notice--neutral{% endif %} ma-detail-error" aria-labelledby="ma-error-title">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5v5m0 3v.1" stroke-linecap="round"/></svg>
+        <div><h2 id="ma-error-title">{% if activity_row.outcome == 'attention' %}Recorded error{% else %}Recorded reason{% endif %}</h2><p class="ma-error-text">{{ activity_row.error }}</p></div>
+    </section>
+    {% endif %}
+
+    <div class="ma-detail-grid">
+        <div class="ma-detail-main">
+            <section class="ma-panel ma-detail-panel" aria-labelledby="ma-content-title">
+                <div class="ma-section-heading">
+                    <div><h2 id="ma-content-title">Recorded content</h2><p>{{ activity_row.kind_label|default:activity_row.kind }}{% if activity_row.origin %} · {{ activity_row.origin }}{% endif %}</p></div>
+                    {% if activity_row.direction %}<span class="ma-direction">{{ activity_row.direction|capfirst }}</span>{% endif %}
+                </div>
+                {% if activity_row.content %}<div class="ma-message-body ma-message-body--full">{{ activity_row.content }}</div>{% if activity_row.content_is_preview %}<p class="ma-subtle">Only the retained preview is available for this record.</p>{% endif %}{% else %}<div class="ma-inline-empty">No message body was retained for this record. Review its facts, history and linked records below.</div>{% endif %}
+            </section>
+
+            <section class="ma-panel ma-detail-panel" aria-labelledby="ma-context-title">
+                <div class="ma-section-heading"><div><h2 id="ma-context-title">Lead &amp; routing</h2><p>Pipeline, stage and owner show the lead’s current assignment.</p></div></div>
+                <dl class="ma-facts ma-facts--two-column">
+                    <div><dt>Lead</dt><dd>{{ activity_row.lead_name|default:'No named lead' }}</dd></div>
+                    <div><dt>Phone</dt><dd class="ma-numeric">{{ activity_row.lead_phone|default:'Not recorded' }}</dd></div>
+                    <div><dt>Email</dt><dd>{{ activity_row.lead_email|default:'Not recorded' }}</dd></div>
+                    <div><dt>Current pipeline</dt><dd>{{ activity_row.pipeline_name|default:'No current pipeline' }}</dd></div>
+                    <div><dt>Current stage</dt><dd>{{ activity_row.stage_name|default:'Not recorded' }}</dd></div>
+                    <div><dt>Pipeline owner</dt><dd>{{ activity_row.owner_name|default:'Not recorded' }}</dd></div>
+                    <div><dt>Channel</dt><dd>{{ activity_row.channel|default:'Not recorded' }}</dd></div>
+                    <div><dt>Linked number / connection</dt><dd>{{ activity_row.connection_label|default:'Not recorded' }}</dd></div>
+                    <div><dt>From</dt><dd class="ma-numeric">{{ activity_row.from_number|default:'Not recorded' }}</dd></div>
+                    <div><dt>To</dt><dd class="ma-numeric">{{ activity_row.to_number|default:'Not recorded' }}</dd></div>
+                    {% if activity_row.sequence_name %}<div><dt>Sequence</dt><dd>{{ activity_row.sequence_name }}</dd></div>{% endif %}
+                    {% if activity_row.campaign_name %}<div><dt>Campaign</dt><dd>{{ activity_row.campaign_name }}</dd></div>{% endif %}
+                    {% if activity_row.direction %}<div><dt>Direction</dt><dd>{{ activity_row.direction|capfirst }}</dd></div>{% endif %}
+                </dl>
+                <p class="ma-subtle ma-routing-note">Connection and sender fields show the available record references; they do not reconstruct a past pipeline assignment.</p>
+            </section>
+
+            <section class="ma-panel ma-detail-panel" aria-labelledby="ma-history-title">
+                <div class="ma-section-heading"><div><h2 id="ma-history-title">Recorded history</h2><p>Available entries and milestones retained for this record.</p></div>{% if activity_row.history %}<span class="ma-count">{{ activity_row.history|length }}</span>{% endif %}</div>
+                {% if activity_row.history %}
+                <ol class="ma-history">
+                    {% for event in activity_row.history %}
+                    <li>
+                        <div class="ma-history-marker" aria-hidden="true"></div>
+                        <div class="ma-history-heading"><h3>{{ event.label }}</h3>{% if event.time %}<time datetime="{{ event.time|date:'c' }}">{{ event.time|date:'d M Y, H:i:s T' }}</time>{% else %}<span class="ma-subtle">Time not recorded</span>{% endif %}</div>
+                        {% if event.detail %}<div class="ma-history-detail">{{ event.detail }}</div>{% endif %}
+                    </li>
+                    {% endfor %}
+                </ol>
+                {% else %}<p class="ma-inline-empty">No separate history entries were retained. The timestamps in Record facts are the available evidence.</p>{% endif %}
+            </section>
+        </div>
+
+        <aside class="ma-detail-side" aria-label="Activity facts and linked records">
+            <section class="ma-panel ma-detail-panel" aria-labelledby="ma-facts-title">
+                <div class="ma-section-heading"><div><h2 id="ma-facts-title">Record facts</h2><p>Saved timestamps and execution references.</p></div></div>
+                <dl class="ma-facts">
+                    <div><dt>Activity type</dt><dd>{{ activity_row.kind_label|default:activity_row.kind }}</dd></div>
+                    {% if activity_row.message_type %}<div><dt>Message type</dt><dd>{{ activity_row.message_type }}</dd></div>{% endif %}
+                    <div><dt>Record ID</dt><dd class="ma-mono">{{ activity_row.id }}</dd></div>
+                    <div><dt>Recorded at</dt><dd>{{ activity_row.event_time|date:'d M Y, H:i:s T'|default:'Not recorded' }}</dd></div>
+                    <div><dt>Last updated</dt><dd>{{ activity_row.updated_at|date:'d M Y, H:i:s T'|default:'Not recorded' }}</dd></div>
+                    {% if activity_row.scheduled_at %}<div><dt>Scheduled for</dt><dd>{{ activity_row.scheduled_at|date:'d M Y, H:i:s T' }}</dd></div>{% endif %}
+                    {% if activity_row.started_at %}<div><dt>Processing started</dt><dd>{{ activity_row.started_at|date:'d M Y, H:i:s T' }}</dd></div>{% endif %}
+                    {% if activity_row.completed_at %}<div><dt>Processing completed</dt><dd>{{ activity_row.completed_at|date:'d M Y, H:i:s T' }}</dd></div>{% endif %}
+                    {% if activity_row.sent_at %}<div><dt>Sent / accepted at</dt><dd>{{ activity_row.sent_at|date:'d M Y, H:i:s T' }}</dd></div>{% endif %}
+                    {% if activity_row.attempt != None and activity_row.attempt != '' %}<div><dt>Attempt</dt><dd class="ma-numeric">{{ activity_row.attempt }}</dd></div>{% endif %}
+                    {% if activity_row.model %}<div><dt>AI model</dt><dd>{{ activity_row.model }}</dd></div>{% endif %}
+                    {% if activity_row.tokens != None and activity_row.tokens != '' %}<div><dt>Recorded tokens</dt><dd class="ma-numeric">{{ activity_row.tokens }}</dd></div>{% endif %}
+                    {% if activity_row.external_id %}<div><dt>External reference</dt><dd class="ma-mono">{{ activity_row.external_id }}</dd></div>{% endif %}
+                    {% if activity_row.lead_id %}<div><dt>Lead ID</dt><dd class="ma-mono">{{ activity_row.lead_id }}</dd></div>{% endif %}
+                    {% if activity_row.pipeline_id %}<div><dt>Current pipeline ID</dt><dd class="ma-mono">{{ activity_row.pipeline_id }}</dd></div>{% endif %}
+                    {% if activity_row.connection_id %}<div><dt>Connection ID</dt><dd class="ma-mono">{{ activity_row.connection_id }}</dd></div>{% endif %}
+                </dl>
+            </section>
+
+            <section class="ma-panel ma-detail-panel" aria-labelledby="ma-related-title">
+                <div class="ma-section-heading"><div><h2 id="ma-related-title">Linked records</h2><p>References available within this organisation.</p></div></div>
+                {% if activity_row.related %}
+                <ul class="ma-related">
+                    {% for related in activity_row.related %}
+                    <li>{% if related.url %}<a href="{{ related.url }}"><span><strong>{{ related.label|default:related.kind }}</strong><small>{{ related.kind }}{% if related.id %} · {{ related.id }}{% endif %}</small></span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10m-4-4 4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>{% else %}<div><strong>{{ related.label|default:related.kind }}</strong><small>{{ related.kind }}{% if related.id %} · {{ related.id }}{% endif %}</small></div>{% endif %}</li>
+                    {% endfor %}
+                </ul>
+                {% else %}<p class="ma-inline-empty">No additional linked records were retained.</p>{% endif %}
+                {% if activity_row.api_url %}
+                <div class="ma-api-evidence">
+                    <a class="ma-inline-link" href="{{ activity_row.api_url }}"><span>Inspect API evidence (last 90 days)</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10m-4-4 4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                </div>
+                {% endif %}
+            </section>
+        </aside>
+    </div>
+    <a class="ma-back ma-bottom-back" href="{{ urls.index }}">← Back to filtered activity</a>
+</div>
+{% endblock %}
