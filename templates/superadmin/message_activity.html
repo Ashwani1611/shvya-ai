@@ -1,0 +1,253 @@
+{% extends 'superadmin/base.html' %}
+{% load static %}
+
+{% block title %}{{ organization.name }} · Message Activity · SHVYA{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{% static 'superadmin/message-activity.css' %}?v=20261017-1">
+{% endblock %}
+
+{% block content %}
+<div class="ma-workspace">
+    <a class="ma-back" href="{% url 'superadmin-organization-detail' organization.id %}">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="m8 4-6 6 6 6m-6-6h16" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span>Back to {{ organization.name }}</span>
+    </a>
+
+    <header class="ma-header">
+        <div class="ma-header-copy">
+            <p class="ma-eyebrow">{{ organization.name }}</p>
+            <h1>Message activity</h1>
+            <p class="ma-description">Explore recorded messages, AI processing and automation activity for this organisation.</p>
+        </div>
+        <div class="ma-header-tools">
+            <div class="ma-actions">
+                <a class="ma-button" href="{{ urls.refresh }}" aria-label="Refresh message activity with the current filters">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M16.5 4.5V9H12M3.5 15.5V11H8M4.3 6.6A6.5 6.5 0 0 1 15.7 6l.8 3M3.5 11l.8 3a6.5 6.5 0 0 0 11.4-.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Refresh
+                </a>
+                {% if not error and activity.total and activity.total <= 50000 %}
+                <a class="ma-button ma-button--primary" href="{{ urls.export }}" aria-describedby="ma-export-help">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 12v5h14v-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Export Excel
+                </a>
+                {% else %}
+                <span class="ma-button ma-button--disabled" aria-disabled="true" aria-describedby="ma-export-help">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><path d="M10 2v10m-4-4 4 4 4-4M3 12v5h14v-5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    Export Excel
+                </span>
+                {% endif %}
+            </div>
+            <p class="ma-tool-hint" id="ma-export-help">{% if error %}Correct the filters to export.{% elif activity.total > 50000 %}Narrow the filters to 50,000 records or fewer to export.{% elif not activity.total %}Export is available when records match.{% else %}All matching records · .xlsx{% endif %}</p>
+        </div>
+    </header>
+
+    {% if error %}
+    <div class="ma-notice ma-notice--error" role="alert">
+        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="10" cy="10" r="7.5"/><path d="M10 5.5v5m0 3v.1" stroke-linecap="round"/></svg>
+        <div><strong>Check the selected filters</strong><p>{{ error }}</p></div>
+    </div>
+    {% endif %}
+
+    <section class="ma-panel ma-filter-panel" aria-labelledby="ma-filters-title">
+        <div class="ma-section-heading">
+            <div>
+                <h2 id="ma-filters-title">Find activity</h2>
+                <p id="ma-date-help">Date range and displayed times use {{ filters.tz|default:'the organisation’s timezone' }}.</p>
+            </div>
+            <span class="ma-scope-label">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 17h14M5 17V5l5-2 5 2v12M8 7h4m-4 3h4m-3 7v-4h2v4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                This organisation
+            </span>
+        </div>
+        <form method="get" action="{{ urls.index }}" class="ma-filter-grid">
+            <div class="ma-field ma-field--date">
+                <label for="ma-from">From date</label>
+                <input id="ma-from" type="date" name="from" value="{{ filters.values.from }}" aria-describedby="ma-date-help">
+            </div>
+            <div class="ma-field ma-field--date">
+                <label for="ma-to">To date</label>
+                <input id="ma-to" type="date" name="to" value="{{ filters.values.to }}" aria-describedby="ma-date-help">
+            </div>
+            <div class="ma-field ma-field--wide">
+                <label for="ma-pipeline">Current pipeline</label>
+                <select id="ma-pipeline" name="pipeline">
+                    <option value="">All pipelines</option>
+                    {% for option in options.pipelines %}<option value="{{ option.value }}"{% if filters.values.pipeline == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field ma-field--wide">
+                <label for="ma-connection">Linked number / connection</label>
+                <select id="ma-connection" name="connection">
+                    <option value="">All connections</option>
+                    {% for option in options.connections %}<option value="{{ option.value }}"{% if filters.values.connection == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field ma-field--medium">
+                <label for="ma-owner">Pipeline owner</label>
+                <select id="ma-owner" name="owner">
+                    <option value="">All pipeline owners</option>
+                    {% for option in options.owners %}<option value="{{ option.value }}"{% if filters.values.owner == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field ma-field--medium">
+                <label for="ma-sequence">Sequence</label>
+                <select id="ma-sequence" name="sequence">
+                    <option value="">All sequences</option>
+                    {% for option in options.sequences %}<option value="{{ option.value }}"{% if filters.values.sequence == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field">
+                <label for="ma-kind">Activity type</label>
+                <select id="ma-kind" name="kind">
+                    <option value="">All activity types</option>
+                    {% for option in options.kinds %}<option value="{{ option.value }}"{% if filters.values.kind == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field">
+                <label for="ma-outcome">Outcome</label>
+                <select id="ma-outcome" name="outcome">
+                    <option value="">All outcomes</option>
+                    {% for option in options.outcomes %}<option value="{{ option.value }}"{% if filters.values.outcome == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field">
+                <label for="ma-direction">Direction</label>
+                <select id="ma-direction" name="direction">
+                    <option value="">All directions</option>
+                    {% for option in options.directions %}<option value="{{ option.value }}"{% if filters.values.direction == option.value %} selected{% endif %}>{{ option.label }}</option>{% endfor %}
+                </select>
+            </div>
+            <div class="ma-field ma-field--search">
+                <label for="ma-search">Search activity</label>
+                <div class="ma-search-input">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4 4" stroke-linecap="round"/></svg>
+                    <input id="ma-search" type="search" name="q" value="{{ filters.values.q }}" placeholder="Search names, numbers or recorded content" autocomplete="off" maxlength="200">
+                </div>
+            </div>
+            <div class="ma-filter-actions">
+                <button type="submit" class="ma-button ma-button--primary">Apply filters</button>
+                <a class="ma-button ma-button--quiet" href="{{ urls.index }}">Reset</a>
+            </div>
+        </form>
+    </section>
+
+    {% if not error %}
+    {% if activity.summary %}
+    <section class="ma-summary" aria-label="Summary of matching activity records">
+        {% for metric in activity.summary %}
+        <article class="ma-summary-card">
+            <h2>{{ metric.label }}</h2>
+            <p>{{ metric.value|default_if_none:'—' }}</p>
+        </article>
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endif %}
+
+    <section class="ma-panel ma-activity-panel" aria-labelledby="ma-records-title">
+        <div class="ma-section-heading ma-records-heading">
+            <div>
+                <h2 id="ma-records-title">Recorded activity{% if not error %} <span class="ma-count">{{ activity.total|default:0 }}</span>{% endif %}</h2>
+                <p>Newest records first. A message and its processing steps can appear as separate records.</p>
+            </div>
+            <details class="ma-reading-guide">
+                <summary>How to read this view</summary>
+                <div>
+                    <p>Pipeline, stage and owner show the lead’s current assignment. A past sending route appears only where it was retained.</p>
+                    <p>AI and automation completion describe processing. Message delivery is shown only when recorded. This view contains retained records and their available history.</p>
+                </div>
+            </details>
+        </div>
+
+        {% if error %}
+        <div class="ma-empty">
+            <div class="ma-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M7 12h10m-7 6h4" stroke-linecap="round"/><circle cx="8" cy="6" r="2" fill="currentColor"/><circle cx="16" cy="12" r="2" fill="currentColor"/></svg></div>
+            <h3>Update the filters to view activity</h3>
+            <p>The selected filters could not be applied. Review the message above, or reset to the default view.</p>
+            <a class="ma-button" href="{{ urls.index }}">Reset filters</a>
+        </div>
+        {% elif activity.rows %}
+        <div class="ma-table-scroll" tabindex="0" role="region" aria-label="Message activity records; scroll horizontally when needed">
+            <table class="ma-table" role="table">
+                <caption class="ma-sr-only">Activity for {{ organization.name }}, newest first. Times in {{ filters.tz|default:'the organisation’s timezone' }}.</caption>
+                <thead role="rowgroup">
+                    <tr role="row">
+                        <th scope="col" class="ma-col-time" role="columnheader">Recorded at</th>
+                        <th scope="col" class="ma-col-lead" role="columnheader">Lead</th>
+                        <th scope="col" class="ma-col-route" role="columnheader">Pipeline &amp; connection</th>
+                        <th scope="col" class="ma-col-result" role="columnheader">Activity &amp; result</th>
+                        <th scope="col" class="ma-col-message" role="columnheader">Message &amp; reason</th>
+                        <th scope="col" class="ma-col-action" role="columnheader"><span class="ma-sr-only">Inspect activity</span></th>
+                    </tr>
+                </thead>
+                <tbody role="rowgroup">
+                    {% for row in activity.rows %}
+                    <tr class="ma-record" role="row">
+                        <td class="ma-time-cell" data-label="Recorded at" role="cell">
+                            {% if row.event_time %}
+                            <time datetime="{{ row.event_time|date:'c' }}"><span class="ma-cell-primary">{{ row.event_time|date:'d M Y' }}</span><span class="ma-cell-secondary ma-numeric">{{ row.event_time|date:'H:i:s' }}</span></time>
+                            {% else %}<span class="ma-muted">Not recorded</span>{% endif %}
+                        </td>
+                        <td class="ma-lead-cell" data-label="Lead" role="cell">
+                            <span class="ma-cell-primary">{{ row.lead_name|default:'No named lead' }}</span>
+                            {% if row.lead_phone %}<span class="ma-cell-secondary ma-numeric">{{ row.lead_phone }}</span>{% endif %}
+                            {% if row.lead_email %}<span class="ma-cell-secondary ma-break">{{ row.lead_email }}</span>{% endif %}
+                            {% if not row.lead_id and not row.lead_phone and not row.lead_email %}<span class="ma-cell-secondary">No linked lead retained</span>{% endif %}
+                        </td>
+                        <td class="ma-route-cell" data-label="Pipeline &amp; connection" role="cell">
+                            <span class="ma-cell-primary">{{ row.pipeline_name|default:'No current pipeline' }}</span>
+                            {% if row.stage_name %}<span class="ma-cell-secondary">Stage: {{ row.stage_name }}</span>{% endif %}
+                            {% if row.owner_name %}<span class="ma-cell-secondary">Owner: {{ row.owner_name }}</span>{% endif %}
+                            <span class="ma-connection"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="m6 10 4-4m-4.5.5-1 1a2.8 2.8 0 0 0 4 4l1-1m1-1 1-1a2.8 2.8 0 0 0-4-4l-1 1" stroke-linecap="round"/></svg><span>{{ row.connection_label|default:'Connection not recorded' }}</span></span>
+                        </td>
+                        <td class="ma-result-cell" data-label="Activity &amp; result" role="cell">
+                            <span class="ma-cell-primary">{{ row.kind_label|default:row.kind }}</span>
+                            {% if row.sequence_name %}<span class="ma-cell-secondary">Sequence: {{ row.sequence_name }}</span>{% endif %}
+                            {% if row.campaign_name %}<span class="ma-cell-secondary">Campaign: {{ row.campaign_name }}</span>{% endif %}
+                            <div class="ma-status-line"><span class="ma-status ma-status--{{ row.outcome|slugify }}">{{ row.status_label|default:row.status|default:'Not recorded' }}</span></div>
+                            {% if row.channel or row.direction %}<span class="ma-cell-secondary">{{ row.channel }}{% if row.channel and row.direction %} · {% endif %}{{ row.direction|capfirst }}</span>{% endif %}
+                            {% if row.message_type %}<span class="ma-cell-secondary">Type: {{ row.message_type }}</span>{% endif %}
+                            {% if row.origin %}<span class="ma-cell-secondary">{{ row.origin }}</span>{% endif %}
+                        </td>
+                        <td class="ma-message-cell" data-label="Message &amp; reason" role="cell">
+                            {% if row.content %}
+                            <details class="ma-message-disclosure">
+                                <summary><span class="ma-message-preview">{{ row.content|truncatechars:160 }}</span><span class="ma-disclosure-label"><span class="ma-show-label">Read {% if row.content_is_preview %}preview{% else %}message{% endif %}</span><span class="ma-hide-label">Collapse message</span><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m4 6 4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg></span></summary>
+                                <div class="ma-message-body">{{ row.content }}</div>
+                                {% if row.content_is_preview %}<a class="ma-inline-link" href="{{ row.detail_url }}">Inspect execution and linked messages →</a>{% endif %}
+                            </details>
+                            {% else %}<p class="ma-muted">No message body retained</p>{% endif %}
+                            {% if row.error %}
+                            <details class="ma-error-disclosure{% if row.outcome == 'attention' %} ma-error-disclosure--error{% endif %}">
+                                <summary><span>{% if row.outcome == 'attention' %}Recorded error{% else %}Recorded reason{% endif %}</span><span class="ma-error-preview">{{ row.error|truncatechars:140 }}</span></summary>
+                                <div class="ma-error-text">{{ row.error }}</div>
+                            </details>
+                            {% endif %}
+                        </td>
+                        <td class="ma-action-cell" role="cell">
+                            <a class="ma-inspect" href="{{ row.detail_url }}" aria-label="Inspect {{ row.kind_label|default:row.kind }}{% if row.lead_name %} for {{ row.lead_name }}{% endif %}{% if row.event_time %}, {{ row.event_time|date:'d M Y H:i:s' }}{% endif %}">Inspect<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 8h10m-4-4 4 4-4 4" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <nav class="ma-pagination" aria-label="Message activity pages">
+            <p>Page <strong>{{ activity.page }}</strong> of <strong>{{ activity.num_pages }}</strong> <span>· {{ activity.total }} matching record{{ activity.total|pluralize }}</span></p>
+            <div class="ma-actions">
+                {% if activity.has_previous %}<a class="ma-button" href="{{ urls.previous }}" rel="prev">← Previous</a>{% else %}<span class="ma-button ma-button--disabled" aria-disabled="true">← Previous</span>{% endif %}
+                {% if activity.has_next %}<a class="ma-button" href="{{ urls.next }}" rel="next">Next →</a>{% else %}<span class="ma-button ma-button--disabled" aria-disabled="true">Next →</span>{% endif %}
+            </div>
+        </nav>
+        {% else %}
+        <div class="ma-empty">
+            <div class="ma-empty-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 14a3 3 0 0 1-3 3H9l-5 4V6a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v8Z" stroke-linejoin="round"/><path d="M8 8h8m-8 4h5" stroke-linecap="round"/></svg></div>
+            <h3>No activity matches these filters</h3>
+            <p>Try a wider date range or remove a pipeline, connection or outcome filter. Only records retained for this organisation appear here.</p>
+            <a class="ma-button" href="{{ urls.index }}">Reset filters</a>
+        </div>
+        {% endif %}
+    </section>
+    <p class="ma-footnote">Exports use the applied filters and include recorded message content. Pipeline and stage columns reflect the lead’s current assignment.</p>
+</div>
+{% endblock %}

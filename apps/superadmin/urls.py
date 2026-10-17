@@ -1,5 +1,10 @@
 from .ai_brain_views import organization_ai_brain
 from .organization_console_views import organization_lookup
+from .message_activity_views import (
+    organization_message_activity,
+    organization_message_activity_detail,
+    organization_message_activity_export,
+)
 from .model_routing_views import organization_model_routing_update_view
 from .justdial_views import organization_justdial_view
 from .acres99_views import organization_acres99_view
@@ -59,6 +64,9 @@ from .plan_controls import organization_modules_view, organization_delete_view, 
 from apps.integrations.views.indiamart import indiamart_setup_view
 
 urlpatterns = [
+    path("organization/<uuid:organization_id>/message-activity/", organization_message_activity, name="superadmin-organization-message-activity"),
+    path("organization/<uuid:organization_id>/message-activity/export/", organization_message_activity_export, name="superadmin-organization-message-activity-export"),
+    path("organization/<uuid:organization_id>/message-activity/<str:kind>/<str:record_id>/", organization_message_activity_detail, name="superadmin-organization-message-activity-detail"),
     path("organization/<uuid:organization_id>/ai-brain/", organization_ai_brain, name="superadmin-organization-ai-brain"),
     path("organizations/lookup/", organization_lookup, name="superadmin-organization-lookup"),
     path("api/incidents/", api_incidents_view, name="superadmin-api-incidents"),

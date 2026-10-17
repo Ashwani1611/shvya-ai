@@ -137,6 +137,11 @@
                 <div class="sa-context-tools">
                     <div class="sa-context-tools-title">Organization tools</div>
 
+                    <a href="{% url 'superadmin-organization-message-activity' organization_id=organization.id %}" class="sa-context-action" title="Message Activity and Excel export">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 4h14v12H9l-4 4V4Z" stroke-linejoin="round"/><path d="M8 8h8M8 12h5" stroke-linecap="round"/></svg>
+                        <span class="sa-context-text">Message Activity</span>
+                    </a>
+
                     <a
                         href="{% url 'superadmin-organization-hosted-ignore-list' organization_id=organization.id %}"
                         class="sa-context-action"
@@ -212,6 +217,8 @@
                                 MCP · External AI
                             {% elif '/superadmin/api/' in request.path %}
                                 API · Operations Center
+                            {% elif '/message-activity/' in request.path and organization %}
+                                {{ organization.name }} · Message Activity
                             {% elif request.resolver_match.url_name == 'superadmin-organization-create' %}
                                 Add Organization
                             {% elif request.resolver_match.url_name == 'superadmin-organization-update' %}
