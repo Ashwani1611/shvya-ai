@@ -421,9 +421,18 @@ def crm_signup_view(request):
     # Redirect to CRM login.
     # --------------------------------------------------------
 
-    return redirect(
-        "crm-login"
-    )
+    from uuid import uuid4
+    request.session["marketing_signup_receipt"] = str(uuid4())
+    return redirect("signup-complete")
+
+
+def signup_complete_view(request):
+    receipt = request.session.pop("marketing_signup_receipt", "")
+    if not receipt:
+        return redirect("crm-login")
+    response = render(request, "marketing/signup_complete.html", {"signup_receipt": receipt})
+    response["Cache-Control"] = "private, no-store"
+    return response
 
 
 @ratelimit(

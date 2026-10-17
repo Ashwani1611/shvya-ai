@@ -1,0 +1,8 @@
+{% extends "marketing/dark_base.html" %}
+{% block title %}Account created — SHVYA AI{% endblock %}
+{% block seo_head %}<meta name="robots" content="noindex, nofollow">{% endblock %}
+{% block content %}{% include "marketing/dark_header.html" %}
+<main class="legal-layout"><article class="legal-content" data-analytics-signup="{{ signup_receipt }}">
+<h1>Check your email</h1><p>Your account has been created. Verify your email address before logging in. If delivery is delayed, we will retry automatically.</p>
+<a class="text-link" href="{% url 'crm-login' %}">Continue to login</a>
+</article></main>{% include "marketing/dark_footer.html" %}{% endblock %}

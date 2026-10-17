@@ -33,6 +33,11 @@ class SignupEmailVerificationTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.url, reverse("signup-complete"))
+        self.assertTrue(self.client.session.get("marketing_signup_receipt"))
+        confirmation = self.client.get(response.url)
+        self.assertContains(confirmation, "Check your email")
+        self.assertNotIn("marketing_signup_receipt", self.client.session)
         user = User.objects.get(email="new-owner@example.com")
         organization = user.organization
         self.assertFalse(user.is_active)

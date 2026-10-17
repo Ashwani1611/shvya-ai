@@ -7,11 +7,13 @@ from .views import (
     crm_password_reset_sent_view,
     crm_password_reset_view,
     crm_signup_view,
+    signup_complete_view,
     crm_verify_email_view,
     one_time_login_view,
 )
 
 urlpatterns = [
+    path("signup/complete/", signup_complete_view, name="signup-complete"),
 
     # =========================================================
     # ONE-TIME LOGIN
