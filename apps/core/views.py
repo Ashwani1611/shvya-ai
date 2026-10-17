@@ -1,5 +1,6 @@
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
@@ -46,6 +47,10 @@ class DocumentationView(CRMUserContextMixin, TemplateView):
                 query=self.request.GET.get("q", ""),
             )
         )
+        if context.get("docs_page"):
+            context["marketing_canonical"] = (
+                settings.BLOG_PUBLIC_ORIGIN.rstrip("/") + context["docs_page"]["url"]
+            )
         return context
 
 
