@@ -33,7 +33,7 @@ The marketing base supplies a canonical URL from the configured origin, robots d
 
 - Confirm one canonical per page on home, pricing, features and a blog article.
 - Confirm robots and sitemap return 200 and published URLs use the HTTPS canonical host.
-- With clean storage, confirm no Google network requests before permission, or after decline.
+- With clean storage, confirm no Google Analytics/Tag Manager requests before permission, or after decline. Existing Google Fonts and infrastructure resources are separate from GA4.
 - Accept analytics and check GA4 Realtime / Tag Assistant for one page_view.
 - Submit an invalid demo form: no generate_lead. Save a valid request: one generate_lead. Reload confirmation: no duplicate within the same session.
 - Check outgoing payloads contain no names, email addresses, phone numbers, form text, URL query strings or reference IDs.
@@ -51,3 +51,7 @@ Privacy signals (DNT/GPC) suppress collection, including previously stored conse
 Search Console domain ownership and sitemap submission were confirmed by the coordinating SEO chat on 2026-10-17. Preserve that DNS verification record and PR #693's documentation/blog canonical overrides. Link the existing domain property in GA4 rather than creating another property.
 
 Regression commands: `node --test tests/js/marketing-analytics.test.cjs`; `pytest tests/test_marketing_analytics.py apps/accounts/tests/test_signup_verification.py apps/accounts/tests/test_free_signup.py`. PostgreSQL-dependent signup tests must run in CI if local PostgreSQL is unavailable. Deployment must pass the repository CI/Security gates. Activation additionally requires the production environment setting and live network/Realtime verification; a successful code deployment alone does not prove collection.
+
+## Verified Google Admin configuration (2026-10-17)
+
+The existing Shvya Website property (514335326) uses stream 13047785975 and measurement ID `G-LE6XQSCB67`. Enhanced measurement is disabled. Google signals and user-provided data collection are off; ads personalization is disabled in all regions. `generate_lead` and `sign_up` are key events counted once per event, with no default monetary value. The verified `shvya-ai.com` Search Console Domain property is linked to this stream under the existing account. These settings do not activate the website tag: production `GOOGLE_ANALYTICS_ID` and deployment verification are still required.
