@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const code = fs.readFileSync('static/marketing/analytics.js', 'utf8');
-function harness({consent, lead = false, sharedSession = new Map(), privacy = {}, blockedStorage = false, signup = false} = {}) {
+function harness({consent, lead = false, sharedSession = new Map(), privacy = {}, blockedStorage = false, signup = false, article = false} = {}) {
   const events = {}, nodes = [], buttons = {};
   const local = new Map(consent ? [['shvya-marketing-consent-v1', consent]] : []);
   const storage = map => ({getItem:k=>map.get(k), setItem:(k,v)=>map.set(k,v)});
@@ -16,7 +16,7 @@ function harness({consent, lead = false, sharedSession = new Map(), privacy = {}
     document:{currentScript:{dataset:{gaId:'G-TEST123'}}, referrer:'https://google.com/search?q=private',
       getElementById:id=>id==='marketing-consent'?banner:{addEventListener:(_,fn)=>buttons.settings=fn},
       querySelectorAll:()=>['granted','denied'].map(makeButton),
-      querySelector:sel=>sel==='[data-analytics-signup]'&&signup?{dataset:{analyticsSignup:'random-receipt'}}:sel==='[data-analytics-lead]'&&lead?{dataset:{analyticsLead:'private-reference'}}:null,
+      querySelector:sel=>sel==='.blog-article-heading'&&article?{}:sel==='[data-analytics-signup]'&&signup?{dataset:{analyticsSignup:'random-receipt'}}:sel==='[data-analytics-lead]'&&lead?{dataset:{analyticsLead:'private-reference'}}:null,
       createElement:()=>({}), head:{appendChild:node=>nodes.push(node)},
       addEventListener:(name,fn)=>events[name]=fn, documentElement:{scrollHeight:2000}},
     innerHeight:1000, scrollY:950, addEventListener:(name,fn)=>events[name]=fn,
@@ -78,4 +78,10 @@ test('withdrawal in another tab disables collection and expires GA cookies',()=>
   const h=harness({consent:'granted'});h.events.storage({key:'shvya-marketing-consent-v1',newValue:'denied'});
   assert.equal(h.context['ga-disable-G-TEST123'],true);
   assert.match(h.context.document.cookie,/Max-Age=0/);
+});
+
+test('only published blog article markup produces article_view',()=>{
+  assert.match(fs.readFileSync('templates/blog/public/article.html','utf8'),/class="blog-article-heading"/);
+  assert.equal(harness({consent:'granted',article:true}).sent().filter(a=>a[1]==='article_view').length,1);
+  assert.equal(harness({consent:'granted'}).sent().filter(a=>a[1]==='article_view').length,0);
 });

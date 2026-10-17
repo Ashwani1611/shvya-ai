@@ -15,7 +15,7 @@
 | Event | Meaning |
 | --- | --- |
 | page_view | Public page visit after analytics permission |
-| article_view | Published blog article (.blog-article), excluding generic/legal article elements |
+| article_view | Published blog article (.blog-article-heading), excluding generic/legal article elements |
 | demo_click | Link to the demo request page |
 | demo_form_submit | Form submission attempt; validation may still fail |
 | generate_lead | Server-rendered saved request confirmation; deduplicated per reference per browser session |

@@ -49,7 +49,7 @@
       tag.src = 'https://www.googletagmanager.com/gtag/js?id=' + encodeURIComponent(id);
       document.head.appendChild(tag);
       event('page_view');
-      if (document.querySelector('.blog-article')) event('article_view');
+      if (document.querySelector('.blog-article-heading')) event('article_view');
     } else {
       gtag('consent', 'update', {analytics_storage: 'granted'});
     }
