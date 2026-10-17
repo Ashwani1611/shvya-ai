@@ -1,6 +1,7 @@
 {% extends "marketing/dark_base.html" %}
 {% load static %}
 {% block title %}{% if docs_page %}{{ docs_page.title }} — SHVYA Docs{% elif docs_search %}Search — SHVYA Docs{% else %}Documentation — SHVYA AI{% endif %}{% endblock %}
+{% block seo_head %}<link rel="canonical" href="https://shvya-ai.com{% if docs_page %}{{ docs_page.url }}{% else %}{{ request.path }}{% endif %}">{% endblock %}
 {% block extra_head %}
 <link rel="stylesheet" href="{% static 'marketing/docs-portal.css' %}">
 {% endblock %}
