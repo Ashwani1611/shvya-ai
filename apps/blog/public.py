@@ -16,7 +16,7 @@ from . import tracking
 from .models import BlogImage, SlugRedirect
 from .seo import (
     absolute_url, article_body, article_seo, article_url, canonical_url,
-    image_data, reading_minutes,
+    image_data, listing_schema, reading_minutes,
 )
 from .services import media_response, published_posts, snapshot_image_ids
 from apps.core.docs_portal import DOC_ORDER
@@ -134,6 +134,9 @@ def _listing(request, category_slug=""):
         title += f" | Page {page.number}"
     if query:
         title = f"Search: {query} | SHVYA AI Blog"
+    description = f"Practical {category_name.lower()} guides from SHVYA AI." if category_name else (
+        "Practical guides to WhatsApp automation, CRM, AI qualification and better sales follow-up from SHVYA AI."
+    )
     categories = {}
     for category in all_posts.order_by().values_list("published_snapshot__category", flat=True).distinct():
         if category and category.get("slug"):
@@ -161,12 +164,11 @@ def _listing(request, category_slug=""):
         "search_action": base_path,
         "seo": {
             "title": title,
-            "description": f"Practical {category_name.lower()} guides from SHVYA AI." if category_name else (
-                "Practical guides to WhatsApp automation, CRM, AI qualification and better sales follow-up from SHVYA AI."
-            ),
+            "description": description,
             "canonical": canonical,
             "robots": "noindex, follow" if has_filters else "index, follow",
             "type": "website",
+            "schema": "" if has_filters else listing_schema(title, description, canonical, category_name),
         },
     }
     return _page_response(request, "blog/public/index.html", context)
