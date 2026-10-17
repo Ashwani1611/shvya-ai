@@ -153,8 +153,8 @@ def crm_signup_view(request):
 
     The user is NOT automatically logged into the CRM.
 
-    After successful signup, the user is redirected to the
-    CRM login page.
+    After successful signup, the user sees a public email-verification
+    confirmation with a link to the CRM login page.
     """
 
     # --------------------------------------------------------
@@ -418,7 +418,7 @@ def crm_signup_view(request):
     )
 
     # --------------------------------------------------------
-    # Redirect to CRM login.
+    # One-use public confirmation; never put analytics on CRM login.
     # --------------------------------------------------------
 
     from uuid import uuid4
