@@ -1,0 +1,18 @@
+<div id="organization-console" data-organization-id="{{ organization.id }}">
+  <form class="oc-filters" method="get">
+    <div><label for="oc-org-search">Search organisation</label><input id="oc-org-search" type="search" placeholder="Name, email or phone · Enter to search" autocomplete="off" data-lookup-url="{% url 'superadmin-organization-lookup' %}" data-search-url="{% url 'superadmin-org-list' %}"><div id="oc-search-results" aria-live="polite"></div></div>
+    <div><label for="oc-from">From</label><input id="oc-from" name="from" type="date" value="{{ dashboard.window.from }}" required></div>
+    <div><label for="oc-to">To</label><input id="oc-to" name="to" type="date" value="{{ dashboard.window.to }}" required></div>
+    <div><label for="oc-granularity">Granularity</label><select id="oc-granularity" name="granularity"><option value="day" {% if dashboard.window.granularity == 'day' %}selected{% endif %}>Daily</option><option value="hour" {% if dashboard.window.granularity == 'hour' %}selected{% endif %}>Hourly</option><option value="month" {% if dashboard.window.granularity == 'month' %}selected{% endif %}>Monthly</option></select></div>
+    <button type="submit" class="oc-primary">Apply filters</button>
+  </form>
+  <p class="oc-hint">Charts and lead breakdowns use the selected dates · {{ dashboard.window.tz }}. Account settings and pending follow-ups show current state.</p>
+  {% if dashboard.window.notice %}<p role="status" class="oc-notice">{{ dashboard.window.notice }}</p>{% endif %}
+  <nav class="oc-jumps" aria-label="Organisation sections"><a href="#workspace">Organisation</a><a href="{% url 'superadmin-organization-ai-brain' organization.id %}">AI Brain &amp; Playbook</a><a href="#oc-users">Users</a><a href="#oc-pipelines">Pipelines</a><a href="#oc-leads">Leads</a><a href="#oc-activity">Activity</a><a href="#oc-pending">Pending follow-ups</a><a href="#oc-integrations">Integrations</a></nav>
+</div>
+<section class="oc-summary" id="oc-summary">
+  <article><h3>AI setup</h3>{% for check in dashboard.checks %}<p><span>{{ check.label }}</span><strong class="{% if check.ready %}oc-good{% else %}oc-warn{% endif %}">{% if check.ready %}Configured{% else %}Missing{% endif %}</strong></p>{% endfor %}<a href="{% url 'superadmin-organization-ai-brain' organization.id %}">Configure AI Brain →</a><small>Configuration presence; use AI testing to verify behaviour.</small></article>
+  <article><h3>Client health</h3><p><span>Account</span><strong>{% if organization.is_active %}Active{% else %}Disabled{% endif %}</strong></p><p><span>Onboarding</span><strong>{% if organization.onboarding_completion_date %}Complete{% else %}Pending{% endif %}</strong></p><p><span>Last lead</span><strong>{{ dashboard.last_lead_at|date:'d M Y'|default:'No leads yet' }}</strong></p><p><span>Overdue follow-ups</span><a href="#oc-pending">{{ dashboard.overdue_count }}</a></p></article>
+  <article><h3>Lead overview</h3><strong class="oc-number">{{ dashboard.selected_leads }}</strong><small>Created in selected range</small><p><span>All-time leads</span><strong>{{ dashboard.total_leads }}</strong></p></article>
+  <article><h3>WhatsApp activity</h3><p><span>Inbound</span><strong>{{ dashboard.messages.inbound }}</strong></p><p><span>Outbound</span><strong>{{ dashboard.messages.outbound }}</strong></p><p><span>Delivered / read</span><strong>{{ dashboard.messages.delivered }}</strong></p><p><span>Failed / queued</span><strong>{{ dashboard.messages.failed }} / {{ dashboard.messages.queued }}</strong></p><a href="{% url 'superadmin-api' %}?organization={{ organization.id }}">Inspect API activity →</a><small>Messages created in the selected range, grouped by current delivery status.</small></article>
+</section>

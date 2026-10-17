@@ -568,11 +568,18 @@ def organization_detail_view(
         .order_by("-created_at")[:20]
     )
 
+    from .organization_analytics import organization_analytics
+    dashboard = organization_analytics(organization, request.GET)
+    from .ai_brain_services import brain_summary
+    ai_summary = brain_summary(organization)
+
     return render(
         request,
         "superadmin/org_detail.html",
         {
             "organization": organization,
+            "dashboard": dashboard,
+            "brain_summary": ai_summary,
             "model_routing_info": getattr(organization, "org_info", None),
             "organization_form": organization_form,
             "package_module_controls": module_controls(organization),
