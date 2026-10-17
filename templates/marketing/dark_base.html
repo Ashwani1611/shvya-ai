@@ -7,8 +7,23 @@
   <meta name="theme-color" content="#f5f5f7" media="(prefers-color-scheme: light)" data-marketing-theme-color>
   <meta name="theme-color" content="#080909" media="(prefers-color-scheme: dark)" data-marketing-theme-color>
   <title>{% block title %}SHVYA AI{% endblock %}</title>
-  <meta name="description" content="{% block meta_description %}Shvya AI connects sales cadence, AI playbooks, WhatsApp conversations and workflows for Indian businesses.{% endblock %}">
-  {% block seo_head %}<link rel="canonical" href="https://shvya-ai.com{{ request.path }}">{% endblock %}
+  <meta name="description" content="{% block meta_description %}{{ marketing_description }}{% endblock %}">
+  {% block seo_head %}
+  <link rel="canonical" href="{{ marketing_canonical }}">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta property="og:site_name" content="SHVYA AI">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="{{ marketing_canonical }}">
+  <meta property="og:title" content="SHVYA AI | CRM &amp; WhatsApp Sales Automation">
+  <meta property="og:description" content="{{ marketing_description }}">
+  <meta name="twitter:card" content="summary">
+  <script type="application/ld+json">{{ marketing_schema|safe }}</script>
+  {% endblock %}
+  {% if marketing_google_verification %}<meta name="google-site-verification" content="{{ marketing_google_verification }}">{% endif %}
+  {% if marketing_ga_id and not preview %}
+  <script src="{% static 'marketing/analytics.js' %}" data-ga-id="{{ marketing_ga_id }}" defer></script>
+  <link rel="stylesheet" href="{% static 'marketing/analytics.css' %}">
+  {% endif %}
   <link rel="icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}?v=20261006-1">
   <link rel="shortcut icon" type="image/png" href="{% static 'images/shvya-brand-2026.png' %}?v=20261006-1">
   <link rel="stylesheet" href="{% static 'marketing/dark/site.css' %}">
@@ -23,6 +38,14 @@
 </head>
 <body class="marketing-site {% block body_class %}{% endblock %}">
   {% block content %}{% endblock %}
+  {% if marketing_ga_id and not preview %}
+  <aside id="marketing-consent" class="marketing-consent" aria-label="Analytics preferences" hidden>
+    <p>Allow usage measurement to help improve this website? <a href="/cookie-policy/">Cookie policy</a></p>
+    <button type="button" data-analytics-consent="granted">Allow analytics</button>
+    <button type="button" data-analytics-consent="denied">Decline</button>
+  </aside>
+  <button type="button" id="marketing-consent-settings" class="marketing-consent-settings">Analytics preferences</button>
+  {% endif %}
   <script src="{% static 'marketing/dark/interactions.js' %}" defer></script>
   <script src="{% static 'marketing/opportunity.js' %}" defer></script>
   {% block extra_scripts %}{% endblock %}

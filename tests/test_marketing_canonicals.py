@@ -8,6 +8,7 @@ from django.template import Context, Engine
 from django.test import SimpleTestCase
 
 from apps.core.docs_portal import docs_context
+from apps.core.marketing_context import marketing_context
 
 
 class MarketingCanonicalTests(SimpleTestCase):
@@ -20,7 +21,7 @@ class MarketingCanonicalTests(SimpleTestCase):
     def canonical_links(self, template, path, **context):
         request = SimpleNamespace(path=path, META={'HTTP_HOST': 'untrusted.example'},
                                   GET=context.pop('query', {'utm_source': 'campaign'}))
-        html = self.engine.get_template(template).render(Context({'request': request, **context}))
+        html = self.engine.get_template(template).render(Context({'request': request, **marketing_context(request), **context}))
         return [node['href'] for node in BeautifulSoup(html, 'html.parser').select('link[rel=canonical]')]
 
     def test_default_canonical_uses_fixed_origin_and_path(self):
