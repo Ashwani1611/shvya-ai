@@ -1,7 +1,10 @@
 /* Public marketing only. No Google requests before explicit analytics consent. */
 (() => {
   'use strict';
-  const script = document.currentScript;
+  // Safari can expose a null currentScript while executing a deferred
+  // external script. Fall back to the page's single GA-tagged script so
+  // consent controls still work in that browser.
+  const script = document.currentScript || document.querySelector('script[data-ga-id]');
   const id = script && script.dataset.gaId;
   if (!/^G-[A-Z0-9]+$/.test(id || '')) return;
   if (navigator.globalPrivacyControl || navigator.doNotTrack === '1') return;

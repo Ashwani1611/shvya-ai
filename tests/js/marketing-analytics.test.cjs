@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
 const code = fs.readFileSync('static/marketing/analytics.js', 'utf8');
-function harness({consent, lead = false, sharedSession = new Map(), privacy = {}, blockedStorage = false, signup = false, article = false} = {}) {
+function harness({consent, lead = false, sharedSession = new Map(), privacy = {}, blockedStorage = false, signup = false, article = false, deferred = false} = {}) {
   const events = {}, nodes = [], buttons = {};
   const local = new Map(consent ? [['shvya-marketing-consent-v1', consent]] : []);
   const storage = map => ({getItem:k=>map.get(k), setItem:(k,v)=>map.set(k,v)});
@@ -13,10 +13,10 @@ function harness({consent, lead = false, sharedSession = new Map(), privacy = {}
     URL, Set, Date, encodeURIComponent, navigator: privacy,
     location:{origin:'https://shvya-ai.com', pathname:'/book-a-call/', hostname:'shvya-ai.com', search:'?email=secret@example.com&ref=private'},
     localStorage:storage(local), sessionStorage:storage(sharedSession),
-    document:{currentScript:{dataset:{gaId:'G-TEST123'}}, referrer:'https://google.com/search?q=private',
+    document:{currentScript:deferred?null:{dataset:{gaId:'G-TEST123'}}, referrer:'https://google.com/search?q=private',
       getElementById:id=>id==='marketing-consent'?banner:{addEventListener:(_,fn)=>buttons.settings=fn},
       querySelectorAll:()=>['granted','denied'].map(makeButton),
-      querySelector:sel=>sel==='.blog-article-heading'&&article?{}:sel==='[data-analytics-signup]'&&signup?{dataset:{analyticsSignup:'random-receipt'}}:sel==='[data-analytics-lead]'&&lead?{dataset:{analyticsLead:'private-reference'}}:null,
+      querySelector:sel=>sel==='script[data-ga-id]'&&deferred?{dataset:{gaId:'G-TEST123'}}:sel==='.blog-article-heading'&&article?{}:sel==='[data-analytics-signup]'&&signup?{dataset:{analyticsSignup:'random-receipt'}}:sel==='[data-analytics-lead]'&&lead?{dataset:{analyticsLead:'private-reference'}}:null,
       createElement:()=>({}), head:{appendChild:node=>nodes.push(node)},
       addEventListener:(name,fn)=>events[name]=fn, documentElement:{scrollHeight:2000}},
     innerHeight:1000, scrollY:950, addEventListener:(name,fn)=>events[name]=fn,
@@ -60,6 +60,14 @@ test('form attempts do not count as saved leads; consent withdrawal stops events
 });
 test('repeated acceptance loads one Google tag and one page view',()=>{
   const h=harness();h.buttons.granted();h.buttons.granted();
+  assert.equal(h.nodes.length,1);
+  assert.equal(h.sent().filter(a=>a[1]==='page_view').length,1);
+});
+
+test('deferred Safari scripts still initialize from the tagged script element',()=>{
+  const h=harness({deferred:true});
+  assert.equal(h.banner.hidden,false);
+  h.buttons.granted();
   assert.equal(h.nodes.length,1);
   assert.equal(h.sent().filter(a=>a[1]==='page_view').length,1);
 });
