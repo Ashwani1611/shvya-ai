@@ -160,6 +160,22 @@ for (const status of ['failed', 'disconnected', 'expired']) {
   });
 }
 
+test('QR refresh removes stale Chromium locks before replacing a failed browser', async () => {
+  const order = [];
+  const ctx = context(['createSession', 'createSessionUnlocked', 'refreshQr', 'refreshQrUnlocked'], {
+    destroyClientBounded: async () => { order.push('destroy'); },
+    cleanSessionChromiumLocks: async () => { order.push('clean'); },
+    releaseLock: async () => { order.push('release'); },
+    acquireLock: async () => { order.push('acquire'); return true; },
+  });
+  ctx.sessions.set('account', { status: 'failed', requestedPhone: '+919876543210', client: {} });
+
+  const replacement = await ctx.refreshQr('account', '+919876543210');
+
+  assert.equal(replacement.status, 'initializing');
+  assert.deepEqual(order, ['destroy', 'clean', 'release', 'acquire']);
+});
+
 test('QR encoding completed after authentication cannot revert the session to QR-ready', async () => {
   const encoding = deferred();
   const callbacks = [];

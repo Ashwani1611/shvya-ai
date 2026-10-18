@@ -72,6 +72,9 @@ async function fenceSessionUnlocked(sessionId, state, reason) {`);
   // lease so another instance cannot open the same profile during teardown.`);
   replace(`  await releaseLock(sessionId).catch(() => {});
   await destroyClientBounded(sessionId, current, 'refresh');`, `  await destroyClientBounded(sessionId, current, 'refresh');
+  await cleanSessionChromiumLocks(sessionId).catch((error) => {
+    console.warn('Could not clean Chromium locks for ' + sessionId + ':', error.message);
+  });
   await releaseLock(sessionId).catch(() => {});`);
   replace(`    await releaseLock(sessionId).catch(() => {});
     await destroyClientBounded(sessionId, existing, 'restart expired QR session');`, `    await destroyClientBounded(sessionId, existing, 'restart expired QR session');
