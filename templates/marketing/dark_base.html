@@ -10,13 +10,19 @@
   <meta name="description" content="{% block meta_description %}{{ marketing_description }}{% endblock %}">
   {% block seo_head %}
   <link rel="canonical" href="{{ marketing_canonical }}">
-  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="robots" content="{{ marketing_robots }}">
   <meta property="og:site_name" content="SHVYA AI">
   <meta property="og:type" content="website">
   <meta property="og:url" content="{{ marketing_canonical }}">
-  <meta property="og:title" content="SHVYA AI | CRM &amp; WhatsApp Sales Automation">
+  <meta property="og:title" content="{{ marketing_title }}">
   <meta property="og:description" content="{{ marketing_description }}">
+  <meta property="og:image" content="{{ marketing_image }}">
+  <meta property="og:image:alt" content="SHVYA AI logo">
   <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{{ marketing_title }}">
+  <meta name="twitter:description" content="{{ marketing_description }}">
+  <meta name="twitter:image" content="{{ marketing_image }}">
+  <meta name="twitter:image:alt" content="SHVYA AI logo">
   <script type="application/ld+json">{{ marketing_schema|safe }}</script>
   {% endblock %}
   {% if marketing_google_verification %}<meta name="google-site-verification" content="{{ marketing_google_verification }}">{% endif %}

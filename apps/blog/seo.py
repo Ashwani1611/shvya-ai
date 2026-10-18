@@ -109,6 +109,24 @@ def json_ld(data):
     )
 
 
+def listing_schema(title, description, canonical, category_name=""):
+    """Describe the public collection without inventing ratings or products."""
+    breadcrumbs = [("Home", absolute_url("/")), ("Blog", absolute_url(reverse("blog:index")))]
+    if category_name:
+        breadcrumbs.append((category_name, canonical.split("?", 1)[0]))
+    return json_ld({
+        "@context": "https://schema.org",
+        "@graph": [
+            {"@type": "CollectionPage", "@id": canonical + "#webpage", "url": canonical,
+             "name": title, "description": description, "inLanguage": "en"},
+            {"@type": "BreadcrumbList", "itemListElement": [
+                {"@type": "ListItem", "position": position, "name": name, "item": url}
+                for position, (name, url) in enumerate(breadcrumbs, 1)
+            ]},
+        ],
+    })
+
+
 def article_seo(post, snapshot, cover, social_image, *, preview=False):
     canonical = canonical_url(snapshot)
     title = snapshot.get("seo_title") or f"{snapshot['title']} | SHVYA AI"

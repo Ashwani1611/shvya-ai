@@ -1,6 +1,5 @@
 import logging
 
-from django.conf import settings
 from django.contrib import messages
 from django.shortcuts import redirect
 from django.utils.decorators import method_decorator
@@ -8,6 +7,7 @@ from django.views.generic import FormView, TemplateView
 
 from apps.core.docs_portal import docs_context
 from apps.core.forms import MarketingBookingForm
+from apps.core.marketing_context import public_page_metadata
 from apps.core.booking import BookingUnavailable, save_booking
 from apps.core.ratelimit import ratelimit
 from apps.crm.authentication import get_crm_authenticated_user
@@ -48,9 +48,13 @@ class DocumentationView(CRMUserContextMixin, TemplateView):
             )
         )
         if context.get("docs_page"):
-            context["marketing_canonical"] = (
-                settings.BLOG_PUBLIC_ORIGIN.rstrip("/") + context["docs_page"]["url"]
-            )
+            page = context["docs_page"]
+            context.update(public_page_metadata(
+                page["url"], title=f"{page['title']} — SHVYA Docs", description=page["summary"],
+                breadcrumbs=(("Home", "/"), ("Documentation", "/docs/"), (page["title"], page["url"])),
+            ))
+        elif context.get("docs_search"):
+            context["marketing_robots"] = "noindex, follow"
         return context
 
 

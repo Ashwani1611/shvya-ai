@@ -121,6 +121,9 @@ class PublicBlogTests(BlogTestCase):
         self.assertEqual(page.status_code, 200)
         self.assertEqual(page.context["seo"]["canonical"], "https://shvya-ai.com/blog/?page=2")
         self.assertEqual(page.context["seo"]["robots"], "index, follow")
+        collection = json.loads(page.context["seo"]["schema"])["@graph"][0]
+        self.assertEqual(collection["url"], page.context["seo"]["canonical"])
+        self.assertEqual(collection["@type"], "CollectionPage")
         self.assertEqual(len(page.context["posts"]), 2)
         self.assertContains(page, 'rel="canonical"')
         for filters in ({"q": "Sales"}, {"utm_source": "test"}, {"q": ""}):
@@ -129,6 +132,7 @@ class PublicBlogTests(BlogTestCase):
                 self.assertEqual(response.status_code, 200)
                 self.assertIn("noindex", response.context["seo"]["robots"])
                 self.assertIn("noindex", response["X-Robots-Tag"])
+                self.assertEqual(response.context["seo"]["schema"], "")
         self.assertEqual(self.client.get(reverse("blog:index"), {"page": 100000}).status_code, 404)
 
     def test_metadata_and_schema_escape_untrusted_editorial_text(self):

@@ -17,3 +17,6 @@
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
 }
+
+/* Preserve the compact card typography with a sequential heading hierarchy. */
+.marketing-site .card-bottom h2 { font-family: inherit; font-size: 20px; font-weight: 500; line-height: normal; letter-spacing: normal; margin: 0; }
