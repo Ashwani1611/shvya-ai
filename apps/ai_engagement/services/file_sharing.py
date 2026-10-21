@@ -86,12 +86,17 @@ class FileSharingError(Exception):
 def declined_file_request(text, candidate=None):
     """Respect an explicit attachment refusal for this candidate and turn."""
     name = " ".join(str((candidate or {}).get("name") or "").split())
+    labels = {name} if name else set()
+    labels.update(match.group(0).casefold() for match in _FILE_REQUEST.finditer(name))
+    refusal_objects = r"(?:files?|documents?|pdfs?|attachments?)"
+    if labels:
+        refusal_objects = "(?:" + refusal_objects + "|" + "|".join(re.escape(label) for label in sorted(labels, key=len, reverse=True)) + ")"
     for clause in re.split(r"[.!?;\n]", str(text or "")):
         # In Hinglish the object commonly precedes "mat bhejna", so looking
         # only after an English send/share verb misses explicit refusals.
-        objects = r"(?:files?|documents?|pdfs?|attachments?)"
-        if name:
-            objects = "(?:" + objects + "|" + re.escape(name) + ")"
+        objects = refusal_objects
+        if re.fullmatch(r"\s*(?:please\s+)?no\s+(?:more\s+)?" + objects + r"(?:\s+(?:please|thanks))*\s*", clause, re.I):
+            return True
         negative_send = (
             r"(?:mat\s+(?:bhej(?:na|o|iye)?|send|share|attach)"
             r"|(?:nahi|nahin)\s+(?:bhej(?:na|o|iye)?|send|share|attach)"
@@ -100,7 +105,7 @@ def declined_file_request(text, candidate=None):
         if re.search(r"\b" + objects + r"\s+" + negative_send + r"\b", clause, re.I):
             return True
         refusal = re.search(
-            r"\b(?:do\s+not|don['’]t|never|no\s+need\s+to)\s+(?:send|share|attach)\b"
+            r"\b(?:do\s+not|don['’]t|never|no\s+need\s+to)\s+(?:send|share|attach|resend|re-send|reshare|re-share|reattach|re-attach)\b"
             r"|\b(?:send|share)\s+(?:mat|nahi)\b", clause, re.I)
         if not refusal:
             continue
@@ -108,7 +113,7 @@ def declined_file_request(text, candidate=None):
         if re.search(r"\b(?:any|a|the|me|another|again|please|us|this|that)\b", tail, re.I):
             tail = re.sub(r"\b(?:any|a|the|me|another|again|please|us|this|that)\b", " ", tail, flags=re.I)
         # File-specific refusals do not cancel a different named document.
-        if name and re.search(re.escape(name), tail, re.I):
+        if labels and any(re.search(r"(?<!\w)" + re.escape(label) + r"(?!\w)", tail, re.I) for label in labels):
             return True
         broad = r"(?:files?|documents?|pdfs?|attachments?)"
         if re.fullmatch(r"\s*(?:" + broad + r")\s*", tail, re.I) or (re.search(r"\bany\b", clause, re.I) and re.search(broad, tail, re.I)):
@@ -249,14 +254,17 @@ def unrestricted_requested_document(candidates, *, text):
     return matches[0] if len(matches) == 1 else None
 
 
-def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request):
+def reconcile_welcome_document(document_id, candidates, *, welcome_due, explicit_request, requested_text=None):
     """Remove an exact welcome-only choice if final rendering omits welcome."""
-    if document_id is None or welcome_due or explicit_request:
+    if document_id is None or welcome_due:
         return document_id
     selected = [item for item in candidates if isinstance(item, dict)
                 and item.get("document_id") == document_id]
-    if unconditional_welcome_document(selected, welcome_due=True) == document_id:
-        return None
+    checked = [{**item, "already_shared": False} for item in selected]
+    if unconditional_welcome_document(checked, welcome_due=True) == document_id:
+        if requested_text is not None:
+            return document_id if unrestricted_requested_document(selected, text=requested_text) == document_id else None
+        return document_id if explicit_request else None
     return document_id
 
 
@@ -365,6 +373,14 @@ Rules for the fields:
                 model="authored_welcome_instruction",
             )
             return decision.document_id
+        # An exactly compiled welcome/request rule has no other trigger.
+        # Generic mentions or content questions cannot broaden its permission.
+        candidates = [item for item in candidates if
+                      unconditional_welcome_document([{**item, "already_shared": False}], welcome_due=True) is None]
+        allowed = {item["document_id"] for item in candidates
+                   if type(item.get("document_id")) is int and item["document_id"] > 0}
+        if not allowed:
+            return None
         data = context.as_dict()
         result = generate(
             provider=provider,
@@ -959,3 +975,4 @@ Rules for the fields:
             reason=reason,
             model=model,
         )
+
