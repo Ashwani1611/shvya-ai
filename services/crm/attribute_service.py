@@ -13,7 +13,7 @@ from django.db import transaction
 from apps.crm.models import AttributeDefinition, Lead
 
 
-MAX_CUSTOM_ATTRIBUTES = 15
+MAX_CUSTOM_ATTRIBUTES = 100
 
 
 def _build_attribute_key(name):
@@ -136,7 +136,7 @@ def create_attribute_definition(
     """
     Create one custom attribute definition for an organization.
 
-    The maximum number of custom attributes is 15.
+    The maximum number of custom attributes is 100.
 
     This function creates only the definition. It does not modify
     any Lead.attributes JSON values.

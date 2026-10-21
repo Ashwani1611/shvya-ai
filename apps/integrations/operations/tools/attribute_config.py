@@ -146,6 +146,50 @@ from apps.integrations.operations_tools import (
     ToolExecution,
 )
 
+ATTRIBUTE_FIELD_TYPE_ALIASES = {
+    "string": AttributeDefinition.FieldType.TEXT,
+    "textarea": AttributeDefinition.FieldType.TEXT,
+    "email": AttributeDefinition.FieldType.TEXT,
+    "phone": AttributeDefinition.FieldType.TEXT,
+    "url": AttributeDefinition.FieldType.TEXT,
+    "number": AttributeDefinition.FieldType.NUMERIC,
+    "integer": AttributeDefinition.FieldType.NUMERIC,
+    "decimal": AttributeDefinition.FieldType.NUMERIC,
+    "currency": AttributeDefinition.FieldType.NUMERIC,
+    "money": AttributeDefinition.FieldType.NUMERIC,
+    "percentage": AttributeDefinition.FieldType.NUMERIC,
+    "select": AttributeDefinition.FieldType.OPTION,
+    "dropdown": AttributeDefinition.FieldType.OPTION,
+    "choice": AttributeDefinition.FieldType.OPTION,
+    "enum": AttributeDefinition.FieldType.OPTION,
+    "option_picker": AttributeDefinition.FieldType.OPTION,
+    "yes_no": AttributeDefinition.FieldType.OPTION,
+    "boolean": AttributeDefinition.FieldType.OPTION,
+    "bool": AttributeDefinition.FieldType.OPTION,
+    "date_time": AttributeDefinition.FieldType.DATETIME,
+    "timestamp": AttributeDefinition.FieldType.DATETIME,
+}
+
+
+def _attribute_validation_message(exc):
+    message_dict = getattr(exc, "message_dict", None)
+    details = []
+    if isinstance(message_dict, dict):
+        for field, messages in message_dict.items():
+            for message in messages:
+                details.append(
+                    f"{field}: {sanitize_text(message, limit=240)}"
+                )
+    else:
+        for message in getattr(exc, "messages", [str(exc)]):
+            details.append(sanitize_text(message, limit=240))
+    detail = "; ".join(details[:12]) or "Unknown validation error."
+    return (
+        "Attribute configuration validation failed: "
+        + sanitize_text(detail, limit=800)
+    )
+
+
 def upsert_attribute_configuration(*, identity, arguments):
     organization = _organization_for(identity)
     dry_run, reason = _write_gate(
@@ -170,17 +214,29 @@ def upsert_attribute_configuration(*, identity, arguments):
             raise OperationsToolError("Attribute definition not found in this organization.")
 
     name = str(data.get("name", attribute.name if attribute else "") or "").strip()
-    field_type = str(
+    raw_field_type = str(
         data.get(
             "field_type",
             attribute.field_type if attribute else AttributeDefinition.FieldType.TEXT,
         )
         or ""
-    ).strip()
+    ).strip().lower()
+    field_type = ATTRIBUTE_FIELD_TYPE_ALIASES.get(raw_field_type, raw_field_type)
+    supported_field_types = {
+        choice[0] for choice in AttributeDefinition.FieldType.choices
+    }
+    if field_type not in supported_field_types:
+        supported = ", ".join(sorted(supported_field_types))
+        raise OperationsToolError(
+            f"Unsupported attribute field_type '{sanitize_text(raw_field_type, limit=80)}'. "
+            f"Supported canonical types: {supported}."
+        )
     description = str(
         data.get("description", attribute.description if attribute else "") or ""
     ).strip()
     options = data.get("options", list(attribute.options or []) if attribute else [])
+    if raw_field_type in {"boolean", "bool"} and not options:
+        options = ["Yes", "No"]
     if not isinstance(options, list):
         raise OperationsToolError("Attribute options must be a list.")
     if field_type == AttributeDefinition.FieldType.OPTION:
@@ -260,7 +316,7 @@ def upsert_attribute_configuration(*, identity, arguments):
         try:
             probe.full_clean(validate_unique=False, validate_constraints=False)
         except ValidationError as exc:
-            raise OperationsToolError("Attribute configuration validation failed.") from exc
+            raise OperationsToolError(_attribute_validation_message(exc)) from exc
         return ToolExecution(
             data={
                 "status": "DRY_RUN",
@@ -423,9 +479,7 @@ def upsert_attribute_configuration(*, identity, arguments):
             "Run a fresh dry-run."
         ) from exc
     except ValidationError as exc:
-        raise OperationsToolError(
-            "Attribute configuration validation failed."
-        ) from exc
+        raise OperationsToolError(_attribute_validation_message(exc)) from exc
     return ToolExecution(
         data={
             "status": "FIXED",
