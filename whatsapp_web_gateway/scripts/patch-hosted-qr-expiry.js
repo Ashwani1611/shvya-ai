@@ -13,7 +13,11 @@ function lines(...items) {
 function replaceOnce(before, after, label) {
   const first = source.indexOf(before);
   if (first === -1) {
-    if (source.includes(after)) {
+    const alreadyHandledByLifecycle = label === 'skip state probes for expired sessions'
+      && source.includes("['failed', 'expired'].includes(state.status)");
+    const leaseRenewalAlreadyFiltered = label === 'do not reacquire leases for expired QR sessions'
+      && source.includes("if (!state || state.status === 'failed' || state.status === 'expired') continue;");
+    if (source.includes(after) || alreadyHandledByLifecycle || leaseRenewalAlreadyFiltered) {
       console.log(`Hosted QR expiry patch already applied: ${label}`);
       return;
     }

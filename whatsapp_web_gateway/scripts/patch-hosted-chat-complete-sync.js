@@ -9,7 +9,10 @@ let source = fs.readFileSync(target, 'utf8');
 function replaceOnce(before, after, label) {
   const first = source.indexOf(before);
   if (first === -1) {
-    if (source.includes(after)) {
+    const retryingDirectCallback = label === 'retry transient gateway callbacks'
+      && source.includes('async function directCallback(sessionId, event, payload = {})')
+      && source.includes('failed after retries');
+    if (source.includes(after) || retryingDirectCallback) {
       console.log(`Hosted chat runtime patch already applied: ${label}`);
       return;
     }

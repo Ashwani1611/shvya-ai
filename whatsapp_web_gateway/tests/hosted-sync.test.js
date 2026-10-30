@@ -8,7 +8,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const { execFileSync } = require('node:child_process');
 const { deadline } = require('../src/realtime-delivery');
-const { createSessionOperationQueue } = require('../src/session-lifecycle');
+const { createHostedLifecycle, createSessionOperationQueue } = require('../src/session-lifecycle');
 
 // Exercise the same ordered source transformations as the production image.
 const root = path.resolve(__dirname, '..');
@@ -108,21 +108,15 @@ test('logout purges an orphaned persisted LocalAuth profile with no live session
   fs.mkdirSync(profile, { recursive: true });
   fs.writeFileSync(path.join(profile, 'marker'), 'stale');
 
-  const ctx = context(
-    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession', 'logoutSessionUnlocked'],
-    {
-      fs,
-      path,
-      AUTH_PATH: root,
-      sessions: new Map(),
-      sessionFailureTrackers: new Map(),
-      releaseLock: async () => {},
-      destroyClientBounded: async () => {},
-      callback: async () => true,
-    },
-  );
+  const lifecycle = createHostedLifecycle({
+    sessions: new Map(), maxSessions: 1, authPath: root,
+    createClient: () => { throw new Error('No browser should be created during orphan logout.'); },
+    wireClientEvents() {}, reconcileClientState: async () => {},
+    acquireLock: async () => true, releaseLock: async () => {},
+    callback: async () => true,
+  });
 
-  await ctx.logoutSession('orphan-session');
+  await lifecycle.logoutSession('orphan-session');
 
   assert.equal(fs.existsSync(profile), false);
   fs.rmSync(root, { recursive: true, force: true });
@@ -133,21 +127,15 @@ test('logout rejects unsafe session ids before touching the profile filesystem',
   const outside = path.join(path.dirname(root), 'escape-profile');
   fs.mkdirSync(outside, { recursive: true });
 
-  const ctx = context(
-    ['sessionProfilePath', 'removeSessionProfile', 'logoutSession', 'logoutSessionUnlocked'],
-    {
-      fs,
-      path,
-      AUTH_PATH: root,
-      sessions: new Map(),
-      sessionFailureTrackers: new Map(),
-      releaseLock: async () => {},
-      destroyClientBounded: async () => {},
-      callback: async () => true,
-    },
-  );
+  const lifecycle = createHostedLifecycle({
+    sessions: new Map(), maxSessions: 1, authPath: root,
+    createClient: () => { throw new Error('No browser should be created during invalid logout.'); },
+    wireClientEvents() {}, reconcileClientState: async () => {},
+    acquireLock: async () => true, releaseLock: async () => {},
+    callback: async () => true,
+  });
 
-  await assert.rejects(ctx.logoutSession('../escape-profile'), /Invalid session id/);
+  await assert.rejects(async () => lifecycle.logoutSession('../escape-profile'), /Invalid session id/);
   assert.equal(fs.existsSync(outside), true);
 
   fs.rmSync(root, { recursive: true, force: true });
@@ -437,3 +425,6 @@ test('manual sync acknowledges queued work instead of holding the HTTP request o
   assert.match(route, /res\.status\(202\)/);
   assert.doesNotMatch(route, /await startHistorySync/);
 });
+
+// Keep lifecycle regressions in the existing mandatory CI gateway entry point.
+require('./session-lifecycle.cases')({ source, root });
