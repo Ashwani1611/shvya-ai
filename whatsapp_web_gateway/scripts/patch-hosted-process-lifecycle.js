@@ -9,8 +9,12 @@ const target = path.join(process.cwd(), 'src', 'index.js');
 let source = fs.readFileSync(target, 'utf8');
 const marker = '// SHVYA owned browser lifecycle v1';
 
-function replace(before, after) {
-  if (!source.includes(before) || source.indexOf(before) !== source.lastIndexOf(before)) {
+function replace(before, after, alreadyApplied = () => false) {
+  if (!source.includes(before)) {
+    if (alreadyApplied()) return;
+    throw new Error(`Lifecycle patch signature missing: ${before.slice(0, 100)}`);
+  }
+  if (source.indexOf(before) !== source.lastIndexOf(before)) {
     throw new Error(`Lifecycle patch signature missing or ambiguous: ${before.slice(0, 100)}`);
   }
   source = source.replace(before, () => after);
@@ -25,7 +29,13 @@ function functionText(name) {
 function replaceFunction(name, text) { replace(functionText(name), text); }
 
 if (!source.includes(marker)) {
-  const create = functionText('createSession');
+  // The current gateway source serializes createSession through a wrapper and
+  // keeps the actual Client construction in createSessionUnlocked. Older
+  // sources construct the Client directly in createSession.
+  const createFunction = /^async function createSessionUnlocked\(/m.test(source)
+    ? 'createSessionUnlocked'
+    : 'createSession';
+  const create = functionText(createFunction);
   const clientStart = create.indexOf('  const client = new Client({');
   const clientEnd = create.indexOf('  state.client = client;', clientStart);
   if (clientStart < 0 || clientEnd < 0) throw new Error('Cannot locate Client configuration');
@@ -41,7 +51,7 @@ if (!source.includes(marker)) {
   replace('const app = express();', `${marker}
 const hostedLifecycle = require('./session-lifecycle').createHostedLifecycle({
   sessions, acquireLock, releaseLock, callback, wireClientEvents,
-  reconcileClientState, authPath: AUTH_PATH, maxSessions: MAX_HOSTED_SESSIONS,
+  reconcileClientState, removeSessionProfile, authPath: AUTH_PATH, maxSessions: MAX_HOSTED_SESSIONS,
   metrics: gatewayMetrics,
   createClient(sessionId) {
     ${clientFactory}
@@ -92,19 +102,24 @@ const app = express();`);
     "    if (!state || state.status === 'failed' || state.status === 'expired') continue;",
     '    if (!state || state.stopped || sessions.get(sessionId) !== state) continue;',
   );
-  const callbackSource = functionText('callback');
-  replaceFunction('callback', callbackSource
-    .replace("  if (!CALLBACK_URL || !CALLBACK_TOKEN) return false;",
-      "  if (!CALLBACK_URL || !CALLBACK_TOKEN || !hostedLifecycle.callbackAllowed(sessionId)) return false;")
+  const directCallback = functionText('directCallback');
+  replaceFunction('directCallback', directCallback
+    .replace('async function directCallback(sessionId, event, payload = {}) {',
+      'async function directCallback(sessionId, event, payload = {}) {\n  if (!hostedLifecycle.callbackAllowed(sessionId)) return false;')
     .replace('  for (let attempt = 1; attempt <= 3; attempt += 1) {',
       '  for (let attempt = 1; attempt <= 3; attempt += 1) {\n    if (!hostedLifecycle.callbackAllowed(sessionId)) return false;'));
 
-  replace(
-    '    state.qr = await QRCode.toDataURL(rawQr, { width: 304, margin: 1 });',
-    `    const qr = await QRCode.toDataURL(rawQr, { width: 304, margin: 1 });
+  const qrImageLine = '    state.qr = await QRCode.toDataURL(rawQr, { width: 304, margin: 1 });';
+  if (source.includes(qrImageLine)) {
+    replace(qrImageLine,
+      `    const qr = await QRCode.toDataURL(rawQr, { width: 304, margin: 1 });
     if (!hostedLifecycle.current(sessionId, state) || state.status !== 'qr_ready') return;
-    state.qr = qr;`,
-  );
+    state.qr = qr;`);
+  } else {
+    replace('      if (shuttingDown || sessions.get(sessionId) !== state || state.retired || state.qrVersion !== version) return;',
+      '      if (shuttingDown || !hostedLifecycle.current(sessionId, state) || state.qrVersion !== version) return;',
+      () => source.includes('!hostedLifecycle.current(sessionId, state) || state.qrVersion !== version'));
+  }
   replace(
     "async function promoteRunningSession(sessionId, state, source = 'ready') {",
     "async function promoteRunningSession(sessionId, state, source = 'ready') {\n  if (!hostedLifecycle.current(sessionId, state)) return false;",
@@ -129,10 +144,14 @@ const app = express();`);
     '    lastError: state.lastError || \'\',',
     "    lastError: state.lastError || '',\n    retryPaused: Boolean(state.retryPaused),\n    retryAt: state.restoreRetryAt || null,",
   );
-  replace(
-    'capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - sessions.size)',
-    'capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - hostedLifecycle.diagnostics().active)',
-  );
+  const capacityBySessions = 'capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - sessions.size)';
+  if (source.includes(capacityBySessions)) {
+    replace(capacityBySessions, 'capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - hostedLifecycle.diagnostics().active)');
+  } else {
+    replace('capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - activeSessionCount())',
+      'capacityRemaining: Math.max(0, MAX_HOSTED_SESSIONS - hostedLifecycle.diagnostics().active)',
+      () => source.includes('hostedLifecycle.diagnostics().active'));
+  }
   replace(
     "app.use('/sessions', (req, res, next) => {",
     "app.use('/sessions', (req, res, next) => {\n  if (shuttingDown) return res.status(503).json({ error: 'Gateway is shutting down.' });",

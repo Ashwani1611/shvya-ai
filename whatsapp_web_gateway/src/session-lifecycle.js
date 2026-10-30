@@ -1,6 +1,7 @@
 'use strict';
 
 const fs = require('node:fs');
+const path = require('node:path');
 const { AsyncLocalStorage } = require('node:async_hooks');
 
 function bounded(promise, ms, label) {
@@ -90,6 +91,7 @@ function createHostedLifecycle(options) {
   const {
     sessions, createClient, wireClientEvents, reconcileClientState,
     acquireLock, releaseLock, callback, authPath, maxSessions,
+    removeSessionProfile = id => fs.promises.rm(path.join(authPath, `session-${id}`), { recursive: true, force: true }),
     metrics = {}, log = console, now = Date.now, random = Math.random,
     readProfiles = () => fs.promises.readdir(authPath, { withFileTypes: true }),
     signalChild = signalOwnedChild,
@@ -398,7 +400,18 @@ function createHostedLifecycle(options) {
     return run(id, async () => {
       suppressedRestores.add(id);
       const state = sessions.get(id);
-      if (!state) return; // Never delete an unknown/newer owner's lease.
+      if (!state) {
+        // A deleted/recreated account can leave a persisted LocalAuth profile
+        // with no in-memory browser. Claim the lease before purging it so a
+        // different gateway's active profile is never removed.
+        if (!(await acquireLock(id))) return;
+        try {
+          await removeSessionProfile(id);
+        } finally {
+          await bounded(releaseLock(id), times.redis, 'Release orphan logout lease');
+        }
+        return;
+      }
       await stopOwned(id, state, { logout: true, clearProfile: true, release: false });
       await notify(id, state, 'logout', {});
       await bounded(releaseLock(id), times.redis, 'Release logout lease');

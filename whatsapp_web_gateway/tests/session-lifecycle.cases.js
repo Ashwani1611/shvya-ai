@@ -82,6 +82,7 @@ function harness(t, settings = {}) {
       return settings.acquire ? settings.acquire(id) : true;
     },
     releaseLock: async id => { actions.push(`${id}:release`); },
+    removeSessionProfile: async id => { actions.push(`${id}:profile`); },
     callback: async (id, event) => {
       actions.push(`${id}:callback:${event}`);
       return settings.callback ? settings.callback(id, event) : true;
@@ -256,10 +257,11 @@ module.exports = function registerLifecycleTests({ source, root } = {}) {
     assert.equal(h.sessions.size, 0);
   });
 
-  test('unknown-session logout never releases another generation\'s lease', async t => {
+  test('unknown-session logout claims its lease before purging an orphan profile', async t => {
     const h = harness(t);
     await h.lifecycle.logoutSession('unknown');
-    assert.equal(h.actions.length, 0);
+    assert.ok(h.actions.indexOf('unknown:acquire') < h.actions.indexOf('unknown:profile'));
+    assert.ok(h.actions.indexOf('unknown:profile') < h.actions.indexOf('unknown:release'));
   });
 
   test('timed-out logout cannot later delete a replacement profile', async t => {
