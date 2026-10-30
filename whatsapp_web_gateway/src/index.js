@@ -208,15 +208,17 @@ async function releaseLock(sessionId) {
 }
 
 async function destroyClientBounded(sessionId, state, reason = 'destroy') {
-  if (!state || !state.client) return;
+  if (!state || !state.client) return true;
   try {
     await withTimeout(
       Promise.resolve().then(() => state.client.destroy()),
       8000,
       reason + ' ' + sessionId,
     );
+    return true;
   } catch (error) {
     console.warn('Could not ' + reason + ' client ' + sessionId + ':', error.message);
+    return false;
   }
 }
 
@@ -1050,12 +1052,11 @@ async function createSession(sessionId, requestedPhone = '') {
 
   client.initialize().catch(async (error) => {
     state.status = 'failed';
+    state.cleanupPending = true;
     state.qr = null;
     state.qrGeneratedAt = 0;
     state.lastError = error.message || String(error);
     console.warn('Hosted session ' + sessionId + ' failed to initialize:', state.lastError);
-    await callback(sessionId, 'failed', { error: state.lastError });
-
     // FIX 2: exponential backoff so a stuck session can't spawn Chromium every 30s
     const tracker = sessionFailureTrackers.get(sessionId) || { attempts: 0 };
     tracker.attempts += 1;
@@ -1069,7 +1070,25 @@ async function createSession(sessionId, requestedPhone = '') {
         + 'intervals. Needs manual investigation.',
       );
     }
-    await releaseLock(sessionId).catch(() => {});
+    const destroyed = await destroyClientBounded(
+      sessionId,
+      state,
+      'failed initialization cleanup',
+    );
+    if (destroyed) {
+      state.client = null;
+      state.cleanupPending = false;
+      console.warn(
+        'Keeping Hosted session lease for ' + sessionId
+          + ' through its retry delay to protect the LocalAuth profile.',
+      );
+    } else {
+      console.error(
+        'Keeping Hosted session lease for ' + sessionId
+          + ' because Chromium cleanup did not complete.',
+      );
+    }
+    await callback(sessionId, 'failed', { error: state.lastError });
   });
 
   return state;
@@ -1370,10 +1389,12 @@ async function shutdown() {
   const activeSessions = Array.from(sessions.entries());
   sessions.clear();
   await Promise.allSettled(
-    activeSessions.map(([sessionId]) => releaseLock(sessionId)),
-  );
-  await Promise.allSettled(
-    activeSessions.map(([sessionId, state]) => destroyClientBounded(sessionId, state, 'shutdown')),
+    activeSessions.map(async ([sessionId, state]) => {
+      const destroyed = await destroyClientBounded(sessionId, state, 'shutdown');
+      // Keep the lease until Chromium has stopped. If teardown times out, let
+      // Redis expire the lease rather than expose the profile to another gateway.
+      if (destroyed) await releaseLock(sessionId);
+    }),
   );
   if (redis) {
     try {

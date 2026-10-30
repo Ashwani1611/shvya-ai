@@ -34,7 +34,12 @@ const hasTokenFencedRenewal = [
 ].every((marker) => source.includes(marker));
 
 if (hasTokenFencedRenewal) {
-  console.log('Hosted lease invariant already enforced by token-fenced renewal.');
+  replaceOnce(
+    "    if (!state || state.status === 'failed' || state.status === 'expired') continue;",
+    "    if (!state || state.status === 'expired') continue;",
+    'renew leases while failed sessions await cleanup or retry',
+  );
+  console.log('Hosted lease invariant enforced by token-fenced renewal.');
 } else {
   replaceOnce(
     lines(
@@ -51,10 +56,8 @@ if (hasTokenFencedRenewal) {
       'async function renewLocks() {',
       '  if (!redis || shuttingDown) return;',
       '  for (const [sessionId, state] of Array.from(sessions.entries())) {',
-      "    // Initialization failures intentionally release their lease and are",
-      "    // recreated by the persisted-session retry loop. Do not reacquire a",
-      "    // lease for a failed client that should be torn down/retried.",
-      "    if (!state || state.status === 'failed') continue;",
+      "    // Keep ownership while failed clients are waiting for bounded cleanup/retry.",
+      '    if (!state) continue;',
       '    try {',
       '      // acquireLock() renews our lease when present and safely recreates it',
       '      // with SET NX when it disappeared. A foreign owner is never stolen.',

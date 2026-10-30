@@ -68,13 +68,28 @@ async function fenceSessionUnlocked(sessionId, state, reason) {`);
   const state = {
     client: null,`);
   replace(`  // Stop lease renewal before browser teardown so a slow Chromium destroy
-  // cannot strand this gateway as the apparent owner of the session.`, `  // Stop renewal, then finish bounded browser teardown before releasing its
-  // lease so another instance cannot open the same profile during teardown.`);
-  replace(`  await releaseLock(sessionId).catch(() => {});
-  await destroyClientBounded(sessionId, current, 'refresh');`, `  await destroyClientBounded(sessionId, current, 'refresh');
+  // cannot strand this gateway as the apparent owner of the session.`, `  // Keep the session lease through bounded browser teardown so another
+  // gateway cannot open the same LocalAuth profile concurrently.`);
+  replace(`  sessions.delete(sessionId);
+  await releaseLock(sessionId).catch(() => {});
+  await destroyClientBounded(sessionId, current, 'refresh');`, `  if (!(await acquireLock(sessionId))) {
+    const error = new Error('Session is active on another gateway instance.');
+    error.statusCode = 409;
+    throw error;
+  }
+  const destroyed = await destroyClientBounded(sessionId, current, 'refresh');
+  if (!destroyed) {
+    current.status = 'failed';
+    current.cleanupPending = true;
+    current.restoreRetryAt = Date.now() + BASE_RETRY_MS;
+    return current;
+  }
   await cleanSessionChromiumLocks(sessionId).catch((error) => {
     console.warn('Could not clean Chromium locks for ' + sessionId + ':', error.message);
   });
+  current.client = null;
+  current.cleanupPending = false;
+  sessions.delete(sessionId);
   await releaseLock(sessionId).catch(() => {});`);
   replace(`    await releaseLock(sessionId).catch(() => {});
     await destroyClientBounded(sessionId, existing, 'restart expired QR session');`, `    await destroyClientBounded(sessionId, existing, 'restart expired QR session');
@@ -125,7 +140,7 @@ async function fenceSessionUnlocked(sessionId, state, reason) {`);
     // never mark the new session failed or release that new browser's lease.
     if (shuttingDown || sessions.get(sessionId) !== state || state.retired) return;
     state.status = 'failed';`);
-  replace('    await releaseLock(sessionId).catch(() => {});\n  });\n\n  return state;', '    await releaseLock(sessionId).catch(() => {});\n  }));\n\n  return state;');
+  replace("    await releaseLock(sessionId).catch(() => {});\n  });\n\n  return state;", "    await releaseLock(sessionId).catch(() => {});\n  }));\n\n  return state;");
   replace("  if (existing && existing.status === 'expired' && requestedPhone) {",
     "  if (existing && ['expired', 'failed', 'disconnected'].includes(existing.status) && requestedPhone) {");
   replace('    if (requestedPhone) existing.requestedPhone = requestedPhone;', `    if (requestedPhone) {
@@ -252,10 +267,18 @@ async function fenceSessionUnlocked(sessionId, state, reason) {`);
         if (existing?.status === 'expired') return;
         if (existing && (['failed', 'disconnected'].includes(existing.status) || existing.reconnectRequired)) {
           if (existing.restoreRetryAt > Date.now()) return;
-          sessions.delete(sessionId);
-          await destroyClientBounded(sessionId, existing, 'retry disconnected or failed restore');
-          await releaseLock(sessionId).catch(() => {});
+          if (!(await acquireLock(sessionId))) return;
+          existing.cleanupPending = true;
+          const destroyed = await destroyClientBounded(sessionId, existing, 'retry disconnected or failed restore');
+          if (!destroyed) {
+            existing.status = 'failed';
+            existing.restoreRetryAt = Date.now() + BASE_RETRY_MS;
+            return;
+          }
           await cleanSessionChromiumLocks(sessionId).catch(() => {});
+          existing.client = null;
+          existing.cleanupPending = false;
+          sessions.delete(sessionId);
         }
         await createSessionUnlocked(sessionId, existing?.requestedPhone || existing?.phoneNumber || '');
       });
